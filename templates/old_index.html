@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>HotShort 🔥</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script defer src="/static/script.js"></script>
+</head>
+<body>
+  <div class="background"></div>
+  <header>
+    <h1 class="logo">🔥 HotShort</h1>
+    <p class="tagline">Turn YouTube into <span id="tag-text">Short Magic</span></p>
+  </header>
+
+  <main>
+    <div class="card glass">
+      <h2 class="headline">🎬 Create Short Clips Instantly</h2>
+      <form id="videoForm" action="/start" method="post">
+        <input type="text" name="yt_link" placeholder="Paste YouTube link here..." required />
+        <button type="submit" id="generateBtn">Generate Short Clip ⚡</button>
+      </form>
+      <div id="loading" class="hidden">
+        <div class="loader"></div>
+        <p id="statusText">Generating your short clip...</p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>🚀 Built by <strong>You</strong> • <span>Beta v3.5</span></p>
+  </footer>
+</body>
+</html>

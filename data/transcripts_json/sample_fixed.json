@@ -1,0 +1,11 @@
+{
+    "file": "sample_fixed.wav",
+    "text": " Welcome to Hot Shot, an AI that finds viral moments from long podcasts.",
+    "segments": [
+        {
+            "start": 0.0,
+            "end": 6.0,
+            "text": " Welcome to Hot Shot, an AI that finds viral moments from long podcasts."
+        }
+    ]
+}

@@ -1,0 +1,58 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Caption,Arial,56,&H00FFFFFF,&H0000E5FF,&H00111111,&H64000000,1,0,0,0,100,100,0,0,1,2,0,2,70,70,110,1
+Style: Hook,Arial,62,&H00FDE68A,&H0000E5FF,&H00252525,&H64000000,1,0,0,0,100,100,0,0,1,2,0,8,90,90,240,1
+Style: CTA,Arial,32,&H00F8FAFC,&H0000E5FF,&H00222222,&H64000000,1,0,0,0,100,100,0,0,1,1,0,2,70,70,64,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+Dialogue: 0,0:00:00.00,0:00:00.50,Caption,,0,0,0,,Why do they prioritize certain projects?
+Dialogue: 0,0:00:00.50,0:00:02.34,Caption,,0,0,0,,How do they think about their work
+Dialogue: 0,0:00:02.34,0:00:03.20,Caption,,0,0,0,,and where they wanna end up in
+Dialogue: 0,0:00:03.20,0:00:04.06,Caption,,0,0,0,,the future?
+Dialogue: 0,0:00:04.06,0:00:05.44,Caption,,0,0,0,,Being curious about your customers and your
+Dialogue: 0,0:00:05.44,0:00:06.82,Caption,,0,0,0,,team
+Dialogue: 0,0:00:06.82,0:00:08.04,Caption,,0,0,0,,is how you develop a different mental
+Dialogue: 0,0:00:08.04,0:00:09.26,Caption,,0,0,0,,model
+Dialogue: 0,0:00:09.26,0:00:10.62,Caption,,0,0,0,,to be able to solve problems that
+Dialogue: 0,0:00:10.62,0:00:11.98,Caption,,0,0,0,,are more effective.
+Dialogue: 0,0:00:11.98,0:00:13.64,Caption,,0,0,0,,Even more importantly to that is asking
+Dialogue: 0,0:00:13.64,0:00:15.30,Caption,,0,0,0,,yourself why.
+Dialogue: 0,0:00:15.30,0:00:16.74,Caption,,0,0,0,,Why do you react that way?
+Dialogue: 0,0:00:16.74,0:00:18.04,Caption,,0,0,0,,Why do you feel anger when those
+Dialogue: 0,0:00:18.04,0:00:19.34,Caption,,0,0,0,,situations happens?
+Dialogue: 0,0:00:19.34,0:00:20.82,Caption,,0,0,0,,What gets you frustrated?
+Dialogue: 0,0:00:20.82,0:00:22.26,Caption,,0,0,0,,I always say, the world will show
+Dialogue: 0,0:00:22.26,0:00:23.70,Caption,,0,0,0,,you where you're not free.
+Dialogue: 0,0:00:23.70,0:00:25.26,Caption,,0,0,0,,A life unexamined is a life that
+Dialogue: 0,0:00:25.26,0:00:26.82,Caption,,0,0,0,,wasn't lived.
+Dialogue: 0,0:00:26.82,0:00:28.21,Caption,,0,0,0,,For you to truly express yourself in
+Dialogue: 0,0:00:28.21,0:00:29.60,Caption,,0,0,0,,business
+Dialogue: 0,0:00:29.60,0:00:31.10,Caption,,0,0,0,,with your family, with your friends,
+Dialogue: 0,0:00:31.10,0:00:33.22,Caption,,0,0,0,,you have to understand who you are.
+Dialogue: 0,0:00:33.22,0:00:34.56,Caption,,0,0,0,,Even today, I was just recently at
+Dialogue: 0,0:00:34.56,0:00:35.90,Caption,,0,0,0,,one of my mentors,
+Dialogue: 0,0:00:35.90,0:00:37.18,Caption,,0,0,0,,Patrick Bette David's office,
+Dialogue: 0,0:00:37.18,0:00:37.96,Caption,,0,0,0,,and I saw a poster on the
+Dialogue: 0,0:00:37.96,0:00:38.74,Caption,,0,0,0,,wall,
+Dialogue: 0,0:00:38.74,0:00:39.90,Caption,,0,0,0,,and I asked one of the sales
+Dialogue: 0,0:00:39.90,0:00:41.06,Caption,,0,0,0,,guys, what's that poster?
+Dialogue: 0,0:00:41.06,0:00:42.42,Caption,,0,0,0,,And he told me that it's all
+Dialogue: 0,0:00:42.42,0:00:43.78,Caption,,0,0,0,,the goals of the business,
+Dialogue: 0,0:00:43.78,0:00:44.84,Caption,,0,0,0,,and the way it works is that
+Dialogue: 0,0:00:44.84,0:00:45.90,Caption,,0,0,0,,if the bottom people
+Dialogue: 0,0:00:45.90,0:00:47.04,Caption,,0,0,0,,don't hit their goal, because there was
+Dialogue: 0,0:00:47.04,0:00:48.18,Caption,,0,0,0,,a reward next to it,
+Dialogue: 0,0:00:48.18,0:00:49.12,Caption,,0,0,0,,the people at the top don't get
+Dialogue: 0,0:00:49.12,0:00:50.06,Caption,,0,0,0,,theirs.
+Dialogue: 0,0:00:50.06,0:00:51.16,Caption,,0,0,0,,And I thought to myself, how simple
+Dialogue: 0,0:00:51.16,0:00:52.25,Caption,,0,0,0,,of an idea
+Dialogue: 1,0:00:00.08,0:00:02.80,Hook,,0,0,0,,How do they think about their work and where they wanna end up in the future? Being curious about your customers and your team is how you develop a different mental model to be able to solve problems that are more effective. Even more importantly to that is asking yourself why. Why do you react that way? Why do you feel anger when those situations happens? What gets you frustrated? I always say, the world will show you where you're not free. A life unexamined is a life that wasn't lived. For you to truly express yourself in business with your family, with your friends, you have to understand who you are. Even today, I was just recently at one of my mentors, Patrick Bette David's office, and I saw a poster on the wall, and I asked one of the sales guys, what's that poster? And he told me that it's all the goals of the business, and the way it works is that if the bottom people don't hit their goal, because there was a reward next to it, the people at the top don't get theirs. And I thought to myself, how simple of an idea to get everybody aligned in the business with their goals across different departments. I took that idea, I created the aligned goals ladder
+Dialogue: 0,0:00:48.45,0:00:52.05,CTA,,0,0,0,,#your #about #their #where
+Dialogue: 2,0:00:49.65,0:00:52.15,CTA,,0,0,0,,Follow for more creator breakdowns

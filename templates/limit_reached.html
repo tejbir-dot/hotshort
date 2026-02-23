@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Unlock Downloads • HotShort</title>
+  <style>
+    :root{
+      --gold-100:#ffcf80;
+      --gold-200:#ffb347;
+      --bg:#0b0b0b;
+      --panel: rgba(255,255,255,0.04);
+      --border: rgba(255,200,100,0.18);
+      --muted: rgba(255,255,255,0.70);
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      min-height:100dvh;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at 20% 20%, #201200 0%, #0a0a0a 60%);
+      color:#efe6d8;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 28px 16px;
+    }
+    .wrap{
+      width:min(980px, 100%);
+    }
+    .hero{
+      text-align:center;
+      margin-bottom: 18px;
+    }
+    .hero h1{
+      margin:0 0 10px;
+      font-size: 2rem;
+      font-weight: 900;
+      background: linear-gradient(90deg, #ffeeb0 0%, var(--gold-200) 40%, #fff2c2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p{
+      margin:0;
+      color: var(--muted);
+      line-height:1.5;
+      font-size: 1rem;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .card{
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 16px;
+      padding: 18px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+      display:flex;
+      flex-direction:column;
+      min-height: 260px;
+    }
+    .badge{
+      align-self:flex-start;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,200,100,0.22);
+      background: rgba(0,0,0,0.35);
+      color: rgba(255, 220, 160, 0.95);
+      margin-bottom: 10px;
+    }
+    .name{
+      font-size: 1.15rem;
+      font-weight: 900;
+      margin: 4px 0 6px;
+      color: rgba(255,255,255,0.95);
+    }
+    .price{
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: var(--gold-100);
+      margin: 4px 0 12px;
+    }
+    .desc{
+      color: rgba(255,255,255,0.72);
+      font-size: 0.92rem;
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+    .feat{
+      color: rgba(255,255,255,0.80);
+      font-size: 0.9rem;
+      margin: 6px 0;
+    }
+    .cta{
+      margin-top:auto;
+      display:flex;
+      gap: 10px;
+      flex-wrap:wrap;
+    }
+    a.btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding: 11px 14px;
+      border-radius: 12px;
+      text-decoration:none;
+      font-weight: 900;
+      border: 1px solid rgba(255,200,100,0.22);
+      background: rgba(255,255,255,0.03);
+      color: rgba(255,240,210,0.92);
+      transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+    a.btn:hover{
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+      background: rgba(255,255,255,0.06);
+    }
+    a.btn.primary{
+      background: linear-gradient(90deg, #FFD277, #FFB84D);
+      color: #111;
+      border-color: rgba(255, 200, 100, 0.35);
+    }
+    a.btn.primary:hover{
+      box-shadow: 0 16px 36px rgba(255, 180, 70, 0.20);
+    }
+
+    .footer{
+      text-align:center;
+      margin-top: 14px;
+      color: rgba(255,255,255,0.55);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 900px){
+      .grid{ grid-template-columns: 1fr; }
+      .card{ min-height: unset; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>Unlock downloads</h1>
+      <p>You’ve used all <strong>3</strong> free watermarked downloads.</p>
+      <p style="margin-top:6px;">Pick a plan to keep downloading (and remove the watermark).</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="badge">Most popular</div>
+        <div class="name">⚡ Pro</div>
+        <div class="price">$6 <span style="font-size:0.9rem; color:rgba(255,255,255,0.6); font-weight:700;">/ month</span></div>
+        <div class="desc">$6/month — Built for serious creators</div>
+        <div class="feat">✓ No watermark</div>
+        <div class="feat">✓ Quality Mode export</div>
+        <div class="feat">✓ Unlimited clips</div>
+        <div class="feat">✓ Cancel anytime</div>
+        <div class="cta">
+          <a class="btn primary" href="/checkout?plan=pro{% if clip_id %}&clip_id={{ clip_id }}{% endif %}">Unlock Pro</a>
+          <a class="btn" href="/dashboard">Back</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="badge">Recommended</div>
+        <div class="name">🏢 Creator</div>
+        <div class="price">$49 <span style="font-size:0.9rem; color:rgba(255,255,255,0.6); font-weight:700;">/ month</span></div>
+        <div class="desc">For Teams & High-Output Creators.</div>
+        <div class="feat">✓ Everything in Pro</div>
+        <div class="feat">✓ Priority processing</div>
+        <div class="feat">✓ High-volume workflows</div>
+        <div class="cta">
+          <a class="btn primary" href="/checkout?plan=creator">Go Creator</a>
+          <a class="btn" href="/subscription">More details</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="badge">Scale</div>
+        <div class="name">🏢 Creator Plus</div>
+        <div class="price">$49 <span style="font-size:0.9rem; color:rgba(255,255,255,0.6); font-weight:700;">/ month</span></div>
+        <div class="desc">Designed for teams managing continuous short-form pipelines.</div>
+        <div class="feat">✓ Everything in Pro</div>
+        <div class="feat">✓ Best Pick boost</div>
+        <div class="feat">✓ Early model access</div>
+        <div class="cta">
+          <a class="btn primary" href="/checkout?plan=creator">Go Creator</a>
+          <a class="btn" href="/subscription">More details</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Tip: Pro removes watermark and unlocks quality exports. Studio is built for high-output teams.
+    </div>
+  </div>
+</body>
+</html>

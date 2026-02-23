@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HotShort Progress</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="card glass" style="max-width:640px;margin:80px auto">
+    <h2>🎥 Generating your HotShort...</h2>
+
+    <div id="progress-box">
+      <div class="progress-container">
+        <div id="progress-bar"></div>
+      </div>
+      <p id="progress-text">Starting up...</p>
+    </div>
+
+    <div class="loader" style="margin-top:18px"></div>
+  </div>
+
+  <script>
+    const jobId = "{{ job_id }}";
+    const evtSource = new EventSource(`/events/${jobId}`);
+    const textEl = document.getElementById("progress-text");
+    const barEl = document.getElementById("progress-bar");
+
+    const steps = [
+      "🎬 Downloading video…",
+      "Extracting duration…",
+      "Cutting",
+      "Cutting random short clip…",
+      "Finalizing",
+      "✅ Done"
+    ];
+
+    evtSource.onmessage = (event) => {
+      const msg = event.data;
+      textEl.textContent = msg;
+
+      // roughly map progress by key words
+      let pct = 0;
+      if (msg.includes("Downloading")) pct = 20;
+      else if (msg.includes("Extracting duration")) pct = 40;
+      else if (msg.includes("Cutting")) pct = 65;
+      else if (msg.includes("Finalizing") || msg.includes("fallback")) pct = 85;
+      else if (msg.includes("✅ Done")) pct = 100;
+      else if (msg.startsWith("❌")) pct = 100;
+
+      barEl.style.width = pct + "%";
+
+      if (msg.includes("✅ Done")) {
+        // short delay so user sees full bar
+        setTimeout(() => {
+          window.location.href = `/result/${jobId}`;
+        }, 1000);
+      }
+
+      if (msg.startsWith("❌ Error")) {
+        evtSource.close();
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign Up – HotShort Studio</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      color: #fff;
+      background: radial-gradient(circle at 20% 20%, #0b0b0b, #1a0a00);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      padding: 24px 16px;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    .glossy-bg::before, .glossy-bg::after {
+      content: "";
+      position: absolute;
+      width: 250%;
+      height: 250%;
+      top: -75%;
+      left: -75%;
+      background: conic-gradient(
+        from 0deg,
+        rgba(255, 200, 100, 0.15),
+        rgba(255, 240, 190, 0.2),
+        rgba(255, 200, 80, 0.1),
+        rgba(255, 240, 200, 0.2),
+        rgba(255, 210, 120, 0.15)
+      );
+      animation: spin 15s linear infinite;
+      filter: blur(120px);
+      mix-blend-mode: screen;
+      opacity: 0.7;
+      z-index: -1;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .signup-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 179, 71, 0.25);
+      backdrop-filter: blur(20px);
+      border-radius: 16px;
+      padding: 40px 50px;
+      box-shadow: 0 0 30px rgba(255, 179, 71, 0.2);
+      text-align: center;
+      width: 100%;
+      max-width: 360px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #ffb347, #ffcc33);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p {
+      color: #bbb;
+      font-size: 0.9rem;
+      margin-bottom: 25px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 18px;
+      border: 1px solid rgba(255, 200, 100, 0.25);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      color: white;
+      font-size: 1rem;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #ffb347;
+      box-shadow: 0 0 8px rgba(255, 200, 100, 0.4);
+    }
+
+    button {
+      background: linear-gradient(90deg, #ffb347, #ffcc33);
+      color: #111;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      width: 100%;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 15px rgba(255, 200, 100, 0.4);
+    }
+
+    a {
+      color: #ffb347;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    a:hover {
+      text-shadow: 0 0 8px rgba(255, 200, 100, 0.5);
+    }
+
+    @media (max-width: 480px) {
+      .signup-card {
+        padding: 28px 22px;
+      }
+
+      h1 {
+        font-size: 1.6rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, msg in messages %}
+      <div style="
+        background: rgba(255,200,100,0.1);
+        border: 1px solid rgba(255,200,100,0.3);
+        color: #ffcc66;
+        padding: 12px;
+        border-radius: 8px;
+        margin: 10px auto;
+        width: calc(100% - 32px);
+        max-width: 520px;
+        box-sizing: border-box;
+        text-align: center;
+        backdrop-filter: blur(5px);
+      ">
+        {{ msg }}
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+  <div class="glossy-bg"></div>
+
+  <div class="signup-card">
+    <h1>✨ Join HotShort Studio</h1>
+    <p>Turn your ideas into viral clips.</p>
+    <form method="POST">
+      <input type="email" name="email" placeholder="Email" required />
+      <input type="password" name="password" placeholder="Password" required />
+      <button type="submit">Sign Up</button>
+    </form>
+    <p>Already have an account? <a href="/auth/login">Login</a></p>
+  </div>
+</body>
+</html>

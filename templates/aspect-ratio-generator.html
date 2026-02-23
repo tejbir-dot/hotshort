@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aspect Ratio Clip Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px 20px;
+        }
+        
+        .form-section {
+            margin-bottom: 30px;
+        }
+        
+        .form-section h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        input[type="text"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        /* Aspect ratio selector styles */
+        .ratio-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+        
+        .ratio-btn {
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            font-weight: 500;
+            color: #666;
+        }
+        
+        .ratio-btn:hover {
+            border-color: #667eea;
+            background: #f5f7ff;
+            transform: translateY(-2px);
+        }
+        
+        .ratio-btn.active {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .ratio-icon {
+            font-size: 28px;
+            display: block;
+            margin-bottom: 8px;
+        }
+        
+        .ratio-preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .preview-item {
+            text-align: center;
+        }
+        
+        .preview-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+            margin-bottom: 8px;
+            border: 2px solid transparent;
+            transition: border-color 0.3s ease;
+        }
+        
+        .preview-item.selected .preview-box {
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #4CAF50;
+        }
+        
+        .preview-label {
+            font-size: 12px;
+            color: #999;
+            font-weight: 500;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        
+        button[type="submit"],
+        .btn-reset {
+            flex: 1;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        button[type="submit"] {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        button[type="submit"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        button[type="submit"]:active {
+            transform: translateY(0);
+        }
+        
+        .btn-reset {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .btn-reset:hover {
+            background: #e0e0e0;
+        }
+        
+        .info-box {
+            background: #f5f7ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .info-box strong {
+            color: #333;
+        }
+        
+        .success-message {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .results {
+            display: none;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #eee;
+        }
+        
+        .results.active {
+            display: block;
+        }
+        
+        .result-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .result-item h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .result-info {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .result-link {
+            display: inline-block;
+            margin-top: 10px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .result-link:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 24px;
+            }
+            
+            .ratio-buttons {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .ratio-preview-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 Viral Clip Generator</h1>
+            <p>Extract & optimize clips for any platform</p>
+        </div>
+        
+        <div class="content">
+            <div class="success-message" id="successMsg"></div>
+            <div class="error-message" id="errorMsg"></div>
+            
+            <form id="analyzeForm">
+                <!-- URL Input -->
+                <div class="form-section">
+                    <h2>📹 Video Source</h2>
+                    <div class="form-group">
+                        <label for="youtubeUrl">YouTube URL</label>
+                        <input 
+                            type="text" 
+                            id="youtubeUrl" 
+                            name="youtube_url"
+                            placeholder="https://youtube.com/watch?v=..." 
+                            required
+                        >
+                    </div>
+                    <div class="info-box">
+                        <strong>💡 Tip:</strong> Works with any YouTube video. We'll analyze it and extract the most viral moments automatically.
+                    </div>
+                </div>
+                
+                <!-- Aspect Ratio Selection -->
+                <div class="form-section">
+                    <h2>📐 Target Aspect Ratio</h2>
+                    <div class="form-group">
+                        <label>Choose your format:</label>
+                        <div class="ratio-buttons">
+                            <button type="button" class="ratio-btn active" data-ratio="16:9">
+                                <span class="ratio-icon">📺</span>
+                                YouTube/Desktop
+                                <small>16:9</small>
+                            </button>
+                            <button type="button" class="ratio-btn" data-ratio="9:16">
+                                <span class="ratio-icon">📱</span>
+                                TikTok/Reels
+                                <small>9:16</small>
+                            </button>
+                            <button type="button" class="ratio-btn" data-ratio="1:1">
+                                <span class="ratio-icon">⬜</span>
+                                Instagram Feed
+                                <small>1:1</small>
+                            </button>
+                            <button type="button" class="ratio-btn" data-ratio="21:9">
+                                <span class="ratio-icon">🎬</span>
+                                Ultra-wide
+                                <small>21:9</small>
+                            </button>
+                            <button type="button" class="ratio-btn" data-ratio="4:3">
+                                <span class="ratio-icon">📽️</span>
+                                Classic
+                                <small>4:3</small>
+                            </button>
+                            <button type="button" class="ratio-btn" data-ratio="native">
+                                <span class="ratio-icon">📹</span>
+                                Native
+                                <small>Original</small>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Preview -->
+                    <div class="ratio-preview-grid" id="previewGrid"></div>
+                </div>
+                
+                <!-- Padding Color -->
+                <div class="form-section">
+                    <h2>🎨 Padding Color</h2>
+                    <div class="form-group">
+                        <label for="paddingColor">Background color for padding:</label>
+                        <select id="paddingColor" name="padding_color">
+                            <option value="black" selected>🖤 Black (Professional)</option>
+                            <option value="white">🤍 White (Clean)</option>
+                            <option value="blur">💙 Blur (Smart)</option>
+                        </select>
+                    </div>
+                    <div class="info-box">
+                        <strong>💡 Tip:</strong> Black is fastest and most professional. Blur adds style but takes slightly longer.
+                    </div>
+                </div>
+                
+                <!-- Submit -->
+                <div class="button-group">
+                    <button type="submit" id="submitBtn">🚀 Generate Clips</button>
+                    <button type="reset" class="btn-reset">↻ Reset</button>
+                </div>
+            </form>
+            
+            <!-- Loading State -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Analyzing video and generating clips...</p>
+                <p style="font-size: 12px; color: #999; margin-top: 10px;">This may take 20-60 seconds</p>
+            </div>
+            
+            <!-- Results -->
+            <div class="results" id="results">
+                <h2>✅ Generated Clips</h2>
+                <div id="resultsList"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let selectedRatio = "16:9";
+        
+        // Setup ratio buttons
+        document.querySelectorAll(".ratio-btn").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.preventDefault();
+                
+                document.querySelectorAll(".ratio-btn").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                
+                selectedRatio = btn.dataset.ratio;
+                updatePreview(selectedRatio);
+            });
+        });
+        
+        // Initialize preview grid
+        function initPreviewGrid() {
+            const ratios = {
+                "16:9": { w: 16, h: 9, label: "YouTube" },
+                "9:16": { w: 9, h: 16, label: "TikTok" },
+                "1:1": { w: 1, h: 1, label: "Instagram" },
+                "21:9": { w: 21, h: 9, label: "Ultra-wide" },
+                "4:3": { w: 4, h: 3, label: "Classic" },
+                "native": { w: 16, h: 9, label: "Native" }
+            };
+            
+            const grid = document.getElementById("previewGrid");
+            grid.innerHTML = Object.entries(ratios).map(([key, config]) => `
+                <div class="preview-item ${key === selectedRatio ? 'selected' : ''}" data-ratio="${key}">
+                    <div class="preview-box" style="aspect-ratio: ${config.w}/${config.h};">
+                    </div>
+                    <div class="preview-label">${config.label}</div>
+                </div>
+            `).join("");
+        }
+        
+        function updatePreview(ratio) {
+            document.querySelectorAll(".preview-item").forEach(item => {
+                item.classList.remove("selected");
+                if (item.dataset.ratio === ratio) {
+                    item.classList.add("selected");
+                }
+            });
+        }
+        
+        // Form submission
+        document.getElementById("analyzeForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            
+            const youtubeUrl = document.getElementById("youtubeUrl").value.trim();
+            const paddingColor = document.getElementById("paddingColor").value;
+            
+            if (!youtubeUrl) {
+                showError("Please enter a YouTube URL");
+                return;
+            }
+            
+            // Show loading
+            document.getElementById("loading").classList.add("active");
+            document.getElementById("results").classList.remove("active");
+            document.getElementById("successMsg").style.display = "none";
+            document.getElementById("errorMsg").style.display = "none";
+            
+            try {
+                const formData = new FormData();
+                formData.append("youtube_url", youtubeUrl);
+                formData.append("ratio", selectedRatio);
+                formData.append("padding_color", paddingColor);
+                
+                const response = await fetch("/analyze", {
+                    method: "POST",
+                    headers: { "Accept": "application/json" },
+                    body: formData
+                });
+
+                if (response.redirected && response.url) {
+                    window.location.href = response.url;
+                    return;
+                }
+
+                const contentType = (response.headers.get("content-type") || "").toLowerCase();
+                if (!contentType.includes("application/json")) {
+                    const txt = await response.text().catch(() => "");
+                    throw new Error("Invalid JSON response: " + (txt || "").slice(0, 160));
+                }
+
+                const data = await response.json();
+                if (!response.ok || !data || data.ok === false) {
+                    throw new Error((data && data.error) || "Generation failed");
+                }
+
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                    return;
+                }
+
+                const clips = Array.isArray(data) ? data : [];
+                if (clips.length === 0) {
+                    showError("No viral moments found in this video");
+                } else {
+                    displayResults(clips);
+                    showSuccess(`Successfully generated ${clips.length} clips!`);
+                }
+            } catch (error) {
+                showError(error.message || "An error occurred");
+            } finally {
+                document.getElementById("loading").classList.remove("active");
+            }
+        });
+        
+        function displayResults(clips) {
+            const resultsList = document.getElementById("resultsList");
+            resultsList.innerHTML = clips.map((clip, idx) => `
+                <div class="result-item">
+                    <h4>${clip.title} <small style="color: #999;">#${idx + 1}</small></h4>
+                    <div class="result-info">
+                        <strong>Duration:</strong> ${(clip.end - clip.start).toFixed(1)}s |
+                        <strong>Score:</strong> ${(clip.score * 100).toFixed(0)}% |
+                        <strong>Format:</strong> ${clip.ratio}
+                    </div>
+                    <a href="${clip.clip_url}" class="result-link" target="_blank">
+                        📥 Download Clip
+                    </a>
+                </div>
+            `).join("");
+            
+            document.getElementById("results").classList.add("active");
+        }
+        
+        function showError(message) {
+            const msg = document.getElementById("errorMsg");
+            msg.textContent = message;
+            msg.style.display = "block";
+        }
+        
+        function showSuccess(message) {
+            const msg = document.getElementById("successMsg");
+            msg.textContent = message;
+            msg.style.display = "block";
+        }
+        
+        // Initialize on load
+        document.addEventListener("DOMContentLoaded", initPreviewGrid);
+    </script>
+</body>
+</html>

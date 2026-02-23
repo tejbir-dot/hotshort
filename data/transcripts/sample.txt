@@ -1,0 +1,1 @@
+ Welcome to Hot Shot, an AI that finds viral moments from long podcasts.

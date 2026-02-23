@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Payment Successful!</title>
+  <style>
+    body {
+      background: radial-gradient(circle at top left, #0b0b0b, #1a0a00);
+      color: #fff;
+      text-align: center;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .success {
+      margin-top: 150px;
+    }
+    h1 {
+      color: #ffcf80;
+      font-size: 2.4rem;
+    }
+    p {
+      font-size: 1.1rem;
+      color: #ddd;
+    }
+    a {
+      background: linear-gradient(90deg, #ffb347, #ffcc33);
+      padding: 12px 20px;
+      color: #111;
+      border-radius: 999px;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 25px;
+      transition: 0.3s;
+    }
+    a:hover {
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="success">
+    <h1>✅ Payment Successful!</h1>
+    <p>You’re now subscribed to the <strong>{{ plan }}</strong> Plan.</p>
+    <a href="/dashboard">Go to Dashboard</a>
+  </div>
+</body>
+</html>
