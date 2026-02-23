@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+hotshort_env/
+
+# Environment
+.env
+
+# Cache / temp
+cache/
+.hotshort_transcripts_cache/
+cache_transcript_*.json
+tests/payoff_failures.jsonl
+
+# Media / outputs
+*.mp4
+*.part
+downloads/
+output/
+temp_*
+
+# OS
+.DS_Store
+Thumbs.db

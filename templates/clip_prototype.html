@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Clip Card Prototype</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body { background: #070707; color: #eee; font-family: Inter, system-ui, Arial; padding: 32px; }
+    .topbar { display:flex; justify-content: space-between; align-items:center; margin-bottom: 18px }
+    .toggle { color:#ccc }
+    .cards { display:flex; gap:16px; flex-wrap:wrap }
+    .clip-card { width:320px; border-radius:14px; padding:14px; background:#0f1113; border:1px solid rgba(255,255,255,0.04); transition: transform .2s ease, opacity .2s; }
+    .clip-card:hover { transform: translateY(-4px) }
+    .clip-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px }
+    .duration { font-size:13px; color:#bdbdbd }
+    .badge { padding:6px 10px; border-radius:999px; font-weight:600; font-size:13px }
+    .badge.payoff { background: linear-gradient(90deg,#ff8a00,#ffb347); color:#111 }
+    .badge.muted { background:#333; color:#bbb }
+    .clip-hook { font-size:15px; font-weight:600; margin-bottom:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+    .clip-footer { display:flex; gap:8px; align-items:center; font-size:13px; color:#cfcfcf }
+    .signal { background: rgba(255,255,255,0.03); padding:6px 8px; border-radius:999px }
+    .clip-reason { font-size:12px; color:#9aa0a6; margin-top:8px }
+    .rejected { opacity:0.45; filter:grayscale(0.4) }
+    .confidence-bar { height:4px; background:#222; border-radius:4px; overflow:hidden; margin-top:8px }
+    .confidence-fill { height:100%; background:linear-gradient(90deg,#ffb347,#ff8a00); width:50% }
+    /* hover timeline (only shown in editor mode) */
+    .timeline { margin-top:8px; height:28px; background:linear-gradient(90deg,#121314,#0b0b0d); border-radius:6px; display:none; align-items:center; padding:6px }
+    body.editor-mode .timeline { display:flex }
+    .dot { width:8px; height:8px; border-radius:50%; background:#fff; margin-left:8px }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h2 style="margin:0">Clip Card Prototype</h2>
+    <label class="toggle" style="display:flex;gap:8px;align-items:center">
+      <input id="editorMode" type="checkbox"> 🧠 Editor Mode
+    </label>
+  </div>
+
+  <div class="cards">
+    {% for clip in clips %}
+    <div class="clip-card {{ 'rejected' if (clip.decision|default('no'))=='no' else 'accepted' }}" data-duration="{{ clip.duration|default(0)|float }}" data-peak="{{ clip.curiosity_peak|default(0)|float }}" data-payoff="{{ clip.payoff_confidence|default(0)|float }}" data-label="{{ clip.label|default('') }}">
+      <div class="clip-top">
+        <span class="duration">⏱ {{ '%.1f'|format(clip.duration) }}s</span>
+        {% if (clip.decision|default('no'))=='yes' %}
+        <span class="badge payoff" role="status" aria-label="payoff-badge">🔥 {{ 'Payoff' if (clip.payoff_confidence|default(0)|float) >= 0.6 else 'Insight' }}</span>
+        {% else %}
+        <span class="badge muted" role="status" aria-label="muted-badge">Setup Only</span>
+        {% endif %}
+      </div>
+
+      <div class="clip-hook">{{ clip.hook_text }}</div>
+
+      <div class="clip-footer" id="footer-{{ loop.index0 }}">
+        <!-- badges injected by JS -->
+      </div>
+
+      <div class="confidence-bar"><div class="confidence-fill" data-payoff-fill="{{ clip.payoff_confidence|default(0)|float }}"></div></div>
+
+      <div class="clip-reason">{{ clip.reason }}</div>
+
+      <div class="timeline" aria-hidden="true">
+        <div style="flex:1;height:6px;background:linear-gradient(90deg,#222,#444);border-radius:4px;position:relative">
+          <div class="dot peak" data-peak="{{ clip.curiosity_peak|default(0)|float }}" title="Peak" aria-label="peak-dot" style="display:none"></div>
+          <div class="dot payoff-dot" data-payoff="{{ clip.payoff_confidence|default(0)|float }}" title="Payoff" aria-label="payoff-dot" style="display:none"></div>
+        </div>
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+<script>
+function getBadges(clip){
+  const badges = [];
+  // normalize label to lower case for safe comparisons
+  const label = (clip.label || '').toString().toLowerCase();
+  if (clip.curiosity_peak > 0.35) badges.push('🧲 Hooked Fast');
+  if (clip.payoff_confidence >= 0.75) badges.push('🎯 Satisfying End');
+  if (label.includes('reveal') || label.includes('insight') || label.includes('truth')) badges.push('💡 Insight Drop');
+  if (clip.decision === 'no') badges.push('Setup Only');
+  return badges;
+}
+
+// render badges
+document.querySelectorAll('.clip-card').forEach((card, idx)=>{
+  const clip = {
+    curiosity_peak: Math.min(1, Math.max(0, parseFloat(card.dataset.peak||0) || 0)),
+    payoff_confidence: Math.min(1, Math.max(0, parseFloat(card.dataset.payoff||0) || 0)),
+    label: (card.dataset.label||'').toString(),
+    decision: card.classList.contains('rejected') ? 'no' : 'yes'
+  };
+  const badges = getBadges(clip);
+  const footer = document.getElementById('footer-'+idx);
+  badges.forEach(b => {
+    const el = document.createElement('span'); el.className='signal'; el.textContent = b; footer.appendChild(el);
+  });
+
+  // set confidence bar width (clamped)
+  const fill = card.querySelector('.confidence-fill');
+  if (fill){
+    const v = clip.payoff_confidence;
+    fill.style.width = (Math.round(Math.min(1, Math.max(0, v)) * 100)) + '%';
+  }
+
+  // position timeline dots and show them only in editor mode; clamp positions
+  const peakDot = card.querySelector('.dot.peak');
+  const payoffDot = card.querySelector('.dot.payoff-dot');
+  if (peakDot){
+    const pct = Math.round(Math.min(1, Math.max(0, clip.curiosity_peak)) * 100);
+    peakDot.style.left = `calc(${pct}% - 6px)`;
+    peakDot.style.display = '';
+    peakDot.setAttribute('aria-label', `Peak at ${pct}%`);
+  }
+  if (payoffDot){
+    const pct2 = Math.round(Math.min(1, Math.max(0, clip.payoff_confidence)) * 100);
+    payoffDot.style.left = `calc(${pct2}% - 6px)`;
+    payoffDot.style.display = '';
+    payoffDot.setAttribute('aria-label', `Payoff at ${pct2}%`);
+  }
+});
+
+// editor mode toggle
+const editorCheckbox = document.getElementById('editorMode');
+editorCheckbox.addEventListener('change', ()=>{
+  document.body.classList.toggle('editor-mode', editorCheckbox.checked);
+});
+
+// micro-interaction: delay payoff badge appearance
+document.querySelectorAll('.badge.payoff').forEach(b=>{
+  b.style.opacity=0; setTimeout(()=>{ b.style.transition='opacity .3s'; b.style.opacity=1; }, 300);
+});
+
+</script>
+</body>
+</html>

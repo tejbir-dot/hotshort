@@ -1,0 +1,52 @@
+{
+  "input_path": "c:\\Users\\n\\Documents\\hotshort\\static\\outputs\\clip_3_425.54_471.3.mp4",
+  "output_path": "c:\\Users\\n\\Documents\\hotshort\\static\\outputs\\clip_3_425.54_471.3_enhanced.mp4",
+  "source_start": 425.54,
+  "source_end": 471.3,
+  "target_ratio": "9:16",
+  "features": {
+    "captions": true,
+    "active_speaker": true,
+    "visual_enhance": true,
+    "audio_polish": true,
+    "hook_speed_ramp": false
+  },
+  "boring_monologue_detected": false,
+  "trim": {
+    "in": 0.0,
+    "out": 47.18
+  },
+  "hook_ramp": {
+    "window_s": 0.0,
+    "speed": 1.06
+  },
+  "engagement_score": 73.91,
+  "captions_count": 37,
+  "focus_x": 0.451,
+  "platform_variants": [
+    {
+      "variant_id": "A",
+      "focus": "Hook-heavy opener",
+      "first_3s": "Bold hook text + 1.08x speed ramp",
+      "caption_style": "Large bottom captions",
+      "target_platform": "TikTok/Reels",
+      "predicted_uplift_pct": 5.3
+    },
+    {
+      "variant_id": "B",
+      "focus": "Authority clarity",
+      "first_3s": "Cleaner intro, no emoji captions",
+      "caption_style": "Semi-minimal subtitles + CTA",
+      "target_platform": "YouTube Shorts",
+      "predicted_uplift_pct": 4.8
+    },
+    {
+      "variant_id": "RATIO",
+      "focus": "Format test 9:16",
+      "first_3s": "same hook, ratio-only test",
+      "caption_style": "same",
+      "target_platform": "Cross-platform",
+      "predicted_uplift_pct": 3.5
+    }
+  ]
+}

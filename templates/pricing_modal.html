@@ -1,0 +1,595 @@
+<!-- Pricing Modal - Psychologically optimized -->
+<div id="pricingModal" class="pricing-modal hidden">
+  <!-- Backdrop -->
+  <div class="pricing-backdrop"></div>
+
+  <!-- Modal Container -->
+  <div class="pricing-container">
+    
+    <!-- HEADER SECTION -->
+    <div class="pricing-header">
+      <h2 class="pricing-title">You’ve unlocked your free clips 🚀</h2>
+      <p class="pricing-subtitle">Upgrade to remove the watermark and create without limits.</p>
+      <p class="pricing-mini">Premium workflow tools for serious short-form creators</p>
+    </div>
+
+    <!-- VALUE SNAPSHOT SECTION -->
+    <div class="value-snapshot">
+      <div class="snapshot-intro">What you're unlocking:</div>
+      <div class="snapshot-grid">
+        <div class="snapshot-item">✓ 3 AI-selected viral moments</div>
+        <div class="snapshot-item">✓ Confidence scores (Hook, Retention, Emotion)</div>
+        <div class="snapshot-item">✓ Why-this-works explanations</div>
+        <div class="snapshot-item">✓ Best Pick highlighted</div>
+        <div class="snapshot-item">✓ Ready for TikTok / Reels / Shorts</div>
+      </div>
+    </div>
+
+    <!-- PLANS SECTION -->
+    <div class="plans-section">
+      <div class="plans-grid">
+
+        <!-- FREE PLAN -->
+        <div class="plan-card starter-plan">
+          <div class="plan-header">
+            <div class="plan-name">Free</div>
+            <div class="plan-price">$0<span class="plan-period"> / month</span></div>
+          </div>
+          <p class="plan-description">Start free and test your first 3 clips</p>
+
+          <div class="plan-features">
+            <div class="feature">✓ 3 watermarked downloads only</div>
+            <div class="feature">✓ Limited quality</div>
+          </div>
+
+          <button class="plan-cta plan-cta-starter" disabled>
+            Try Free
+          </button>
+        </div>
+
+        <!-- PRO PLAN -->
+        <div class="plan-card creator-plan recommended">
+          <div class="plan-badge">MOST POPULAR</div>
+          <div class="plan-header">
+            <div class="plan-name">⚡ Pro</div>
+            <div class="plan-price">$6<span class="plan-period"> / month</span></div>
+          </div>
+          <p class="plan-description">$6/month — Built for serious creators</p>
+
+          <div class="plan-features">
+            <div class="feature">✓ No watermark</div>
+            <div class="feature">✓ Unlimited clips</div>
+            <div class="feature">✓ Quality Mode export</div>
+            <div class="feature">✓ Faster processing</div>
+            <div class="feature">✓ Cancel anytime</div>
+          </div>
+
+          <button class="plan-cta plan-cta-creator" data-plan="pro" data-checkout="1">
+            Unlock Pro
+          </button>
+          <p class="plan-flexibility">Cancel anytime</p>
+        </div>
+
+        <!-- CREATOR PLAN -->
+        <div class="plan-card pro-plan">
+          <div class="plan-badge studio-label">For Teams & High-Output Creators</div>
+          <div class="plan-header">
+            <div class="plan-name">🏢 Creator</div>
+            <div class="plan-price">$49<span class="plan-period"> / month</span></div>
+          </div>
+          <p class="plan-description">For Teams & High-Output Creators</p>
+
+          <div class="plan-features">
+            <div class="feature">✓ Everything in Pro</div>
+            <div class="feature">✓ Priority processing</div>
+            <div class="feature">✓ Best Pick boost</div>
+            <div class="feature">✓ High-volume workflows</div>
+            <div class="feature">✓ Early access to new models</div>
+          </div>
+
+          <button class="plan-cta plan-cta-pro" data-plan="creator" data-checkout="1">
+            Go Creator
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RISK REMOVAL SECTION -->
+    <div class="risk-removal">
+      <div class="risk-item">🔒 No credit card tricks</div>
+      <div class="risk-item">🔁 Cancel anytime</div>
+      <div class="risk-item">🤝 You keep all downloaded clips</div>
+      <p class="risk-micro">Most users download within 60 seconds</p>
+    </div>
+
+    <!-- INTELLIGENCE JUSTIFICATION -->
+    <div class="intelligence-box">
+      <div class="intelligence-title">Why HotShort costs this much</div>
+      <p class="intelligence-text">
+        Our AI analyzes hooks, pattern breaks, retention curves, and emotional spikes — not just timestamps.
+        <br><br>
+        <strong>You're paying for decisions, not downloads.</strong>
+      </p>
+    </div>
+
+    <!-- FOOTER BUTTONS -->
+    <div class="pricing-footer">
+      <button class="btn-primary" id="unlockBtn">Unlock Pro — $6/month</button>
+      <button class="btn-secondary" id="viewPlansBtn">View all plans</button>
+    </div>
+
+  </div>
+</div>
+
+<style>
+  /* ===== PRICING MODAL STYLING ===== */
+
+  .pricing-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .pricing-modal.hidden {
+    display: none;
+  }
+
+  /* Backdrop */
+  .pricing-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+  }
+
+  /* Modal Container */
+  .pricing-container {
+    position: relative;
+    background: linear-gradient(135deg, rgba(20, 15, 35, 0.95), rgba(35, 25, 50, 0.95));
+    border: 1px solid rgba(255, 200, 100, 0.2);
+    border-radius: 20px;
+    padding: 40px;
+    max-width: 900px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 
+      0 20px 60px rgba(0, 0, 0, 0.8),
+      0 0 60px rgba(255, 180, 70, 0.1);
+    animation: modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes modalSlideIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  /* HEADER */
+  .pricing-header {
+    text-align: center;
+    margin-bottom: 40px;
+    border-bottom: 1px solid rgba(255, 200, 100, 0.1);
+    padding-bottom: 30px;
+  }
+
+  .pricing-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, #FFD277, #FFB84D);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0 0 12px 0;
+    letter-spacing: -0.5px;
+  }
+
+  .pricing-subtitle {
+    font-size: 1.1rem;
+    color: rgba(255, 255, 255, 0.85);
+    margin: 0 0 8px 0;
+    font-weight: 500;
+  }
+
+  .pricing-mini {
+    font-size: 0.9rem;
+    color: rgba(255, 200, 100, 0.7);
+    margin: 0;
+  }
+
+  /* VALUE SNAPSHOT */
+  .value-snapshot {
+    background: rgba(255, 200, 100, 0.03);
+    border: 1px solid rgba(255, 200, 100, 0.1);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 35px;
+  }
+
+  .snapshot-intro {
+    font-size: 0.85rem;
+    color: rgba(255, 200, 100, 0.8);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+
+  .snapshot-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .snapshot-item {
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.9);
+    padding: 6px 0;
+  }
+
+  /* PLANS SECTION */
+  .plans-section {
+    margin-bottom: 35px;
+  }
+
+  .plans-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+  }
+
+  .plan-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 200, 100, 0.15);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .plan-card:hover {
+    border-color: rgba(255, 200, 100, 0.3);
+    background: rgba(255, 200, 100, 0.05);
+    transform: translateY(-8px);
+    box-shadow: 0 15px 40px rgba(255, 180, 70, 0.15);
+  }
+
+  /* Recommended Badge */
+  .plan-badge {
+    position: absolute;
+    top: -12px;
+    left: 20px;
+    background: linear-gradient(90deg, #FFD277, #FFB84D);
+    color: #111;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .plan-badge.studio-label {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.72rem;
+  }
+
+  .plan-header {
+    margin-bottom: 8px;
+  }
+
+  .plan-name {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+    margin-bottom: 4px;
+  }
+
+  .plan-price {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, #FFD277, #FFB84D);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .plan-period {
+    font-size: 0.9rem;
+    color: rgba(255, 200, 100, 0.7);
+  }
+
+  .plan-description {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0 0 16px 0;
+  }
+
+  .plan-features {
+    flex-grow: 1;
+    margin-bottom: 20px;
+  }
+
+  .feature {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.85);
+    padding: 6px 0;
+    line-height: 1.4;
+  }
+
+  .plan-cta {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(90deg, rgba(255, 210, 120, 0.2), rgba(255, 180, 70, 0.2));
+    color: rgba(255, 200, 100, 0.95);
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 8px;
+  }
+
+  .plan-cta:hover {
+    background: linear-gradient(90deg, rgba(255, 210, 120, 0.3), rgba(255, 180, 70, 0.3));
+    transform: translateY(-2px);
+  }
+
+  .plan-cta:disabled {
+    cursor: default;
+    opacity: 0.55;
+    transform: none;
+  }
+
+  .plan-savings {
+    font-size: 0.8rem;
+    color: rgba(76, 175, 80, 0.8);
+    text-align: center;
+    margin: 0;
+  }
+
+  .plan-flexibility {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.5);
+    text-align: center;
+    margin: 4px 0 0 0;
+  }
+
+  /* RECOMMENDED PLAN GLOW */
+  .plan-card.recommended {
+    background: rgba(255, 200, 100, 0.08);
+    border-color: rgba(255, 200, 100, 0.3);
+    box-shadow: 0 0 34px rgba(255, 180, 70, 0.18);
+    transform: scale(1.035);
+  }
+
+  .plan-card.recommended:hover {
+    box-shadow: 0 15px 50px rgba(255, 180, 70, 0.25);
+  }
+
+  /* RISK REMOVAL */
+  .risk-removal {
+    background: rgba(76, 175, 80, 0.05);
+    border: 1px solid rgba(76, 175, 80, 0.1);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 25px;
+    text-align: center;
+  }
+
+  .risk-item {
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.85);
+    padding: 6px 0;
+    display: inline-block;
+    margin-right: 20px;
+  }
+
+  .risk-item:last-child {
+    margin-right: 0;
+  }
+
+  .risk-micro {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin: 12px 0 0 0;
+  }
+
+  /* INTELLIGENCE BOX */
+  .intelligence-box {
+    background: rgba(100, 150, 255, 0.05);
+    border-left: 3px solid rgba(100, 150, 255, 0.3);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 30px;
+  }
+
+  .intelligence-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: rgba(100, 150, 255, 0.9);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .intelligence-text {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* FOOTER BUTTONS */
+  .pricing-footer {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  .btn-primary, .btn-secondary {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-primary {
+    background: linear-gradient(90deg, #FFD277, #FFB84D);
+    color: #111;
+    min-width: 200px;
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(255, 180, 70, 0.3);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: rgba(255, 200, 100, 0.7);
+    border: 1px solid rgba(255, 200, 100, 0.3);
+  }
+
+  .btn-secondary:hover {
+    border-color: rgba(255, 200, 100, 0.5);
+    color: rgba(255, 200, 100, 0.95);
+  }
+
+  /* Scrollbar Styling */
+  .pricing-container::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .pricing-container::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .pricing-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 200, 100, 0.2);
+    border-radius: 3px;
+  }
+
+  .pricing-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 200, 100, 0.4);
+  }
+
+  /* Mobile Responsive */
+  @media (max-width: 768px) {
+    .pricing-container {
+      padding: 24px;
+      margin: 20px;
+    }
+
+    .pricing-title {
+      font-size: 1.7rem;
+    }
+
+    .plans-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .plan-card.recommended {
+      transform: scale(1);
+    }
+
+    .risk-item {
+      display: block;
+      margin-right: 0;
+      margin-bottom: 8px;
+    }
+  }
+</style>
+
+<script>
+  // Pricing Modal Logic
+  const pricingModal = document.getElementById('pricingModal');
+  const unlockBtn = document.getElementById('unlockBtn');
+  const viewPlansBtn = document.getElementById('viewPlansBtn');
+  const plansSection = document.querySelector('.plans-section');
+  let selectedPlan = 'pro'; // Default selection
+
+  // Plan selection
+  document.querySelectorAll('[data-plan]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      selectedPlan = btn.dataset.plan;
+      console.log('[PRICING] Selected plan:', selectedPlan);
+      // Highlight selected plan
+      document.querySelectorAll('[data-plan]').forEach(b => {
+        b.style.background = 'linear-gradient(90deg, rgba(255, 210, 120, 0.2), rgba(255, 180, 70, 0.2))';
+        b.style.color = 'rgba(255, 200, 100, 0.95)';
+      });
+      btn.style.background = 'linear-gradient(90deg, #FFD277, #FFB84D)';
+      btn.style.color = '#111';
+      if (btn.dataset.checkout === '1') {
+        const pageJobId = document.querySelector('[data-job-id]')?.getAttribute('data-job-id');
+        const checkoutUrl = `/checkout?plan=${selectedPlan}${pageJobId ? '&job_id=' + pageJobId : ''}`;
+        window.location.href = checkoutUrl;
+      }
+    });
+  });
+
+  // Unlock button - navigate to checkout
+  if (unlockBtn) {
+    unlockBtn.addEventListener('click', () => {
+      const pageJobId = document.querySelector('[data-job-id]')?.getAttribute('data-job-id');
+      const checkoutUrl = `/checkout?plan=pro${pageJobId ? '&job_id=' + pageJobId : ''}`;
+      console.log('[PRICING] Navigating to checkout:', checkoutUrl);
+      window.location.href = checkoutUrl;
+    });
+  }
+
+  if (viewPlansBtn) {
+    viewPlansBtn.addEventListener('click', () => {
+      if (plansSection && typeof plansSection.scrollIntoView === 'function') {
+        plansSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
+  // Close on backdrop click
+  document.addEventListener('click', (e) => {
+    if (e.target === document.querySelector('.pricing-backdrop')) {
+      pricingModal.classList.add('hidden');
+    }
+  });
+
+  // Export function to show pricing modal
+  window.showPricingModal = function() {
+    if (pricingModal) {
+      pricingModal.classList.remove('hidden');
+      console.log('[PRICING] Modal opened');
+    }
+  };
+
+  window.hidePricingModal = function() {
+    if (pricingModal) {
+      pricingModal.classList.add('hidden');
+    }
+  };
+
+</script>

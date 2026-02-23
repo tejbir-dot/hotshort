@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "description": "Data-driven hook word combinations for virality scoring.",
+  "phrase_groups": {
+    "pattern_break": [
+      "most people think",
+      "everyone thinks",
+      "nobody talks about",
+      "nobody tells you",
+      "you are doing it wrong",
+      "the truth is",
+      "stop doing this",
+      "this is a myth",
+      "i was wrong",
+      "what if i told you"
+    ],
+    "curiosity_gap": [
+      "before you",
+      "here is why",
+      "you wont believe",
+      "what happened next",
+      "the real reason",
+      "this changed everything",
+      "one thing nobody",
+      "wait till the end",
+      "the part people miss",
+      "the hidden reason"
+    ],
+    "authority_trust": [
+      "after working with",
+      "in the last",
+      "i tested this",
+      "real data shows",
+      "case study",
+      "here are the numbers",
+      "this is proven",
+      "based on results"
+    ],
+    "pain_agitation": [
+      "if you are stuck",
+      "you are losing",
+      "this is why you fail",
+      "you are wasting time",
+      "this mistake is expensive",
+      "you are leaving money",
+      "you are making this harder"
+    ],
+    "outcome_promise": [
+      "do this instead",
+      "this will help you",
+      "you will get better",
+      "this gets faster",
+      "this makes it easy",
+      "you can fix this",
+      "here is the shortcut"
+    ],
+    "hinglish_punjabi_roman": [
+      "ek gal yaad rakh",
+      "seedhi gal",
+      "sach eh aa",
+      "je tusi",
+      "jaddon tusi",
+      "eh gal koi nahi dasega",
+      "sun le",
+      "gal eh aa",
+      "samajh lo",
+      "is karke"
+    ]
+  },
+  "combo_rules": [
+    {
+      "all": ["before you", "you have to"],
+      "weight": 0.26
+    },
+    {
+      "all": ["the more", "the more"],
+      "weight": 0.22
+    },
+    {
+      "all": ["most people", "but"],
+      "weight": 0.2
+    },
+    {
+      "all": ["why", "because"],
+      "weight": 0.18
+    },
+    {
+      "all": ["if you", "then"],
+      "weight": 0.16
+    },
+    {
+      "all": ["secret", "results"],
+      "weight": 0.2
+    },
+    {
+      "all": ["nobody", "tells you"],
+      "weight": 0.24
+    }
+  ],
+  "group_weights": {
+    "pattern_break": 0.33,
+    "curiosity_gap": 0.26,
+    "authority_trust": 0.14,
+    "pain_agitation": 0.1,
+    "outcome_promise": 0.09,
+    "hinglish_punjabi_roman": 0.08
+  }
+}

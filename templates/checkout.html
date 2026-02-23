@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Checkout • HotShort Studio</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --gold-100: #ffcf80;
+      --gold-200: #ffb347;
+      --bg-dark: #0b0b0b;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg-dark);
+      color: #efe6d8;
+    }
+
+    .glossy-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 20% 20%, #201200 0%, #0a0a0a 60%);
+    }
+
+    .container {
+      position: relative;
+      z-index: 10;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+
+    .logo {
+      font-size: 2.2rem;
+      font-weight: 900;
+      background: linear-gradient(90deg, #FFD277, #FFB84D);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 20px;
+    }
+
+    .checkout-content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: center;
+    }
+
+    .order-summary {
+      background: rgba(255, 200, 100, 0.05);
+      border: 1px solid rgba(255, 200, 100, 0.2);
+      border-radius: 16px;
+      padding: 30px;
+    }
+
+    .summary-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: var(--gold-100);
+    }
+
+    .plan-selected {
+      background: rgba(255, 200, 100, 0.08);
+      border: 1px solid rgba(255, 200, 100, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .plan-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.95);
+      margin-bottom: 4px;
+    }
+
+    .plan-period {
+      font-size: 0.9rem;
+      color: rgba(255, 200, 100, 0.7);
+    }
+
+    .plan-price {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--gold-100);
+      margin-top: 12px;
+    }
+
+    .plan-description {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.7);
+      margin-top: 12px;
+    }
+
+    .payment-section {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 200, 100, 0.15);
+      border-radius: 16px;
+      padding: 30px;
+    }
+
+    .payment-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 8px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 200, 100, 0.2);
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.95);
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+    }
+
+    .form-input:focus {
+      outline: none;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 200, 100, 0.4);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .stripe-placeholder {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 200, 100, 0.2);
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      color: rgba(255, 200, 100, 0.6);
+      margin-bottom: 20px;
+    }
+
+    .pay-button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(90deg, #FFD277, #FFB84D);
+      color: #111;
+      border: none;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .pay-button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(255, 180, 70, 0.3);
+    }
+
+    .security-info {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 16px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: rgba(255, 200, 100, 0.7);
+      text-decoration: none;
+      font-size: 0.95rem;
+      margin-bottom: 30px;
+      transition: all 0.2s ease;
+    }
+
+    .back-link:hover {
+      color: var(--gold-100);
+    }
+
+    @media (max-width: 768px) {
+      .checkout-content {
+        grid-template-columns: 1fr;
+      }
+
+      .plan-price {
+        font-size: 1.5rem;
+      }
+
+      .container {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="glossy-bg"></div>
+
+  <div class="container">
+    <a href="/dashboard" class="back-link">← Back to dashboard</a>
+
+    <div class="header">
+      <div class="logo">HOTSHORT</div>
+      <h1 style="font-size: 1.8rem; margin: 0; color: rgba(255, 255, 255, 0.95);">Complete Your Purchase</h1>
+    </div>
+
+    <div class="checkout-content">
+      <!-- Order Summary -->
+      <div class="order-summary">
+        <div class="summary-title">Order Summary</div>
+
+        <div class="plan-selected">
+          <div class="plan-name">{{ plan_info.name }}</div>
+          <div class="plan-period">{{ plan_info.period|upper }}</div>
+          <div class="plan-price">${{ plan_info.price }}</div>
+          <div class="plan-description">{{ plan_info.description }}</div>
+        </div>
+
+        {% if plan_info.period == 'monthly' %}
+        <div style="font-size: 0.9rem; color: rgba(255, 255, 255, 0.7); margin-top: 16px;">
+          <strong>Recurring</strong>
+          <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.6);">Billed monthly. Cancel anytime.</p>
+        </div>
+        {% else %}
+        <div style="font-size: 0.9rem; color: rgba(255, 255, 255, 0.7); margin-top: 16px;">
+          <strong>One-time purchase</strong>
+          <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.6);">No recurring charges.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Payment Form -->
+      <div class="payment-section">
+        <div class="payment-title">Payment Details</div>
+
+        <div class="stripe-placeholder">
+          🟡 Stripe integration coming soon
+          <p style="margin: 8px 0 0 0; font-size: 0.85rem;">Card details will be processed securely via Stripe</p>
+        </div>
+
+        <form id="paymentForm" action="/process-payment" method="POST">
+          <input type="hidden" name="plan" value="{{ plan }}">
+          {% if job_id %}
+          <input type="hidden" name="job_id" value="{{ job_id }}">
+          {% endif %}
+
+          <!-- Name -->
+          <div class="form-group">
+            <label class="form-label">Full Name</label>
+            <input type="text" class="form-input" placeholder="John Doe" value="{{ current_user.name }}" disabled>
+          </div>
+
+          <!-- Email -->
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" placeholder="john@example.com" value="{{ current_user.email }}" disabled>
+          </div>
+
+          <!-- Placeholder: Stripe integration will go here -->
+          <div class="form-group">
+            <label class="form-label">Card Details</label>
+            <div id="card-element" class="form-input" style="padding: 0; display: flex; align-items: center; justify-content: center; height: 50px; color: rgba(255, 200, 100, 0.6);">
+              🟡 Stripe card input will mount here
+            </div>
+          </div>
+
+          <!-- Terms -->
+          <div style="font-size: 0.85rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 20px; line-height: 1.5;">
+            By clicking "Complete Purchase", you agree to our Terms of Service and authorize us to charge your card. Your subscription will renew automatically every month unless cancelled.
+          </div>
+
+          <!-- CTA Button -->
+          <button type="button" class="pay-button" onclick="handlePayment()">
+            ✓ Complete Purchase (${{ plan_info.price }})
+          </button>
+
+          <div class="security-info">
+            <span>🔒</span>
+            <span>Secured by Stripe</span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function handlePayment() {
+      // TODO: Integrate Stripe.js here
+      // For now, just log and redirect
+      console.log('[CHECKOUT] Processing payment for plan:', '{{ plan }}');
+      
+      // In production, this would:
+      // 1. Create Stripe token
+      // 2. Send to /process-payment backend
+      // 3. Create subscription in DB
+      // 4. Redirect to success page
+      
+      alert('🟡 Stripe integration coming soon. This will process real payments.');
+    }
+  </script>
+</body>
+</html>

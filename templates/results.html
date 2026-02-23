@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Your Viral Clips • HotShort Studio</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+  /* ============================
+     Glossy Animated Golden Background
+     (keeps z-index low so content is always visible)
+     ============================ */
+  :root{
+    --gold-100: #ffcf80;
+    --gold-200: #ffb347;
+    --bg-dark: #0b0b0b;
+    --panel: rgba(255,255,255,0.03);
+  }
+
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  .glossy-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 20% 20%, #201200 0%, #0a0a0a 60%);
+    overflow: hidden;
+    transition: background 160ms linear;
+  }
+  .glossy-bg::before,
+  .glossy-bg::after{
+    content: "";
+    position: absolute;
+    width: 250%;
+    height: 250%;
+    left: -75%;
+    top: -75%;
+    filter: blur(160px);
+    mix-blend-mode: screen;
+    opacity: .55;
+    background: conic-gradient(
+      from 0deg,
+      rgba(255,200,100,0.14),
+      rgba(255,240,190,0.18),
+      rgba(255,210,120,0.12),
+      rgba(255,225,150,0.12)
+    );
+    animation: glossySpin 14s linear infinite;
+  }
+  .glossy-bg::after{ transform: rotate(180deg); animation-delay: -7s; }
+
+  @keyframes glossySpin { to { transform: rotate(360deg); } }
+/* === HotShort Studio Title Style === */
+.title {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: linear-gradient(90deg, #ffcc66, #ffb347);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px rgba(255, 180, 80, 0.4));
+  text-shadow: 0 0 25px rgba(255, 180, 60, 0.15);
+  backdrop-filter: brightness(1.3);
+  -webkit-font-smoothing: antialiased;
+}
+
+  /* ============================
+     Page layout
+     ============================ */
+  .page {
+    position: relative;
+    z-index: 2;               /* above glossy background */
+    min-height: 100vh;
+    color: #efe6d8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+  }
+  header {
+    width: 100%;
+    padding: 48px 28px 8px;
+    text-align: center;
+  }
+
+  .brand {
+  position: relative;
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: transparent;
+  -webkit-background-clip: text;
+  background: linear-gradient(90deg, #ffeeb0 0%, #ffb347 35%, #ffdd80 65%, #fff2c2 100%);
+  text-shadow:
+    0 0 25px rgba(255, 215, 100, 0.5),
+    0 0 45px rgba(255, 180, 50, 0.3),
+    0 3px 8px rgba(0, 0, 0, 0.5);
+  filter: drop-shadow(0 0 12px rgba(255, 230, 150, 0.3));
+  -webkit-text-fill-color: transparent;
+  z-index: 10;
+  animation: shimmer 6s linear infinite;
+  backdrop-filter: blur(3px);
+}
+/* ✨ Soft moving shimmer reflection */
+@keyframes shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+
+  .subtitle {
+    margin-top:6px;
+    color: rgba(255,230,200,0.55);
+    font-weight: 500;
+  }
+
+  /* ============================
+     Carousel / reels
+     ============================ */
+  .showcase {
+    width: 100%;
+    max-width: 1200px;
+    padding: 26px;
+  }
+
+  .carousel {
+    display:flex;
+    gap:28px;
+    overflow-x:auto;
+    padding: 36px 20px 40px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,200,100,0.22) transparent;
+  }
+  .carousel::-webkit-scrollbar{height:10px}
+  .carousel::-webkit-scrollbar-thumb{background:rgba(255,200,100,0.18);border-radius:10px}
+
+  .reel {
+    flex: 0 0 320px;
+    height: 200px;
+    border-radius: 18px;
+    overflow: hidden;
+    position: relative;
+    scroll-snap-align: start;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2));
+    border: 1px solid rgba(255,200,120,0.06);
+    box-shadow: 0 10px 30px rgba(10,6,4,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+    transition: transform .36s cubic-bezier(.2,.9,.3,1), box-shadow .36s, filter .36s;
+    cursor: pointer;
+    display:flex;
+    align-items:flex-end;
+  }
+
+  .reel:hover { transform: translateY(-8px) scale(1.03); box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 45px rgba(255,190,80,0.06); }
+  .reel video { width:100%; height:100%; object-fit:cover; display:block; filter:brightness(.85); transition: filter .3s ease; }
+  .reel:hover video{ filter:brightness(1.06) contrast(1.02); }
+
+  /* overlay bottom */
+  .overlay {
+    position:absolute;
+    left:0; right:0; bottom:0;
+    padding: 14px;
+    background: linear-gradient(0deg, rgba(0,0,0,0.85), rgba(0,0,0,0.15) 40%);
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .overlay .title { color:var(--gold-100); font-weight:700; font-size:0.98rem; margin:0; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; }
+  .overlay .meta { color: #d9d6d2; font-size:0.84rem; opacity:0.9; }
+  .actions { display:flex; align-items:center; gap:10px; margin-top:6px; }
+
+  .glass-btn {
+    padding:8px 14px;
+    border-radius:999px;
+    border:1px solid rgba(255,210,120,0.18);
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,210,120,0.03));
+    color: var(--gold-100);
+    font-weight:700;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45), 0 0 18px rgba(255,180,70,0.06);
+    cursor:pointer;
+    transition: transform .18s ease, box-shadow .18s ease, background .18s;
+  }
+  .glass-btn:hover { transform: translateY(-2px) scale(1.03); background: linear-gradient(90deg,var(--gold-100),var(--gold-200)); color:#111; box-shadow: 0 14px 40px rgba(255,180,70,0.18); }
+
+  .download-link{ color:#ddd; font-size:0.85rem; text-decoration:none; padding:6px 8px; border-radius:8px; background: rgba(0,0,0,0.25); }
+
+  /* ============================
+     Empty / fallback
+     ============================ */
+  .empty {
+    width:100%;
+    padding:60px 20px;
+    text-align:center;
+    color:#d8c9b0;
+  }
+
+  /* ============================
+     Footer and back link
+     ============================ */
+  footer { width:100%; padding:28px; text-align:center; color:rgba(255,220,170,0.7); }
+  .back-link { color: var(--gold-100); font-weight:700; text-decoration:none; }
+
+  /* Responsive */
+  @media (max-width:900px){
+    .carousel{ padding-left:16px; gap:18px; }
+    .reel{ flex:0 0 260px; height:170px; }
+  }
+  @media (max-width:520px){
+    .reel{ flex:0 0 85%; height:220px; border-radius:14px; }
+    .brand{ font-size:30px; }
+  }
+  .back-link {
+  color: var(--gold-100);
+  font-weight: 700;
+  text-decoration: none;
+  padding: 10px 20px;
+  border: 1px solid rgba(255,210,120,0.3);
+  border-radius: 30px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,210,120,0.07));
+  transition: all 0.2s ease;
+}
+.back-link:hover {
+  background: linear-gradient(90deg, var(--gold-100), var(--gold-200));
+  color: #111;
+  box-shadow: 0 0 25px rgba(255,200,80,0.2);
+  transform: translateY(-2px);
+  /* ✨ Smooth page fade transition */
+.fade-link {
+  color: var(--gold-100);
+  font-weight: 700;
+  text-decoration: none;
+  padding: 10px 20px;
+  border: 1px solid rgba(255,210,120,0.3);
+  border-radius: 30px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,210,120,0.07));
+  transition: all 0.25s ease, opacity 0.5s ease;
+  opacity: 1;
+}
+.fade-link:hover {
+  background: linear-gradient(90deg, var(--gold-100), var(--gold-200));
+  color: #111;
+  box-shadow: 0 0 25px rgba(255,200,80,0.2);
+  transform: translateY(-2px);
+}
+
+/* when leaving */
+body.fade-out {
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  /* 🎬 Bottom dual button bar */
+.footer-controls {
+  width: 100%;
+  text-align: center;
+  padding: 60px 20px 40px;
+}
+
+.button-row {
+  display: inline-flex;
+  gap: 22px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Golden glass-style buttons (shared look) */
+.glass-btn {
+  padding: 10px 24px;
+  border-radius: 50px;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--gold-100);
+  border: 1px solid rgba(255,210,120,0.3);
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,210,120,0.08));
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45), 0 0 18px rgba(255,180,70,0.06);
+  transition: all 0.25s ease;
+}
+
+.glass-btn:hover {
+  background: linear-gradient(90deg, var(--gold-100), var(--gold-200));
+  color: #111;
+  transform: translateY(-2px);
+  box-shadow: 0 0 25px rgba(255,200,80,0.25);
+}
+
+}
+
+}
+.loading-spinner {
+  font-size: 0.9rem;
+  color: #ffcc66;
+  margin-left: 8px;
+  animation: blink 1s infinite alternate;
+}
+@keyframes blink { from { opacity: 0.4; } to { opacity: 1; } }
+
+  </style>
+</head>
+<body>
+  <!-- background (kept outside main content) -->
+  <div class="glossy-bg" aria-hidden="true"></div>
+
+  <div class="page">
+    <header>
+      <h1 class="title">HotShort Studio</h1>
+      <div class="subtitle">AI-picked viral highlights — crafted for max engagement ⚡</div>
+    </header>
+
+    <main class="showcase" role="main" aria-live="polite">
+      {% if not moments %}
+      
+         {% else %}
+         {% for moment in moments[:6] %}
+         {% set mtext  = moment.get('text') if moment.get('text') is not none else moment.get('title','Untitled') %}
+  {% set mstart = moment.get('start') if moment.get('start') is not none else moment.get('timestamp', 0) %}
+  {% set mend   = moment.get('end') if moment.get('end') is not none else (mstart + moment.get('duration',10)) %}
+  {% set mscore = moment.get('score', 0) %}
+  {% set mposter = moment.get('poster', '/static/thumbnail_placeholder.jpg') %}
+  {% set mclip = moment.get('clip_path','') %}
+
+  <article class="reel" role="group" aria-label="Moment {{ loop.index }}" data-start="{{ mstart }}" data-end="{{ mend }}">
+    <video
+      muted
+      loop
+      preload="metadata"
+      poster="{{ mposter }}"
+      src="{{ mclip }}"
+      aria-hidden="{{ '' == mclip }}"
+    ></video>
+
+    <div class="overlay">
+      <div class="title">⚡ {{ mtext[:70] ~ ('...' if mtext|length > 70 else '') }}</div>
+      <div class="meta">Score: {{ "%0.3f"|format(mscore) }} — 🕒 {{ mstart }}s – {{ mend }}s</div>
+
+      <div class="actions">
+        <form action="{{ url_for('generate_clip_route') }}" method="POST" class="clip-form">
+          <input type="hidden" name="video_url" value="{{ video_url }}">
+          <input type="hidden" name="start" value="{{ mstart }}">
+          <input type="hidden" name="end" value="{{ mend }}">
+          <button type="submit" class="glass-btn generate-btn">🎬 Generate Clip</button>
+          <div class="loading-spinner" style="display:none;margin-left:10px;">⏳</div>
+        </form>
+      </div>
+    </div>
+  </article>
+
+
+         {% endfor %}
+         {% endif %}
+
+{% if clip_path %}
+  <div class="clip-preview" style="margin-top:30px;text-align:center;">
+    <h3>Your Generated Clip</h3>
+    <video controls width="640">
+      <source src="{{ clip_path }}" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </div>
+{% endif %}
+
+    </main>
+
+    <footer class="footer-controls">
+  <div class="button-row">
+    <a class="glass-btn fade-link" href="{{ url_for('dashboard') }}">← Analyze Another Video</a>
+
+    {% if clip_path %}
+    <a class="glass-btn" href="{{ url_for('download_clip', job_id=job_id) }}">
+  ⬇️ Download Clip
+</a>
+
+</a>
+    {% endif %}
+  </div>
+</footer>
+
+  </div>
+
+  <script>
+  // Hover play/pause + keyboard accessibility + drag-friendly UX
+  (function(){
+    const reels = document.querySelectorAll('.reel');
+
+    reels.forEach(reel => {
+      const vid = reel.querySelector('video');
+
+      // If there's no video src (clip not generated yet), use poster only
+      if(!vid.getAttribute('src') || vid.getAttribute('src') === ''){
+        vid.setAttribute('aria-hidden','true');
+      }
+
+      // play on hover & stop on leave
+      reel.addEventListener('mouseenter', ()=> {
+        if(vid.getAttribute('src')) vid.play().catch(()=>{});
+      });
+      reel.addEventListener('mouseleave', ()=> {
+        if(!vid.paused){ vid.pause(); vid.currentTime = 0; }
+      });
+
+      // play/pause on click (tap support)
+      reel.addEventListener('click', (e)=>{
+        // ignore clicks on buttons/links
+        if(e.target.closest('button') || e.target.closest('a')) return;
+        if(vid.paused){ vid.play().catch(()=>{}); }
+        else { vid.pause(); vid.currentTime = 0; }
+      });
+
+      // keyboard: Enter/Space toggles play
+      reel.addEventListener('keydown', (ev)=>{
+        if(ev.key === 'Enter' || ev.key === ' '){
+          ev.preventDefault();
+          if(vid.paused) vid.play().catch(()=>{});
+          else { vid.pause(); vid.currentTime = 0; }
+        }
+      });
+      reel.tabIndex = 0;
+    });
+
+    // Make background follow mouse lightly (subtle)
+    const glossy = document.querySelector('.glossy-bg');
+    if(glossy){
+      let last = {x:50,y:20};
+      document.addEventListener('mousemove', (e)=>{
+        const x = Math.round(e.clientX / window.innerWidth * 100);
+        const y = Math.round(e.clientY / window.innerHeight * 100);
+        // small lerp for smoothness
+        last.x += (x - last.x) * 0.06;
+        last.y += (y - last.y) * 0.06;
+        glossy.style.background = `radial-gradient(circle at ${last.x}% ${last.y}%, #2b1a00, #000 60%)`;
+      });
+    }
+
+    // allow carousel scroll by mouse drag
+    (function dragScroll(containerSelector){
+      const c = document.querySelector(containerSelector);
+      if(!c) return;
+      let pressed = false, startX, scrollLeft;
+      c.addEventListener('mousedown', e=>{
+        pressed = true; c.classList.add('dragging');
+        startX = e.pageX - c.offsetLeft;
+        scrollLeft = c.scrollLeft;
+      });
+      window.addEventListener('mouseup', ()=>{ pressed=false; c.classList.remove('dragging'); });
+      window.addEventListener('mousemove', e=>{
+        if(!pressed) return;
+        e.preventDefault();
+        const x = e.pageX - c.offsetLeft;
+        const walk = (x - startX) * 1.4;
+        c.scrollLeft = scrollLeft - walk;
+      });
+    })('.carousel');
+  })();
+  // attach simple submit handler to show spinner + disable button
+document.querySelectorAll('.clip-form').forEach(form=>{
+  form.addEventListener('submit', e=>{
+    const btn = form.querySelector('.generate-btn');
+    const spinner = form.querySelector('.loading-spinner');
+    if(btn) {
+      btn.disabled = true;
+      btn.style.opacity = 0.6;
+    }
+    if(spinner) spinner.style.display = 'inline-block';
+  });
+});
+// Page transition fade effect
+document.addEventListener("DOMContentLoaded", function() {
+  const fadeLinks = document.querySelectorAll(".fade-link");
+
+  fadeLinks.forEach(link => {
+    link.addEventListener("click", function(e) {
+      e.preventDefault();
+      document.body.classList.add("fade-out");
+      setTimeout(() => {
+        window.location.href = this.href;
+      }, 400); // delay for smooth fade
+    });
+  });
+});
+// 🎬 Smooth loader overlay when generating
+document.querySelectorAll('.clip-form').forEach(form => {
+  form.addEventListener('submit', (e) => {
+    const button = form.querySelector('.generate-btn');
+    const spinner = form.querySelector('.loading-spinner');
+
+    button.disabled = true;
+    spinner.style.display = 'inline-block';
+    spinner.innerHTML = "⏳ Generating your clip...";
+
+    // Optional: fade screen slightly
+    document.body.style.pointerEvents = 'none';
+    document.body.style.opacity = '0.7';
+  });
+});
+
+</script>
+
+  </script>
+</body>
+</html>
+

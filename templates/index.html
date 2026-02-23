@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HotShort Studio – AI Viral Clip Generator</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='branding/logo_icon.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='branding/logo_icon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+
+
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: radial-gradient(circle at top center, #0a0e27 0%, #000000 100%);
+      color: #f5f5f5;
+      font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow-x: hidden;
+      line-height: 1.6;
+      position: relative;
+    }
+
+    /* Golden Glassy Shine Overlay - Studio Lighting (Glossy Animated) */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: radial-gradient(circle at 20% 20%, #201200 0%, #0a0a0a 60%);
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      width: 250%;
+      height: 250%;
+      left: -75%;
+      top: -75%;
+      filter: blur(160px);
+      mix-blend-mode: screen;
+      opacity: 0.55;
+      background: conic-gradient(
+        from 0deg,
+        rgba(255, 200, 100, 0.14),
+        rgba(255, 240, 190, 0.18),
+        rgba(255, 210, 120, 0.12),
+        rgba(255, 225, 150, 0.12)
+      );
+      animation: glossySpin 14s linear infinite;
+      pointer-events: none;
+    }
+
+    @keyframes glossySpin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes navGlowPulse {
+      0%, 100% {
+        filter:
+          drop-shadow(0 0 6px rgba(255, 170, 70, 0.35))
+          drop-shadow(0 0 18px rgba(255, 210, 140, 0.16));
+      }
+      50% {
+        filter:
+          drop-shadow(0 0 10px rgba(255, 170, 70, 0.55))
+          drop-shadow(0 0 26px rgba(255, 210, 140, 0.22));
+      }
+    }
+
+    @keyframes heroGlowPulse {
+      0%, 100% {
+        filter:
+          drop-shadow(0 0 12px rgba(255, 170, 70, 0.35))
+          drop-shadow(0 0 34px rgba(255, 210, 140, 0.16));
+      }
+      50% {
+        filter:
+          drop-shadow(0 0 18px rgba(255, 170, 70, 0.55))
+          drop-shadow(0 0 46px rgba(255, 210, 140, 0.22));
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      nav .hotshort-logo,
+      .hero-logo {
+        animation: none !important;
+      }
+    }
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 100;
+      background: linear-gradient(180deg, rgba(10, 14, 39, 0.96) 0%, rgba(10, 14, 39, 0.75) 100%);
+      backdrop-filter: blur(15px);
+      border-bottom: 1px solid rgba(255, 179, 71, 0.2);
+      padding: 20px 40px;
+      box-shadow: 0 10px 40px rgba(255, 179, 71, 0.05);
+    }
+
+    nav .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    nav .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      user-select: none;
+    }
+
+    nav .hotshort-logo {
+      height: 38px;
+      width: auto;
+      object-fit: contain;
+      filter:
+        drop-shadow(0 0 6px rgba(255, 170, 70, 0.35))
+        drop-shadow(0 0 18px rgba(255, 210, 140, 0.16));
+      animation: navGlowPulse 6.5s ease-in-out infinite;
+      transition: transform 0.25s ease;
+      flex: 0 0 auto;
+    }
+
+    nav .hotshort-logo:hover {
+      transform: scale(1.05);
+    }
+
+    nav .brand-text {
+      font-weight: 600;
+      font-size: 20px;
+      letter-spacing: 0.5px;
+      background: linear-gradient(90deg, #FFD580 0%, #FFB347 50%, #E3E3E3 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    nav .nav-links {
+      display: flex;
+      gap: 40px;
+      list-style: none;
+    }
+
+    nav .nav-links a {
+      color: #a0a0a0;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.3s ease;
+    }
+
+    nav .nav-links a:hover {
+      color: #FFB347;
+    }
+
+    nav .nav-links a.active {
+      color: #FFB347;
+    }
+
+    /* Hero Section */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 120px 40px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: radial-gradient(circle at 20% 50%, rgba(255, 179, 71, 0.08) 0%, transparent 50%),
+                  radial-gradient(circle at 80% 80%, rgba(255, 179, 71, 0.05) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      text-align: center;
+      animation: fadeInUp 1s ease-out;
+    }
+
+    .hero-logo {
+      height: 96px;
+      width: auto;
+      display: block;
+      margin: 0 auto 20px;
+      filter:
+        drop-shadow(0 0 12px rgba(255, 170, 70, 0.35))
+        drop-shadow(0 0 34px rgba(255, 210, 140, 0.16));
+      animation: heroGlowPulse 8.5s ease-in-out infinite;
+      transform: scale(1.05);
+      transition: transform 0.25s ease;
+    }
+
+    .hero-logo:hover {
+      transform: scale(1.08);
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hero h1 {
+      font-size: clamp(42px, 7vw, 64px);
+      font-weight: 800;
+      margin-bottom: 30px;
+      line-height: 1.2;
+      letter-spacing: -0.5px;
+    }
+
+    .hero h1 .gradient-text {
+      background: linear-gradient(90deg, #FFD580 0%, #FFB347 40%, #FFA500 70%, #E3E3E3 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 0 30px rgba(255, 179, 71, 0.15);
+      filter: drop-shadow(0 0 20px rgba(255, 179, 71, 0.1));
+    }
+
+    .hero p {
+      font-size: 17px;
+      color: #b8b8b8;
+      margin-bottom: 50px;
+      line-height: 1.6;
+      letter-spacing: 0.3px;
+    }
+
+    /* CTA Section */
+    .cta-section {
+      max-width: 700px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .form-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .form-input {
+      flex: 1;
+      min-width: 250px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 200, 100, 0.2);
+      border-radius: 14px;
+      padding: 16px 24px;
+      font-size: 16px;
+      color: #ffffff;
+      font-family: inherit;
+      transition: all 0.3s ease;
+    }
+
+    .form-input::placeholder {
+      color: #707070;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: rgba(255, 179, 71, 0.6);
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 0 20px rgba(255, 179, 71, 0.1);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, rgba(255, 215, 128, 0.95) 0%, rgba(255, 179, 71, 0.95) 50%, rgba(227, 227, 227, 0.9) 100%);
+      color: #0a0e27;
+      font-weight: 700;
+      font-size: 16px;
+      padding: 16px 48px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+      box-shadow: 0 10px 40px rgba(255, 179, 71, 0.4),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.5),
+                  0 0 20px rgba(255, 215, 128, 0.3);
+      white-space: nowrap;
+      backdrop-filter: blur(10px);
+      position: relative;
+    }
+
+    .btn-primary::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%);
+      border-radius: 14px;
+      pointer-events: none;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 20px 60px rgba(255, 179, 71, 0.6),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.6),
+                  0 0 30px rgba(255, 215, 128, 0.5);
+      background: linear-gradient(135deg, rgba(255, 230, 150, 0.98) 0%, rgba(255, 190, 100, 0.98) 50%, rgba(240, 240, 240, 0.95) 100%);
+    }
+
+    .btn-primary:active {
+      transform: translateY(-1px);
+    }
+
+    /* Thinking state for primary CTA */
+    .btn-primary.thinking {
+      animation: thinkingPulse 1.6s ease-in-out infinite;
+      box-shadow: 0 12px 36px rgba(255, 180, 70, 0.45), 0 0 30px rgba(255,200,120,0.12);
+      transform: translateY(-1px);
+      cursor: wait;
+      opacity: 0.98;
+    }
+
+    @keyframes thinkingPulse {
+      0% { box-shadow: 0 8px 20px rgba(255,180,70,0.15); transform: translateY(0); }
+      50% { box-shadow: 0 20px 50px rgba(255,180,70,0.32); transform: translateY(-2px); }
+      100% { box-shadow: 0 8px 20px rgba(255,180,70,0.15); transform: translateY(0); }
+    }
+
+    /* Trust Badges */
+    .trust-badges {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 30px;
+      flex-wrap: wrap;
+      margin-top: 40px;
+      padding-top: 40px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: #a0a0a0;
+    }
+
+    .badge-icon {
+      font-size: 24px;
+    }
+
+    /* Features Section */
+    .features {
+      margin-top: 100px;
+      padding: 80px 40px;
+      background: linear-gradient(180deg, rgba(255, 179, 71, 0.03) 0%, rgba(255, 179, 71, 0.01) 100%);
+      position: relative;
+    }
+
+    .features-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-title {
+      text-align: center;
+      margin-bottom: 80px;
+    }
+
+    .section-title h2 {
+      font-size: 48px;
+      font-weight: 800;
+      margin-bottom: 20px;
+      background: linear-gradient(90deg, #FFD580 0%, #FFB347 50%, #E3E3E3 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 15px rgba(255, 179, 71, 0.1));
+    }
+
+    .section-title p {
+      font-size: 16px;
+      color: #a8a8a8;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 40px;
+    }
+
+    .feature-card {
+      background: linear-gradient(135deg, rgba(255, 215, 128, 0.08) 0%, rgba(255, 179, 71, 0.04) 50%, rgba(227, 227, 227, 0.03) 100%);
+      border: 1px solid rgba(255, 179, 71, 0.25);
+      border-radius: 20px;
+      padding: 40px;
+      backdrop-filter: blur(30px);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                  0 0 30px rgba(255, 179, 71, 0.05);
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, rgba(255, 215, 128, 0.1) 0%, transparent 50%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-8px);
+      border-color: rgba(255, 179, 71, 0.5);
+      background: linear-gradient(135deg, rgba(255, 230, 150, 0.1) 0%, rgba(255, 179, 71, 0.06) 50%, rgba(227, 227, 227, 0.04) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15),
+                  0 0 50px rgba(255, 179, 71, 0.15);
+    }
+
+    .feature-card:hover::before {
+      opacity: 1;
+    }
+
+    .feature-icon {
+      font-size: 48px;
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .feature-card h3 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 15px;
+      color: #ffffff;
+      position: relative;
+      z-index: 1;
+    }
+
+    .feature-card p {
+      color: #b0b0b0;
+      font-size: 15px;
+      line-height: 1.8;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Proof Carousel Section */
+    .proof-section {
+      margin-top: 80px;
+      padding: 80px 40px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .proof-section h2 {
+      font-size: 42px;
+      font-weight: 800;
+      color: #FFD27D;
+      text-align: center;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+      text-shadow: 0 0 20px rgba(255, 200, 120, 0.25);
+    }
+
+    .proof-sub {
+      text-align: center;
+      color: rgba(255, 255, 255, 0.75);
+      font-size: 16px;
+      margin-bottom: 60px;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .proof-carousel {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .carousel-nav {
+      background: linear-gradient(135deg, rgba(255, 179, 71, 0.15) 0%, rgba(255, 179, 71, 0.05) 100%);
+      border: 1px solid rgba(255, 179, 71, 0.3);
+      color: #FFB347;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 24px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .carousel-nav:hover {
+      background: linear-gradient(135deg, rgba(255, 179, 71, 0.25) 0%, rgba(255, 179, 71, 0.12) 100%);
+      box-shadow: 0 0 20px rgba(255, 179, 71, 0.3);
+      transform: scale(1.08);
+    }
+
+    .carousel-track {
+      display: flex;
+      gap: 28px;
+      overflow: hidden;
+      scroll-behavior: smooth;
+      flex: 1;
+      justify-content: center;
+      transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .proof-card {
+      flex: 0 0 280px;
+      background: linear-gradient(135deg, rgba(255, 215, 128, 0.12) 0%, rgba(255, 179, 71, 0.06) 50%, rgba(227, 227, 227, 0.03) 100%);
+      border: 1px solid rgba(255, 179, 71, 0.2);
+      border-radius: 18px;
+      padding: 18px;
+      position: relative;
+      transition: all 0.35s cubic-bezier(0.2, 0.9, 0.3, 1);
+      backdrop-filter: blur(20px);
+      box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.12), 0 20px 60px rgba(0, 0, 0, 0.6);
+    }
+
+    .proof-card::after {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      background: linear-gradient(120deg, transparent 20%, rgba(255, 200, 120, 0.45), transparent 80%);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+    }
+
+    .proof-card:hover {
+      transform: translateY(-6px) scale(1.01);
+      box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.35), 0 30px 80px rgba(255, 180, 80, 0.25);
+    }
+
+    .proof-card:hover::after {
+      opacity: 1;
+    }
+
+    .proof-card.idle {
+      animation: idleFloat 6s ease-in-out infinite;
+    }
+
+    @keyframes idleFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+
+    .proof-card.best {
+      flex: 0 0 300px;
+      transform: scale(1.06);
+      box-shadow: 0 0 60px rgba(255, 179, 71, 0.4),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.15),
+                  0 0 30px rgba(255, 215, 128, 0.2);
+      border-color: rgba(255, 179, 71, 0.5);
+      background: linear-gradient(135deg, rgba(255, 230, 150, 0.15) 0%, rgba(255, 179, 71, 0.08) 50%, rgba(227, 227, 227, 0.04) 100%);
+    }
+
+    .badge {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: linear-gradient(90deg, #FFD580 0%, #FFB347 100%);
+      color: #0a0e27;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(255, 179, 71, 0.3);
+    }
+
+    .thumb {
+      height: 160px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border-radius: 14px;
+      margin-bottom: 16px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      position: relative;
+    }
+
+    .thumb::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 179, 71, 0.1) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #FFD580;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .bar {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      margin-bottom: 12px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    .bar div {
+      height: 100%;
+      background: linear-gradient(90deg, #FFB84D 0%, #FFD27D 50%, #FFB84D 100%);
+      background-size: 200% 100%;
+      border-radius: 6px;
+      box-shadow: 0 0 12px rgba(255, 179, 71, 0.5);
+      animation: progressFlow 3s linear infinite;
+    }
+
+    @keyframes progressFlow {
+      from { background-position: 0% 0; }
+      to { background-position: 200% 0; }
+    }
+
+    .reason {
+      font-size: 13px;
+      color: #c9b27c;
+      min-height: 40px;
+      line-height: 1.4;
+      margin-bottom: 14px;
+    }
+
+    .locked-btn {
+      width: 100%;
+      background: transparent;
+      border: 1px solid rgba(255, 179, 71, 0.4);
+      color: #FFD580;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .locked-btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%);
+      transition: left 0.5s ease;
+    }
+
+    .locked-btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle, rgba(255, 200, 120, 0.35), transparent 70%);
+      opacity: 0;
+      animation: subtlePulse 3s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes subtlePulse {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 0.35; }
+    }
+
+    .locked-btn:hover {
+      border-color: rgba(255, 179, 71, 0.7);
+      box-shadow: 0 0 20px rgba(255, 179, 71, 0.2);
+      background: rgba(255, 179, 71, 0.08);
+    }
+
+    .locked-btn:hover::before {
+      left: 100%;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .carousel-track {
+        gap: 20px;
+      }
+
+      .proof-card {
+        flex: 0 0 260px;
+      }
+
+      .proof-card.best {
+        flex: 0 0 280px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .proof-section {
+        padding: 60px 20px;
+      }
+
+      .proof-section h2 {
+        font-size: 32px;
+      }
+
+      .carousel-nav {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+      }
+
+      .proof-card {
+        flex: 0 0 240px;
+      }
+
+      .proof-card.best {
+        flex: 0 0 260px;
+        transform: scale(1.04);
+      }
+
+      .thumb {
+        height: 140px;
+      }
+    }
+
+    footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 60px 40px;
+      margin-top: 100px;
+    }
+
+    .footer-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 40px;
+      margin-bottom: 40px;
+    }
+
+    .footer-section h4 {
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: #ffffff;
+    }
+
+    .footer-section ul {
+      list-style: none;
+    }
+
+    .footer-section ul li {
+      margin-bottom: 12px;
+    }
+
+    .footer-section ul li a {
+      color: #a0a0a0;
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s ease;
+    }
+
+    .footer-section ul li a:hover {
+      color: #FFB347;
+    }
+
+    .footer-bottom {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 40px;
+      text-align: center;
+      color: #707070;
+      font-size: 14px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      nav {
+        padding: 15px 20px;
+      }
+
+      nav .nav-links {
+        gap: 20px;
+      }
+
+      .hero {
+        padding: 100px 20px 60px;
+      }
+
+      .form-group {
+        flex-direction: column;
+      }
+
+      .form-input,
+      .btn-primary {
+        width: 100%;
+      }
+
+      .hero h1 {
+        font-size: 42px;
+      }
+
+      .hero p {
+        font-size: 16px;
+      }
+
+      .trust-badges {
+        gap: 20px;
+      }
+
+      .section-title h2 {
+        font-size: 36px;
+      }
+    }
+  </style>
+</head>
+<body data-user-auth="{{ '1' if current_user.is_authenticated else '0' }}">
+  <!-- Navigation -->
+  <nav>
+    <div class="container">
+      <a class="brand-logo" href="/">
+        <img src="{{ url_for('static', filename='branding/logo_icon.png') }}"
+             alt="HotShort Logo"
+             class="hotshort-logo">
+        <span class="brand-text">HotShort</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features" class="active">Features</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="https://github.com" target="_blank">GitHub</a></li>
+        <li><a href="/login">Login</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <img src="{{ url_for('static', filename='branding/logo_icon.png') }}"
+           alt="HotShort"
+           class="hero-logo">
+      <h1>
+        Transform Your Content Into<br>
+        <span class="gradient-text">Viral Goldmine</span>
+      </h1>
+      <p>AI-powered viral clip detection. Analyze videos in seconds. Get clips that engage 1M+ viewers instantly.</p>
+
+      <!-- CTA Form -->
+      <div class="cta-section">
+        <form action="/analyze" method="post" class="form-group" id="homeAnalyzeForm">
+          <input
+            type="url"
+            name="youtube_url"
+            placeholder="Paste your YouTube link..."
+            class="form-input"
+            required
+          />
+          <button type="submit" class="btn-primary" id="homeAnalyzeBtn">Analyze Now 🚀</button>
+        </form>
+        <div id="heroMessage" aria-live="polite" style="margin-top:12px; color:#ffd27d; font-weight:600; display:none"></div>
+      </div>
+
+      <!-- Trust Badges -->
+      <div class="trust-badges">
+        <div class="badge">
+          <span class="badge-icon">⚡</span>
+          <span>30 seconds analysis</span>
+        </div>
+        <div class="badge">
+          <span class="badge-icon">🎯</span>
+          <span>AI precision</span>
+        </div>
+        <div class="badge">
+          <span class="badge-icon">📈</span>
+          <span>20M+ hours analyzed</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Proof Carousel Section -->
+  <section class="proof-section">
+    <div class="section-container">
+      <div class="section-title">
+        <h2>AI-Selected Viral Moments</h2>
+        <p>Not random clips. Not guesses. Moments picked by AI confidence signals.</p>
+      </div>
+
+      <div class="proof-carousel">
+        <button class="carousel-nav prev" aria-label="Previous clip">‹</button>
+        
+        <div class="carousel-track">
+          <!-- Card 1: Best Pick -->
+          <div class="proof-card best">
+            <div class="badge">🏆 Best Pick</div>
+            <div class="thumb"></div>
+            <div class="meta">
+              <span>Emotional Peak</span>
+              <span>94%</span>
+            </div>
+            <div class="bar">
+              <div style="width: 94%"></div>
+            </div>
+            <div class="reason">Shock + sudden clarity. Peak dopamine hook at 23s.</div>
+            <button class="locked-btn">🔒 Unlock Clip</button>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="proof-card">
+            <div class="badge">🎬 Recommended</div>
+            <div class="thumb"></div>
+            <div class="meta">
+              <span>Story Peak</span>
+              <span>87%</span>
+            </div>
+            <div class="bar">
+              <div style="width: 87%"></div>
+            </div>
+            <div class="reason">Rising tension + release. Viewer retention hotspot.</div>
+            <button class="locked-btn">🔒 Unlock Clip</button>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="proof-card">
+            <div class="badge">⭐ Strong</div>
+            <div class="thumb"></div>
+            <div class="meta">
+              <span>Hook Launch</span>
+              <span>81%</span>
+            </div>
+            <div class="bar">
+              <div style="width: 81%"></div>
+            </div>
+            <div class="reason">Cold open with intrigue. Stops scroll-by in first 3s.</div>
+            <button class="locked-btn">🔒 Unlock Clip</button>
+          </div>
+        </div>
+
+        <button class="carousel-nav next" aria-label="Next clip">›</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="features-container">
+      <div class="section-title">
+        <h2>Why HotShort Studio?</h2>
+        <p>Elite features for creators who want to dominate their niche</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-icon">🤖</span>
+          <h3>AI-Powered Analysis</h3>
+          <p>Deep learning identifies emotional peaks, hooks, and viral patterns before humans can see them.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">⚡</span>
+          <h3>Lightning Fast</h3>
+          <p>50x faster transcription. Results in 30 seconds. No waiting, no delays, pure speed.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🎬</span>
+          <h3>Multi-Format Clips</h3>
+          <p>Vertical, horizontal, square. TikTok, Instagram, YouTube Shorts. All formats covered.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">📊</span>
+          <h3>Engagement Score</h3>
+          <p>Confidence metrics show exactly how viral each clip will be. Plan your content strategy.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🔗</span>
+          <h3>One-Click Download</h3>
+          <p>No editing. No watermarks. Just pristine clips ready to post. Download in 10 seconds.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon">🎯</span>
+          <h3>Smart Transcription</h3>
+          <p>Accurate subtitles, hook identification, and emotional beat detection in every clip.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-content">
+      <div class="footer-section">
+        <h4>HotShort</h4>
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="/login">Dashboard</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <ul>
+          <li><a href="https://docs.hotshort.com">Documentation</a></li>
+          <li><a href="https://github.com">GitHub</a></li>
+          <li><a href="https://twitter.com">Twitter</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-section">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy">Privacy Policy</a></li>
+          <li><a href="/terms">Terms of Service</a></li>
+          <li><a href="/contact">Contact</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-section">
+        <h4>Get Started</h4>
+        <p>Transform your videos into viral moments. Join creators making bank.</p>
+        <form action="/analyze" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
+          <input
+            type="url"
+            name="youtube_url"
+            placeholder="YouTube link"
+            class="form-input"
+            style="flex: 1; padding: 12px 16px; font-size: 14px;"
+            required
+          />
+          <button type="submit" class="btn-primary" style="padding: 12px 24px;">Try</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>&copy; 2025 HotShort Studio. Powered by Elite AI. Made with ❤️ for creators.</p>
+    </div>
+  </footer>
+
+  <!-- Golden mouse-follow light (follows cursor with smooth easing) -->
+  <div id="golden-light" aria-hidden="true"></div>
+
+  <script>
+    (function(){
+      const light = document.getElementById('golden-light');
+      // Style via JS to ensure it's present even if CSS caches differ
+      Object.assign(light.style, {
+        position: 'fixed',
+        left: '50%',
+        top: '50%',
+        width: '720px',
+        height: '720px',
+        transform: 'translate(-50%, -50%)',
+        pointerEvents: 'none',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle at 50% 40%, rgba(255,215,128,0.28) 0%, rgba(255,179,71,0.12) 25%, rgba(227,227,227,0.02) 60%, transparent 100%)',
+        filter: 'blur(60px) saturate(1.1)',
+        mixBlendMode: 'screen',
+        opacity: '0.9',
+        transition: 'opacity 0.45s ease',
+        zIndex: '0'
+      });
+
+      let mouseX = window.innerWidth/2;
+      let mouseY = window.innerHeight/2;
+      let curX = mouseX;
+      let curY = mouseY;
+      const ease = 0.12;
+
+      function onMove(e){
+        mouseX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || mouseX;
+        mouseY = e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || mouseY;
+        light.style.opacity = '1';
+      }
+
+      function onLeave(){
+        light.style.opacity = '0.1';
+      }
+
+      window.addEventListener('mousemove', onMove, {passive:true});
+      window.addEventListener('touchmove', onMove, {passive:true});
+      window.addEventListener('mouseleave', onLeave);
+      window.addEventListener('touchend', onLeave);
+
+      function raf(){
+        curX += (mouseX - curX) * ease;
+        curY += (mouseY - curY) * ease;
+        const left = curX - parseFloat(light.style.width)/2;
+        const top = curY - parseFloat(light.style.height)/2;
+        light.style.transform = `translate(${left}px, ${top}px)`;
+
+        // subtle size pulsing based on velocity
+        const vx = Math.abs(mouseX - curX);
+        const vy = Math.abs(mouseY - curY);
+        const vel = Math.min(1, (vx+vy)/60);
+        const size = 720 + vel * 120;
+        light.style.width = size + 'px';
+        light.style.height = size + 'px';
+
+        requestAnimationFrame(raf);
+      }
+
+      // small performance guard for mobile: reduce blur
+      if(/Mobi|Android/i.test(navigator.userAgent)){
+        light.style.filter = 'blur(40px)';
+        light.style.opacity = '0.7';
+      }
+
+      requestAnimationFrame(raf);
+    })();
+
+    // Homepage analyze: smart, friendly, and robust
+    (function(){
+      const forms = Array.from(document.querySelectorAll('form[action="/analyze"]'));
+      const USER_AUTH = (document.body && document.body.dataset && document.body.dataset.userAuth === '1');
+
+      function getMessageBox(form){
+        let box = form.querySelector('.form-message');
+        if(!box){
+          box = document.createElement('div');
+          box.className = 'form-message';
+          box.setAttribute('aria-live', 'polite');
+          box.style.marginTop = '12px';
+          box.style.color = '#ffd27d';
+          box.style.fontWeight = '600';
+          box.style.display = 'none';
+          form.appendChild(box);
+        }
+        return box;
+      }
+
+      function showMessage(form, text, timeout=4000){
+        const box = getMessageBox(form);
+        if(!box) return;
+        box.textContent = text;
+        box.style.display = 'block';
+        clearTimeout(box._t);
+        if(timeout) box._t = setTimeout(()=> box.style.display = 'none', timeout);
+      }
+
+      forms.forEach((form) => {
+        form.addEventListener('submit', async (e)=>{
+          e.preventDefault();
+          const btn = form.querySelector('button[type="submit"]');
+          const url = (form.elements['youtube_url'] && form.elements['youtube_url'].value || '').trim();
+          if(!url){ showMessage(form, 'Please paste a valid YouTube link.'); return; }
+
+          // If not logged in, send to login (preserve next param)
+          if(!USER_AUTH){
+            const next = '/dashboard';
+            window.location.href = '/login?next=' + encodeURIComponent(next);
+            return;
+          }
+
+          // Logged-in: send JSON-style POST and handle redirect gracefully
+          try{
+            if(btn){ btn.classList.add('thinking'); btn.disabled = true; }
+            showMessage(form, 'Analyzing... sit tight - this takes ~30-60s', 5000);
+
+            const res = await fetch('/analyze', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+              body: new URLSearchParams({ youtube_url: url })
+            });
+
+            // If server redirected (some setups), follow
+            if(res.redirected){ window.location.href = res.url; return; }
+
+            const data = await res.json().catch(()=> null);
+            if(data && data.ok && data.redirect){
+              window.location.href = data.redirect; return;
+            }
+
+            if(data && data.error){ showMessage(form, 'Error: ' + data.error); }
+            else showMessage(form, 'Analysis started - opening results.');
+          }catch(err){
+            showMessage(form, 'Network error. Please try again.');
+            console.error('Analyze error', err);
+          }finally{
+            if(btn){ btn.classList.remove('thinking'); btn.disabled = false; }
+          }
+        });
+      });
+    })();
+
+    // Carousel Navigation
+    (() => {
+      const track = document.querySelector('.carousel-track');
+      const prevBtn = document.querySelector('.carousel-nav.prev');
+      const nextBtn = document.querySelector('.carousel-nav.next');
+      const cardWidth = 320; // 280px card + 40px gap
+
+      if (track && prevBtn && nextBtn) {
+        prevBtn.addEventListener('click', () => {
+          track.scrollBy({
+            left: -cardWidth,
+            behavior: 'smooth'
+          });
+        });
+
+        nextBtn.addEventListener('click', () => {
+          track.scrollBy({
+            left: cardWidth,
+            behavior: 'smooth'
+          });
+        });
+      }
+    })();
+
+    // Idle Float Animation (Staggered)
+    (() => {
+      document.querySelectorAll('.proof-card').forEach((card, i) => {
+        setTimeout(() => card.classList.add('idle'), i * 300);
+      });
+    })();
+</body>
+</html>

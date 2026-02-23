@@ -1,0 +1,1756 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Your Viral Clips • HotShort Studio</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='branding/logo_icon.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='branding/logo_icon.png') }}">
+  <style>
+    /* =====================================
+       ELITE BUILD: Confidence-First UI
+       ===================================== */
+    :root {
+      --gold-100: #ffcf80;
+      --gold-200: #ffb347;
+      --bg-dark: #0b0b0b;
+      --panel: rgba(255,255,255,0.03);
+      --accent-success: #4ade80;
+      --accent-warn: #fbbf24;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg-dark);
+      color: #efe6d8;
+    }
+
+    /* Glossy animated background */
+    .glossy-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 20% 20%, #201200 0%, #0a0a0a 60%);
+      overflow: hidden;
+      transition: background 160ms linear;
+    }
+
+    .glossy-bg::before,
+    .glossy-bg::after {
+      content: "";
+      position: absolute;
+      width: 250%;
+      height: 250%;
+      left: -75%;
+      top: -75%;
+      filter: blur(160px);
+      mix-blend-mode: screen;
+      opacity: 0.55;
+      background: conic-gradient(
+        from 0deg,
+        rgba(255,200,100,0.14),
+        rgba(255,240,190,0.18),
+        rgba(255,210,120,0.12),
+        rgba(255,225,150,0.12)
+      );
+      animation: glossySpin 14s linear infinite;
+    }
+
+    .glossy-bg::after { transform: rotate(180deg); animation-delay: -7s; }
+    @keyframes glossySpin { to { transform: rotate(360deg); } }
+
+    /* Page layout */
+    .page {
+      position: relative;
+      z-index: 2;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 48px 28px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .brand {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(90deg, #ffeeb0 0%, #ffb347 35%, #ffdd80 65%, #fff2c2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 12px rgba(255, 230, 150, 0.3));
+      margin: 0 0 12px;
+    }
+
+    .subtitle {
+      color: rgba(255, 230, 200, 0.65);
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+
+    .tier-line {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 0.9rem;
+      color: rgba(255, 230, 200, 0.72);
+    }
+
+    .tier-line .tier-count {
+      font-weight: 650;
+      color: rgba(255, 230, 200, 0.88);
+      letter-spacing: 0.2px;
+    }
+
+    .tier-line .tier-sep {
+      opacity: 0.35;
+      user-select: none;
+    }
+
+    .tier-line a {
+      color: rgba(255, 210, 120, 0.92);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255, 210, 120, 0.22);
+      padding-bottom: 1px;
+      transition: border-color 160ms ease, color 160ms ease;
+    }
+
+    .tier-line a:hover {
+      color: rgba(255, 210, 120, 0.98);
+      border-bottom-color: rgba(255, 210, 120, 0.5);
+    }
+
+    /* Main content */
+    main {
+      flex: 1;
+      max-width: 1280px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* =====================================
+       CAROUSEL: Compact, Smart, Beautiful
+       ===================================== */
+    .carousel-container {
+      margin-bottom: 48px;
+    }
+
+    .carousel-label {
+      font-size: 0.85rem;
+      color: rgba(255, 200, 100, 0.7);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+
+    .carousel {
+      display: flex;
+      gap: 20px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 200, 100, 0.2) transparent;
+      padding-bottom: 12px;
+    }
+
+    .carousel::-webkit-scrollbar {
+      height: 8px;
+    }
+
+    .carousel::-webkit-scrollbar-thumb {
+      background: rgba(255, 200, 100, 0.3);
+      border-radius: 10px;
+    }
+
+    /* Individual clip card */
+    .clip-card {
+      flex: 0 0 340px;
+      scroll-snap-align: start;
+      border-radius: 16px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2));
+      border: 1px solid rgba(255,200,120,0.06);
+      box-shadow: 0 10px 30px rgba(10,6,4,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+      transition: all 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .clip-card:hover {
+      transform: translateY(-8px) scale(1.02);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 45px rgba(255,190,80,0.08);
+    }
+
+    .clip-card.is-best {
+      box-shadow: 0 0 40px rgba(255, 200, 100, 0.3), inset 0 1px 0 rgba(255,255,255,0.02);
+      transform: scale(1.03);
+    }
+
+    .clip-card.is-best:hover {
+      transform: scale(1.06) translateY(-8px);
+    }
+
+    /* Video preview */
+    .clip-preview {
+      width: 100%;
+      height: 200px;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .clip-preview video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      filter: brightness(0.85);
+      transition: filter 0.3s ease;
+    }
+
+    .clip-card:hover .clip-preview video {
+      filter: brightness(1.06) contrast(1.02);
+    }
+
+    /* Duration & Media Type Tooltip */
+    .clip-duration-tooltip {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%) scale(0.8) translateY(10px);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+      background: linear-gradient(135deg, rgba(255, 200, 100, 0.95), rgba(255, 160, 60, 0.95));
+      backdrop-filter: blur(12px);
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      white-space: nowrap;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #000;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: 0.3px;
+    }
+
+    .clip-card:hover .clip-duration-tooltip {
+      opacity: 1;
+      transform: translateX(-50%) scale(1) translateY(-8px);
+      pointer-events: auto;
+    }
+
+    .duration-icon {
+      display: inline-block;
+      font-size: 1.1rem;
+    }
+
+    .duration-text {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Badge overlay */
+    .badge-group {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      z-index: 4;
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 200, 100, 0.3);
+      color: var(--gold-100);
+    }
+
+    .badge.best {
+      background: linear-gradient(135deg, rgba(255, 200, 100, 0.2), rgba(255, 150, 70, 0.1));
+      border-color: var(--gold-100);
+      color: #fff;
+    }
+
+    .badge.high-confidence {
+      background: rgba(74, 222, 128, 0.2);
+      border-color: var(--accent-success);
+      color: var(--accent-success);
+    }
+
+    .badge.pattern-break {
+      background: rgba(251, 191, 36, 0.2);
+      border-color: var(--accent-warn);
+      color: var(--accent-warn);
+    }
+
+    .badge.recommended {
+      background: rgba(59, 130, 246, 0.18);
+      border-color: rgba(59, 130, 246, 0.5);
+      color: #93c5fd;
+    }
+
+    .badge.free {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 200, 100, 0.22);
+      color: rgba(255, 240, 210, 0.92);
+    }
+
+    .free-stamp {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      padding: 6px 12px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #ff9a00, #ff6a00);
+      color: white;
+      box-shadow: 0 0 14px rgba(255,120,0,0.32);
+      text-transform: uppercase;
+      z-index: 5;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    /* ================================
+       UPGRADE MODAL (Free limit)
+       ================================ */
+    .upgrade-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .upgrade-modal.hidden {
+      display: none;
+    }
+
+    .upgrade-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(5px);
+    }
+
+    .upgrade-card {
+      position: relative;
+      width: min(720px, 96vw);
+      border-radius: 18px;
+      padding: 26px 24px 18px;
+      border: 1px solid rgba(255, 200, 100, 0.20);
+      background: linear-gradient(135deg, rgba(20, 15, 35, 0.94), rgba(35, 25, 50, 0.94));
+      box-shadow: 0 20px 60px rgba(0,0,0,0.75), 0 0 60px rgba(255, 180, 70, 0.10);
+    }
+
+    .upgrade-title {
+      font-size: 1.35rem;
+      font-weight: 850;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #FFD277, #FFB84D);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .upgrade-subtitle {
+      color: rgba(255, 255, 255, 0.82);
+      font-size: 0.98rem;
+      line-height: 1.45;
+      margin-bottom: 18px;
+    }
+
+    .upgrade-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+
+    .upgrade-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 200, 100, 0.22);
+      background: rgba(255, 255, 255, 0.03);
+      color: rgba(255, 240, 210, 0.92);
+      text-decoration: none;
+      font-weight: 750;
+      cursor: pointer;
+      transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+
+    .upgrade-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 26px rgba(0,0,0,0.35);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .upgrade-btn.primary {
+      background: linear-gradient(90deg, #FFD277, #FFB84D);
+      border-color: rgba(255, 200, 100, 0.35);
+      color: #111;
+    }
+
+    .upgrade-btn.primary:hover {
+      box-shadow: 0 14px 34px rgba(255, 180, 70, 0.20);
+    }
+
+    .upgrade-btn.ghost {
+      border-color: rgba(255, 255, 255, 0.10);
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .upgrade-close {
+      width: 100%;
+      background: transparent;
+      border: 0;
+      color: rgba(255, 200, 100, 0.75);
+      font-weight: 650;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    @keyframes glowPulse {
+      from { box-shadow: 0 0 10px rgba(255,120,0,0.3); }
+      to { box-shadow: 0 0 20px rgba(255,120,0,0.6); }
+    }
+
+    .sound-hint {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      padding: 6px 10px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 650;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: rgba(255, 255, 255, 0.95);
+      pointer-events: none;
+      user-select: none;
+      z-index: 3;
+    }
+
+    /* Clip content */
+    .clip-content {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1;
+      background: linear-gradient(0deg, rgba(0,0,0,0.4), rgba(0,0,0,0.1));
+    }
+
+    .clip-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--gold-100);
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Confidence bar */
+    .confidence-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .confidence-bar {
+      flex: 1;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .confidence-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--gold-100), var(--gold-200));
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .confidence-value {
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 600;
+      min-width: 32px;
+      text-align: right;
+    }
+
+    /* Hook type label */
+    .hook-label {
+      font-size: 0.75rem;
+      color: rgba(255, 200, 100, 0.6);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Genius: Punch line (opening hook) */
+    .punch-line {
+      font-size: 0.85rem;
+      color: var(--accent-warn);
+      font-weight: 600;
+      line-height: 1.4;
+      padding: 8px;
+      background: rgba(251, 191, 36, 0.1);
+      border-left: 3px solid var(--accent-warn);
+      border-radius: 4px;
+      margin: -4px 0 4px 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Action buttons */
+    .clip-actions {
+      display: flex;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 200, 100, 0.1);
+      position: relative;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 210, 120, 0.2);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,210,120,0.03));
+      color: var(--gold-100);
+      font-weight: 600;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .btn:hover {
+      background: linear-gradient(90deg, var(--gold-100), var(--gold-200));
+      color: #111;
+      box-shadow: 0 0 15px rgba(255, 180, 70, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      filter: saturate(0.9);
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn:disabled:hover {
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,210,120,0.03));
+      color: var(--gold-100);
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn.is-disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      filter: saturate(0.9);
+      pointer-events: none;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* =====================================
+       DETAILS PANEL: Why this clip works
+       ===================================== */
+    .details-panel {
+      max-width: 600px;
+      margin: 0 auto 48px;
+      padding: 24px;
+      border: 1px solid rgba(255, 200, 100, 0.1);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2));
+    }
+
+    .details-panel.hidden {
+      display: none;
+    }
+
+    .panel-title {
+      font-size: 0.85rem;
+      color: rgba(255, 200, 100, 0.7);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+
+    .selection-reason {
+      margin-bottom: 20px;
+    }
+
+    .reason-item {
+      margin-bottom: 12px;
+    }
+
+    .reason-label {
+      font-size: 0.75rem;
+      color: rgba(255, 200, 100, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .reason-text {
+      font-size: 0.95rem;
+      color: #ddd;
+      line-height: 1.5;
+    }
+
+    /* Why bullets */
+    .why-bullets {
+      background: rgba(255, 255, 255, 0.02);
+      padding: 12px;
+      border-radius: 8px;
+      border-left: 3px solid var(--gold-100);
+    }
+
+    .why-bullet {
+      font-size: 0.9rem;
+      color: #ddd;
+      margin-bottom: 8px;
+      padding-left: 12px;
+      position: relative;
+    }
+
+    .why-bullet::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--gold-100);
+      font-weight: 600;
+    }
+
+    .why-bullet:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Scores breakdown */
+    .scores-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .score-item {
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 200, 100, 0.1);
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .score-label {
+      font-size: 0.7rem;
+      color: rgba(255, 200, 100, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .score-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--gold-100);
+    }
+
+    /* =====================================
+       DOWNLOAD MENU
+       ===================================== */
+    .download-menu {
+      position: absolute;
+      top: 110%;
+      right: -8px;
+      background: rgba(0, 0, 0, 0.95);
+      border: 1px solid rgba(255, 200, 100, 0.3);
+      border-radius: 10px;
+      overflow: hidden;
+      min-width: 220px;
+      max-width: 280px;
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      animation: slideDown 0.2s ease;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .download-menu.open {
+      display: flex;
+    }
+
+    .download-item {
+      padding: 12px 16px;
+      color: var(--gold-100);
+      text-decoration: none;
+      font-size: 0.9rem;
+      border-bottom: 1px solid rgba(255, 200, 100, 0.08);
+      transition: all 0.2s ease;
+      display: block;
+      cursor: pointer;
+      background: transparent;
+    }
+
+    .download-item:hover {
+      background: rgba(255, 200, 100, 0.15);
+      padding-left: 20px;
+      color: var(--gold-50);
+    }
+
+    .download-item:last-child {
+      border-bottom: none;
+    }
+
+    .download-item:hover {
+      background: rgba(255, 200, 100, 0.1);
+    }
+
+    /* =====================================
+       EMPTY STATE
+       ===================================== */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #d8c9b0;
+    }
+
+    .empty-state h2 {
+      font-size: 1.5rem;
+      margin-bottom: 12px;
+    }
+
+    /* =====================================
+       FOOTER
+       ===================================== */
+    footer {
+      padding: 40px 20px;
+      text-align: center;
+      border-top: 1px solid rgba(255, 200, 100, 0.1);
+    }
+
+    .footer-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      padding: 10px 24px;
+      border-radius: 50px;
+      border: 1px solid rgba(255, 210, 120, 0.3);
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,210,120,0.08));
+      color: var(--gold-100);
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(90deg, var(--gold-100), var(--gold-200));
+      color: #111;
+      transform: translateY(-2px);
+      box-shadow: 0 0 25px rgba(255, 200, 80, 0.25);
+    }
+
+    /* =====================================
+       RESPONSIVE
+       ===================================== */
+    @media (max-width: 768px) {
+      .page {
+        padding: 32px 16px;
+      }
+
+      .brand {
+        font-size: 1.8rem;
+      }
+
+      .clip-card {
+        flex: 0 0 85%;
+      }
+
+      .details-panel {
+        padding: 16px;
+      }
+
+      .carousel {
+        gap: 12px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .page {
+        padding: 20px 12px;
+      }
+
+      .brand {
+        font-size: 1.5rem;
+      }
+
+      .clip-card {
+        flex: 0 0 90%;
+      }
+
+      .badge-group {
+        top: 10px;
+        left: 10px;
+      }
+
+      .free-stamp {
+        top: 10px;
+        right: 10px;
+      }
+
+      .scores-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="glossy-bg" aria-hidden="true"></div>
+
+  <div class="page">
+    <header>
+      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+         <div>
+           <h1 class="brand">HotShort Studio</h1>
+           <p class="subtitle">AI-selected clips with confidence scores ⚡</p>
+           <div id="tierLine" class="tier-line" style="display:none">
+             <span class="tier-count" id="freeLeftText"></span>
+             <span id="tierNudges">
+               <span class="tier-sep">•</span>
+               <a id="removeWmLink" href="{{ pro_checkout_url }}">Remove watermark with Pro</a>
+               <span class="tier-sep">•</span>
+               <a id="qualityLink" href="{{ pro_checkout_url }}">Quality Mode unlocked in Pro</a>
+             </span>
+             <a id="upgradeLink" href="{{ pro_checkout_url }}" style="display:none">Upgrade to remove watermark & unlock Quality Mode</a>
+           </div>
+         </div>
+        {% if error %}
+          <p style="opacity:0.8;color:#ffb4b4">{{ error }}</p>
+        {% endif %}
+
+      </div>
+    </header>
+
+    <main>
+      <!-- Details Panel (hidden by default, shown when user clicks a clip) -->
+      <section class="details-panel hidden" id="detailsPanel">
+        <h2 class="panel-title">Why This Clip Works</h2>
+
+        <div class="selection-reason">
+          <div class="reason-item">
+            <div class="reason-label">Primary Reason</div>
+            <div class="reason-text" id="reasonPrimary">—</div>
+          </div>
+          <div class="reason-item" id="reasonSecondaryContainer" style="display: none;">
+            <div class="reason-label">Supporting Reason</div>
+            <div class="reason-text" id="reasonSecondary">—</div>
+          </div>
+          <div class="reason-item" id="reasonRiskContainer" style="display: none;">
+            <div class="reason-label">Caveat</div>
+            <div class="reason-text" id="reasonRisk">—</div>
+          </div>
+        </div>
+
+        <div class="why-bullets" id="whyBullets">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="scores-grid" id="scoresGrid">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+      <!-- Carousel -->
+      <section class="carousel-container">
+        <div class="carousel-label">Your Top Clips</div>
+        <div class="carousel" id="carousel" data-job-id="{{ job_id }}">
+          <!-- Populated by JS or server -->
+        </div>
+      </section>
+
+      <!-- No clips message -->
+      <div class="empty-state" id="emptyState" style="display: none;">
+        <h2>No clips generated yet</h2>
+        <p>Analyze a video to see your viral moments</p>
+      </div>
+    </main>
+
+    <footer>
+      <div class="footer-buttons">
+        <a href="/dashboard" class="btn-primary">← Back to Upload</a>
+      </div>
+    </footer>
+  </div>
+
+  {% include "pricing_modal.html" %}
+
+  <!-- ✅ Server injects clips_json here (from Flask template) -->
+  <script id="clips-json" type="application/json">{{ clips_json | tojson }}</script>
+  <script id="free-status-json" type="application/json">{{ free_status_json | tojson }}</script>
+  <script>
+    // Read server-provided clips JSON from a safe application/json script tag
+    (function(){
+      try{
+        const node = document.getElementById('clips-json');
+        const raw = node ? node.textContent.trim() : '[]';
+        let clipsDataRaw = JSON.parse(raw || '[]');
+        if (typeof clipsDataRaw === 'string') {
+          clipsDataRaw = JSON.parse(clipsDataRaw || '[]');
+        }
+        window.CLIPS_DATA = Array.isArray(clipsDataRaw) ? clipsDataRaw : [];
+      }catch(e){
+        console.error('Failed to parse clips JSON', e);
+        window.CLIPS_DATA = [];
+      }
+    })();
+  </script>
+
+  <script>
+    // Read server-provided free status JSON
+    (function(){
+      try{
+        const node = document.getElementById('free-status-json');
+        const raw = node ? node.textContent.trim() : '{}';
+        let statusRaw = JSON.parse(raw || '{}');
+        if (typeof statusRaw === 'string') {
+          statusRaw = JSON.parse(statusRaw || '{}');
+        }
+        window.FREE_STATUS = (statusRaw && typeof statusRaw === 'object') ? statusRaw : {};
+      }catch(e){
+        console.error('Failed to parse free status JSON', e);
+        window.FREE_STATUS = {};
+      }
+    })();
+  </script>
+
+  <script>
+    /* =====================================
+       DATA INTERFACE
+       ===================================== */
+    // This data comes from the server as JSON
+    // Format: Array of ViralClip objects (see utils/clip_schema.py)
+    let clips = window.CLIPS_DATA || [];
+    let freeStatus = window.FREE_STATUS || {};
+
+    function normalizeFreeStatus(s) {
+      const obj = (s && typeof s === 'object') ? s : {};
+      const claimed = Array.isArray(obj.claimed_clip_ids) ? obj.claimed_clip_ids : [];
+      const usedRaw = Number.isFinite(+obj.free_clips_used) ? +obj.free_clips_used : (Number.isFinite(+obj.free_downloads_used) ? +obj.free_downloads_used : 0);
+      const leftRaw = Number.isFinite(+obj.free_clips_left) ? +obj.free_clips_left : (3 - usedRaw);
+      return {
+        is_paid: !!obj.is_paid,
+        free_clips_used: usedRaw,
+        free_downloads_used: usedRaw,
+        free_clips_left: Math.max(0, leftRaw),
+        claimed_clip_ids: claimed.map(x => parseInt(x, 10)).filter(n => Number.isFinite(n)),
+      };
+    }
+
+    function claimedSet() {
+      const s = normalizeFreeStatus(freeStatus);
+      return new Set(s.claimed_clip_ids);
+    }
+
+    function analyticsPing(evt, payload = {}) {
+      try {
+        fetch('/analytics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ event: evt, ...payload }),
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
+    function currentJobId() {
+      return document.querySelector('[data-job-id]')?.getAttribute('data-job-id') || null;
+    }
+
+    function openPricingModal(context = {}) {
+      const details = (context && typeof context === 'object') ? context : {};
+      let opened = false;
+      if (typeof window.showPricingModal === 'function') {
+        window.showPricingModal();
+        opened = true;
+      } else {
+        const modal = document.getElementById('pricingModal');
+        if (!modal) return false;
+        modal.classList.remove('hidden');
+        opened = true;
+      }
+      if (opened) {
+        analyticsPing('pricing_modal_view', {
+          source: details.source || 'results',
+          trigger: details.trigger || 'download_gate',
+          clip_id: Number.isFinite(details.clip_id) ? details.clip_id : null,
+          job_id: currentJobId(),
+        });
+      }
+      return opened;
+    }
+
+    function shouldGateDownload(clipId) {
+      const s = normalizeFreeStatus(freeStatus);
+      if (s.is_paid) return false;
+      if (s.free_clips_left > 0) return false;
+      if (!Number.isFinite(clipId)) return true;
+      return !claimedSet().has(clipId);
+    }
+
+    function parseDownloadFilename(contentDisposition, fallback) {
+      const safeFallback = fallback || 'hotshort_clip.mp4';
+      const raw = contentDisposition || '';
+      const utfMatch = raw.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utfMatch && utfMatch[1]) {
+        try {
+          return decodeURIComponent(utfMatch[1]).replace(/[\\/:*?"<>|]/g, '_');
+        } catch (e) {
+          return utfMatch[1].replace(/[\\/:*?"<>|]/g, '_');
+        }
+      }
+      const basicMatch = raw.match(/filename=\"?([^\";]+)\"?/i);
+      if (basicMatch && basicMatch[1]) {
+        return basicMatch[1].trim().replace(/[\\/:*?"<>|]/g, '_');
+      }
+      return safeFallback;
+    }
+
+    function triggerBlobDownload(blob, filename) {
+      if (!blob) return;
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename || 'hotshort_clip.mp4';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+    }
+
+    async function requestDownloadFromUrl(url, fallbackName, meta = {}) {
+      const details = (meta && typeof meta === 'object') ? meta : {};
+      const resp = await fetch(url, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+          'Accept': 'application/json, application/octet-stream',
+        },
+      });
+
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+      if (contentType.includes('application/json')) {
+        let payload = null;
+        try {
+          payload = await resp.json();
+        } catch (e) {
+          payload = null;
+        }
+        if (payload && payload.action === 'show_pricing_modal') {
+          openPricingModal({ ...details, trigger: 'server_gate' });
+          analyticsPing('download_blocked', {
+            reason: 'free_limit_server',
+            clip_id: Number.isFinite(details.clip_id) ? details.clip_id : null,
+            quality: !!details.quality,
+            job_id: currentJobId(),
+          });
+          return { action: 'show_pricing_modal' };
+        }
+        return { action: 'json' };
+      }
+
+      if (!resp.ok) {
+        analyticsPing('download_error', {
+          status: resp.status,
+          clip_id: Number.isFinite(details.clip_id) ? details.clip_id : null,
+          quality: !!details.quality,
+          job_id: currentJobId(),
+        });
+        return { action: 'error', status: resp.status };
+      }
+
+      const blob = await resp.blob();
+      if (!blob || blob.size === 0) {
+        analyticsPing('download_error', {
+          status: 'empty_file',
+          clip_id: Number.isFinite(details.clip_id) ? details.clip_id : null,
+          quality: !!details.quality,
+          job_id: currentJobId(),
+        });
+        return { action: 'empty_file' };
+      }
+      const filename = parseDownloadFilename(resp.headers.get('content-disposition'), fallbackName);
+      triggerBlobDownload(blob, filename);
+      analyticsPing('download_success', {
+        clip_id: Number.isFinite(details.clip_id) ? details.clip_id : null,
+        quality: !!details.quality,
+        job_id: currentJobId(),
+      });
+      return { action: 'downloaded' };
+    }
+
+    async function requestClipDownload(clipId, options) {
+      const opts = (options && typeof options === 'object') ? options : {};
+      const q = new URLSearchParams();
+      if (opts.quality) q.set('quality', '1');
+      const url = q.toString() ? `/download/${clipId}?${q.toString()}` : `/download/${clipId}`;
+      const fallbackName = `hotshort_clip_${clipId}.mp4`;
+      return requestDownloadFromUrl(url, fallbackName, {
+        clip_id: clipId,
+        quality: !!opts.quality,
+      });
+    }
+
+    function renderTierLine() {
+      const line = document.getElementById('tierLine');
+      const freeLeftText = document.getElementById('freeLeftText');
+      const nudges = document.getElementById('tierNudges');
+      const upgradeLink = document.getElementById('upgradeLink');
+
+      if (!line || !freeLeftText || !nudges || !upgradeLink) return;
+
+      const s = normalizeFreeStatus(freeStatus);
+      if (s.is_paid) {
+        line.style.display = 'none';
+        return;
+      }
+
+      line.style.display = 'flex';
+
+      if (s.free_clips_left > 0) {
+        const n = s.free_clips_left;
+        freeLeftText.textContent = `${n} free clip${n === 1 ? '' : 's'} left`;
+        nudges.style.display = 'inline';
+        upgradeLink.style.display = 'none';
+      } else {
+        freeLeftText.textContent = '';
+        nudges.style.display = 'none';
+        upgradeLink.style.display = 'inline';
+      }
+    }
+
+    async function refreshFreeStatus() {
+      try {
+        const resp = await fetch('/api/free-status', { credentials: 'same-origin' });
+        if (!resp.ok) return;
+        const next = await resp.json();
+        freeStatus = next || {};
+        window.FREE_STATUS = freeStatus;
+        renderTierLine();
+        applyTierStateToCards();
+      } catch (e) {
+        // Silent: status is a nice-to-have refresh.
+      }
+    }
+
+    function applyTierStateToCards() {
+      const s = normalizeFreeStatus(freeStatus);
+      const claimed = claimedSet();
+      const cards = document.querySelectorAll('.clip-card');
+      cards.forEach(card => {
+        const clipId = parseInt(card.getAttribute('data-clip-id') || '', 10);
+        const isClaimed = Number.isFinite(clipId) && claimed.has(clipId);
+        const dl = card.querySelector('[data-action=\"download\"]');
+        if (dl) {
+          const tag = dl.tagName.toLowerCase();
+          const hasDownloadRoute =
+            Number.isFinite(clipId) ||
+            dl.hasAttribute('href') ||
+            !!(dl.dataset && dl.dataset.href);
+          if (!hasDownloadRoute) {
+            dl.classList.add('is-disabled');
+            dl.setAttribute('aria-disabled', 'true');
+            if (tag === 'button') {
+              dl.disabled = true;
+            }
+          } else {
+            dl.classList.remove('is-disabled');
+            dl.removeAttribute('aria-disabled');
+            if (tag === 'a') {
+              if (!dl.hasAttribute('href') && dl.dataset.href) {
+                dl.setAttribute('href', dl.dataset.href);
+              }
+              dl.removeAttribute('target');
+              dl.removeAttribute('rel');
+            }
+            if (tag === 'button') {
+              dl.disabled = false;
+            }
+          }
+        }
+
+        const group = card.querySelector('.badge-group');
+        if (group) {
+          const existing = group.querySelector('.badge.free');
+          const shouldShow = (!s.is_paid) && (s.free_clips_left > 0 || isClaimed);
+          if (shouldShow && !existing) {
+            const b = document.createElement('div');
+            b.className = 'badge free';
+            b.textContent = 'Free';
+            group.prepend(b);
+          } else if (!shouldShow && existing) {
+            existing.remove();
+          }
+        }
+
+        const preview = card.querySelector('.clip-preview');
+        if (preview) {
+          const existingStamp = preview.querySelector('.free-stamp');
+          const shouldShowStamp = (!s.is_paid) && (s.free_clips_left > 0 || isClaimed);
+          if (shouldShowStamp && !existingStamp) {
+            const st = document.createElement('div');
+            st.className = 'free-stamp';
+            st.textContent = 'FREE • Watermarked';
+            preview.appendChild(st);
+          } else if (!shouldShowStamp && existingStamp) {
+            existingStamp.remove();
+          }
+        }
+      });
+    }
+
+    renderTierLine();
+
+    if (!clips || clips.length === 0) {
+      document.getElementById('emptyState').style.display = 'block';
+      document.querySelector('.carousel-container').style.display = 'none';
+    } else {
+      renderCarousel();
+      setTimeout(refreshFreeStatus, 500);
+    }
+
+    /* =====================================
+       RENDER CAROUSEL
+       ===================================== */
+    function renderCarousel() {
+      const carousel = document.getElementById('carousel');
+      carousel.innerHTML = '';
+
+      console.log(`[CAROUSEL] Rendering ${clips.length} clips...`);
+
+      const SOUND_KEY = 'hs_sound_enabled';
+      const soundPrefEnabled = (() => {
+        try { return localStorage.getItem(SOUND_KEY) === '1'; } catch (e) { return false; }
+      })();
+
+      clips.forEach((clip, index) => {
+        const card = document.createElement('article');
+        card.className = 'clip-card' + (clip.is_best ? ' is-best' : '');
+        card.dataset.clipIndex = index;
+        const s = normalizeFreeStatus(freeStatus);
+        const claimed = claimedSet();
+        const clipIdNum = parseInt(clip.clip_id, 10);
+        const rawClipUrl = (typeof clip.clip_url === 'string') ? clip.clip_url : '';
+        const legacyDownloadHref = rawClipUrl ? `/download-by-path?clip_url=${encodeURIComponent(rawClipUrl)}` : '';
+        if (Number.isFinite(clipIdNum)) {
+          card.setAttribute('data-clip-id', String(clipIdNum));
+        }
+        const isClaimed = Number.isFinite(clipIdNum) && claimed.has(clipIdNum);
+        const showFreeStamp = (!s.is_paid) && (s.free_clips_left > 0 || isClaimed);
+
+        const downloadHref = Number.isFinite(clipIdNum) ? (`/download/${clipIdNum}`) : legacyDownloadHref;
+        const downloadClass = (!downloadHref) ? 'is-disabled' : '';
+        const downloadAttrs = (downloadHref)
+          ? `href="${downloadHref}"`
+          : `aria-disabled="true"`;
+        const qualityHtml = (s.is_paid && downloadHref)
+          ? `<a class="btn" data-action="quality" href="${downloadHref}?quality=1" target="_blank" rel="noopener noreferrer">✨ Quality</a>`
+          : '';
+
+        // Determine badges
+        const badges = [];
+        if (clip.is_best) badges.push({ text: '🏆 Best Pick', class: 'best' });
+        if (clip.is_recommended && !clip.is_best) badges.push({ text: '⭐ Recommended', class: 'recommended' });
+        // Free tier signaling (avoid clutter; use the top-right stamp)
+        if (clip.confidence > 80) badges.push({ text: '🔥 High Confidence', class: 'high-confidence' });
+        if (clip.hook_type === 'Contradiction') badges.push({ text: '⚡ Pattern Break', class: 'pattern-break' });
+
+        const badgesHtml = badges
+          .map(b => `<div class="badge ${b.class}">${b.text}</div>`)
+          .join('');
+
+        // Get the main reason as the punch line
+        const punchLine = clip.selection_reason?.primary || clip.why?.[0] || "Highly viral moment";
+        
+        // Truncate punch line for display
+        const shortPunch = punchLine.length > 60 ? punchLine.substring(0, 60) + '…' : punchLine;
+
+        // Debug log
+        console.log(`[CLIP ${index}] URL: ${clip.clip_url}, Type: ${clip.hook_type}, Confidence: ${clip.confidence}`);
+
+        const soundHintHtml = (!soundPrefEnabled && index === 0)
+          ? `<div class="sound-hint" data-role="sound-hint">🔊 Tap for sound</div>`
+          : '';
+
+        const freeStampHtml = showFreeStamp ? `<div class="free-stamp">FREE • Watermarked</div>` : '';
+
+        card.innerHTML = `
+          <div class="clip-preview">
+            <video class="clip-video" muted playsinline loop preload="metadata" src="${clip.clip_url}" title="Viral Clip #${index}"></video>
+            <div class="badge-group">${badgesHtml}</div>
+            ${freeStampHtml}
+            ${soundHintHtml}
+            <div class="clip-duration-tooltip">
+              <span class="duration-icon">⏱️</span>
+              <span class="duration-text clip-duration-value">--:--</span>
+            </div>
+          </div>
+
+          <div class="clip-content">
+            <div class="clip-title">${clip.title}</div>
+            
+            <!-- Genius: Show punch line right before hook type -->
+            ${clip.hook_type === 'Contradiction' ? `
+              <div class="punch-line">✨ ${shortPunch}</div>
+            ` : ''}
+            
+            <div class="hook-label">${clip.hook_type}</div>
+
+            <div class="confidence-container">
+              <div class="confidence-bar">
+                <div class="confidence-fill" style="width: ${clip.confidence}%"></div>
+              </div>
+              <div class="confidence-value">${clip.confidence}%</div>
+            </div>
+
+              <div class="clip-actions">
+              <button class="btn" data-action="view">👁 View Reasons</button>
+              <a class="btn ${downloadClass}" data-action="download" ${downloadAttrs}>⬇ Download</a>
+              ${qualityHtml}
+              <div class="clip-feedback" style="display:inline-block;margin-left:10px">
+                <button class="btn feedback-btn" data-action="useful" data-clip-id="${clip.clip_id}">👍 Useful</button>
+                <button class="btn feedback-btn" data-action="not-useful" data-clip-id="${clip.clip_id}">👎 Not useful</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Bind per-card interactions (must be inside the loop)
+        const video = card.querySelector('video');
+        if (video) {
+          video.muted = true;
+          video.playsInline = true;
+          // Avoid autoplaying every card at once (perf + UX).
+          video.pause();
+          video.currentTime = 0;
+        }
+
+        const pauseOtherPreviews = () => {
+          const all = carousel.querySelectorAll('video.clip-video');
+          all.forEach((v) => {
+            if (video && v === video) return;
+            try {
+              v.pause();
+              v.currentTime = 0;
+            } catch (e) {}
+          });
+        };
+
+        card.addEventListener('mouseenter', () => {
+          if (video) {
+            // Ensure ONLY the hovered clip plays.
+            pauseOtherPreviews();
+            video.play().catch(() => {});
+            if (video.duration && !isNaN(video.duration)) {
+              updateDurationDisplay(card, video.duration);
+            } else {
+              const onLoadedMetadata = () => {
+                updateDurationDisplay(card, video.duration);
+                video.removeEventListener('loadedmetadata', onLoadedMetadata);
+              };
+              video.addEventListener('loadedmetadata', onLoadedMetadata);
+            }
+          }
+        });
+
+        card.addEventListener('mouseleave', () => {
+          if (video && !video.paused) {
+            video.pause();
+            video.currentTime = 0;
+          }
+        });
+
+        const viewBtn = card.querySelector('[data-action="view"]');
+        if (viewBtn) {
+          viewBtn.addEventListener('click', () => {
+            showDetails(clip);
+          });
+        }
+
+        const downloadBtn = card.querySelector('[data-action="download"]');
+        if (downloadBtn) {
+          downloadBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const ariaDisabled = (downloadBtn.getAttribute('aria-disabled') || '') === 'true';
+            if (ariaDisabled) return;
+
+            if (downloadBtn.dataset.busy === '1') return;
+            downloadBtn.dataset.busy = '1';
+            try {
+              if (Number.isFinite(clipIdNum)) {
+                analyticsPing('download_click', {
+                  clip_id: clipIdNum,
+                  quality: false,
+                  job_id: currentJobId(),
+                });
+                if (shouldGateDownload(clipIdNum)) {
+                  analyticsPing('download_blocked', {
+                    reason: 'free_limit_client',
+                    clip_id: clipIdNum,
+                    quality: false,
+                    job_id: currentJobId(),
+                  });
+                  openPricingModal({ clip_id: clipIdNum, source: 'download_button', trigger: 'client_gate' });
+                  return;
+                }
+                await requestClipDownload(clipIdNum);
+              } else {
+                analyticsPing('download_click', {
+                  clip_id: null,
+                  quality: false,
+                  job_id: currentJobId(),
+                });
+                if (shouldGateDownload(NaN)) {
+                  analyticsPing('download_blocked', {
+                    reason: 'free_limit_client',
+                    clip_id: null,
+                    quality: false,
+                    job_id: currentJobId(),
+                  });
+                  openPricingModal({ source: 'download_button', trigger: 'client_gate' });
+                  return;
+                }
+                const href = downloadBtn.getAttribute('href') || '';
+                if (href) await requestDownloadFromUrl(href, 'hotshort_clip.mp4', {
+                  clip_id: null,
+                  quality: false,
+                });
+              }
+              setTimeout(refreshFreeStatus, 500);
+            } finally {
+              delete downloadBtn.dataset.busy;
+            }
+          });
+        }
+
+        const usefulBtn = card.querySelector('[data-action="useful"]');
+        const notUsefulBtn = card.querySelector('[data-action="not-useful"]');
+
+        async function sendFeedback(action) {
+          if (card.dataset.feedbackLocked === "1") return;
+          const vote = action === "useful" ? 1 : -1;
+          const payload = {
+            clip_id: clip.clip_id,
+            feedback: action,
+            vote,
+            features: clip.scores || clip.metrics || {}
+          };
+          try {
+            const res = await fetch('/api/feedback', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+              credentials: 'same-origin'
+            });
+            const json = await res.json();
+            if (json && json.status === 'ok' || json.status === 'ignored') {
+              card.dataset.feedbackLocked = "1";
+              [usefulBtn, notUsefulBtn].forEach(b => { if (b) b.disabled = true; });
+            }
+          } catch (e) {
+            console.error('Feedback error', e);
+          }
+        }
+
+        if (usefulBtn) usefulBtn.addEventListener('click', (e) => { e.stopPropagation(); sendFeedback('useful'); });
+        if (notUsefulBtn) notUsefulBtn.addEventListener('click', (e) => { e.stopPropagation(); sendFeedback('not-useful'); });
+
+        carousel.appendChild(card);
+        });
+
+      // Autoplay muted (allowed); unlock sound on the first user interaction.
+      initSoundUnlock();
+
+    /* Helper function to format duration */
+    function formatDuration(seconds) {
+      if (!seconds || isNaN(seconds)) return '--:--';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    /* Helper function to update duration display */
+    function updateDurationDisplay(card, duration) {
+      const durationElement = card.querySelector('.clip-duration-value');
+      if (durationElement) {
+        durationElement.textContent = formatDuration(duration);
+      }
+    }
+
+    // Autoplay is muted (allowed). First real user interaction unlocks sound.
+    function initSoundUnlock() {
+      const SOUND_KEY = 'hs_sound_enabled';
+
+      function enableSoundOnce() {
+        document.querySelectorAll('video.clip-video').forEach(v => {
+          try {
+            v.muted = false;
+            v.volume = 0.85;
+            const p = v.play && v.play();
+            if (p && typeof p.catch === 'function') p.catch(() => {});
+          } catch (e) {}
+        });
+
+        try { localStorage.setItem(SOUND_KEY, '1'); } catch (e) {}
+        document.querySelectorAll('[data-role="sound-hint"]').forEach(n => n.remove());
+      }
+
+      function onKeydown(e) {
+        const k = (e && e.key) ? String(e.key).toLowerCase() : '';
+        if (k === 'enter' || k === ' ') enableSoundOnce();
+      }
+
+      document.addEventListener('pointerdown', enableSoundOnce, { capture: true, once: true });
+      document.addEventListener('click', enableSoundOnce, { capture: true, once: true });
+      document.addEventListener('keydown', onKeydown, { capture: true, once: true });
+    }
+
+    /* =====================================
+       SHOW DETAILS PANEL
+       ===================================== */
+    function showDetails(clip) {
+      const panel = document.getElementById('detailsPanel');
+      panel.classList.remove('hidden');
+
+      // Fill in reasons
+      document.getElementById('reasonPrimary').textContent = clip.selection_reason.primary;
+
+      if (clip.selection_reason.secondary) {
+        document.getElementById('reasonSecondaryContainer').style.display = 'block';
+        document.getElementById('reasonSecondary').textContent = clip.selection_reason.secondary;
+      } else {
+        document.getElementById('reasonSecondaryContainer').style.display = 'none';
+      }
+
+      if (clip.selection_reason.risk) {
+        document.getElementById('reasonRiskContainer').style.display = 'block';
+        document.getElementById('reasonRisk').textContent = clip.selection_reason.risk;
+      } else {
+        document.getElementById('reasonRiskContainer').style.display = 'none';
+      }
+
+      // Fill in why bullets
+      const bulletsHtml = clip.why
+        .map(bullet => `<div class="why-bullet">${bullet}</div>`)
+        .join('');
+      document.getElementById('whyBullets').innerHTML = bulletsHtml;
+
+      // Fill in scores grid
+      const scores = [
+        { label: 'Hook', value: clip.scores.hook },
+        { label: 'Retention', value: clip.scores.retention },
+        { label: 'Clarity', value: clip.scores.clarity },
+        { label: 'Emotion', value: clip.scores.emotion },
+      ];
+
+      const scoresHtml = scores
+        .map(s => `
+          <div class="score-item">
+            <div class="score-label">${s.label}</div>
+            <div class="score-value">${Math.round(s.value * 100)}</div>
+          </div>
+        `)
+        .join('');
+      document.getElementById('scoresGrid').innerHTML = scoresHtml;
+
+      // Scroll to panel
+      panel.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    /* =====================================
+       DOWNLOAD MENU
+       ===================================== */
+    function showDownloadMenu(cardElement, clip) {
+      // Close any other open menus
+      document.querySelectorAll('.download-menu').forEach(m => {
+        if (m !== cardElement.querySelector('.download-menu')) {
+          m.classList.remove('open');
+        }
+      });
+
+      // Create or reuse download menu
+      let menu = cardElement.querySelector('.download-menu');
+      if (!menu) {
+        menu = document.createElement('div');
+        menu.className = 'download-menu';
+        cardElement.querySelector('.clip-actions').appendChild(menu);
+      }
+
+      // Clear previous content
+      menu.innerHTML = '';
+
+      const s = normalizeFreeStatus(freeStatus);
+      const claimed = claimedSet();
+      const clipIdNum = parseInt(clip.clip_id, 10);
+      const rawClipUrl = (typeof clip.clip_url === 'string') ? clip.clip_url : '';
+      const legacyDownloadHref = rawClipUrl ? `/download-by-path?clip_url=${encodeURIComponent(rawClipUrl)}` : '';
+      const isClaimed = Number.isFinite(clipIdNum) && claimed.has(clipIdNum);
+      const locked = (!s.is_paid) && (s.free_clips_left === 0) && !isClaimed;
+      if (locked) {
+        analyticsPing('download_blocked', {
+          reason: 'free_limit_client',
+          clip_id: Number.isFinite(clipIdNum) ? clipIdNum : null,
+          quality: false,
+          job_id: currentJobId(),
+        });
+        openPricingModal({ clip_id: clipIdNum, source: 'download_menu', trigger: 'client_gate' });
+        return;
+      }
+
+      const links = [];
+      if (Number.isFinite(clipIdNum)) {
+        links.push({ label: '⬇ Download', href: `/download/${clipIdNum}` });
+        if (s.is_paid) {
+          links.push({ label: '✨ Quality Mode', href: `/download/${clipIdNum}?quality=1` });
+        }
+      } else if (legacyDownloadHref) {
+        links.push({ label: '⬇ Download', href: legacyDownloadHref });
+      }
+
+      links.forEach((l) => {
+        const item = document.createElement('a');
+        item.className = 'download-item';
+        item.href = l.href;
+        item.textContent = l.label;
+        item.addEventListener('click', async (e) => {
+          e.preventDefault();
+          const wantsQuality = l.href.indexOf('quality=1') !== -1;
+          analyticsPing('download_click', {
+            clip_id: Number.isFinite(clipIdNum) ? clipIdNum : null,
+            quality: wantsQuality,
+            job_id: currentJobId(),
+          });
+          if (Number.isFinite(clipIdNum) && l.href.startsWith(`/download/${clipIdNum}`)) {
+            await requestClipDownload(clipIdNum, { quality: wantsQuality });
+          } else if (l.href) {
+            await requestDownloadFromUrl(l.href, 'hotshort_clip.mp4', {
+              clip_id: Number.isFinite(clipIdNum) ? clipIdNum : null,
+              quality: wantsQuality,
+            });
+          }
+          setTimeout(refreshFreeStatus, 500);
+          menu.classList.remove('open');
+        });
+        menu.appendChild(item);
+      });
+
+      // Toggle menu visibility
+      menu.classList.toggle('open');
+
+      // Close menu when clicking outside (remove old handlers first)
+      const existingHandler = menu._closeHandler;
+      if (existingHandler) {
+        document.removeEventListener('click', existingHandler);
+      }
+
+      const closeHandler = (e) => {
+        if (!cardElement.contains(e.target)) {
+          menu.classList.remove('open');
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+
+      menu._closeHandler = closeHandler;
+      setTimeout(() => {
+        document.addEventListener('click', closeHandler);
+      }, 0);
+    }
+    // close renderCarousel scope
+    }
+
+    /* =====================================
+       BACKGROUND ANIMATION
+       ===================================== */
+    const glossy = document.querySelector('.glossy-bg');
+    if (glossy) {
+      let last = { x: 50, y: 20 };
+      document.addEventListener('mousemove', (e) => {
+        const x = Math.round(e.clientX / window.innerWidth * 100);
+        const y = Math.round(e.clientY / window.innerHeight * 100);
+        last.x += (x - last.x) * 0.06;
+        last.y += (y - last.y) * 0.06;
+        glossy.style.background = `radial-gradient(circle at ${last.x}% ${last.y}%, #2b1a00, #000 60%)`;
+      });
+    }
+  </script>
+
+</body>
+</html>

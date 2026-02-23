@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard · HotShort Studio{% endblock %}
+
+{% block content %}
+<style>
+  /* =====================================
+     ELITE DASHBOARD: Glassy & Animated
+     ===================================== */
+  :root {
+    --gold-100: #ffcf80;
+    --gold-200: #ffb347;
+    --bg-dark: #0b0b0b;
+    --panel: rgba(255,255,255,0.03);
+  }
+
+  * { box-sizing: border-box; }
+  
+  body {
+    background: var(--bg-dark) !important;
+  }
+
+  /* Glossy animated background */
+  .glossy-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 20% 20%, #201200 0%, #0a0a0a 60%);
+    overflow: hidden;
+  }
+
+  .glossy-bg::before,
+  .glossy-bg::after {
+    content: "";
+    position: absolute;
+    width: 250%;
+    height: 250%;
+    left: -75%;
+    top: -75%;
+    filter: blur(160px);
+    mix-blend-mode: screen;
+    opacity: 0.55;
+    background: conic-gradient(
+      from 0deg,
+      rgba(255,200,100,0.14),
+      rgba(255,240,190,0.18),
+      rgba(255,210,120,0.12),
+      rgba(255,225,150,0.12)
+    );
+    animation: glossySpin 14s linear infinite;
+  }
+
+  .glossy-bg::after { transform: rotate(180deg); animation-delay: -7s; }
+  
+  @keyframes glossySpin { to { transform: rotate(360deg); } }
+
+  /* Page wrapper */
+  main {
+    position: relative;
+    z-index: 2;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Hero section */
+  .hero {
+    padding: 60px 40px 80px !important;
+    text-align: center;
+  }
+
+  /* Brand name at top */
+  .hero::before {
+    content: "HOTSHORT";
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    color: var(--gold-100);
+    margin-bottom: 32px;
+    text-transform: uppercase;
+    filter: drop-shadow(0 0 8px rgba(255, 200, 100, 0.3));
+  }
+
+  .hero h1 {
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #ffeeb0 0%, #ffb347 35%, #ffdd80 65%, #fff2c2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 12px rgba(255, 230, 150, 0.3));
+    margin: 0 0 12px;
+    line-height: 1.2;
+  }
+
+  .hero p {
+    font-size: 0.95rem;
+    color: rgba(255, 230, 200, 0.7);
+    margin-bottom: 40px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+
+  /* Input bar enhancement */
+  .input-bar {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 30px !important;
+  }
+
+  .input-bar input {
+    width: 420px;
+    padding: 14px 20px !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(255,200,100,0.25) !important;
+    background: rgba(255,255,255,0.06) !important;
+    backdrop-filter: blur(12px) !important;
+    color: white !important;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+  }
+
+  .input-bar input::placeholder {
+    color: rgba(255,230,200,0.5);
+  }
+
+  .input-bar input:focus {
+    outline: none !important;
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,200,100,0.5) !important;
+    box-shadow: 0 0 0 2px rgba(255,200,120,0.35),
+                0 0 40px rgba(255,200,120,0.25) !important;
+    transform: translateY(-2px);
+  }
+
+  .input-bar button {
+    padding: 14px 36px !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(255,200,100,0.35) !important;
+    background: linear-gradient(135deg, #ffb347 0%, #ffd36a 100%) !important;
+    font-weight: 700 !important;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 24px rgba(255, 180, 70, 0.25);
+    color: #1a1a1a !important;
+    white-space: nowrap;
+  }
+
+  .input-bar button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 36px rgba(255, 180, 70, 0.4);
+  }
+
+  .input-bar button:active {
+    transform: translateY(0);
+  }
+
+  /* Loader enhancement */
+  #loader {
+    display: none !important;
+    margin-top: 40px;
+    text-align: center;
+  }
+
+  #loader.active {
+    display: block !important;
+  }
+
+  .wave {
+    width: 240px;
+    height: 6px;
+    margin: 0 auto 18px;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      rgba(255,215,160,0.2),
+      rgba(255,215,160,0.95),
+      rgba(255,215,160,0.2)
+    );
+    background-size: 200% 100%;
+    animation: waveMove 1.8s ease-in-out infinite;
+    box-shadow: 0 0 20px rgba(255,215,160,0.4);
+  }
+
+  @keyframes waveMove {
+    0% { background-position: 0% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  #loaderText {
+    font-size: 0.9rem;
+    letter-spacing: 0.3px;
+    opacity: 0.85;
+    color: var(--gold-100);
+    font-weight: 500;
+  }
+  
+  /* AI Thinking Pulse */
+  .input-bar button.thinking {
+    animation: thinkingPulse 1.6s ease-in-out infinite;
+    box-shadow: 0 12px 36px rgba(255, 180, 70, 0.45), 0 0 30px rgba(255,200,120,0.12);
+    transform: translateY(-1px);
+    cursor: wait;
+    opacity: 0.98;
+  }
+
+  @keyframes thinkingPulse {
+    0% { box-shadow: 0 8px 20px rgba(255,180,70,0.15); transform: translateY(0); }
+    50% { box-shadow: 0 20px 50px rgba(255,180,70,0.32); transform: translateY(-2px); }
+    100% { box-shadow: 0 8px 20px rgba(255,180,70,0.15); transform: translateY(0); }
+  }
+
+  /* Loader subtle thinking enhancement */
+  #loader.thinking .wave {
+    box-shadow: 0 0 30px rgba(255,215,160,0.55);
+    animation-duration: 1.4s;
+  }
+
+  /* Disabled analyze button visual */
+  .input-bar button[disabled] {
+    opacity: 0.9;
+    cursor: wait;
+    filter: saturate(0.98);
+  }
+
+  /* =====================================
+     RESPONSIVE (MOBILE)
+     ===================================== */
+  @media (max-width: 768px) {
+    header {
+      padding: 16px 18px !important;
+    }
+
+    .hero {
+      padding: 44px 18px 56px !important;
+    }
+
+    .hero h1 {
+      font-size: 1.75rem;
+    }
+
+    .hero p {
+      font-size: 0.95rem;
+      margin-bottom: 28px;
+    }
+
+    .input-bar {
+      flex-direction: column;
+      align-items: stretch;
+      width: min(560px, 100%);
+      margin-left: auto;
+      margin-right: auto;
+      padding: 0 6px;
+    }
+
+    .input-bar input {
+      width: 100%;
+      max-width: none;
+    }
+
+    .input-bar button {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .wave {
+      width: min(240px, 72vw);
+    }
+  }
+
+  @media (max-width: 420px) {
+    .hero {
+      padding: 36px 14px 48px !important;
+    }
+
+    .hero h1 {
+      font-size: 1.55rem;
+    }
+
+    .input-bar input {
+      padding: 12px 16px !important;
+    }
+
+    .input-bar button {
+      padding: 12px 18px !important;
+    }
+  }
+</style>
+
+<!-- Glossy background -->
+<div class="glossy-bg"></div>
+
+<section class="hero">
+  <h1>🎬 AI That Turns Videos Into Viral Moments ⚡</h1>
+  <p>Paste a YouTube link. We analyze it. We generate viral clips automatically.</p>
+
+  <div class="input-bar">
+    <input id="yt" type="text" placeholder="Paste YouTube link (youtube.com/watch?v=...)" />
+    <button id="analyzeBtn">✨ Analyze</button>
+  </div>
+
+  <div id="loader" class="loader" aria-hidden="true">
+    <div class="wave"></div>
+    <p id="loaderText">Analyzing video… this may take 30-60 seconds</p>
+  </div>
+</section>
+
+{% endblock %}
