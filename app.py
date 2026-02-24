@@ -206,6 +206,46 @@ def _release_analyze_file_lock(lock_path: str):
     except Exception:
         pass
 
+def _generate_low_memory_moments(source_video_duration_s: float, top_k: int = 3):
+    """
+    Render-safe fallback candidate generator.
+    Uses deterministic timeline windows and avoids heavy ML/transcription paths.
+    """
+    try:
+        dur = float(source_video_duration_s or 0.0)
+    except Exception:
+        dur = 0.0
+    if dur <= 3.0:
+        return []
+
+    k = max(1, min(6, int(top_k or 3)))
+    # Keep clips short for fast ffmpeg copy and low memory.
+    clip_len = 22.0 if dur > 120 else 16.0
+    clip_len = max(10.0, min(30.0, clip_len))
+
+    start_min = 0.0
+    start_max = max(start_min, dur - clip_len - 0.5)
+    if start_max <= start_min:
+        starts = [0.0]
+    elif k == 1:
+        starts = [min(8.0, start_max)]
+    else:
+        step = (start_max - start_min) / float(k)
+        starts = [start_min + (i * step) for i in range(k)]
+
+    moments = []
+    for i, s in enumerate(starts):
+        e = min(dur, s + clip_len)
+        moments.append({
+            "start": round(float(max(0.0, s)), 2),
+            "end": round(float(max(s + 2.0, e)), 2),
+            "score": round(float(max(0.35, 0.62 - (i * 0.04))), 3),
+            "emotion": round(float(max(0.35, 0.62 - (i * 0.04))), 3),
+            "hook": round(float(max(0.35, 0.58 - (i * 0.03))), 3),
+            "text": f"Auto-selected segment #{i + 1}",
+        })
+    return moments
+
 def _semantic_quality_hash(text: str, score: float) -> str:
     """Generate cache key for semantic quality scores"""
     key = f"{text}_{score:.2f}"
@@ -1616,72 +1656,89 @@ def analyze_video():
         fast_longform_threshold_s,
         is_fast_longform,
     )
+    low_memory_mode = os.environ.get(
+        "HS_LOW_MEMORY_MODE",
+        "1" if IS_RENDER_RUNTIME else "0",
+    ).strip().lower() in ("1", "true", "yes", "on")
 
-    stage_t0 = time.time()
-    try:
-        wav_path = extract_wav(video_path)
-    except Exception as e:
-        log.error("[AUDIO] Extraction failed: %s", e)
-        return analyze_error("Audio extraction failed. Try again.", 500)
-    log.info("[TIMING] stage=extract_wav wall=%.2fs", (time.time() - stage_t0))
-
-    # Precompute transcript on clean wav and seed cache for orchestrator
     transcript_segments = []
-    stage_t0 = time.time()
-    try:
-        from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
-        from viral_finder.orchestrator import _save_cached_transcript
-        transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
-        if is_fast_longform:
-            transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
-        transcript_segments = _extract_transcript(
-            wav_path,
-            model_name=transcript_model_name,
-            prefer_gpu=True,
-            prefer_trust=False,
-        )
-        log.info("[TRANSCRIPT] model=%s segments=%d", transcript_model_name, len(transcript_segments or []))
-        _save_cached_transcript(video_path, transcript_segments or [])
-    except Exception as e:
-        log.error("[TRANSCRIPT] Prefill failed: %s", e)
-        return analyze_error("Transcription failed. Try another video.", 500)
-    log.info("[TIMING] stage=transcript wall=%.2fs", (time.time() - stage_t0))
+    wav_path = None
 
-    # --------------------------------------------------
-    # 2) Find viral moments
-    # --------------------------------------------------
-    stage_t0 = time.time()
-    try:
-        from viral_finder.orchestrator import orchestrate
-        top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
-        top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
-        min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
-
-        # Simple, strong targeting:
-        # - 20m+ videos: ask for 12 candidates (stable 9-12 output goal)
-        # - other longform: at least longform floor
-        if source_video_duration_s >= 1200:
-            top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
-        elif source_video_duration_s >= fast_longform_threshold_s:
-            # Safety floor: never under-generate for longform, even if env is stale/misconfigured.
-            top_k = max(top_k_longform, min_longform_k)
-        else:
-            top_k = top_k_default
-
-        top_k = max(3, min(20, int(top_k)))
-        moments = orchestrate(video_path, top_k=top_k)
+    if low_memory_mode:
+        # Render free tier fallback: skip heavy transcription/orchestration.
+        low_mem_top_k = int(os.environ.get("HS_LOW_MEMORY_TOP_K", "3") or 3)
+        moments = _generate_low_memory_moments(source_video_duration_s, top_k=low_mem_top_k)
         log.info(
-            "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d)",
-            top_k,
+            "[FAST-LANE] low-memory mode active top_k=%d duration=%.1fs moments=%d",
+            low_mem_top_k,
             source_video_duration_s,
-            top_k_default,
-            top_k_longform,
-            min_longform_k,
+            len(moments or []),
         )
-    except Exception as e:
-        log.exception("[ANALYZE] Orchestrator failed: %s", e)
-        return analyze_error("Analysis failed. Please try another video.", 500)
-    log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+    else:
+        stage_t0 = time.time()
+        try:
+            wav_path = extract_wav(video_path)
+        except Exception as e:
+            log.error("[AUDIO] Extraction failed: %s", e)
+            return analyze_error("Audio extraction failed. Try again.", 500)
+        log.info("[TIMING] stage=extract_wav wall=%.2fs", (time.time() - stage_t0))
+
+        # Precompute transcript on clean wav and seed cache for orchestrator
+        stage_t0 = time.time()
+        try:
+            from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
+            from viral_finder.orchestrator import _save_cached_transcript
+            transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+            if is_fast_longform:
+                transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
+            transcript_segments = _extract_transcript(
+                wav_path,
+                model_name=transcript_model_name,
+                prefer_gpu=True,
+                prefer_trust=False,
+            )
+            log.info("[TRANSCRIPT] model=%s segments=%d", transcript_model_name, len(transcript_segments or []))
+            _save_cached_transcript(video_path, transcript_segments or [])
+        except Exception as e:
+            log.error("[TRANSCRIPT] Prefill failed: %s", e)
+            return analyze_error("Transcription failed. Try another video.", 500)
+        log.info("[TIMING] stage=transcript wall=%.2fs", (time.time() - stage_t0))
+
+        # --------------------------------------------------
+        # 2) Find viral moments
+        # --------------------------------------------------
+        stage_t0 = time.time()
+        try:
+            from viral_finder.orchestrator import orchestrate
+            top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
+            top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
+            min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
+
+            # Simple, strong targeting:
+            # - 20m+ videos: ask for 12 candidates (stable 9-12 output goal)
+            # - other longform: at least longform floor
+            if source_video_duration_s >= 1200:
+                top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
+            elif source_video_duration_s >= fast_longform_threshold_s:
+                # Safety floor: never under-generate for longform, even if env is stale/misconfigured.
+                top_k = max(top_k_longform, min_longform_k)
+            else:
+                top_k = top_k_default
+
+            top_k = max(3, min(20, int(top_k)))
+            moments = orchestrate(video_path, top_k=top_k)
+            log.info(
+                "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d)",
+                top_k,
+                source_video_duration_s,
+                top_k_default,
+                top_k_longform,
+                min_longform_k,
+            )
+        except Exception as e:
+            log.exception("[ANALYZE] Orchestrator failed: %s", e)
+            return analyze_error("Analysis failed. Please try another video.", 500)
+        log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
 
     if not moments:
         return analyze_error("No viral moments detected. Try another video.", 400)
