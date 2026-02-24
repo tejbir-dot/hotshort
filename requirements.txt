@@ -6,3 +6,4 @@ stripe==9.3.0
 gunicorn==23.0.0
 requests==2.32.3
 python-dotenv==1.0.1
+Flask-Migrate==4.0.5
