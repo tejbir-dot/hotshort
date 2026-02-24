@@ -161,5 +161,5 @@ yfinance==0.2.65
 youtube-transcript-api==1.2.2
 
 Flask-Migrate==4.1.0
-yt-dlp==2026.1.21
+yt-dlp==2026.2.21
 gunicorn==23.0.0
