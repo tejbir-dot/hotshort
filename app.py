@@ -116,6 +116,10 @@ _encoding_pool = ThreadPoolExecutor(max_workers=4)  # Dedicated encoding pool
 # Prevent duplicate /analyze runs from double-clicks or repeated client submits.
 _analyze_locks = {}
 _analyze_locks_guard = threading.Lock()
+IS_RENDER_RUNTIME = (
+    str(os.environ.get("RENDER", "")).strip().lower() in ("1", "true", "yes", "on")
+    or bool(os.environ.get("RENDER_SERVICE_ID"))
+)
 
 def _acquire_analyze_lock_for_user(user_id):
     key = str(user_id)
@@ -1225,13 +1229,36 @@ def checkout():
 
 @app.route('/google_login')
 def google_login():
-    if not google.authorized:
+    def _restart_google_oauth():
+        # Clear stale oauth token so Flask-Dance starts a clean auth flow.
+        try:
+            session.pop("google_oauth_token", None)
+        except Exception:
+            pass
+        try:
+            google.token = None
+        except Exception:
+            pass
         return redirect(url_for("google.login"))
 
+    if not google.authorized:
+        return _restart_google_oauth()
 
-    # ✅ Fetch user info from Google API
-    resp = google.get("/oauth2/v2/userinfo")
-    user_info = resp.json()
+    # Fetch user info from Google API; recover gracefully on token expiry.
+    try:
+        resp = google.get("/oauth2/v2/userinfo")
+    except Exception as e:
+        err_name = e.__class__.__name__
+        if err_name in ("TokenExpiredError", "MissingTokenError", "InvalidGrantError"):
+            flash("Session expired. Please sign in again.", "info")
+            return _restart_google_oauth()
+        raise
+
+    if not getattr(resp, "ok", False):
+        flash("Google session invalid. Please sign in again.", "info")
+        return _restart_google_oauth()
+
+    user_info = resp.json() or {}
     print("[GOOGLE USER INFO]", user_info)  # for debugging
 
     email = user_info.get("email")
@@ -1239,9 +1266,10 @@ def google_login():
     picture = user_info.get("picture", None)
 
     if not email:
-        return "❌ Google account missing email permission.", 400
+        flash("Google account missing email permission. Please sign in again.", "error")
+        return _restart_google_oauth()
 
-    # ✅ Check if user already exists
+    # Check if user already exists
     user = User.query.filter_by(email=email).first()
 
     if not user:
@@ -1697,7 +1725,8 @@ def analyze_video():
     if moment_workers_cfg > 0:
         moment_workers = max(1, min(16, moment_workers_cfg))
     else:
-        moment_workers = max(4, min(12, (os.cpu_count() or 8)))
+        # Render free tier is memory-constrained; keep processing single-threaded by default.
+        moment_workers = 1 if IS_RENDER_RUNTIME else max(2, min(8, (os.cpu_count() or 4)))
     moment_results = []
     with ThreadPoolExecutor(max_workers=moment_workers) as pool:
         futures = [pool.submit(_process_moment_parallel, t) for t in tasks]
@@ -1880,8 +1909,11 @@ def analyze_video():
     if clip_workers_cfg > 0:
         clip_workers = max(1, min(16, clip_workers_cfg))
     else:
-        # Slightly higher default concurrency for copy-only clipping; capped for stability.
-        clip_workers = 8 if (world_editor_config is None) else 4
+        # Render free tier is memory-constrained; keep clip generation single-threaded by default.
+        if IS_RENDER_RUNTIME:
+            clip_workers = 1
+        else:
+            clip_workers = 4 if (world_editor_config is None) else 2
 
     log.info(
         "[CLIP] mode=stream_copy workers=%d fallback_reencode=%s preset=%s crf=%s",
@@ -3445,4 +3477,5 @@ if __name__ == "__main__":
         debug=os.getenv("FLASK_DEBUG", "0") == "1",
         threaded=True,
     )
+
 
