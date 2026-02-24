@@ -8,3 +8,4 @@ requests==2.32.3
 python-dotenv==1.0.1
 Flask-Migrate==4.0.5
 yt-dlp
+Flask-Dance==7.0.0
