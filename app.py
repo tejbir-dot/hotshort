@@ -20,9 +20,7 @@ from flask_migrate import Migrate
 from video_pipeline import generate_clip_for_job
 from routes.auth import auth  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
-from viral_finder.ultron_finder_v33 import find_viral_moments
 # from viral_finder.viral_finder_engine_v30 import find_viral_moments as backup_find
-from viral_finder.gemini_transcript_engine import warmup as warmup_transcriber  # ⚡ Pre-load model
 from utils.narrative_intelligence import (
     estimate_semantic_quality,
     detect_message_punch,
@@ -30,11 +28,22 @@ from utils.narrative_intelligence import (
     emotion_based_silence_minlen,
     compute_quality_scores,
 )
-try:
-    from effects.world_class_editor import ClipEditor, ClipEditConfig
-except Exception:
-    ClipEditor = None
-    ClipEditConfig = None
+# Keep heavy editor stack lazy to avoid OOM during Render startup.
+ClipEditor = None
+ClipEditConfig = None
+
+
+def _load_world_editor():
+    global ClipEditor, ClipEditConfig
+    if ClipEditor is None or ClipEditConfig is None:
+        try:
+            from effects.world_class_editor import ClipEditor as _ClipEditor, ClipEditConfig as _ClipEditConfig
+            ClipEditor = _ClipEditor
+            ClipEditConfig = _ClipEditConfig
+        except Exception:
+            ClipEditor = None
+            ClipEditConfig = None
+    return ClipEditor, ClipEditConfig
 
 from flask import make_response
 import browser_cookie3
@@ -655,7 +664,8 @@ app_context.push()
 # Optional warmup: disabled by default in constrained environments (e.g. Render free tier).
 if os.environ.get("HS_WARMUP_ON_STARTUP", "0").strip().lower() in ("1", "true", "yes", "on"):
     try:
-        warmup_transcriber(model_name="small", prefer_gpu=False)
+        from viral_finder.gemini_transcript_engine import warmup as _warmup_transcriber
+        _warmup_transcriber(model_name="small", prefer_gpu=False)
     except Exception as e:
         print(f"[WARMUP] Model pre-load optional, will load on first request: {e}")
 
@@ -1717,7 +1727,7 @@ def analyze_video():
     # 6) Generate clips (parallel)
     # --------------------------------------------------
     generated_clips = []
-    enable_world_editor = os.environ.get("HS_ENABLE_WORLDCLASS_EDITING", "1").strip().lower() in ("1", "true", "yes", "on")
+    enable_world_editor = os.environ.get("HS_ENABLE_WORLDCLASS_EDITING", "0").strip().lower() in ("1", "true", "yes", "on")
     edit_max_duration_s = float(os.environ.get("HS_EDIT_MAX_DURATION_SECONDS", "600") or 600.0)  # 10m
     if source_video_duration_s >= edit_max_duration_s:
         enable_world_editor = False
@@ -1728,10 +1738,14 @@ def analyze_video():
         )
     world_editor = None
     world_editor_config = None
-    if enable_world_editor and ClipEditor is not None and ClipEditConfig is not None:
+    editor_cls = None
+    editor_cfg_cls = None
+    if enable_world_editor:
+        editor_cls, editor_cfg_cls = _load_world_editor()
+    if enable_world_editor and editor_cls is not None and editor_cfg_cls is not None:
         try:
             add_captions = os.environ.get("HS_EDIT_ADD_CAPTIONS", "0").strip().lower() in ("1", "true", "yes", "on")
-            world_editor_config = ClipEditConfig(
+            world_editor_config = editor_cfg_cls(
                 target_ratio=os.environ.get("HS_EDIT_TARGET_RATIO", "9:16"),
                 translate_to=(os.environ.get("HS_EDIT_TRANSLATE_TO", "").strip() or None),
                 add_captions=add_captions,
@@ -1880,10 +1894,10 @@ def analyze_video():
         enhanced_abs_path = abs_path
         edit_metadata = {}
         edit_wall_s = 0.0
-        if world_editor_config is not None and ClipEditor is not None:
+        if world_editor_config is not None and editor_cls is not None:
             t_edit = time.time()
             try:
-                local_editor = ClipEditor(
+                local_editor = editor_cls(
                     work_dir=os.path.join(outputs_dir, "_world_edit_tmp"),
                     keep_debug_files=False,
                 )
@@ -3398,3 +3412,4 @@ if __name__ == "__main__":
         debug=os.getenv("FLASK_DEBUG", "0") == "1",
         threaded=True,
     )
+
