@@ -8,6 +8,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 import hashlib
+from dotenv import load_dotenv
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
+import os
+from flask import Flask
 from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request
 from flask_login import LoginManager, current_user, login_required, login_user
 from models.user import db, User, Clip, Job, FreeClipClaim
@@ -32,7 +37,6 @@ except Exception:
     ClipEditConfig = None
 
 from flask import make_response
-import moviepy.editor as mp
 import browser_cookie3
 from utils.clipper import cut_clip_segment
 try:
@@ -42,7 +46,7 @@ try:
 
 except Exception:
     # Fallback simple editor if the external module isn't available.
-    # Uses moviepy (already imported as `mp`) to cut a basic subclip and save it.
+    # Uses moviepy lazily inside the fallback so startup stays lightweight.
     def viral_editor_gpu(src_path, moment, out_path, transcript=None, **kwargs):
         """
         Fallback viral editor: extracts moment['start'] to moment['end'] using moviepy.
@@ -60,6 +64,7 @@ except Exception:
             # Ensure reasonable bounds only if not locked
             if end <= start:
                 end = start + 3
+            import moviepy.editor as mp
             clip = mp.VideoFileClip(src_path).subclip(start, end)
             # write_videofile can be noisy; suppress its verbose logging
             clip.write_videofile(out_path, codec="libx264", audio_codec="aac", verbose=False, logger=None)
@@ -582,7 +587,30 @@ def add_header(response):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
-app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", app.config.get("GOOGLE_OAUTH_CLIENT_SECRET", ""))
+app.config["GOOGLE_OAUTH_CLIENT_ID"] = (
+    os.getenv("GOOGLE_OAUTH_CLIENT_ID", app.config.get("GOOGLE_OAUTH_CLIENT_ID", "")) or ""
+).strip()
+app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = (
+    os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", app.config.get("GOOGLE_OAUTH_CLIENT_SECRET", "")) or ""
+).strip()
+app.logger.info(
+    "[OAUTH-DEBUG] ENV CLIENT_ID=%r",
+    os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] ENV CLIENT_SECRET_SET=%s LEN=%d",
+    bool(os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")),
+    len(os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or ""),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] CFG CLIENT_ID=%r",
+    app.config.get("GOOGLE_OAUTH_CLIENT_ID"),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] CFG CLIENT_SECRET_SET=%s LEN=%d",
+    bool(app.config.get("GOOGLE_OAUTH_CLIENT_SECRET")),
+    len(app.config.get("GOOGLE_OAUTH_CLIENT_SECRET") or ""),
+)
 
 from flask_dance.contrib.google import make_google_blueprint, google
 
@@ -624,11 +652,12 @@ app.register_blueprint(admin_bp, url_prefix="/admin")
 app_context = app.app_context()
 app_context.push()
 
-# ⚡ WARMUP: Pre-load Whisper model on startup (eliminates first-request delay)
-try:
-    warmup_transcriber(model_name="small", prefer_gpu=True)
-except Exception as e:
-    print(f"[WARMUP] Model pre-load optional, will load on first request: {e}")
+# Optional warmup: disabled by default in constrained environments (e.g. Render free tier).
+if os.environ.get("HS_WARMUP_ON_STARTUP", "0").strip().lower() in ("1", "true", "yes", "on"):
+    try:
+        warmup_transcriber(model_name="small", prefer_gpu=False)
+    except Exception as e:
+        print(f"[WARMUP] Model pre-load optional, will load on first request: {e}")
 
 # In-memory job queues and threads for async processing
 job_queues = {}
