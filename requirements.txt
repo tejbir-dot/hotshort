@@ -165,3 +165,4 @@ yt-dlp==2026.2.21
 gunicorn==23.0.0
 Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
+browser-cookie3==0.20.1
