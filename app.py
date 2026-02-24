@@ -131,16 +131,49 @@ def _acquire_analyze_lock_for_user(user_id):
 def _analyze_file_lock_path(user_id) -> str:
     return os.path.join(tempfile.gettempdir(), f"hs_analyze_user_{str(user_id)}.lock")
 
+def _read_lock_pid(lock_path: str):
+    try:
+        with open(lock_path, "r", encoding="utf-8", errors="ignore") as f:
+            head = f.read(128)
+        m = re.search(r"pid=(\d+)", head or "")
+        if m:
+            return int(m.group(1))
+    except Exception:
+        pass
+    return None
+
+def _pid_is_alive(pid: int) -> bool:
+    try:
+        if pid is None or int(pid) <= 0:
+            return False
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists but we do not have permission to signal it.
+        return True
+    except Exception:
+        return False
+
 def _acquire_analyze_file_lock_for_user(user_id):
     """
     Cross-process lock to prevent duplicate analyze runs when multiple worker
     processes exist (e.g., debug reloader / multi-process serving).
     """
     lock_path = _analyze_file_lock_path(user_id)
-    stale_after_s = int(os.environ.get("HS_ANALYZE_LOCK_STALE_SECONDS", "7200") or 7200)
+    stale_after_s = int(os.environ.get("HS_ANALYZE_LOCK_STALE_SECONDS", "900") or 900)
 
     try:
         if os.path.exists(lock_path):
+            # If lock owner pid is gone, recover immediately.
+            lock_pid = _read_lock_pid(lock_path)
+            if lock_pid is not None and not _pid_is_alive(lock_pid):
+                try:
+                    os.remove(lock_path)
+                except Exception:
+                    pass
+
             age_s = time.time() - os.path.getmtime(lock_path)
             if age_s > float(stale_after_s):
                 try:
