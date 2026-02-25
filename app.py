@@ -1361,6 +1361,11 @@ import os, logging, random, math
 
 log = logging.getLogger(__name__)
 
+
+class YoutubeRateLimitError(Exception):
+    """Raised when YouTube returns HTTP 429 / rate limiting from yt-dlp."""
+
+
 def _qa_mode_enabled() -> bool:
     return str(os.getenv("HS_QA_MODE", "0")).strip().lower() in ("1", "true", "yes", "on")
 
@@ -1636,6 +1641,12 @@ def analyze_video():
     video_path = None
     try:
         video_path = download_youtube_video(youtube_url, job_id=job_id)
+    except YoutubeRateLimitError as e:
+        log.warning("[ANALYZE] Download rate-limited by YouTube: %s", e)
+        return analyze_error(
+            "YouTube temporarily limited downloads from this server. Please retry in 1–2 minutes.",
+            429,
+        )
     except Exception as e:
         log.warning("[ANALYZE] Download error: %s", e)
     log.info("[TIMING] stage=download wall=%.2fs", (time.time() - stage_t0))
@@ -2516,11 +2527,13 @@ import os
 import re
 import browser_cookie3
 
+
 def download_youtube_video(url, output_dir="downloads", job_id=None):
     """
     Deterministic blocking download (rollback mode):
     - No cache, no fallback, no fragment or chunk flags.
     - Single yt-dlp call; returns merged MP4 path or None on failure.
+    - Hardened with retries + backoff + extractor_args to reduce 429s.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -2532,19 +2545,41 @@ def download_youtube_video(url, output_dir="downloads", job_id=None):
     except Exception:
         safe_job = None
 
+    low_memory_mode = os.environ.get(
+        "HS_LOW_MEMORY_MODE",
+        "1" if IS_RENDER_RUNTIME else "0",
+    ).strip().lower() in ("1", "true", "yes", "on")
+    default_format = (
+        "worst[ext=mp4][protocol!=dash]/worst[protocol!=dash]"
+        if low_memory_mode
+        else "best[ext=mp4][protocol!=dash]/best[protocol!=dash]"
+    )
+    ytdlp_format = (os.environ.get("HS_YTDLP_FORMAT", default_format) or default_format).strip()
+
     ydl_opts = {
-        # Force progressive MP4; forbid DASH to avoid fragment races
-        "format": "best[ext=mp4][protocol!=dash]/best[protocol!=dash]",
+        # Force progressive MP4; forbid DASH to avoid fragment races.
+        "format": ytdlp_format,
         "merge_output_format": "mp4",
         # IMPORTANT: never reuse %(id)s when concurrent requests hit the same video.
         "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
         "quiet": True,
         "noplaylist": True,
         "concurrent_fragment_downloads": 1,  # extra safety; should be unused when DASH is excluded
+        # Retries + backoff to reduce transient 429s on shared IPs.
+        "retries": 5,
+        "fragment_retries": 5,
+        "sleep_interval": 5,
+        "max_sleep_interval": 15,
+        # Prefer Android client which is typically less aggressively rate-limited.
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android"],
+            }
+        },
     }
 
     try:
-        print("[DOWNLOAD] yt-dlp starting")
+        log.info("[ANALYZE] Starting yt-dlp download job_id=%s url=%s", safe_job, url)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             # When merge_output_format=mp4, prefer the deterministic output path
@@ -2557,10 +2592,24 @@ def download_youtube_video(url, output_dir="downloads", job_id=None):
                 file_path = ydl.prepare_filename(info)
                 if (not os.path.exists(file_path)) and os.path.exists(file_path + ".mp4"):
                     file_path = file_path + ".mp4"
-        print(f"[DOWNLOAD] {os.path.basename(file_path)} complete")
+        log.info(
+            "[ANALYZE] yt-dlp download finished job_id=%s file=%s",
+            safe_job,
+            os.path.basename(file_path),
+        )
         return file_path
     except Exception as e:
-        print(f"[DOWNLOAD ERROR] {e}")
+        msg = str(e) or repr(e)
+        # Surface rate-limits explicitly so the caller can provide a better UX.
+        if "HTTP Error 429" in msg or "Too Many Requests" in msg or "429:" in msg:
+            log.warning(
+                "[DOWNLOAD] YouTube rate limited this IP (HTTP 429 / Too Many Requests). url=%s msg=%s",
+                url,
+                msg,
+            )
+            raise YoutubeRateLimitError(msg)
+
+        log.error("[DOWNLOAD ERROR] yt-dlp failed url=%s error=%s", url, msg)
         return None
 
 

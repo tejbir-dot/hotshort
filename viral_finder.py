@@ -63,42 +63,60 @@ def download_audio(video_id: str):
     print(f"🧩 Using cookies: {os.path.exists(cookie_path)}")
 
     ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': f"temp_audio_{video_id}.%(ext)s",
-        'quiet': True,
-        'noplaylist': True,
-        'nocheckcertificate': True,
-        'socket_timeout': 30,
-        'max_downloads': 1,
-        'http_chunk_size': 10485760,  # 10MB chunks
-        # Anti-blocking measures for HTTP 403 errors
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-us,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
+        "format": "bestaudio/best",
+        "outtmpl": f"temp_audio_{video_id}.%(ext)s",
+        "quiet": True,
+        "noplaylist": True,
+        "nocheckcertificate": True,
+        "socket_timeout": 30,
+        "max_downloads": 1,
+        "http_chunk_size": 10485760,  # 10MB chunks
+        # Retries + backoff to reduce transient 429s on shared IPs.
+        "retries": 5,
+        "fragment_retries": 5,
+        "sleep_interval": 5,
+        "max_sleep_interval": 15,
+        # Prefer Android client which is typically less aggressively rate-limited.
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android"],
+            }
         },
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+        # Anti-blocking measures for HTTP 403 errors
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-us,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        },
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
     }
-    
+
     # Add cookie file only if it exists
     if os.path.exists(cookie_path):
-        ydl_opts['cookiefile'] = cookie_path
+        ydl_opts["cookiefile"] = cookie_path
 
     try:
+        print("[TRANSCRIPT] Starting yt-dlp audio download…")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         print(f"✅ Audio downloaded successfully → {output_file}")
         return output_file
     except Exception as e:
-        print("❌ Audio download failed:", e)
+        msg = str(e) or repr(e)
+        if "HTTP Error 429" in msg or "Too Many Requests" in msg or "429:" in msg:
+            print("❌ Audio download rate-limited by YouTube (HTTP 429). Please retry in 1–2 minutes.")
+        else:
+            print("❌ Audio download failed:", msg)
         return None
 
 # -----------------------------------------------------------
