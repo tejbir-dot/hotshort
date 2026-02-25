@@ -2,7 +2,8 @@ import os
 
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-prod")
+    # Treat empty env var as missing so sessions always have a usable key.
+    SECRET_KEY = os.getenv("SECRET_KEY") or "change-me-in-prod"
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     DB_DIR = os.path.join(BASE_DIR, "data")
 
