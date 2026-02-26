@@ -11,10 +11,17 @@ class User(db.Model, UserMixin):
     password = db.Column(db.String(200))
     name = db.Column(db.String(120))
     profile_pic = db.Column(db.String(300))
+    # Legacy billing label (kept for Stripe/backwards compatibility)
     subscription_plan = db.Column(db.String(50), default="free")
     subscription_status = db.Column(db.String(50), default="active")
     clips_this_week = db.Column(db.Integer, default=0)
     last_reset = db.Column(db.DateTime, default=datetime.utcnow)
+    # New unified pricing state
+    # "trial", "starter", "pro", "industry"
+    plan_type = db.Column(db.String(50), default="trial", nullable=False)
+    # Free trial usage accounting (server authoritative)
+    trial_analyze_count = db.Column(db.Integer, default=0, nullable=False)
+    trial_clip_exports = db.Column(db.Integer, default=0, nullable=False)
 
 class FreeClipClaim(db.Model):
     __tablename__ = "free_clip_claim"

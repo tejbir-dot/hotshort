@@ -257,26 +257,53 @@
     </section>
 
     <main class="plans" id="plansGrid">
-      <!-- Free -->
-      <div class="plan" data-plan="free">
-        <div class="badge">Free</div>
-        <h2>Free</h2>
-        <div class="price">$0<span style="font-weight:600; font-size:0.9rem; color:var(--muted)"> / month</span></div>
-        <div class="desc">Test HotShort with 3 free watermarked downloads.</div>
+      <!-- Free Trial (not a plan) -->
+      <div class="plan" data-plan="trial">
+        <div class="badge">Free Trial</div>
+        <h2>Free Trial</h2>
+        <div class="price">$0<span style="font-weight:600; font-size:0.9rem; color:var(--muted)"> / limited preview</span></div>
+        <div class="desc">1 full analyze, up to 10 minutes and 3 watermarked clip exports.</div>
 
         <div class="features">
-          <div class="f"><span class="dot"></span> 3 watermarked downloads only</div>
-          <div class="f"><span class="dot"></span> Limited quality</div>
-          <div class="f"><span class="dot"></span> Watermark on output</div>
+          <div class="f"><span class="dot"></span> 1 full analyze total</div>
+          <div class="f"><span class="dot"></span> Max 10 min video length</div>
+          <div class="f"><span class="dot"></span> Up to 3 clip exports</div>
+          <div class="f"><span class="dot"></span> Watermark on all exports</div>
+          <div class="f"><span class="dot"></span> Standard processing priority</div>
         </div>
 
         <div class="meta-row">
-          <div>Quick start</div>
-          <div style="color:var(--muted)">✔️</div>
+          <div>Best for</div>
+          <div style="color:var(--muted)">Quick product preview</div>
         </div>
 
         <div class="cta">
-          <a class="btn" href="/create-checkout-session/free">Try Free</a>
+          <a class="btn" href="/dashboard">Start Free Trial</a>
+        </div>
+      </div>
+
+      <!-- Starter -->
+      <div class="plan" data-plan="starter">
+        <div class="badge">Starter</div>
+        <h2>Starter</h2>
+        <div class="price">$6 <span style="font-weight:600; font-size:0.88rem; color:var(--muted)">/ month</span></div>
+        <div class="desc">$6/month — Built for consistent solo creators.</div>
+
+        <div class="features">
+          <div class="f"><span class="dot"></span> Unlimited analyzes</div>
+          <div class="f"><span class="dot"></span> Max 20 min video length</div>
+          <div class="f"><span class="dot"></span> Watermark on exports</div>
+          <div class="f"><span class="dot"></span> Standard processing priority</div>
+          <div class="f"><span class="dot"></span> SD exports only (no HD)</div>
+        </div>
+
+        <div class="meta-row">
+          <div>Best for</div>
+          <div style="color:var(--muted)">Solo creators testing formats</div>
+        </div>
+
+        <div class="cta">
+          <a class="btn" href="/create-checkout-session/starter">Choose Starter</a>
         </div>
       </div>
 
@@ -284,55 +311,52 @@
       <div class="plan popular" data-plan="pro">
         <div class="ribbon">MOST POPULAR</div>
         <h2>Pro</h2>
-        <div class="price" id="proPrice">$6 <span style="font-weight:600; font-size:0.88rem; color:var(--muted)">/ month</span></div>
-        <div class="desc">$6/month — Built for serious creators</div>
+        <div class="price">$14 <span style="font-weight:600; font-size:0.88rem; color:var(--muted)">/ month</span></div>
+        <div class="desc">$14/month — For serious creators shipping content daily.</div>
 
         <div class="features">
-          <div class="f"><span class="dot"></span> No watermark</div>
-          <div class="f"><span class="dot"></span> Quality Mode export</div>
-          <div class="f"><span class="dot"></span> Unlimited clips</div>
-          <div class="f"><span class="dot"></span> Faster processing</div>
-          <div class="f"><span class="dot"></span> Cancel anytime</div>
+          <div class="f"><span class="dot"></span> Unlimited analyzes</div>
+          <div class="f"><span class="dot"></span> Max 30 min video length</div>
+          <div class="f"><span class="dot"></span> No watermark on exports</div>
+          <div class="f"><span class="dot"></span> HD export enabled</div>
+          <div class="f"><span class="dot"></span> Faster processing priority</div>
+          <div class="f"><span class="dot"></span> Improved clip scoring</div>
         </div>
-
-        <div class="addon" id="proAddons">No add-ons</div>
-
-        <div class="meta-row">
-          <div>Support</div>
-          <div style="color:var(--muted)">Email</div>
-        </div>
-
-        <div class="cta">
-          <a class="btn" id="proCheckout" href="/create-checkout-session/pro">Unlock Pro</a>
-          <a class="ghost" href="/pricing-details">Details</a>
-        </div>
-      </div>
-
-      <!-- Creator -->
-      <div class="plan" data-plan="creator">
-        <div class="badge" style="right:auto; left:14px; top:14px">For Teams & High-Output Creators</div>
-        <h2>Creator</h2>
-        <div class="price" id="creatorPrice">$49 <span style="font-weight:600; font-size:0.88rem; color:var(--muted)">/ month</span></div>
-        <div class="desc">For Teams & High-Output Creators</div>
-
-        <div class="features">
-          <div class="f"><span class="dot"></span> Everything in Pro</div>
-          <div class="f"><span class="dot"></span> Priority processing</div>
-          <div class="f"><span class="dot"></span> Best Pick boost</div>
-          <div class="f"><span class="dot"></span> High-volume workflows</div>
-          <div class="f"><span class="dot"></span> Early access to new models</div>
-        </div>
-
-        <div class="addon" id="creatorAddons">No add-ons</div>
 
         <div class="meta-row">
           <div>Best for</div>
-          <div style="color:var(--muted)">Agencies & teams</div>
+          <div style="color:var(--muted)">Creators and small teams</div>
         </div>
 
         <div class="cta">
-          <a class="btn" id="creatorCheckout" href="/create-checkout-session/creator">Go Creator</a>
-          <a class="ghost" href="/contact-sales">Contact</a>
+          <a class="btn" href="/create-checkout-session/pro">Unlock Pro</a>
+        </div>
+      </div>
+
+      <!-- Industry -->
+      <div class="plan" data-plan="industry">
+        <div class="badge" style="right:auto; left:14px; top:14px">For Agencies & Brands</div>
+        <h2>Industry</h2>
+        <div class="price">$35 <span style="font-weight:600; font-size:0.88rem; color:var(--muted)">/ month</span></div>
+        <div class="desc">For high-volume teams that need the fastest pipeline.</div>
+
+        <div class="features">
+          <div class="f"><span class="dot"></span> Unlimited analyzes</div>
+          <div class="f"><span class="dot"></span> Max 60 min video length</div>
+          <div class="f"><span class="dot"></span> No watermark on exports</div>
+          <div class="f"><span class="dot"></span> HD export enabled</div>
+          <div class="f"><span class="dot"></span> Fastest processing priority</div>
+          <div class="f"><span class="dot"></span> Bulk processing enabled</div>
+          <div class="f"><span class="dot"></span> Advanced AI scoring</div>
+        </div>
+
+        <div class="meta-row">
+          <div>Best for</div>
+          <div style="color:var(--muted)">Studios, agencies & brands</div>
+        </div>
+
+        <div class="cta">
+          <a class="btn" href="/create-checkout-session/industry">Go Industry</a>
         </div>
       </div>
     </main>
@@ -343,109 +367,7 @@
   </div>
 
   <script>
-    // Config
-    const base = {
-      proMonthly: 6,
-      creatorMonthly: 49,
-      geniusMonthlyAdd: 15,     // extra per month for Genius AI
-      artisticMonthlyAdd: 9     // extra per month for Artistic Mode
-    };
-
-    // State
-    let annual = false;
-    let genius = false;
-    let artistic = false;
-
-    const annualToggle = document.getElementById('annualToggle');
-    const geniusToggle = document.getElementById('geniusToggle');
-    const artToggle = document.getElementById('artToggle');
-
-    const proPriceEl = document.getElementById('proPrice');
-    const creatorPriceEl = document.getElementById('creatorPrice');
-    const proAddonsEl = document.getElementById('proAddons');
-    const creatorAddonsEl = document.getElementById('creatorAddons');
-
-    // Helpers
-    function fmt(n){ return '$' + n.toFixed(0); }
-    function calcPrice(monthly){
-      if(annual) {
-        const yearly = monthly * 12 * 0.8; // 20% off
-        return fmt(yearly/12) + ' (billed annually)';
-      }
-      return fmt(monthly) + ' / month';
-    }
-
-    function updateUI(){
-      // compute base prices
-      let proPrice = base.proMonthly;
-      let creatorPrice = base.creatorMonthly;
-
-      // add add-ons if enabled
-      const addons = [];
-      if(genius){
-        proPrice += base.geniusMonthlyAdd;
-        creatorPrice += base.geniusMonthlyAdd;
-        addons.push('Genius AI');
-      }
-      if(artistic){
-        proPrice += base.artisticMonthlyAdd;
-        creatorPrice += base.artisticMonthlyAdd;
-        addons.push('Artistic Mode');
-      }
-      // update DOM
-      proPriceEl.textContent = calcPrice(proPrice);
-      creatorPriceEl.textContent = calcPrice(creatorPrice);
-      proAddonsEl.textContent = addons.length ? 'Add-ons: ' + addons.join(' • ') : 'No add-ons';
-      creatorAddonsEl.textContent = addons.length ? 'Add-ons: ' + addons.join(' • ') : 'No add-ons';
-
-      // toggle button text
-      geniusToggle.textContent = genius ? 'Enabled' : 'Enable';
-      artToggle.textContent = artistic ? 'Enabled' : 'Enable';
-      annualToggle.setAttribute('aria-pressed', annual ? 'true' : 'false');
-
-      // visual state for toggle
-      if(annual) annualToggle.classList.add('active'); else annualToggle.classList.remove('active');
-      geniusToggle.style.background = genius ? 'linear-gradient(90deg,#ffd36a,#ffb347)' : '';
-      artToggle.style.background = artistic ? 'linear-gradient(90deg,#ffd36a,#ffb347)' : '';
-    }
-
-    // Wire events
-    annualToggle.addEventListener('click', () => {
-      annual = !annual;
-      updateUI();
-    });
-
-    geniusToggle.addEventListener('click', () => {
-      genius = !genius;
-      updateUI();
-    });
-
-    artToggle.addEventListener('click', () => {
-      artistic = !artistic;
-      updateUI();
-    });
-
-    // Hook: Checkout links should carry selected add-ons (simple query params)
-    document.getElementById('proCheckout').addEventListener('click', (ev) => {
-      ev.preventDefault();
-      const baseHref = '/create-checkout-session/pro';
-      const params = new URLSearchParams();
-      if(genius) params.set('genius','1');
-      if(artistic) params.set('art','1');
-      if(annual) params.set('billing','annual');
-      window.location = baseHref + '?' + params.toString();
-    });
-    document.getElementById('creatorCheckout').addEventListener('click', (ev) => {
-      ev.preventDefault();
-      const baseHref = '/create-checkout-session/creator';
-      const params = new URLSearchParams();
-      if(genius) params.set('genius','1');
-      if(artistic) params.set('art','1');
-      if(annual) params.set('billing','annual');
-      window.location = baseHref + '?' + params.toString();
-    });
-
-    // Context-aware copy: Check if redirected from weekly limit
+    // Context-aware copy: Check if redirected from limits
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('reason') === 'limit') {
       const subtitleEl = document.querySelector('.hero p');
