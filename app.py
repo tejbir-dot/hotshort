@@ -850,48 +850,69 @@ stripe.api_key = app.config['STRIPE_SECRET_KEY']
 @login_required
 def create_checkout_session(plan):
     price_lookup = {
+        # Free trial is not a recurring plan; keep for legacy safety.
         "free": 0,
+        # New premium structure (USD / month)
         "starter": 6,
-        "pro": 6,
-        "creator": 49,
-        "studio": 49,
+        "pro": 14,
+        "industry": 35,
     }
 
-    if plan not in price_lookup:
+    # Map legacy plan slugs into the new structure without breaking Stripe.
+    alias = {
+        "creator": "pro",
+        "studio": "industry",
+    }
+
+    plan_key = (plan or "").strip().lower()
+    plan_key = alias.get(plan_key, plan_key)
+
+    if plan_key not in price_lookup:
         return "Invalid plan", 400
 
-    if plan == "starter":
-        plan = "pro"
-    if plan == "studio":
-        plan = "creator"
-
-    amount = price_lookup[plan]
+    amount = price_lookup[plan_key]
     qa_event(
         "checkout_start",
         user_id=getattr(current_user, "id", None),
-        plan=plan,
+        plan=plan_key,
         amount_usd=amount,
     )
 
     if amount == 0:
         current_user.subscription_plan = "Free"
         current_user.subscription_status = "Active"
+        # Free -> keep user in trial bucket.
+        try:
+            current_user.plan_type = "trial"
+        except Exception:
+            pass
         db.session.commit()
         return redirect(url_for("dashboard"))
 
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],
         mode="subscription",
+        # Attach metadata so webhooks can map subscriptions back to users.
+        metadata={
+            "user_id": str(getattr(current_user, "id", "")),
+            "plan_type": plan_key,
+        },
+        subscription_data={
+            "metadata": {
+                "user_id": str(getattr(current_user, "id", "")),
+                "plan_type": plan_key,
+            }
+        },
         line_items=[{
             "price_data": {
                 "currency": "usd",
-                "product_data": {"name": f"HotShort {plan.capitalize()} Plan"},
+                "product_data": {"name": f"HotShort {plan_key.capitalize()} Plan"},
                 "unit_amount": amount * 100,  # Stripe expects cents
                 "recurring": {"interval": "month"},
             },
             "quantity": 1
         }],
-        success_url=url_for("payment_success", plan=plan, _external=True),
+        success_url=url_for("payment_success", plan=plan_key, _external=True),
         cancel_url=url_for("subscription", _external=True)
     )
 
@@ -901,22 +922,151 @@ def create_checkout_session(plan):
 @app.route("/payment-success/<plan>")
 @login_required
 def payment_success(plan):
-    current_user.subscription_plan = plan.capitalize()
+    normalized = (plan or "").strip().lower()
+    # Keep legacy slugs working while normalizing plan_type.
+    normalized = {"studio": "industry", "creator": "pro"}.get(normalized, normalized)
+
+    current_user.subscription_plan = normalized.capitalize()
     current_user.subscription_status = "Active"
+    if normalized in VALID_PLAN_TYPES:
+        try:
+            current_user.plan_type = normalized
+        except Exception:
+            pass
     db.session.commit()
     qa_event(
         "payment_success",
         user_id=getattr(current_user, "id", None),
-        plan=plan,
+        plan=normalized,
     )
-    return render_template("success.html", plan=plan.capitalize())
+    return render_template("success.html", plan=normalized.capitalize())
 
 @app.route('/subscribe/<plan>')
 @login_required
 def subscribe(plan):
-    current_user.subscription_plan = plan.capitalize()
+    normalized = (plan or "").strip().lower()
+    normalized = {"studio": "industry", "creator": "pro"}.get(normalized, normalized)
+
+    current_user.subscription_plan = normalized.capitalize()
+    if normalized in VALID_PLAN_TYPES:
+        try:
+            current_user.plan_type = normalized
+        except Exception:
+            pass
     db.session.commit()
     return redirect(url_for('dashboard'))
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    """
+    Stripe webhook: keeps plan_type in sync with real billing state.
+
+    Server-side truth comes from Stripe events, not session state.
+    """
+    payload = request.data
+    sig_header = request.headers.get("Stripe-Signature", "")
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET") or ""
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload=payload,
+            sig_header=sig_header,
+            secret=webhook_secret,
+        )
+    except stripe.error.SignatureVerificationError:
+        log.warning("[STRIPE] Invalid webhook signature")
+        return jsonify({"error": "invalid_signature"}), 400
+    except Exception as e:
+        log.warning("[STRIPE] Invalid webhook payload: %s", e)
+        return jsonify({"error": "invalid_payload"}), 400
+
+    def _find_user_from_metadata(obj) -> User | None:
+        try:
+            metadata = (obj.get("metadata") or {}) if isinstance(obj, dict) else {}
+            user_id_raw = metadata.get("user_id")
+            if not user_id_raw:
+                return None
+            return User.query.get(int(user_id_raw))
+        except Exception:
+            return None
+
+    def _downgrade_to_trial(user: User, reason: str) -> None:
+        if not user:
+            return
+        try:
+            user.plan_type = "trial"
+            user.subscription_plan = "Free"
+            user.subscription_status = "Canceled"
+            db.session.commit()
+            log.info("[STRIPE] User %s downgraded to trial (%s)", user.id, reason)
+        except Exception:
+            db.session.rollback()
+            log.exception("[STRIPE] Failed to downgrade user %s to trial", getattr(user, "id", None))
+
+    etype = event.get("type")
+    data_obj = event.get("data", {}).get("object", {}) or {}
+
+    # Subscription-level lifecycle: cancellation / terminal failure / in-place upgrades.
+    if etype in ("customer.subscription.deleted", "customer.subscription.updated"):
+        subscription = data_obj
+        status = str(subscription.get("status") or "").lower()
+        user = _find_user_from_metadata(subscription)
+
+        # Only downgrade on bad terminal states, not during normal plan changes.
+        if status in ("canceled", "unpaid", "incomplete_expired"):
+            _downgrade_to_trial(user, reason=f"subscription_status={status}")
+        # For active subscriptions, trust metadata["plan_type"] to keep plan_type in sync
+        # when users upgrade/downgrade within paid tiers (Starter ↔ Pro ↔ Industry).
+        elif status == "active" and user is not None:
+            try:
+                metadata = (subscription.get("metadata") or {}) if isinstance(subscription, dict) else {}
+                new_plan = str(metadata.get("plan_type") or "").strip().lower()
+                if new_plan in VALID_PLAN_TYPES and new_plan != "trial":
+                    user.plan_type = new_plan
+                    user.subscription_plan = new_plan.capitalize()
+                    user.subscription_status = "Active"
+                    db.session.commit()
+                    log.info("[STRIPE] User %s plan_type updated via webhook -> %s", user.id, new_plan)
+            except Exception:
+                db.session.rollback()
+                log.exception("[STRIPE] Failed to sync active subscription plan_type for user %s", getattr(user, "id", None))
+
+    # Invoice failures can also signal billing issues; be conservative and
+    # downgrade only when the linked subscription is in a bad state.
+    elif etype == "invoice.payment_failed":
+        invoice = data_obj
+        sub_id = invoice.get("subscription")
+        user = None
+        # Prefer metadata on subscription if available.
+        if sub_id:
+            try:
+                sub = stripe.Subscription.retrieve(sub_id)
+                status = str(sub.get("status") or "").lower()
+                if status in ("canceled", "unpaid", "incomplete_expired"):
+                    user = _find_user_from_metadata(sub)
+                    _downgrade_to_trial(user, reason=f"invoice_failed status={status}")
+            except Exception:
+                log.exception("[STRIPE] Failed to inspect subscription for invoice.payment_failed")
+
+    # Successful invoices keep subscription_status fresh but do not change plan_type.
+    elif etype == "invoice.payment_succeeded":
+        invoice = data_obj
+        sub_id = invoice.get("subscription")
+        try:
+            sub = stripe.Subscription.retrieve(sub_id) if sub_id else None
+        except Exception:
+            sub = None
+        user = _find_user_from_metadata(sub or invoice)
+        if user:
+            try:
+                user.subscription_status = "Active"
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                log.exception("[STRIPE] Failed to mark user %s subscription_status=Active", user.id)
+
+    return jsonify({"received": True}), 200
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -1395,6 +1545,83 @@ import json
 
 FREE_CLIP_LIMIT = 3
 
+VALID_PLAN_TYPES = {"trial", "starter", "pro", "industry"}
+
+PLAN_LIMITS = {
+    "trial": {
+        "max_duration_seconds": 600,
+        "watermark": True,
+        "priority": "standard",
+        "hd_enabled": False,
+        "bulk_enabled": False,
+        "advanced_ai": False,
+    },
+    "starter": {
+        "max_duration_seconds": 1200,
+        "watermark": True,
+        "priority": "standard",
+        "hd_enabled": False,
+        "bulk_enabled": False,
+        "advanced_ai": False,
+    },
+    "pro": {
+        "max_duration_seconds": 1800,
+        "watermark": False,
+        "priority": "fast",
+        "hd_enabled": True,
+        "bulk_enabled": False,
+        "advanced_ai": True,
+    },
+    "industry": {
+        "max_duration_seconds": 3600,
+        "watermark": False,
+        "priority": "fastest",
+        "hd_enabled": True,
+        "bulk_enabled": True,
+        "advanced_ai": True,
+    },
+}
+
+
+def get_user_plan_type(user) -> str:
+    """
+    Resolve the effective HOTSHORT plan for a user.
+    Prefers the new `plan_type` field, falls back to legacy `subscription_plan`.
+    """
+    raw = (getattr(user, "plan_type", None) or "").strip().lower()
+    if raw in VALID_PLAN_TYPES:
+        return raw
+
+    legacy = (getattr(user, "subscription_plan", None) or "").strip().lower()
+    if legacy in ("pro", "creator"):
+        return "pro"
+    if legacy in ("starter",):
+        return "starter"
+    if legacy in ("studio",):
+        return "industry"
+
+    # All other legacy / unspecified users are treated as in free trial.
+    return "trial"
+
+
+def get_plan_limits(plan_type: str) -> dict:
+    """
+    HOTSHORT pricing limits for a given plan_type.
+
+    Returns a copy of the limits dict with keys:
+      - max_duration_seconds
+      - watermark
+      - priority
+      - hd_enabled
+      - bulk_enabled
+      - advanced_ai
+    """
+    key = (plan_type or "trial").strip().lower()
+    base = PLAN_LIMITS.get(key, PLAN_LIMITS["trial"])
+    # Return a shallow copy so callers can modify safely.
+    return dict(base)
+
+
 def tier_key(user) -> str:
     p = (getattr(user, "subscription_plan", None) or "free").strip().lower()
     if p == "starter":
@@ -1406,7 +1633,9 @@ def tier_key(user) -> str:
     return "free"
 
 def is_paid(user) -> bool:
-    return tier_key(user) in ("pro", "creator")
+    # Treat any non-trial HOTSHORT plan as paid for feature gating.
+    plan_type = get_user_plan_type(user)
+    return plan_type in ("starter", "pro", "industry")
 
 def _ensure_free_claim_table() -> None:
     try:
@@ -1415,31 +1644,37 @@ def _ensure_free_claim_table() -> None:
         pass
 
 def get_free_status(user) -> dict:
-    _ensure_free_claim_table()
+    """
+    Lightweight status object for frontend to reason about trial usage.
 
-    if is_paid(user):
+    Under the new pricing model:
+      - Only `plan_type == "trial"` is limited.
+      - Starter/Pro/Industry are treated as fully paid for this API.
+    """
+    plan_type = get_user_plan_type(user)
+
+    if plan_type != "trial":
         return {
             "is_paid": True,
             "free_clips_used": 0,
             "free_downloads_used": 0,
             "free_clips_left": FREE_CLIP_LIMIT,
             "claimed_clip_ids": [],
+            "plan_type": plan_type,
         }
 
     try:
-        rows = db.session.query(FreeClipClaim.clip_id).filter(FreeClipClaim.user_id == user.id).all()
-        claimed = [int(r[0]) for r in rows if r and r[0] is not None]
+        used = int(getattr(user, "trial_clip_exports", 0) or 0)
     except Exception:
-        claimed = []
-
-    used = len(set(claimed))
+        used = 0
     left = max(0, FREE_CLIP_LIMIT - used)
     return {
         "is_paid": False,
         "free_clips_used": used,
         "free_downloads_used": used,
         "free_clips_left": left,
-        "claimed_clip_ids": sorted(set(claimed)),
+        "claimed_clip_ids": [],
+        "plan_type": plan_type,
     }
 
 @app.route("/analyze", methods=["POST"])
@@ -1480,6 +1715,28 @@ def analyze_video():
                 "redirect": redirect_url
             }), 200
         return redirect(redirect_url)
+
+    # Resolve current plan + limits once for this request.
+    plan_type = get_user_plan_type(current_user)
+    plan_limits = get_plan_limits(plan_type)
+
+    # Enforce trial analyze quota before doing any heavy work.
+    if plan_type == "trial":
+        try:
+            used = int(getattr(current_user, "trial_analyze_count", 0) or 0)
+        except Exception:
+            used = 0
+        if used >= 1:
+            if wants_json_response():
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": "TRIAL_USED",
+                        "redirect": "/pricing",
+                    }
+                ), 403
+            flash("Your free trial analyze has been used. Upgrade to continue.", "error")
+            return redirect("/pricing")
 
     # One active analyze per user at a time (prevents duplicate jobs/log spam).
     user_id_for_lock = getattr(current_user, "id", None)
@@ -1657,6 +1914,35 @@ def analyze_video():
         return analyze_error("We couldn't download this video. Try again.", 400)
 
     source_video_duration_s = probe_media_duration(video_path)
+
+    # Enforce max video duration per plan.
+    try:
+        max_duration_s = float(plan_limits.get("max_duration_seconds", 0) or 0)
+    except Exception:
+        max_duration_s = 0.0
+    if max_duration_s > 0 and source_video_duration_s > max_duration_s:
+        minutes = int(round(max_duration_s / 60.0)) or 1
+        message = f"Your plan supports up to {minutes} minutes. Upgrade to increase limit."
+        log.warning(
+            "[ANALYZE] Video too long for plan=%s duration=%.2fs max=%.2fs url=%s",
+            plan_type,
+            source_video_duration_s,
+            max_duration_s,
+            youtube_url,
+        )
+        if wants_json_response():
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "DURATION_LIMIT",
+                    "message": message,
+                    "max_duration_seconds": max_duration_s,
+                    "plan_type": plan_type,
+                }
+            ), 403
+        flash(message, "error")
+        return redirect(url_for("subscription"))
+
     fast_longform_enabled = os.environ.get("HS_FAST_LONGFORM_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
     fast_longform_threshold_s = float(os.environ.get("HS_FAST_LONGFORM_SECONDS", "480") or 480.0)  # 8m
     is_fast_longform = fast_longform_enabled and source_video_duration_s >= fast_longform_threshold_s
@@ -2284,6 +2570,17 @@ def analyze_video():
     log.info("[ANALYZE] Job completed: %s (%d clips)", job_id, len(generated_clips))
     log.info("[TIMING] stage=analyze_total wall=%.2fs", (time.time() - analyze_t0))
 
+    # Count a successful full analyze against the trial quota.
+    if plan_type == "trial":
+        try:
+            used = int(getattr(current_user, "trial_analyze_count", 0) or 0)
+            if used < 1:
+                current_user.trial_analyze_count = used + 1
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+            log.exception("[ANALYZE] Failed to increment trial_analyze_count")
+
     return analyze_success(job_id, len(generated_clips))
 
 # @app.route('/generate', methods=['POST'])
@@ -2748,16 +3045,39 @@ def download_clip(clip_id):
     def _truthy(v: str | None) -> bool:
         return str(v or "").strip().lower() in ("1", "true", "yes", "y", "on")
 
+    # Resolve plan + limits for this export.
+    plan_type = get_user_plan_type(current_user)
+    plan_limits = get_plan_limits(plan_type)
     want_quality = _truthy(request.args.get("quality"))
-    paid = is_paid(current_user)
+    hd_enabled = bool(plan_limits.get("hd_enabled"))
+    watermark_required = bool(plan_limits.get("watermark"))
+    is_trial_plan = plan_type == "trial"
+    is_paid_plan = plan_type in ("starter", "pro", "industry")
 
-    if want_quality and not paid:
+    # Trial: enforce 3-clip export limit (server-side authoritative).
+    if is_trial_plan:
+        try:
+            used = int(getattr(current_user, "trial_clip_exports", 0) or 0)
+        except Exception:
+            used = 0
+        if used >= FREE_CLIP_LIMIT:
+            qa_event(
+                "download_blocked_trial_limit",
+                user_id=getattr(current_user, "id", None),
+                clip_id=clip_id,
+                used=used,
+            )
+            return jsonify({"error": "TRIAL_USED", "redirect": "/pricing"}), 403
+
+    # HD export (quality mode) is only available when explicitly enabled for the plan.
+    if want_quality and not hd_enabled:
         qa_event(
-            "download_blocked_quality_free",
+            "download_blocked_quality_plan",
             user_id=getattr(current_user, "id", None),
             clip_id=clip_id,
+            plan_type=plan_type,
         )
-        return "Quality Mode unlocked in Pro", 403
+        return "HD export is available on Pro and Industry plans.", 403
 
     def _clamp(n: int, lo: int, hi: int) -> int:
         return max(lo, min(hi, int(n)))
@@ -3378,54 +3698,37 @@ def download_clip(clip_id):
             except Exception:
                 pass
 
-    # Paid: no watermark, optional quality export
-    if paid:
-        if want_quality:
+    # Plans without watermark (Pro / Industry): direct export, optional HD.
+    if not watermark_required:
+        out_path = abs_path
+        if want_quality and hd_enabled:
             out_path = _cached_path(abs_path, "quality", None, "q_v1")
             if not os.path.exists(out_path):
                 try:
                     _render_quality(abs_path, out_path)
                 except Exception as e:
                     return f"Quality export failed: {e}", 500
-            return send_file(out_path, as_attachment=True)
-        return send_file(abs_path, as_attachment=True)
-
-    # Free: enforce lifetime quota + watermark all downloads
-    _ensure_free_claim_table()
-    already_claimed = False
-    try:
-        already_claimed = (
-            db.session.query(FreeClipClaim.id)
-            .filter(FreeClipClaim.user_id == current_user.id, FreeClipClaim.clip_id == clip_id)
-            .first()
-            is not None
-        )
-    except Exception:
-        already_claimed = False
-
-    if not already_claimed:
         try:
-            used = (
-                db.session.query(FreeClipClaim.id)
-                .filter(FreeClipClaim.user_id == current_user.id)
-                .count()
-            )
-        except Exception:
-            used = 0
-        if used >= FREE_CLIP_LIMIT:
             qa_event(
-                "download_blocked_free_limit",
+                "download_success_server",
                 user_id=getattr(current_user, "id", None),
                 clip_id=clip_id,
-                used=used,
+                paid=is_paid_plan,
+                watermarked=False,
+                quality=want_quality,
+                plan_type=plan_type,
             )
-            return jsonify(
-                {
-                    "action": "show_pricing_modal",
-                    "clip_id": clip_id,
-                }
-            ), 402
+            return send_file(out_path, as_attachment=True)
+        except Exception:
+            app.logger.exception("[DOWNLOAD] send_file failed for %s", out_path)
+            qa_event(
+                "download_failed_server",
+                user_id=getattr(current_user, "id", None),
+                clip_id=clip_id,
+            )
+            return jsonify({"error": "download_failed"}), 500
 
+    # Plans with enforced watermark (Trial / Starter and any watermark-on tiers).
     asset = _watermark_asset()
     out_path = _cached_path(abs_path, "watermarked", asset, "wm_v9")
     chosen_path = abs_path
@@ -3437,11 +3740,10 @@ def download_clip(clip_id):
     except Exception as e:
         cmd = getattr(e, "cmd", None)
         stderr = getattr(e, "stderr", "") or ""
-        app.logger.error("[DOWNLOAD] Watermarking failed; falling back to original clip.")
+        app.logger.error("[DOWNLOAD] Watermarking failed; blocking free-tier export for clip_id=%s", clip_id)
         if cmd:
             app.logger.error("[DOWNLOAD] Watermark cmd: %s", " ".join(map(str, cmd)))
         if stderr:
-            # Log full stderr for production debugging.
             app.logger.error("[DOWNLOAD] Watermark stderr:\n%s", stderr)
         app.logger.exception("[DOWNLOAD] Watermark exception for %s", abs_path)
         watermark_ok = False
@@ -3450,7 +3752,6 @@ def download_clip(clip_id):
         chosen_path = out_path
         app.logger.info("[DOWNLOAD] Watermark applied for clip_id=%s -> %s", clip_id, out_path)
     else:
-        app.logger.error("[DOWNLOAD] Blocking free download because watermark failed for clip_id=%s", clip_id)
         qa_event(
             "download_blocked_watermark_failed",
             user_id=getattr(current_user, "id", None),
@@ -3458,14 +3759,16 @@ def download_clip(clip_id):
         )
         return jsonify({"error": "watermark_failed"}), 503
 
-    if not already_claimed:
+    # If we reach here and it's a trial export, increment the trial clip counter.
+    if is_trial_plan:
         try:
-            db.session.add(FreeClipClaim(user_id=current_user.id, clip_id=clip_id))
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
+            used = int(getattr(current_user, "trial_clip_exports", 0) or 0)
+            if used < FREE_CLIP_LIMIT:
+                current_user.trial_clip_exports = used + 1
+                db.session.commit()
         except Exception:
             db.session.rollback()
+            app.logger.exception("[DOWNLOAD] Failed to increment trial_clip_exports")
 
     try:
         print("[DOWNLOAD]", chosen_path)
@@ -3476,9 +3779,10 @@ def download_clip(clip_id):
             "download_success_server",
             user_id=getattr(current_user, "id", None),
             clip_id=clip_id,
-            paid=paid,
-            watermarked=(not paid),
+            paid=is_paid_plan,
+            watermarked=True,
             quality=want_quality,
+            plan_type=plan_type,
         )
         return send_file(chosen_path, as_attachment=True)
     except Exception:
