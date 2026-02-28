@@ -10,7 +10,8 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200))
     name = db.Column(db.String(120))
-    profile_pic = db.Column(db.String(300))
+    # URLs from Google can exceed 300 characters, so use Text instead of bounded String
+    profile_pic = db.Column(db.Text)
     # Legacy billing label (kept for Stripe/backwards compatibility)
     subscription_plan = db.Column(db.String(50), default="free")
     subscription_status = db.Column(db.String(50), default="active")

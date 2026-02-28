@@ -740,7 +740,9 @@ with app.app_context():
 # ==========================
 db.init_app(app)
 with app.app_context():
-    # create any missing tables automatically on startup (SaaS friendly)
+    # TEMPORARY: drop and recreate tables to apply profile_pic type change
+    # WARNING: this wipes all existing data!
+    db.drop_all()
     db.create_all()
 
 migrate = Migrate(app, db)
