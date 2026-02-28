@@ -48,42 +48,64 @@ def _load_world_editor():
 from flask import make_response
 import browser_cookie3
 from utils.clipper import cut_clip_segment
-try:
-    # from viral_finder.viral_editor_god_mode import viral_editor_god_mode
-    from effects.ultron_core_editor import ultron_core_editor
 
+# heavy editor stack lazy-loaded so the web service can start with minimal RAM.
+# the original top-level import pulled in torch/weights/ML pipelines and blew
+# up a 512MB Render instance. delay the import until it’s actually needed.
+ultron_core_editor = None
 
-except Exception:
-    # Fallback simple editor if the external module isn't available.
-    # Uses moviepy lazily inside the fallback so startup stays lightweight.
-    def viral_editor_gpu(src_path, moment, out_path, transcript=None, **kwargs):
-        """
-        Fallback viral editor: extracts moment['start'] to moment['end'] using moviepy.
-        Returns True on success, False on failure.
-        Accepts (but ignores) transcript and other kwargs for compatibility.
-        """
-        try:
-            start = float(moment.get("start", 0))
-            base_end = float(moment.get("end", start + 5))
-            lock_end = bool(moment.get("lock_end", False))
-            
-            # If analyze decided the ending, respect it (don't recompute)
-            end = base_end
-            
-            # Ensure reasonable bounds only if not locked
-            if end <= start:
-                end = start + 3
-            import moviepy.editor as mp
-            clip = mp.VideoFileClip(src_path).subclip(start, end)
-            # write_videofile can be noisy; suppress its verbose logging
-            clip.write_videofile(out_path, codec="libx264", audio_codec="aac", verbose=False, logger=None)
-            clip.close()
-            return True
-        except Exception as e:
-            print("[VIRAL EDITOR FALLBACK ERROR]", e)
-            return False
+def _get_ultron_core_editor():
+    """Return the editor callable, importing on first use.
 
-    ultron_core_editor = viral_editor_gpu
+    Caches the result in the module-level ``ultron_core_editor`` variable.
+    Falls back to the lightweight moviepy-based ``viral_editor_gpu`` if the
+    effects package is unavailable or fails to import.
+    """
+    global ultron_core_editor
+    if ultron_core_editor is not None:
+        return ultron_core_editor
+
+    try:
+        from effects.ultron_core_editor import ultron_core_editor as editor
+    except Exception:
+        # Fallback simple editor if the external module isn't available.  This
+        # implementation mirrors the previous top-level fallback but lives inside
+        # the lazy loader so it isn't executed until needed.
+        def viral_editor_gpu(src_path, moment, out_path, transcript=None, **kwargs):
+            """Extracts a subclip from ``src_path`` using :mod:`moviepy`.
+
+            ``moment`` should contain ``'start'`` and ``'end'`` times.  This
+            ignores ``transcript``/``kwargs`` for API compatibility with the
+            heavier editor.
+            """
+            try:
+                start = float(moment.get("start", 0))
+                base_end = float(moment.get("end", start + 5))
+                lock_end = bool(moment.get("lock_end", False))
+
+                # If analyze decided the ending, respect it (don't recompute)
+                end = base_end
+
+                # Ensure reasonable bounds only if not locked
+                if end <= start:
+                    end = start + 3
+                import moviepy.editor as mp
+                clip = mp.VideoFileClip(src_path).subclip(start, end)
+                # write_videofile can be noisy; suppress its verbose logging
+                clip.write_videofile(out_path, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+                clip.close()
+                return True
+            except Exception as e:
+                print("[VIRAL EDITOR FALLBACK ERROR]", e)
+                return False
+
+        editor = viral_editor_gpu
+    else:
+        # if import succeeded, ``editor`` is the actual ultron_core_editor
+        pass
+
+    ultron_core_editor = editor
+    return ultron_core_editor
 
 # =====================================================
 # ⚡ OPTIMIZATION LAYER (Speed + Quality)
