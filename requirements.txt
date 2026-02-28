@@ -111,6 +111,6 @@ URLObject==3.0.0
 webrtcvad==2.0.10
 Werkzeug==3.0.2
 whisper==1.1.10
-WMI==1.5.1
+
 youtube-transcript-api==0.6.2
 yt-dlp==2026.1.29
