@@ -114,4 +114,3 @@ whisper==1.1.10
 WMI==1.5.1
 youtube-transcript-api==0.6.2
 yt-dlp==2026.1.29
-psycopg2-binary==2.9.9
