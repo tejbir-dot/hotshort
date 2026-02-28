@@ -106,6 +106,87 @@ def test_download_function():
         log.error(f"❌ Download function failed: {str(e)[:100]}")
         return False
 
+
+def test_metadata_and_transcript_helpers():
+    """Test new helpers added in ingestion redesign."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST 5: Metadata & Transcript Helpers")
+    log.info("=" * 60)
+    try:
+        from app import fetch_youtube_metadata, fetch_youtube_transcript, select_segment_from_transcript
+        test_url = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+        md = fetch_youtube_metadata(test_url)
+        log.info(f"Metadata keys: {list(md.keys())}")
+        assert md.get("title")
+        segs = fetch_youtube_transcript(test_url)
+        log.info(f"Transcript segs count: {len(segs)}")
+        start, end = select_segment_from_transcript(segs, md.get("duration"))
+        log.info(f"Selected {start}-{end}")
+        return True
+    except Exception as e:
+        log.error(f"❌ Metadata/transcript helper test failed: {e}")
+        return False
+
+
+def test_ui_premium_framing():
+    """Test 6: the new premium placeholder appears in at least one template."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST 6: UI premium phrasing")
+    log.info("=" * 60)
+    try:
+        path = "templates/index.html"
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        assert "fast import" in content
+        log.info("✅ Found premium phrasing in index.html")
+        return True
+    except Exception as e:
+        log.error(f"❌ UI framing test failed: {e}")
+        return False
+
+
+def test_analyze_captcha_error():
+    """Test 7: analyze route returns helpful message when download is blocked by captcha."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST 7: Analyze captcha error handling")
+    log.info("=" * 60)
+    try:
+        import app as app_module
+        from app import YoutubeCaptchaError
+
+        # patch both download helpers on the module rather than the Flask object
+        original_full = app_module.download_youtube_video
+        original_seg = app_module.download_youtube_segment
+        def raise_captcha(*args, **kwargs):
+            raise YoutubeCaptchaError("dummy bot check")
+        app_module.download_youtube_video = raise_captcha
+        app_module.download_youtube_segment = raise_captcha
+
+        # disable login requirement for the duration of this test
+        prev = app_module.app.config.get('LOGIN_DISABLED', False)
+        app_module.app.config['LOGIN_DISABLED'] = True
+        with app_module.app.test_client() as client:
+            resp = client.post(
+                '/analyze',
+                data={'youtube_url': 'https://youtu.be/xyz'},
+                headers={'Accept': 'application/json'}
+            )
+            log.info(f"Response status: {resp.status_code}")
+            data = None
+            if resp.is_json:
+                data = resp.get_json()
+                log.info(f"JSON body: {data}")
+            assert resp.status_code == 400
+            assert data and ("sign-in" in data.get('error','').lower() or "cookies" in data.get('error','').lower() or "bot" in data.get('error','').lower())
+        # restore config and patch state
+        app_module.app.config['LOGIN_DISABLED'] = prev
+        app_module.download_youtube_video = original_full
+        app_module.download_youtube_segment = original_seg
+        return True
+    except Exception as e:
+        log.error(f"❌ Captcha error test failed: {e}")
+        return False
+
 def test_flash_redirect_pattern():
     """Test 3: Verify Flask flash() and redirect() pattern works"""
     log.info("\n" + "=" * 60)
@@ -265,6 +346,9 @@ def main():
     tests = [
         ("yt-dlp Import", test_yt_dlp_import),
         ("Download Function", test_download_function),
+        ("Metadata/Transcript Helpers", test_metadata_and_transcript_helpers),
+        ("UI Premium Framing", test_ui_premium_framing),
+        ("Captcha Error Handling", test_analyze_captcha_error),
         ("Flash & Redirect Pattern", test_flash_redirect_pattern),
         ("Toast HTML Structure", test_toast_html_structure),
         ("No JSON Error Responses", test_no_jsonify_errors),

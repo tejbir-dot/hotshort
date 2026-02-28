@@ -1544,6 +1544,15 @@ class YoutubeRateLimitError(Exception):
     """Raised when YouTube returns HTTP 429 / rate limiting from yt-dlp."""
 
 
+class YoutubeCaptchaError(Exception):
+    """Raised when YouTube refuses download with a bot/captcha challenge.
+
+    This often surfaces as ``Sign in to confirm you're not a bot`` messages
+    from yt-dlp.  We treat it separately so the user can be informed that
+    cookies or a different link may be needed.
+    """
+
+
 def _qa_mode_enabled() -> bool:
     return str(os.getenv("HS_QA_MODE", "0")).strip().lower() in ("1", "true", "yes", "on")
 
@@ -1920,17 +1929,52 @@ def analyze_video():
     job_id = str(uuid.uuid4())
 
     # --------------------------------------------------
-    # 1) Download video
+    # 1) Metadata + transcript analysis (segment‑first pipeline)
+    # --------------------------------------------------
+    # Fetch lightweight metadata so we can show a preview and make decisions
+    try:
+        metadata = fetch_youtube_metadata(youtube_url)
+        log.info("[ANALYZE] metadata fetched: %s", metadata)
+    except Exception as e:
+        log.warning("[ANALYZE] metadata fetch failed: %s", e)
+        metadata = {}
+
+    # Grab whatever text transcript is available from YouTube (no media download).
+    transcript_segments = []
+    try:
+        transcript_segments = fetch_youtube_transcript(youtube_url)
+        log.info("[ANALYZE] transcript segments from youtube: %d", len(transcript_segments))
+    except Exception as e:
+        log.warning("[ANALYZE] transcript fetch failed: %s", e)
+
+    # Choose a candidate window before touching video data.  This could later
+    # use NLP over ``transcript_segments``; for now we fall back to a simple
+    # duration-based generator that avoids any heavy processing.
+    start_ts, end_ts = select_segment_from_transcript(
+        transcript_segments, metadata.get("duration")
+    )
+    log.info("[ANALYZE] preselected segment %.2f-%.2f", start_ts, end_ts)
+
+    # --------------------------------------------------
+    # 2) Download only the needed segment
     # --------------------------------------------------
     stage_t0 = time.time()
     video_path = None
     try:
-        video_path = download_youtube_video(youtube_url, job_id=job_id)
+        video_path = download_youtube_segment(
+            youtube_url, start_ts, end_ts, job_id=job_id
+        )
     except YoutubeRateLimitError as e:
         log.warning("[ANALYZE] Download rate-limited by YouTube: %s", e)
         return analyze_error(
             "YouTube temporarily limited downloads from this server. Please retry in 1–2 minutes.",
             429,
+        )
+    except YoutubeCaptchaError as e:
+        log.warning("[ANALYZE] Download blocked by YouTube captcha/bot check: %s", e)
+        return analyze_error(
+            "YouTube requires sign-in or cookies to fetch this video. Try using a different link or provide cookies.",
+            400,
         )
     except Exception as e:
         log.warning("[ANALYZE] Download error: %s", e)
@@ -1941,9 +1985,14 @@ def analyze_video():
         log.error("[ANALYZE] Media invariant violated: %s", reason)
         return analyze_error("We couldn't download this video. Try again.", 400)
 
-    source_video_duration_s = probe_media_duration(video_path)
+    # ``video_path`` may refer to a short segment; the original full
+    # video duration lives in ``metadata`` if our prefetch succeeded.
+    if 'metadata' in locals() and metadata.get('duration'):
+        source_video_duration_s = float(metadata.get('duration') or 0.0)
+    else:
+        source_video_duration_s = probe_media_duration(video_path)
 
-    # Enforce max video duration per plan.
+    # Enforce max video duration per plan using the original duration
     try:
         max_duration_s = float(plan_limits.get("max_duration_seconds", 0) or 0)
     except Exception:
@@ -1986,7 +2035,10 @@ def analyze_video():
         "1" if IS_RENDER_RUNTIME else "0",
     ).strip().lower() in ("1", "true", "yes", "on")
 
-    transcript_segments = []
+    # ``transcript_segments`` may have been populated by a lightweight
+    # fetch above (youtube captions).  Preserve it, otherwise fall back to
+    # an empty list so the later logic still works.
+    transcript_segments = transcript_segments or []
     wav_path = None
 
     if low_memory_mode:
@@ -2078,12 +2130,22 @@ def analyze_video():
     # 4) Create Job (processing)
     # --------------------------------------------------
     try:
+        # persist a bit of context so the frontend / debugging tools can show
+        # what was selected before we downloaded the segment.
+        import json
+        analysis_blob = {}
+        if 'start_ts' in locals() and 'end_ts' in locals():
+            analysis_blob['preselected_start'] = start_ts
+            analysis_blob['preselected_end'] = end_ts
+        if 'metadata' in locals():
+            analysis_blob['metadata'] = metadata
+
         job = Job(
             id=job_id,
             user_id=current_user.id,
             video_path=video_path,
             transcript="",
-            analysis_data="",
+            analysis_data=json.dumps(analysis_blob),
             status="processing"
         )
         db.session.add(job)
@@ -2853,6 +2915,132 @@ import re
 import browser_cookie3
 
 
+def fetch_youtube_metadata(url):
+    """Fetch only metadata for a YouTube URL without downloading any media.
+
+    Returns a dict with video_id, title, duration, thumbnail (when available).
+    Uses ``yt_dlp`` in ``skip_download`` mode which avoids RAM/CPU spikes.
+    """
+    import yt_dlp
+
+    ydl_opts = {
+        "quiet": True,
+        "skip_download": True,
+        # avoid writing anything to disk
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    return {
+        "video_id": info.get("id"),
+        "title": info.get("title"),
+        "duration": info.get("duration"),
+        "thumbnail": info.get("thumbnail"),
+    }
+
+
+def fetch_youtube_transcript(url, languages=None):
+    """Attempt to retrieve the YouTube transcript (captions) as a list of segments.
+
+    Uses the ``youtube-transcript-api`` package, which is already a dependency
+    in requirements.txt.  This runs over the network and returns text-only data
+    without downloading any media.  ``languages`` may be a list like ['en'] to
+    prefer English captions; if omitted the API will attempt auto-detection.
+    """
+    try:
+        # extract id from common YouTube url formats
+        m = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
+        video_id = m.group(1) if m else url
+    except Exception:
+        video_id = url
+
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        segs = YouTubeTranscriptApi.get_transcript(video_id, languages=languages or ["en"])
+        # transform segments to match our usual structure
+        return [{
+            "text": s.get("text", ""),
+            "start": float(s.get("start", 0.0)),
+            "end": float(s.get("start", 0.0) + s.get("duration", 0.0)),
+        } for s in segs]
+    except Exception as e:
+        log.warning("[TRANSCRIPT] youtube transcript fetch failed: %s", e)
+        return []
+
+
+def select_segment_from_transcript(transcript_segments, duration_s=None):
+    """Pick a start/end timestamp based on lightweight data.
+
+    For now this is a simple fallback that prefers the first low-memory moment
+    (which only needs duration).  Later this can be replaced by a smarter NLP
+    decision.  The goal is to compute timestamps *before* downloading video.
+    """
+    if duration_s:
+        candidates = _generate_low_memory_moments(duration_s, top_k=3)
+        if candidates:
+            first = candidates[0]
+            return first.get("start", 0.0), first.get("end", first.get("start", 0.0) + 15.0)
+    # ultimate fallback
+    return 0.0, min(30.0, float(duration_s or 30.0))
+
+
+def download_youtube_segment(url, start, end, output_dir="downloads", job_id=None):
+    """Download only the specified time range from a YouTube URL.
+
+    Uses ``yt_dlp`` ``download_ranges`` hook so that only the requested
+    portion is fetched.  This is the core of the "segment-only" pipeline.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        safe_job = re.sub(r"[^a-zA-Z0-9_-]", "_", job_id) if job_id else None
+    except Exception:
+        safe_job = None
+
+    ydl_opts = {
+        "format": "bestvideo+bestaudio/best",
+        "merge_output_format": "mp4",
+        "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
+        "quiet": True,
+        "noplaylist": True,
+        "download_ranges": (lambda info, ydl: [{"start_time": start, "end_time": end}]),
+    }
+
+    log.info("[ANALYZE] segment download job_id=%s url=%s range=%.2f-%.2f", safe_job, url, start, end)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            # determine resulting filename similar to download_youtube_video
+            file_path = None
+            if safe_job:
+                expected = os.path.join(output_dir, f"{safe_job}.mp4")
+                if os.path.exists(expected):
+                    file_path = expected
+            if not file_path:
+                file_path = ydl.prepare_filename(info)
+                if (not os.path.exists(file_path)) and os.path.exists(file_path + ".mp4"):
+                    file_path = file_path + ".mp4"
+        return file_path
+    except Exception as e:
+        msg = str(e) or repr(e)
+        if "HTTP Error 429" in msg or "Too Many Requests" in msg or "429:" in msg:
+            log.warning(
+                "[DOWNLOAD] YouTube rate limited this IP (HTTP 429 / Too Many Requests). url=%s msg=%s",
+                url,
+                msg,
+            )
+            raise YoutubeRateLimitError(msg)
+        if "Sign in to confirm" in msg or "not a bot" in msg.lower():
+            log.warning(
+                "[DOWNLOAD] YouTube blocked download with captcha bot-check. url=%s msg=%s",
+                url,
+                msg,
+            )
+            raise YoutubeCaptchaError(msg)
+        log.error("[DOWNLOAD ERROR] yt-dlp failed url=%s error=%s", url, msg)
+        return None
+
+
 def download_youtube_video(url, output_dir="downloads", job_id=None):
     """
     Deterministic blocking download (rollback mode):
@@ -2933,6 +3121,15 @@ def download_youtube_video(url, output_dir="downloads", job_id=None):
                 msg,
             )
             raise YoutubeRateLimitError(msg)
+
+        # Bot/captcha challenge - sign-in required messages
+        if "Sign in to confirm" in msg or "not a bot" in msg.lower():
+            log.warning(
+                "[DOWNLOAD] YouTube blocked download with captcha bot-check. url=%s msg=%s",
+                url,
+                msg,
+            )
+            raise YoutubeCaptchaError(msg)
 
         log.error("[DOWNLOAD ERROR] yt-dlp failed url=%s error=%s", url, msg)
         return None
