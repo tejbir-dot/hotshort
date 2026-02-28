@@ -739,6 +739,10 @@ with app.app_context():
 # ⚙️ DATABASE + LOGIN
 # ==========================
 db.init_app(app)
+with app.app_context():
+    # create any missing tables automatically on startup (SaaS friendly)
+    db.create_all()
+
 migrate = Migrate(app, db)
 login_manager = LoginManager()
 login_manager.login_view = 'google_login'  # or whatever your login route name is
