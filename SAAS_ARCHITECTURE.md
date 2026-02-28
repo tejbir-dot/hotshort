@@ -60,7 +60,7 @@ User Journey Timeline:
 
 **NEW (Better)**:
 ```
-POST /analyze → generates clips → creates Job record → redirect to GET /results/<job_id>
+POST /analyze → metadata lookup + transcript → choose timestamps → download segment → generate clips → creates Job record → redirect to GET /results/<job_id>
 GET /results/<job_id> → renders results_new.html with clips_json
 ```
 
@@ -114,7 +114,9 @@ flask db upgrade
 ```
 app.py:
 ├─ POST /analyze
-│  ├─ download video
+│  ├─ fetch metadata/transcript and choose timestamps
+│  │  (segment-first download)
+│  ├─ download only the chosen video segment
 │  ├─ run analysis
 │  ├─ create Job record ← NEW
 │  ├─ create ViralClip records for this job
