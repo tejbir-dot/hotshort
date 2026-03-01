@@ -9,6 +9,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 import hashlib
 from dotenv import load_dotenv
+
+# instrumentation helpers
+import psutil, logging
+
+def log_mem(stage: str):
+    p = psutil.Process(os.getpid())
+    logging.info(f"[MEM] {stage}: {p.memory_info().rss/1024**2:.1f} MB")
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 import os
@@ -758,6 +765,18 @@ def load_user(user_id):
 
 # ✅ Register blueprints AFTER all routes are defined inside them
 app.register_blueprint(auth, url_prefix="/auth")
+
+# compatibility aliases – templates and redirects still point at /login or
+# /google_login even though the real handlers live under /auth.
+@app.route("/login")
+def login_alias():
+    # preserve any query args such as next
+    return redirect(url_for("auth.login", **request.args))
+
+@app.route("/google_login")
+def google_login_alias():
+    return redirect(url_for("auth.google_login", **request.args))
+
 from routes.feedback import feedback_bp
 app.register_blueprint(feedback_bp, url_prefix="/api")
 from routes.admin import admin_bp
@@ -1924,6 +1943,7 @@ def analyze_video():
 
     analyze_t0 = time.time()
     log.info("[ANALYZE] Starting: %s", youtube_url)
+    log_mem("start")
 
     # Generate job_id early so downloads never collide across concurrent requests
     job_id = str(uuid.uuid4())
@@ -1964,6 +1984,7 @@ def analyze_video():
         video_path = download_youtube_segment(
             youtube_url, start_ts, end_ts, job_id=job_id
         )
+        log_mem("after download")
     except YoutubeRateLimitError as e:
         log.warning("[ANALYZE] Download rate-limited by YouTube: %s", e)
         return analyze_error(
@@ -2074,6 +2095,7 @@ def analyze_video():
                 prefer_gpu=True,
                 prefer_trust=False,
             )
+            log_mem("after transcript")
             log.info("[TRANSCRIPT] model=%s segments=%d", transcript_model_name, len(transcript_segments or []))
             _save_cached_transcript(video_path, transcript_segments or [])
         except Exception as e:
@@ -2157,6 +2179,7 @@ def analyze_video():
 
     # --------------------------------------------------
     # 5) Process moments (parallel) + Quality-mode curation
+    log_mem("after moments")
     # --------------------------------------------------
     global_transcript = transcript_segments or []
     if isinstance(moments, dict):
@@ -2657,6 +2680,7 @@ def analyze_video():
     except Exception:
         pass
 
+    log_mem("after clip render")
     log.info("[ANALYZE] Job completed: %s (%d clips)", job_id, len(generated_clips))
     log.info("[TIMING] stage=analyze_total wall=%.2fs", (time.time() - analyze_t0))
 
