@@ -754,7 +754,7 @@ with app.app_context():
 
 migrate = Migrate(app, db)
 login_manager = LoginManager()
-login_manager.login_view = 'google_login'  # or whatever your login route name is
+login_manager.login_view = "auth.login"  # ensure redirects go to the auth blueprint's login endpoint
 login_manager.login_message = "Please log in to analyze videos."
 
 login_manager.init_app(app)
