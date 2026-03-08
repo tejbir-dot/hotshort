@@ -151,6 +151,15 @@
     white-space: nowrap;
   }
 
+  /* Keep analyze button always visible (not hover-dependent). */
+  #analyzeBtn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
   .input-bar button:hover {
     transform: translateY(-2px);
     box-shadow: 0 12px 36px rgba(255, 180, 70, 0.4);
@@ -296,11 +305,12 @@
 <div class="glossy-bg"></div>
 
 <section class="hero">
+  <div id="dashboardContext" data-user-id="{{ current_user.id }}" hidden></div>
   <h1>🎬 AI That Turns Videos Into Viral Moments ⚡</h1>
   <p>Paste a YouTube link (fast import) or upload video. We analyze and generate viral clips automatically.</p>
 
   <div class="input-bar">
-    <input id="yt" type="text" placeholder="Paste YouTube link (fast import) or upload video" />
+    <input id="yt" type="text" placeholder="Paste YouTube link (fast import) or upload video" autocomplete="off" autocapitalize="off" spellcheck="false" />
     <button id="analyzeBtn">✨ Analyze</button>
   </div>
 

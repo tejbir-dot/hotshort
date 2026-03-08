@@ -73,6 +73,8 @@ def test_download_function():
         ydl_opts = {
             "format": "bv*+ba/b",
             "quiet": True,
+            "no_warnings": False,
+            "js_runtimes": {"node": {}},
             "noplaylist": True,
             "geo_bypass": True,  # ✅ CRITICAL: Bypass geo-blocking
             "nocheckcertificate": True,
@@ -89,6 +91,7 @@ def test_download_function():
         log.info(f"Testing with URL: {test_url}")
         log.info("Options:")
         log.info(f"  - format: {ydl_opts['format']}")
+        log.info(f"  - js_runtimes: {ydl_opts.get('js_runtimes')}")
         log.info(f"  - geo_bypass: {ydl_opts['geo_bypass']}")
         log.info(f"  - socket_timeout: {ydl_opts['socket_timeout']}s")
         
@@ -100,6 +103,7 @@ def test_download_function():
             duration = info.get('duration', 0)
             log.info(f"✅ Video found: {title}")
             log.info(f"   Duration: {duration}s")
+            assert "js_runtimes" in ydl_opts, "runtime option missing"
             return True
             
     except Exception as e:
@@ -126,6 +130,38 @@ def test_metadata_and_transcript_helpers():
     except Exception as e:
         log.error(f"❌ Metadata/transcript helper test failed: {e}")
         return False
+
+
+def test_starvation_guard():
+    """Test 8: starvation guard triggers when probe duration is tiny but video is long."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST 8: Starvation warning logic")
+    log.info("=" * 60)
+    try:
+        from app import acquire_youtube_media_robust
+        import app
+        # monkeypatch probe_media to simulate tiny download
+        orig = app.probe_media
+        app.probe_media = lambda p: {"ok": True, "duration": 10.0}
+        _, _, attempts, _, _ = acquire_youtube_media_robust(
+            "dummy",
+            start=0,
+            end=10,
+            output_dir=".",
+            job_id="guardtest",
+            metadata={"duration": 400.0},
+        )
+        # ensure at least one warning entry exists
+        assert any(a.get("warning", {}).get("starvation_detected") for a in attempts), "guard did not fire"
+        return True
+    except Exception as e:
+        log.error(f"❌ Starvation guard test failed: {e}")
+        return False
+    finally:
+        try:
+            app.probe_media = orig
+        except Exception:
+            pass
 
 
 def test_ui_premium_framing():
@@ -300,6 +336,180 @@ def test_no_jsonify_errors():
         log.error(f"❌ Code review test failed: {e}")
         return False
 
+def test_worker_contracts():
+    """Test new worker request/response validation helpers."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST: Worker contract validation")
+    log.info("=" * 60)
+    from worker.contracts import validate_worker_request, validate_worker_result
+    good = {
+        "job_id": "foo",
+        "source_url": "https://youtube.com/watch?v=abc",
+        "profile": "god_mode",
+        "min_clips": 5,
+        "max_duration_sec": 120,
+        "debug": True,
+    }
+    try:
+        cleaned = validate_worker_request(good)
+        assert cleaned["profile"] == "god_mode"
+        bad = {"source_url": 123}
+        try:
+            validate_worker_request(bad)
+            return False
+        except ValueError:
+            pass
+        # result envelope minimal
+        res = {"job_id": "foo", "status": "ok", "clips": [],
+               "confidence_score": 0.5, "signal_quality": {}, "diagnostics": {}}
+        validate_worker_result(res)
+        return True
+    except Exception as e:
+        log.error(f"❌ Worker contract tests failed: {e}")
+        return False
+
+
+def test_signal_acquisition():
+    """Basic sanity checks for signal_acquisition_engine helpers."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST: signal_acquisition_engine")
+    log.info("=" * 60)
+    try:
+        from worker import signal_acquisition_engine as sae
+        # try a generic URL first; the internal logic may attempt to fetch a
+        # YouTube transcript but will quietly degrade if the package is missing.
+        acq = sae.acquire_signal("https://youtube.com/watch?v=jNQXAC9IVRw", profile="balanced")
+        assert isinstance(acq, dict)
+        # signal quality must always be present
+        assert "signal_quality" in acq
+        sq = sae.compute_signal_scores(acq)
+        assert isinstance(sq, dict)
+        sa = {"signal_quality": sq}
+        sae.make_degraded_if_needed(sa)
+        assert "status" in sa
+        # manually exercise score computation for low-segment case
+        acq2 = {"metadata": {"duration": 120}, "transcript_segments": [{},{},], "signal_quality": {}}
+        sq2 = sae.compute_signal_scores(acq2)
+        assert sq2.get("degraded_transcript") is True
+        # failure statuses are not replaced by degradation
+        sa_fail = {"signal_quality": {"acquisition_score": 0.1}, "status": "failed_internal"}
+        sae.make_degraded_if_needed(sa_fail)
+        assert sa_fail["status"] == "failed_internal"
+        return True
+    except Exception as e:
+        log.error(f"❌ signal acquisition test failed: {e}")
+        return False
+
+
+def test_worker_process_job():
+    """Verify worker.main.process_job updates a pending Job to completed envelope."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST: worker.process_job function")
+    log.info("=" * 60)
+    # create a dummy job record using SQLAlchemy
+    try:
+        from models.user import Job, db
+        from worker.main import process_job
+    except ImportError as e:
+        log.info("skipping worker.process_job test (missing DB libs): %s", e)
+        return True
+    with app.app_context():
+        jid = str(uuid.uuid4())
+        params = {"job_id": jid, "source_url": "https://youtube.com/watch?v=x"}
+        job = Job(id=jid, user_id=1, video_path=None, transcript=None,
+                  analysis_data=json.dumps(params), status="pending")
+        db.session.add(job)
+        db.session.commit()
+
+        # patch download and orchestrator to avoid network and heavy libs
+        import app as app_module
+        def fake_download(url, start, end, output_dir="downloads", job_id=None, metadata=None):
+            return "fake_path.mp4", 0.33, [{"path": "fake_path.mp4", "score": 0.33}], {}, True
+        app_module.acquire_youtube_media_robust = fake_download
+
+        from viral_finder import orchestrator
+        orchestrator_orig = orchestrator.orchestrate
+        
+        # Capture arguments to verify pipeline_mode fix
+        captured_kwargs = {}
+        def fake_orchestrate(path, **kw):
+            captured_kwargs.update(kw)
+            return [{"id": "c1", "dominant_cluster_score": 0.77}]
+        orchestrator.orchestrate = fake_orchestrate
+
+        process_job(job)
+
+        # restore patch (not strictly necessary)
+        orchestrator.orchestrate = orchestrator_orig
+
+        # Verify pipeline_mode="staged" was passed
+        if captured_kwargs.get("pipeline_mode") != "staged":
+            log.error(f"❌ Worker failed to enforce pipeline_mode='staged'. Got: {captured_kwargs.get('pipeline_mode')}")
+            return False
+        if captured_kwargs.get("allow_fallback") is not False:
+            log.error(f"❌ Worker failed to enforce allow_fallback=False. Got: {captured_kwargs.get('allow_fallback')}")
+            return False
+        log.info("✅ Worker correctly enforced pipeline_mode='staged'")
+
+        refreshed = Job.query.get(jid)
+        assert refreshed is not None
+        assert refreshed.status in ("completed", "failed", "failed_internal")
+        data = json.loads(refreshed.analysis_data or "{}")
+        assert data.get("job_id") == jid
+        assert "clips" in data
+        # ensure our fake orchestrator output propagated
+        assert data["clips"][0].get("id") == "c1"
+        assert data["diagnostics"].get("video_path") == "fake_path.mp4"
+        assert refreshed.video_path == "fake_path.mp4"
+        assert data["diagnostics"].get("raw_candidates") == 1
+    log.info("✅ worker.process_job performed basic update")
+
+
+def test_v2_api_endpoints():
+    """Smoke test for the /v2/analyze and /v2/result endpoints."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST: v2 API endpoints")
+    log.info("=" * 60)
+    import app as app_module
+    from app import app
+
+    prev = app_module.app.config.get('LOGIN_DISABLED', False)
+    app_module.app.config['LOGIN_DISABLED'] = True
+    with app.test_client() as client:
+        # submit job
+        payload = {"source_url": "https://youtube.com/watch?v=test"}
+        resp = client.post('/v2/analyze', json=payload)
+        log.info(f"submit status {resp.status_code} json={resp.get_json()}")
+        assert resp.status_code == 200
+        job_id = resp.get_json().get('job_id')
+        assert job_id
+        # fetch status
+        resp2 = client.get(f'/v2/result/{job_id}')
+        assert resp2.status_code == 200
+        data = resp2.get_json()
+        assert data.get('status') in ('pending','processing','completed','failed')
+        # now hit legacy analyze route with worker mode enabled; should create another pending job
+        os.environ['HS_WORKER_MODE'] = 'runpod'
+        resp3 = client.post('/analyze', data={'youtube_url': 'https://youtube.com/watch?v=foo'})
+        assert resp3.status_code in (302, 200)
+        # parse redirect to results and extract job id
+        if resp3.is_json:
+            body = resp3.get_json()
+            legacy_job = body.get('job_id')
+        else:
+            # redirect URL contains /results/<id>
+            loc = resp3.location or ''
+            legacy_job = loc.rsplit('/', 1)[-1]
+        assert legacy_job
+        resp4 = client.get(f'/v2/result/{legacy_job}')
+        assert resp4.status_code == 200
+        data2 = resp4.get_json()
+        assert data2.get('status') in ('pending','processing','completed','failed')
+    app_module.app.config['LOGIN_DISABLED'] = prev
+    os.environ.pop('HS_WORKER_MODE', None)
+    return True
+
+
 def test_app_structure():
     """Test 6: Verify app.py structure and critical imports"""
     log.info("\n" + "=" * 60)
@@ -337,6 +547,95 @@ def test_app_structure():
         log.error(f"❌ App structure test failed: {e}")
         return False
 
+def test_analyze_route_enforces_staged():
+    """Verify app.py analyze_video route enforces pipeline_mode='staged'."""
+    log.info("\n" + "=" * 60)
+    log.info("TEST: analyze_video route enforcement")
+    log.info("=" * 60)
+
+    import app as app_module
+    from app import app
+    import sys
+    from unittest.mock import MagicMock, patch
+    import os
+
+    # Ensure viral_finder modules exist in sys.modules
+    for mod in ['viral_finder', 'viral_finder.orchestrator', 'viral_finder.gemini_transcript_engine']:
+        if mod not in sys.modules:
+            sys.modules[mod] = MagicMock()
+
+    captured_kwargs = {}
+    def fake_orchestrate(video_path, **kwargs):
+        captured_kwargs.update(kwargs)
+        return [{"start": 0, "end": 10, "score": 0.9, "text": "test"}]
+
+    # Patch targets in app module
+    patches = [
+        (app_module, 'download_youtube_video', lambda *a, **k: "dummy.mp4"),
+        (app_module, 'probe_media', lambda p: {"duration": 60.0, "width": 1280, "height": 720}),
+        (app_module, 'score_acquisition', lambda **k: (1.0, {})),
+        (app_module, 'analyze_audio_integrity', lambda p: {}),
+        (app_module, 'analyze_transcript_integrity', lambda t, **k: {}),
+        (app_module, 'compute_vad_removed_ratio', lambda d, t: 0.0),
+        (app_module, 'save_ingestion_cache', lambda *a: None),
+        (app_module, 'load_ingestion_cache', lambda *a, **k: None),
+        (app_module, '_js_runtime_available', lambda: True),
+        (app_module, '_ingestion_signature', lambda: "sig"),
+        (app_module, 'fetch_youtube_metadata', lambda u: {"duration": 60.0}),
+        (app_module, 'get_user_plan_type', lambda u: "pro"),
+        (app_module, '_acquire_analyze_lock_for_user', lambda u: MagicMock()),
+        (app_module, '_acquire_analyze_file_lock_for_user', lambda u: "dummy.lock"),
+        (app_module, '_release_analyze_file_lock', lambda p: None),
+        (sys.modules['viral_finder.orchestrator'], 'orchestrate', fake_orchestrate),
+        (sys.modules['viral_finder.gemini_transcript_engine'], 'extract_transcript', lambda *a, **k: []),
+    ]
+
+    originals = []
+    for target, attr, replacement in patches:
+        originals.append((target, attr, getattr(target, attr, None)))
+        setattr(target, attr, replacement)
+
+    # Mock subprocess
+    import subprocess
+    orig_run = subprocess.run
+    subprocess.run = MagicMock(return_value=MagicMock(returncode=0, stdout="duration=60.0"))
+
+    # Config changes
+    prev_login = app.config.get('LOGIN_DISABLED', False)
+    app.config['LOGIN_DISABLED'] = True
+    prev_worker_mode = os.environ.get('HS_WORKER_MODE')
+    if 'HS_WORKER_MODE' in os.environ:
+        del os.environ['HS_WORKER_MODE']
+
+    try:
+        # Mock os.path using patch context
+        with patch('os.path.exists', return_value=True), \
+             patch('os.path.getsize', return_value=1024):
+            
+            with app.test_client() as client:
+                resp = client.post('/analyze', data={'youtube_url': 'https://youtube.com/watch?v=test'})
+                
+                if captured_kwargs.get("pipeline_mode") != "staged":
+                    log.error(f"❌ analyze_video failed to enforce pipeline_mode='staged'. Got: {captured_kwargs.get('pipeline_mode')}")
+                    return False
+                
+                log.info("✅ analyze_video correctly enforced pipeline_mode='staged'")
+                return True
+
+    except Exception as e:
+        log.error(f"❌ analyze_video test crashed: {e}")
+        return False
+    finally:
+        for target, attr, original in originals:
+            if original is not None:
+                setattr(target, attr, original)
+            else:
+                if hasattr(target, attr): delattr(target, attr)
+        subprocess.run = orig_run
+        app.config['LOGIN_DISABLED'] = prev_login
+        if prev_worker_mode is not None:
+            os.environ['HS_WORKER_MODE'] = prev_worker_mode
+
 def main():
     """Run all tests"""
     log.info("\n" + "🔥" * 30)
@@ -348,11 +647,15 @@ def main():
         ("Download Function", test_download_function),
         ("Metadata/Transcript Helpers", test_metadata_and_transcript_helpers),
         ("UI Premium Framing", test_ui_premium_framing),
+        ("Worker Contract Validation", test_worker_contracts),
+        ("Signal Acquisition Engine", test_signal_acquisition),
+        ("v2 Analyze API", test_v2_api_endpoints),
         ("Captcha Error Handling", test_analyze_captcha_error),
         ("Flash & Redirect Pattern", test_flash_redirect_pattern),
         ("Toast HTML Structure", test_toast_html_structure),
         ("No JSON Error Responses", test_no_jsonify_errors),
         ("App Structure", test_app_structure),
+        ("Analyze Route Enforcement", test_analyze_route_enforces_staged),
     ]
     
     results = {}

@@ -21,8 +21,9 @@ def google_login():
         bool(os.getenv('GOOGLE_OAUTH_CLIENT_SECRET')),
         len(os.getenv('GOOGLE_OAUTH_CLIENT_SECRET') or ''),
     )
-    # Clear old session data before logging in new user
-    session.clear()
+    # Avoid wiping the full session; only clear stale Google OAuth artifacts.
+    session.pop('google_oauth_token', None)
+    session.pop('google_oauth_state', None)
     return redirect(url_for('google.login'))
 
 

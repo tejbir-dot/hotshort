@@ -1,5 +1,6 @@
 import numpy as np
 import re
+import os
 # from viral_finder.transcript_engine import transcribe_file
 from viral_finder.visual_audio_engine import analyze_audio, analyze_visual
 from viral_finder.ultron_brain import load_ultron_brain, ultron_brain_score, ultron_learn
@@ -444,7 +445,6 @@ def detect_idea_boundaries(segments: list) -> list:
         globals()['ARC_META'] = { (0, max(0, len(segments) - 1)): {"label":"whole","stage":"development","confidence":0.5, "text": " ".join([(s.get('text','') or '') for s in segments]) } }
         return [(0, max(0, len(segments) - 1))]
 
-# 
 def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=0.70, min_curiosity_peak=0.22):
     """
     Genius-layer find_viral_moments
@@ -486,10 +486,8 @@ def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=
         select_candidate_clips = None
 
     try:
-        from viral_finder.ultron_finder_v33 import (
-            text_overlap, fuse, dedupe_by_time,
-            estimate_semantic_quality, detect_thought_completion,
-            extend_until_sentence_complete
+        from . import (
+            text_overlap, fuse, dedupe_by_time
         )
     except Exception:
         # if missing, define safe fallbacks
@@ -542,12 +540,14 @@ def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=
 
     aud = analyze_audio(path) or []
     vis = analyze_visual(path) or []
-    curiosity_curve = None
-    curiosity_candidates = []
 
     total_segs = len(trs)
-    print("\n🔥 [ULTRON V33-X] Starting full self-evolving viral scan…")
+    print("\n[ULTRON V33-X] Starting full self-evolving viral scan…")
     print(f"[ULTRON] Raw transcript segments: {total_segs}")
+
+    if total_segs < 1:
+        print("[ULTRON] Transcript empty, returning empty result.")
+        return {"candidates": [], "rejected": [], "debug": {"total_arcs": 0, "curiosity_candidates": 0}}
 
     # If we don't have precomputed curiosity candidates, try to run analyzer
     try:
@@ -560,15 +560,32 @@ def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=
 
     # Build idea graph seeded by curiosity candidates (preferred)
     nodes = []
+    candidates = []
     try:
-        nodes = build_idea_graph(trs, aud=aud, vis=vis, curiosity_candidates=curiosity_candidates, brain=brain) or []
+        phase1_unsuppress = str(os.environ.get("HS_ULTRON_PHASE1_UNSUPPRESS", "1")).strip().lower() in ("1", "true", "yes", "on")
+        relaxed_curio_cutoff = float(os.environ.get("HS_ULTRON_CURIO_CUTOFF", "0.16") or 0.16)
+        relaxed_punch_cutoff = float(os.environ.get("HS_ULTRON_PUNCH_CUTOFF", "0.16") or 0.16)
+        nodes = build_idea_graph(
+            trs,
+            aud=aud,
+            vis=vis,
+            curiosity_candidates=curiosity_candidates,
+            brain=brain,
+            disable_coalesce=phase1_unsuppress,
+            disable_node_cap=phase1_unsuppress,
+        ) or []
         from viral_finder.idea_graph import select_candidate_clips
 
         candidates = select_candidate_clips(
-    nodes,
-    top_k=12,
-    transcript=trs,
-    ensure_sentence_complete=True
+            nodes,
+            top_k=top_k,
+            transcript=trs,
+            ensure_sentence_complete=True,
+            allow_multi_angle=True if phase1_unsuppress else False,
+            diversity_mode="maximum" if phase1_unsuppress else "balanced",
+            min_target=max(0, int(top_k)) if phase1_unsuppress else 0,
+            curio_cutoff=relaxed_curio_cutoff if phase1_unsuppress else None,
+            punch_cutoff=relaxed_punch_cutoff if phase1_unsuppress else None,
         )
 
     except Exception as exc:
@@ -580,10 +597,49 @@ def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=
             for i in range(0, total_segs, approx):
                 nodes.append(type("N", (), {"start_idx": i, "end_idx": min(total_segs - 1, i + approx - 1)}))
 
-    # Convert nodes to (start_idx, end_idx)
+    # Convert nodes to (start_idx, end_idx) for fallback mapping.
     idea_boundaries = [(int(getattr(n, "start_idx", n[0])), int(getattr(n, "end_idx", n[1]))) for n in nodes]
 
-    print(f"[ULTRON] Generated {len(idea_boundaries)} candidate arcs (from idea_graph)")
+    # Fix 1: score selected candidate arcs first (complete-thought spans), not raw node boundaries.
+    def _time_to_seg_index(transcript, t):
+        if not transcript:
+            return 0
+        for i, seg in enumerate(transcript):
+            s = float(seg.get("start", 0.0) or 0.0)
+            e = float(seg.get("end", s) or s)
+            if s <= float(t) <= e:
+                return i
+        return min(
+            range(len(transcript)),
+            key=lambda i: abs(float(transcript[i].get("start", 0.0) or 0.0) - float(t)),
+        )
+
+    scoring_arcs = []
+    if isinstance(candidates, list) and candidates:
+        for i, arc in enumerate(candidates):
+            try:
+                if isinstance(arc, dict) and ("start_idx" in arc or "end_idx" in arc):
+                    s_idx = int(arc.get("start_idx", 0) or 0)
+                    e_idx = int(arc.get("end_idx", s_idx) or s_idx)
+                elif isinstance(arc, dict):
+                    s_t = float(arc.get("start", 0.0) or 0.0)
+                    e_t = float(arc.get("end", s_t) or s_t)
+                    s_idx = _time_to_seg_index(trs, s_t)
+                    e_idx = _time_to_seg_index(trs, e_t)
+                else:
+                    continue
+                s_idx = max(0, min(len(trs) - 1, int(s_idx)))
+                e_idx = max(s_idx, min(len(trs) - 1, int(e_idx)))
+                scoring_arcs.append((i, s_idx, e_idx, arc))
+            except Exception:
+                continue
+    else:
+        scoring_arcs = [(i, int(s), int(e), None) for i, (s, e) in enumerate(idea_boundaries)]
+
+    print(
+        f"[ULTRON] Generated {len(idea_boundaries)} node arcs and "
+        f"{len(candidates) if isinstance(candidates, list) else 0} selected arcs"
+    )
 
     # --- helpers inside function ---
     def _slice_mean(list_of_dicts, key, s, e):
@@ -626,13 +682,14 @@ def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=
     # Collect candidates with debug info
     raw_candidates = []
     rejected = []
-    for arc_idx, (start_idx, end_idx) in enumerate(idea_boundaries):
+    for arc_idx, start_idx, end_idx, selected_arc in scoring_arcs:
         debug = {
             "arc_idx": arc_idx,
             "start_idx": start_idx,
             "end_idx": end_idx,
             "decision": None,
-            "reason": None
+            "reason": None,
+            "selected_arc_seeded": bool(selected_arc is not None),
         }
 
         # bounds safety
@@ -747,32 +804,30 @@ def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=
         }
 
         # validate via curiosity curve + payoff
-        # --- SAFE curiosity curve handling ---
-    if curiosity_curve is None:
-        _curiosity = []
-    elif hasattr(curiosity_curve, "tolist"):
-        _curiosity = curiosity_curve.tolist()
-    else:
-        _curiosity = curiosity_curve
+        if curiosity_curve is None:
+            _curiosity = []
+        elif hasattr(curiosity_curve, "tolist"):
+            _curiosity = curiosity_curve.tolist()
+        else:
+            _curiosity = curiosity_curve
 
-    ok, reason = validate_clip(
-       _curiosity,
-       candidate["start"],
-       candidate["end"],
-       candidate.get("payoff_confidence"),
-       min_peak=min_curiosity_peak
-)
+        ok, reason = validate_clip(
+           _curiosity,
+           candidate["start"],
+           candidate["end"],
+           candidate.get("payoff_confidence"),
+           min_peak=min_curiosity_peak
+        )
 
-    if not ok:
-        debug.update({
-          "decision": "reject",
-          "reason": reason,
-          "meta": candidate
-        })
-        rejected.append(debug)
-        # continue
-
-
+        if not ok:
+            debug.update({
+              "decision": "reject",
+              "reason": reason,
+              "meta": candidate
+            })
+            rejected.append(debug)
+            continue
+        
         # accept
         debug.update({"decision": "accept", "reason": "ok", "meta": candidate})
         raw_candidates.append(candidate)

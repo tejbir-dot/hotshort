@@ -1,239 +1,306 @@
+# HOTSHORT GOD MODE
+# REVIVED AND REBUILT
+#
+# This system is architected for pure, unsuppressed cognitive analysis.
+# It operates on principles of semantic arc construction, not simple sentiment.
+#
+# LAYER 0: COGNITION ENGINE (The Brain)
+# LAYER 1: ACQUISITION (The Senses)
+
 import os
 import re
 import json
 import time
-import torch
 import threading
-import nltk
-from nltk.sentiment import SentimentIntensityAnalyzer
-from faster_whisper import WhisperModel
-from youtube_transcript_api import YouTubeTranscriptApi
+import hashlib
+import numpy as np
 import yt_dlp
+import torch
+from sentence_transformers import SentenceTransformer, util
+from faster_whisper import WhisperModel
+from yt_dlp.networking.impersonate import ImpersonateTarget
 
-# -----------------------------------------------------------
-# Initialize Sentiment Engine
-# -----------------------------------------------------------
-nltk.download('vader_lexicon', quiet=True)
-sia = SentimentIntensityAnalyzer()
+# ======================================================================================
+# MODEL MANAGEMENT
+# Centralized loading for AI models to ensure they are loaded only once.
+# ======================================================================================
 
-# -----------------------------------------------------------
-# GLOBAL Whisper Model (cached once for speed)
-# -----------------------------------------------------------
-_MODEL = None
+_MODELS = {}
 _MODEL_LOCK = threading.Lock()
-_MODEL_NAME = "tiny.en"          # fastest English model
-_COMPUTE_TYPE = "float16"        # perfect for GTX 1630
 
-def _get_or_load_model(device="cuda"):
-    """Load Whisper model once, reuse it for all transcriptions."""
-    global _MODEL
-    if _MODEL is not None:
-        return _MODEL
-
+def load_models(device="cuda"):
+    """Loads all required AI models once and returns them."""
     with _MODEL_LOCK:
-        if _MODEL is not None:
-            return _MODEL
+        if "sentence_transformer" in _MODELS and "whisper" in _MODELS:
+            return _MODELS
 
-        print(f"⚡ Loading Faster-Whisper model ({_MODEL_NAME}) on {device.upper()} ...")
+        print(f"[INFO] Loading AI models on {device.upper()} ...")
         try:
             torch.backends.cudnn.benchmark = True
         except Exception:
             pass
+            
+        st_model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
+        _MODELS["sentence_transformer"] = st_model
+        print("[SUCCESS] SentenceTransformer model ready.")
+        
+        whisper_model = WhisperModel("base.en", device=device, compute_type="float16")
+        _MODELS["whisper"] = whisper_model
+        print("[SUCCESS] Whisper model ready.")
+        
+        return _MODELS
 
-        _MODEL = WhisperModel(_MODEL_NAME, device=device, compute_type=_COMPUTE_TYPE)
-        print("✅ Whisper model ready.")
-        return _MODEL
+# ======================================================================================
+# LAYER 1: ACQUISITION
+# Fetches media and transcripts. Provides data and quality signals to the Cognition Engine.
+# ======================================================================================
 
-# -----------------------------------------------------------
-# Extract YouTube Video ID
-# -----------------------------------------------------------
-def extract_video_id(url: str):
-    match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
-    return match.group(1) if match else None
+class AcquisitionLayer:
+    """
+    Handles the retrieval of video transcripts, acting as the sensory input for the Cognition Engine.
+    """
+    def __init__(self, whisper_model, cache_dir="cache"):
+        self.whisper_model = whisper_model
+        self.cache_dir = cache_dir
+        os.makedirs(self.cache_dir, exist_ok=True)
 
-# -----------------------------------------------------------
-# Download Audio using yt_dlp
-# -----------------------------------------------------------
-def download_audio(video_id: str):
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    output_file = f"temp_audio_{video_id}.mp3"
+    def _get_url_details(self, url: str):
+        """Identifies URL type and creates a unique, safe identifier for it."""
+        yt_match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", url)
+        if yt_match:
+            video_id = yt_match.group(1)
+            return video_id, 'youtube'
+        
+        url_hash = hashlib.sha1(url.encode('utf-8')).hexdigest()
+        return url_hash, 'other'
 
-    print(f"\n🎥 Fetching audio from: {url}")
-    cookie_path = os.path.join(os.getcwd(), "cookies.txt")
-    print(f"🧩 Using cookies: {os.path.exists(cookie_path)}")
+    def _download_audio(self, url: str, identifier: str):
+        """Downloads audio using yt-dlp with robust settings."""
+        output_file = os.path.join(self.cache_dir, f"temp_audio_{identifier}.mp3")
 
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": f"temp_audio_{video_id}.%(ext)s",
-        "quiet": True,
-        "noplaylist": True,
-        "nocheckcertificate": True,
-        "socket_timeout": 30,
-        "max_downloads": 1,
-        "http_chunk_size": 10485760,  # 10MB chunks
-        # Retries + backoff to reduce transient 429s on shared IPs.
-        "retries": 5,
-        "fragment_retries": 5,
-        "sleep_interval": 5,
-        "max_sleep_interval": 15,
-        # Prefer Android client which is typically less aggressively rate-limited.
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android"],
-            }
-        },
-        # Anti-blocking measures for HTTP 403 errors
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-us,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-        },
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ],
-    }
+        print(f"\n[INFO] Fetching audio from: {url}")
+        cookie_path = os.path.join(os.getcwd(), "cookies.txt")
 
-    # Add cookie file only if it exists
-    if os.path.exists(cookie_path):
-        ydl_opts["cookiefile"] = cookie_path
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": output_file.replace('.mp3', '.%(ext)s'),
+            "quiet": True,
+            "noplaylist": True,
+            "nocheckcertificate": True,
+            "socket_timeout": 30,
+            "retries": 5,
+            "fragment_retries": 5,
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}],
+            "impersonate": ImpersonateTarget.from_str("chrome"),
+        }
+        if os.path.exists(cookie_path):
+            ydl_opts["cookiefile"] = cookie_path
 
-    try:
-        print("[TRANSCRIPT] Starting yt-dlp audio download…")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        print(f"✅ Audio downloaded successfully → {output_file}")
-        return output_file
-    except Exception as e:
-        msg = str(e) or repr(e)
-        if "HTTP Error 429" in msg or "Too Many Requests" in msg or "429:" in msg:
-            print("❌ Audio download rate-limited by YouTube (HTTP 429). Please retry in 1–2 minutes.")
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            return output_file
+        except Exception as e:
+            print(f"[ERROR] Audio download failed: {e}")
+            return None
+
+    def get_transcript(self, url: str, force_refresh: bool = False):
+        """
+        Gets a full transcript.
+        
+        !!! DEVELOPMENT OVERRIDE !!!
+        This function is currently hardcoded to read from `mock_transcript.json`
+        to bypass network issues with yt-dlp. This allows for development
+        of the Cognition Engine. To re-enable network functionality, remove this override.
+        """
+        mock_path = "mock_transcript.json"
+        if os.path.exists(mock_path):
+            print(f"[WARNING] DEV OVERRIDE: Loading from {mock_path}")
+            with open(mock_path, "r", encoding="utf-8") as f:
+                return json.load(f), "mock"
         else:
-            print("❌ Audio download failed:", msg)
-        return None
+            print(f"[ERROR] Mock transcript not found at {mock_path}")
+            return [], "mock_failed"
 
-# -----------------------------------------------------------
-# Super Fast Transcription (GPU + Cache)
-# -----------------------------------------------------------
-def get_transcript(video_id: str, max_duration=None, force_refresh=False):
-    """Fast GPU Whisper transcription with caching and YouTube fallback."""
-    cache_dir = "cache"
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, f"{video_id}.json")
+        # --- ORIGINAL NETWORK LOGIC ---
+        # The following code is disabled during the dev override.
+        
+        # identifier, url_type = self._get_url_details(url)
+        # cache_path = os.path.join(self.cache_dir, f"{identifier}.json")
 
-    # Check cache
-    if not force_refresh and os.path.exists(cache_path):
-        print(f"📦 Cached transcript found → {cache_path}")
-        with open(cache_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        # if not force_refresh and os.path.exists(cache_path):
+        #     print(f"[INFO] Cached transcript found -> {cache_path}")
+        #     with open(cache_path, "r", encoding="utf-8") as f:
+        #         return json.load(f), "cached"
 
-    # Try YouTube captions
-    try:
-        print("🔎 Trying YouTube captions first...")
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        yt_transcript = transcript_list.find_transcript(['en']).fetch()
-        print("✅ Found YouTube captions.")
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(yt_transcript, f, indent=2)
-        return yt_transcript
-    except Exception as e:
-        print("⚠️ YouTube captions not found. Falling back to Whisper.")
-        print("🪲 Debug:", e)
+        # if url_type == 'youtube':
+        #     try:
+        #         from youtube_transcript_api import YouTubeTranscriptApi
+        #         transcript_list = YouTubeTranscriptApi.list_transcripts(identifier)
+        #         yt_transcript = transcript_list.find_transcript(['en']).fetch()
+        #         if not yt_transcript:
+        #             raise ValueError("Empty transcript from API")
+                
+        #         print("[SUCCESS] Found official YouTube transcript.")
+        #         with open(cache_path, "w", encoding="utf-8") as f:
+        #             json.dump(yt_transcript, f, indent=2)
+        #         return yt_transcript, "youtube_api"
+        #     except Exception:
+        #         print("[WARNING] YouTube captions not found. Falling back to Whisper transcription.")
 
-    # Download audio
-    audio_file = download_audio(video_id)
-    if not audio_file or not os.path.exists(audio_file):
-        print("❌ Audio file missing after download.")
+        # audio_file = self._download_audio(url, identifier)
+        # if not audio_file or not os.path.exists(audio_file):
+        #     return [], "download_failed"
+            
+        # print(f"[INFO] Transcribing with Faster-Whisper...")
+        # start_time = time.time()
+        # try:
+        #     segments, _ = self.whisper_model.transcribe(
+        #         audio_file, beam_size=1, vad_filter=True, vad_parameters=dict(min_silence_duration_ms=250)
+        #     )
+        #     transcript = [{"text": s.text.strip(), "start": s.start, "end": s.end} for s in segments if s.text.strip()]
+            
+        #     if not transcript:
+        #          return [], "transcription_failed_empty"
+
+        #     print(f"[SUCCESS] Transcription complete in {time.time() - start_time:.2f}s")
+        #     with open(cache_path, "w", encoding="utf-8") as f:
+        #         json.dump(transcript, f, ensure_ascii=False, indent=2)
+            
+        #     return transcript, "whisper"
+        # except Exception as e:
+        #     print(f"[ERROR] Whisper transcription failed: {e}")
+        #     return [], "transcription_failed_exception"
+        # finally:
+        #     if os.path.exists(audio_file):
+        #         os.remove(audio_file)
+
+# ======================================================================================
+# LAYER 0: COGNITION ENGINE
+# This is the "God Mode" brain. It only thinks.
+# ======================================================================================
+
+class CognitionEngine:
+    """
+    The core intelligence. It constructs a cognitive map of the content.
+    """
+    def __init__(self, sentence_transformer_model, device="cuda"):
+        self.device = device
+        self.model = sentence_transformer_model
+
+    def _embed_transcript(self, transcript):
+        """Computes semantic embeddings for each transcript segment."""
+        if not transcript:
+            return None, None
+        sentences = [segment['text'] for segment in transcript]
+        embeddings = self.model.encode(sentences, convert_to_tensor=True, device=self.device)
+        return sentences, embeddings
+
+    def _cluster_semantically(self, transcript, embeddings, threshold=0.5):
+        """
+        Groups transcript segments into semantic clusters (arcs) using cosine similarity.
+        """
+        if embeddings is None or len(embeddings) == 0:
+            return []
+        
+        print(f"[COGNITION] Performing semantic clustering with threshold {threshold}...")
+        
+        cos_sim = util.pytorch_cos_sim(embeddings, embeddings)
+        
+        clusters = []
+        visited = [False] * len(transcript)
+        
+        for i in range(len(transcript)):
+            if visited[i]:
+                continue
+            
+            current_cluster = {'segments': [], 'arc_id': len(clusters) + 1}
+            queue = [i]
+            visited[i] = True
+            
+            while queue:
+                current_idx = queue.pop(0)
+                current_cluster['segments'].append({
+                    **transcript[current_idx],
+                    'segment_id': current_idx
+                })
+                
+                for j in range(len(transcript)):
+                    if not visited[j] and cos_sim[current_idx][j] >= threshold:
+                        visited[j] = True
+                        queue.append(j)
+            
+            current_cluster['segments'].sort(key=lambda x: x['start'])
+            clusters.append(current_cluster)
+            
+        print(f"[SUCCESS] Found {len(clusters)} semantic arcs.")
+        return clusters
+
+    # ... (placeholders for other cognition methods) ...
+    def _detect_emotional_surges(self, transcript):
+        print("[COGNITION] Detecting emotional surges...")
+        return []
+    def _identify_narrative_punches(self, clusters, emotions):
+        print("[COGNITION] Identifying narrative punches...")
+        return []
+    def _calculate_depth_and_escalation(self, arcs):
+        print("[COGNITION] Calculating depth and escalation...")
+        return []
+    def _merge_and_define_clips(self, arcs):
+        print("[COGNITION] Defining final clips...")
         return []
 
-    start = time.time()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = _get_or_load_model(device=device)
+    def find_viral_moments(self, transcript, acquisition_quality):
+        """
+        The main cognitive orchestration function.
+        """
+        if not transcript:
+            print("CognitionEngine: Aborting, transcript is empty.")
+            return []
 
-    print(f"🎧 Transcribing with Faster-Whisper ({device.upper()}) ...")
-    try:
-        segments, info = model.transcribe(audio_file, beam_size=1)
-        if max_duration:
-            segments = [s for s in segments if s.start < max_duration]
-            print(f"⏩ Preview Mode: Trimmed to {max_duration}s")
+        print(f"\n--- Starting God Mode Cognition (Quality: {acquisition_quality}) ---")
+        sentences, embeddings = self._embed_transcript(transcript)
+        clusters = self._cluster_semantically(transcript, embeddings, threshold=0.45)
+        print("--- God Mode Cognition Complete ---")
+        return clusters
 
-        transcript = [{"text": s.text, "start": s.start, "end": s.end} for s in segments]
-        print(f"🎯 Transcription completed in {time.time()-start:.2f}s — {len(transcript)} segments")
+# ======================================================================================
+# Main Orchestrator
+# ======================================================================================
 
-        # Cache transcript
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(transcript, f, ensure_ascii=False, indent=2)
-        print(f"💾 Transcript cached → {cache_path}")
+def run_viral_finder(url: str, models):
+    """
+    High-level orchestrator.
+    """
+    acquisition = AcquisitionLayer(whisper_model=models["whisper"])
+    cognition = CognitionEngine(sentence_transformer_model=models["sentence_transformer"])
+    
+    transcript, quality_signal = acquisition.get_transcript(url)
 
-        os.remove(audio_file)
-        return transcript
-
-    except Exception as e:
-        print("❌ Faster-Whisper failed:", e)
-        return []
-
-# -----------------------------------------------------------
-# Emotion + Keyword Scoring
-# -----------------------------------------------------------
-def analyze_emotion(text: str):
-    sentiment = sia.polarity_scores(text)
-    return abs(sentiment["compound"]) * (1 + sentiment["pos"] + sentiment["neg"])
-
-VIRAL_KEYWORDS = [
-    "crazy", "unbelievable", "insane", "moment", "wow", "shocking",
-    "epic", "viral", "best", "funniest", "emotional", "amazing"
-]
-
-def keyword_boost(text: str):
-    return 1 + (sum(text.lower().count(k) for k in VIRAL_KEYWORDS) * 0.4)
-
-# -----------------------------------------------------------
-# Viral Segment Finder
-# -----------------------------------------------------------
-def score_transcript(transcript):
-    results = []
-    for t in transcript:
-        score = analyze_emotion(t["text"]) * keyword_boost(t["text"])
-        results.append({**t, "score": round(score, 3)})
-    return sorted(results, key=lambda x: x["score"], reverse=True)
-
-def find_viral_moments(youtube_url, clip_length=15):
-    video_id = extract_video_id(youtube_url)
-    if not video_id:
-        print("❌ Invalid YouTube URL.")
-        return []
-
-    transcript = get_transcript(video_id, max_duration=None)
     if not transcript:
-        print("❌ No transcript found.")
+        print("[ERROR] Could not acquire a transcript. Aborting.")
         return []
 
-    scored = score_transcript(transcript)
-    moments = []
-    for s in scored[:10]:
-        start = max(0, s["start"] - clip_length / 2)
-        end = s["end"] + clip_length / 2
-        moments.append({
-            "start": round(start, 2),
-            "end": round(end, 2),
-            "text": s["text"],
-            "score": s["score"]
-        })
-    return moments
+    viral_moments = cognition.find_viral_moments(transcript, acquisition_quality=quality_signal)
+    return viral_moments
 
-# -----------------------------------------------------------
-# Main Entry Point
-# -----------------------------------------------------------
 if __name__ == "__main__":
-    url = input("🎥 Paste a YouTube link: ")
-    moments = find_viral_moments(url)
-    for i, m in enumerate(moments, 1):
-        print(f"\n{i}. [{m['start']}s - {m['end']}s] 🔥 Score: {m['score']}")
-        print(f"   → {m['text']}")
+    if len(os.sys.argv) > 1:
+        url = os.sys.argv[1]
+    else:
+        url = input("[INFO] Paste a video link: ")
+    
+    # Load models once at the start
+    loaded_models = load_models()
+    
+    clusters = run_viral_finder(url, loaded_models)
+    
+    if not clusters:
+        print("\n[ERROR] No semantic arcs constructed.")
+    else:
+        print("\n*** Semantic Arcs Constructed ***")
+        for cluster in clusters:
+            sorted_segments = sorted(cluster['segments'], key=lambda s: s['start'])
+            print(f"\n[SUCCESS] ARC {cluster['arc_id']} ({len(sorted_segments)} segments)")
+            for segment in sorted_segments:
+                print(f"   [{segment['start']:.2f}s] \"{segment['text']}\"")

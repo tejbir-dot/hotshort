@@ -191,7 +191,7 @@
       position: relative;
     }
 
-    .clip-card:hover {
+    .clip-card.is-previewing {
       transform: translateY(-8px) scale(1.02);
       box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 45px rgba(255,190,80,0.08);
     }
@@ -201,7 +201,7 @@
       transform: scale(1.03);
     }
 
-    .clip-card.is-best:hover {
+    .clip-card.is-best.is-previewing {
       transform: scale(1.06) translateY(-8px);
     }
 
@@ -223,7 +223,7 @@
       transition: filter 0.3s ease;
     }
 
-    .clip-card:hover .clip-preview video {
+    .clip-card.is-previewing .clip-preview video {
       filter: brightness(1.06) contrast(1.02);
     }
 
@@ -252,10 +252,31 @@
       letter-spacing: 0.3px;
     }
 
-    .clip-card:hover .clip-duration-tooltip {
+    .clip-card.is-previewing .clip-duration-tooltip {
       opacity: 1;
       transform: translateX(-50%) scale(1) translateY(-8px);
       pointer-events: auto;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .clip-card:hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 45px rgba(255,190,80,0.08);
+      }
+
+      .clip-card.is-best:hover {
+        transform: scale(1.06) translateY(-8px);
+      }
+
+      .clip-card:hover .clip-preview video {
+        filter: brightness(1.06) contrast(1.02);
+      }
+
+      .clip-card:hover .clip-duration-tooltip {
+        opacity: 1;
+        transform: translateX(-50%) scale(1) translateY(-8px);
+        pointer-events: auto;
+      }
     }
 
     .duration-icon {
@@ -594,6 +615,13 @@
       box-shadow: none;
     }
 
+    .btn:disabled:hover {
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,210,120,0.03));
+      color: var(--gold-100);
+      transform: none;
+      box-shadow: none;
+    }
+
     .btn.is-disabled {
       opacity: 0.55;
       cursor: not-allowed;
@@ -601,6 +629,43 @@
       pointer-events: none;
       transform: none;
       box-shadow: none;
+    }
+
+    /* 🔥 LOGO FOOTER - Premium branding at bottom of clips */
+    .logo-footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 10px;
+      margin-top: 12px;
+      border-top: 1px solid rgba(255, 200, 100, 0.12);
+      background: linear-gradient(180deg, rgba(255, 200, 100, 0.04), rgba(0, 0, 0, 0.1));
+      border-radius: 6px;
+      opacity: 0.85;
+      transition: all 0.25s ease;
+    }
+
+    .logo-footer-img {
+      width: 18px;
+      height: 18px;
+      object-fit: contain;
+      opacity: 0.9;
+      filter: brightness(1.1);
+    }
+
+    .logo-footer-text {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: rgba(255, 210, 120, 0.8);
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+
+    .clip-card:hover .logo-footer {
+      opacity: 1;
+      background: linear-gradient(180deg, rgba(255, 200, 100, 0.08), rgba(0, 0, 0, 0.15));
+      border-top-color: rgba(255, 200, 100, 0.2);
     }
 
     /* =====================================
@@ -841,6 +906,20 @@
       .carousel {
         gap: 12px;
       }
+
+      .logo-footer {
+        padding: 10px 8px;
+        gap: 6px;
+      }
+
+      .logo-footer-img {
+        width: 16px;
+        height: 16px;
+      }
+
+      .logo-footer-text {
+        font-size: 0.7rem;
+      }
     }
 
     @media (max-width: 480px) {
@@ -869,6 +948,20 @@
       .scores-grid {
         grid-template-columns: repeat(2, 1fr);
       }
+
+      .logo-footer {
+        padding: 8px 6px;
+        gap: 4px;
+      }
+
+      .logo-footer-img {
+        width: 14px;
+        height: 14px;
+      }
+
+      .logo-footer-text {
+        font-size: 0.65rem;
+      }
     }
   </style>
 </head>
@@ -894,6 +987,22 @@
          </div>
         {% if error %}
           <p style="opacity:0.8;color:#ffb4b4">{{ error }}</p>
+        {% endif %}
+        {% if worker_envelope %}
+          <p style="font-size:0.85rem; color:var(--gold-200); margin-top:6px;">
+            Job status: {{ worker_envelope.status }}
+            {% if worker_envelope.confidence_score is not none %}
+              | confidence: {{ "%.2f"|format(worker_envelope.confidence_score) }}
+            {% endif %}
+            {% if worker_envelope.low_confidence %}
+              <span style="color:var(--accent-warn);">(low confidence)</span>
+            {% endif %}
+          </p>
+          {% if worker_envelope.diagnostics %}
+            <pre style="font-size:0.75rem; margin-top:4px; color:#ccc;">
+Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
+            </pre>
+          {% endif %}
         {% endif %}
 
       </div>
@@ -1296,9 +1405,63 @@
       console.log(`[CAROUSEL] Rendering ${clips.length} clips...`);
 
       const SOUND_KEY = 'hs_sound_enabled';
-      const soundPrefEnabled = (() => {
+      let soundPrefEnabled = (() => {
         try { return localStorage.getItem(SOUND_KEY) === '1'; } catch (e) { return false; }
       })();
+      const supportsHoverPreview = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+      let activePreviewVideo = null;
+
+      function syncSoundHints() {
+        document.querySelectorAll('[data-role="sound-hint"]').forEach((hint) => {
+          const card = hint.closest('.clip-card');
+          const active = !!(card && card.classList.contains('is-previewing'));
+          hint.style.display = (!soundPrefEnabled && active) ? '' : 'none';
+        });
+      }
+
+      function stopPreview(video, options = {}) {
+        const reset = options.reset !== false;
+        if (!video) return;
+        try {
+          video.pause();
+          video.muted = true;
+          video.volume = 0;
+          if (reset) video.currentTime = 0;
+        } catch (e) {}
+        const card = video.closest('.clip-card');
+        if (card) card.classList.remove('is-previewing');
+        if (activePreviewVideo === video) activePreviewVideo = null;
+        syncSoundHints();
+      }
+
+      function stopAllPreviews(exceptVideo = null) {
+        carousel.querySelectorAll('video.clip-video').forEach((v) => {
+          if (exceptVideo && v === exceptVideo) return;
+          stopPreview(v);
+        });
+      }
+
+      function startPreview(card, video, options = {}) {
+        const withSound = !!options.withSound;
+        if (!card || !video) return;
+        stopAllPreviews(video);
+        card.classList.add('is-previewing');
+        activePreviewVideo = video;
+        try {
+          video.muted = !withSound;
+          video.volume = withSound ? 0.85 : 0;
+          const p = video.play && video.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (e) {}
+        syncSoundHints();
+      }
+
+      function enableSoundForActivePreview() {
+        if (!activePreviewVideo) return;
+        try { localStorage.setItem(SOUND_KEY, '1'); } catch (e) {}
+        soundPrefEnabled = true;
+        startPreview(activePreviewVideo.closest('.clip-card'), activePreviewVideo, { withSound: true });
+      }
 
       clips.forEach((clip, index) => {
         const card = document.createElement('article');
@@ -1345,7 +1508,7 @@
         // Debug log
         console.log(`[CLIP ${index}] URL: ${clip.clip_url}, Type: ${clip.hook_type}, Confidence: ${clip.confidence}`);
 
-        const soundHintHtml = (!soundPrefEnabled && index === 0)
+        const soundHintHtml = (!soundPrefEnabled)
           ? `<div class="sound-hint" data-role="sound-hint">🔊 Tap for sound</div>`
           : '';
 
@@ -1389,6 +1552,12 @@
                 <button class="btn feedback-btn" data-action="not-useful" data-clip-id="${clip.clip_id}">👎 Not useful</button>
               </div>
             </div>
+            
+            <!-- 🔥 LOGO FOOTER - Premium branding at bottom -->
+            <div class="logo-footer">
+              <img src="/static/branding/logo_icon.png" alt="HotShort Logo" class="logo-footer-img" title="Made with HotShort Studio">
+              <span class="logo-footer-text">HotShort</span>
+            </div>
           </div>
         `;
 
@@ -1397,45 +1566,59 @@
         if (video) {
           video.muted = true;
           video.playsInline = true;
+          video.volume = 0;
           // Avoid autoplaying every card at once (perf + UX).
           video.pause();
           video.currentTime = 0;
         }
-
-        const pauseOtherPreviews = () => {
-          const all = carousel.querySelectorAll('video.clip-video');
-          all.forEach((v) => {
-            if (video && v === video) return;
-            try {
-              v.pause();
-              v.currentTime = 0;
-            } catch (e) {}
-          });
-        };
-
-        card.addEventListener('mouseenter', () => {
-          if (video) {
-            // Ensure ONLY the hovered clip plays.
-            pauseOtherPreviews();
-            video.play().catch(() => {});
-            if (video.duration && !isNaN(video.duration)) {
-              updateDurationDisplay(card, video.duration);
-            } else {
-              const onLoadedMetadata = () => {
+        if (supportsHoverPreview) {
+          card.addEventListener('mouseenter', () => {
+            if (video) {
+              startPreview(card, video, { withSound: soundPrefEnabled });
+              if (video.duration && !isNaN(video.duration)) {
                 updateDurationDisplay(card, video.duration);
-                video.removeEventListener('loadedmetadata', onLoadedMetadata);
-              };
-              video.addEventListener('loadedmetadata', onLoadedMetadata);
+              } else {
+                const onLoadedMetadata = () => {
+                  updateDurationDisplay(card, video.duration);
+                  video.removeEventListener('loadedmetadata', onLoadedMetadata);
+                };
+                video.addEventListener('loadedmetadata', onLoadedMetadata);
+              }
             }
-          }
-        });
+          });
 
-        card.addEventListener('mouseleave', () => {
-          if (video && !video.paused) {
-            video.pause();
-            video.currentTime = 0;
+          card.addEventListener('mouseleave', () => {
+            if (video) stopPreview(video);
+          });
+        } else {
+          const preview = card.querySelector('.clip-preview');
+          if (preview) {
+            preview.addEventListener('click', (e) => {
+              const hint = e.target.closest('[data-role="sound-hint"]');
+              if (hint) {
+                e.preventDefault();
+                e.stopPropagation();
+                enableSoundForActivePreview();
+                return;
+              }
+              if (!video) return;
+              if (activePreviewVideo === video && !video.paused) {
+                stopPreview(video);
+                return;
+              }
+              startPreview(card, video, { withSound: soundPrefEnabled });
+              if (video.duration && !isNaN(video.duration)) {
+                updateDurationDisplay(card, video.duration);
+              } else {
+                const onLoadedMetadata = () => {
+                  updateDurationDisplay(card, video.duration);
+                  video.removeEventListener('loadedmetadata', onLoadedMetadata);
+                };
+                video.addEventListener('loadedmetadata', onLoadedMetadata);
+              }
+            });
           }
-        });
+        }
 
         const viewBtn = card.querySelector('[data-action="view"]');
         if (viewBtn) {
@@ -1536,8 +1719,7 @@
         carousel.appendChild(card);
         });
 
-      // Autoplay muted (allowed); unlock sound on the first user interaction.
-      initSoundUnlock();
+      syncSoundHints();
 
     /* Helper function to format duration */
     function formatDuration(seconds) {
@@ -1553,34 +1735,6 @@
       if (durationElement) {
         durationElement.textContent = formatDuration(duration);
       }
-    }
-
-    // Autoplay is muted (allowed). First real user interaction unlocks sound.
-    function initSoundUnlock() {
-      const SOUND_KEY = 'hs_sound_enabled';
-
-      function enableSoundOnce() {
-        document.querySelectorAll('video.clip-video').forEach(v => {
-          try {
-            v.muted = false;
-            v.volume = 0.85;
-            const p = v.play && v.play();
-            if (p && typeof p.catch === 'function') p.catch(() => {});
-          } catch (e) {}
-        });
-
-        try { localStorage.setItem(SOUND_KEY, '1'); } catch (e) {}
-        document.querySelectorAll('[data-role="sound-hint"]').forEach(n => n.remove());
-      }
-
-      function onKeydown(e) {
-        const k = (e && e.key) ? String(e.key).toLowerCase() : '';
-        if (k === 'enter' || k === ' ') enableSoundOnce();
-      }
-
-      document.addEventListener('pointerdown', enableSoundOnce, { capture: true, once: true });
-      document.addEventListener('click', enableSoundOnce, { capture: true, once: true });
-      document.addEventListener('keydown', onKeydown, { capture: true, once: true });
     }
 
     /* =====================================

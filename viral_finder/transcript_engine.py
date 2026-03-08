@@ -139,8 +139,8 @@ def _vad_parameters_for(profile: str) -> Dict:
         )
     return dict(
         threshold=0.5,
-        min_silence_duration_ms=400,
-        speech_pad_ms=250,
+        min_silence_duration_ms=800,
+        speech_pad_ms=350,
     )
 
 
