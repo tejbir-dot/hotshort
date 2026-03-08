@@ -8,20 +8,172 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 import hashlib
+from urllib.parse import urlparse
+from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 
 # instrumentation helpers
-import psutil, logging
+import logging
+try:
+    import psutil
+except Exception:
+    psutil = None
+
+if TYPE_CHECKING:
+    from psutil import Process as PsutilProcess
+else:
+    PsutilProcess = object
+
+RESOURCE_LOG_ENABLED = os.getenv("HS_RESOURCE_LOG", "1").strip().lower() in ("1", "true", "yes", "on")
+RESOURCE_LOG_REQUESTS = os.getenv("HS_RESOURCE_LOG_REQUESTS", "1").strip().lower() in ("1", "true", "yes", "on")
+RESOURCE_INCLUDE_CHILDREN = os.getenv("HS_RESOURCE_INCLUDE_CHILDREN", "1").strip().lower() in ("1", "true", "yes", "on")
+RESOURCE_LOG_HEAVY_ONLY = os.getenv("HS_RESOURCE_LOG_HEAVY_ONLY", "1").strip().lower() in ("1", "true", "yes", "on")
+RESOURCE_HEAVY_PATHS = (
+    "/analyze",
+    "/generate",
+    "/start",
+    "/progress",
+    "/events",
+)
+try:
+    RESOURCE_MONITOR_INTERVAL_SECONDS = float(os.getenv("HS_RESOURCE_MONITOR_INTERVAL_SECONDS", "0") or 0)
+except Exception:
+    RESOURCE_MONITOR_INTERVAL_SECONDS = 0.0
+
+_RESOURCE_MONITOR_STARTED = False
+_RESOURCE_MONITOR_LOCK = threading.Lock()
+
+
+def _bytes_to_mb(num_bytes: int) -> float:
+    return float(num_bytes or 0) / (1024.0 * 1024.0)
+
+
+def _safe_cpu_seconds(proc: PsutilProcess) -> float:
+    if psutil is None:
+        return 0.0
+    try:
+        c = proc.cpu_times()
+        return float(getattr(c, "user", 0.0) + getattr(c, "system", 0.0))
+    except Exception:
+        return 0.0
+
+
+def _safe_mem_rss(proc: PsutilProcess) -> int:
+    if psutil is None:
+        return 0
+    try:
+        return int(proc.memory_info().rss or 0)
+    except Exception:
+        return 0
+
+
+def _snapshot_resources(include_children: bool = True) -> dict:
+    if psutil is None:
+        return {
+            "pid": int(os.getpid()),
+            "rss": 0,
+            "cpu_s": 0.0,
+            "threads": 0,
+            "child_rss": 0,
+            "child_cpu_s": 0.0,
+            "child_count": 0,
+            "handles": None,
+        }
+    proc = psutil.Process(os.getpid())
+    rss = _safe_mem_rss(proc)
+    cpu_s = _safe_cpu_seconds(proc)
+
+    child_rss = 0
+    child_cpu_s = 0.0
+    child_count = 0
+    if include_children:
+        try:
+            for child in proc.children(recursive=True):
+                child_count += 1
+                child_rss += _safe_mem_rss(child)
+                child_cpu_s += _safe_cpu_seconds(child)
+        except Exception:
+            pass
+
+    threads = 0
+    try:
+        threads = int(proc.num_threads() or 0)
+    except Exception:
+        threads = 0
+
+    handles = None
+    try:
+        if hasattr(proc, "num_handles"):
+            handles = int(proc.num_handles() or 0)
+    except Exception:
+        handles = None
+
+    return {
+        "pid": int(proc.pid),
+        "rss": int(rss),
+        "cpu_s": float(cpu_s),
+        "threads": int(threads),
+        "child_rss": int(child_rss),
+        "child_cpu_s": float(child_cpu_s),
+        "child_count": int(child_count),
+        "handles": handles,
+    }
+
 
 def log_mem(stage: str):
-    p = psutil.Process(os.getpid())
-    logging.info(f"[MEM] {stage}: {p.memory_info().rss/1024**2:.1f} MB")
+    if not RESOURCE_LOG_ENABLED:
+        return
+    snap = _snapshot_resources(include_children=RESOURCE_INCLUDE_CHILDREN)
+    total_rss_mb = _bytes_to_mb(snap["rss"] + snap["child_rss"])
+    logging.info(
+        "[RES] stage=%s pid=%d rss=%.1fMB child_rss=%.1fMB total_rss=%.1fMB "
+        "cpu_s=%.2f child_cpu_s=%.2f threads=%d child_count=%d handles=%s",
+        stage,
+        snap["pid"],
+        _bytes_to_mb(snap["rss"]),
+        _bytes_to_mb(snap["child_rss"]),
+        total_rss_mb,
+        snap["cpu_s"],
+        snap["child_cpu_s"],
+        snap["threads"],
+        snap["child_count"],
+        str(snap["handles"]) if snap["handles"] is not None else "n/a",
+    )
+
+
+def _start_resource_monitor_thread():
+    global _RESOURCE_MONITOR_STARTED
+    if not RESOURCE_LOG_ENABLED or RESOURCE_MONITOR_INTERVAL_SECONDS <= 0:
+        return
+    with _RESOURCE_MONITOR_LOCK:
+        if _RESOURCE_MONITOR_STARTED:
+            return
+        _RESOURCE_MONITOR_STARTED = True
+
+    def _loop():
+        while True:
+            try:
+                log_mem("heartbeat")
+            except Exception:
+                pass
+            time.sleep(max(5.0, float(RESOURCE_MONITOR_INTERVAL_SECONDS)))
+
+    t = threading.Thread(target=_loop, name="resource-monitor", daemon=True)
+    t.start()
+
+
+def _should_log_request_resource(path: str) -> bool:
+    if not RESOURCE_LOG_HEAVY_ONLY:
+        return True
+    p = str(path or "")
+    return any(p.startswith(prefix) for prefix in RESOURCE_HEAVY_PATHS)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 import os
 from flask import Flask
-from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request
+from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g
 from flask_login import LoginManager, current_user, login_required, login_user
+from werkzeug.middleware.proxy_fix import ProxyFix
 from models.user import db, User, Clip, Job, FreeClipClaim
 from flask_migrate import Migrate
 from video_pipeline import generate_clip_for_job
@@ -35,6 +187,11 @@ from utils.narrative_intelligence import (
     emotion_based_silence_minlen,
     compute_quality_scores,
 )
+
+# worker helpers (v2 async pipeline)
+from worker import contracts as worker_contracts
+import json
+
 # Keep heavy editor stack lazy to avoid OOM during Render startup.
 ClipEditor = None
 ClipEditConfig = None
@@ -61,59 +218,6 @@ from utils.clipper import cut_clip_segment
 # up a 512MB Render instance. delay the import until it’s actually needed.
 ultron_core_editor = None
 
-def _get_ultron_core_editor():
-    """Return the editor callable, importing on first use.
-
-    Caches the result in the module-level ``ultron_core_editor`` variable.
-    Falls back to the lightweight moviepy-based ``viral_editor_gpu`` if the
-    effects package is unavailable or fails to import.
-    """
-    global ultron_core_editor
-    if ultron_core_editor is not None:
-        return ultron_core_editor
-
-    try:
-        from effects.ultron_core_editor import ultron_core_editor as editor
-    except Exception:
-        # Fallback simple editor if the external module isn't available.  This
-        # implementation mirrors the previous top-level fallback but lives inside
-        # the lazy loader so it isn't executed until needed.
-        def viral_editor_gpu(src_path, moment, out_path, transcript=None, **kwargs):
-            """Extracts a subclip from ``src_path`` using :mod:`moviepy`.
-
-            ``moment`` should contain ``'start'`` and ``'end'`` times.  This
-            ignores ``transcript``/``kwargs`` for API compatibility with the
-            heavier editor.
-            """
-            try:
-                start = float(moment.get("start", 0))
-                base_end = float(moment.get("end", start + 5))
-                lock_end = bool(moment.get("lock_end", False))
-
-                # If analyze decided the ending, respect it (don't recompute)
-                end = base_end
-
-                # Ensure reasonable bounds only if not locked
-                if end <= start:
-                    end = start + 3
-                import moviepy.editor as mp
-                clip = mp.VideoFileClip(src_path).subclip(start, end)
-                # write_videofile can be noisy; suppress its verbose logging
-                clip.write_videofile(out_path, codec="libx264", audio_codec="aac", verbose=False, logger=None)
-                clip.close()
-                return True
-            except Exception as e:
-                print("[VIRAL EDITOR FALLBACK ERROR]", e)
-                return False
-
-        editor = viral_editor_gpu
-    else:
-        # if import succeeded, ``editor`` is the actual ultron_core_editor
-        pass
-
-    ultron_core_editor = editor
-    return ultron_core_editor
-
 # =====================================================
 # ⚡ OPTIMIZATION LAYER (Speed + Quality)
 # =====================================================
@@ -135,12 +239,35 @@ def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name, "1" if default else "0")
     return str(raw).strip().lower() in ("1", "true", "yes", "y", "on")
 
+
+def validate_runtime_profile(logger):
+    expected = {
+        "HS_ORCH_PIPELINE_MODE": "staged",
+        "HS_ORCH_STAGED_FAILOVER_TO_LEGACY": "0",
+        "HS_APP_LEGACY_MOMENT_POLICY": "0",
+        "HS_ORCH_BRAIN_ENABLED": "1",
+        "HS_IDEA_MAX_NODE_SECONDS": "28",
+        "HS_IDEA_COALESCE_TIME_TOL": "0.35",
+        "HS_IDEA_COALESCE_SEM_THR": "0.45",
+        "HS_SELECTOR_RELAX_CURIO_DELTA": "0.04",
+        "HS_SELECTOR_RELAX_PUNCH_DELTA": "0.04",
+        "HS_SELECTOR_RELAX_SEM_FLOOR": "0.50",
+        "HS_DIVERSITY_MODE": "balanced",
+    }
+    mismatches = []
+    for key, exp in expected.items():
+        cur = str(os.environ.get(key, "") or "").strip()
+        if cur != str(exp):
+            mismatches.append((key, cur, str(exp)))
+    if mismatches:
+        logger.warning("[RUNTIME-PROFILE] mismatches=%d", len(mismatches))
+        for key, cur, exp in mismatches:
+            logger.warning("[RUNTIME-PROFILE] %s current=%r expected=%r", key, cur, exp)
+    else:
+        logger.info("[RUNTIME-PROFILE] profile=ok keys=%d", len(expected))
+
 # Video download cache
 _video_cache = {}
-
-# Thread pool for parallel processing and encoding
-_thread_pool = ThreadPoolExecutor(max_workers=8)  # Increased for parallel encoding
-_encoding_pool = ThreadPoolExecutor(max_workers=4)  # Dedicated encoding pool
 
 # Prevent duplicate /analyze runs from double-clicks or repeated client submits.
 _analyze_locks = {}
@@ -149,6 +276,18 @@ IS_RENDER_RUNTIME = (
     str(os.environ.get("RENDER", "")).strip().lower() in ("1", "true", "yes", "on")
     or bool(os.environ.get("RENDER_SERVICE_ID"))
 )
+
+
+def _pipeline_profile() -> str:
+    raw = os.environ.get("HS_PIPELINE_PROFILE", "balanced_scientist")
+    return str(raw or "balanced_scientist").strip().lower()
+
+
+PIPELINE_PROFILE = _pipeline_profile()
+BALANCED_SCIENTIST_PROFILE = PIPELINE_PROFILE == "balanced_scientist"
+
+# default worker profile when /v2/analyze does not provide one
+DEFAULT_WORKER_PROFILE = os.environ.get("HS_PROFILE_DEFAULT", "balanced").strip().lower()
 
 def _acquire_analyze_lock_for_user(user_id):
     key = str(user_id)
@@ -275,20 +414,6 @@ def _generate_low_memory_moments(source_video_duration_s: float, top_k: int = 3)
         })
     return moments
 
-def _semantic_quality_hash(text: str, score: float) -> str:
-    """Generate cache key for semantic quality scores"""
-    key = f"{text}_{score:.2f}"
-    return hashlib.md5(key.encode()).hexdigest()[:12]
-
-@lru_cache(maxsize=512)
-def estimate_semantic_quality_cached(text_hash: str, text_len: int, score: float) -> float:
-    """Cached version of semantic quality estimation - ⚡ FAST"""
-    # This is fast because we've pre-computed the hash
-    if text_hash in _semantic_cache:
-        return _semantic_cache[text_hash]
-    # Fallback will be computed on-demand
-    return score
-
 def _generate_clip_ffmpeg_fast(video_path: str, start: float, end: float, output_path: str) -> bool:
     """
     ⚡ ULTRA-FAST: Use FFmpeg directly with stream copy (NO re-encoding)
@@ -368,68 +493,6 @@ def _generate_clip_ffmpeg_safe(video_path: str, start: float, end: float, output
     except Exception:
         return False, (time.time() - t0), "reencode_failed"
 
-def _apply_aspect_ratio(input_path: str, output_path: str, aspect_ratio: str = "16:9", padding_color: str = "black") -> bool:
-    """
-    ⚡⚡⚡ GENIUS FAST: Apply aspect ratio using FFmpeg stream copy (no re-encoding)
-    Uses lavfi pad filter without video codec re-encoding.
-    Supports: 16:9, 9:16, 1:1, 4:3, 21:9
-    
-    Returns True on success
-    """
-    try:
-        import subprocess
-        
-        # Define aspect ratios and their parameters
-        ratio_configs = {
-            "16:9": {"w": 1920, "h": 1080, "name": "YouTube/Desktop"},
-            "9:16": {"w": 1080, "h": 1920, "name": "TikTok/Instagram Reels/YouTube Shorts"},
-            "1:1": {"w": 1080, "h": 1080, "name": "Instagram Feed/Square"},
-            "4:3": {"w": 1440, "h": 1080, "name": "Older Format"},
-            "21:9": {"w": 2560, "h": 1080, "name": "Ultra-wide"},
-        }
-        
-        if aspect_ratio not in ratio_configs:
-            print(f"[RATIO] Unknown ratio {aspect_ratio}, using 16:9")
-            aspect_ratio = "16:9"
-        
-        config = ratio_configs[aspect_ratio]
-        w, h = config["w"], config["h"]
-        
-        # ⚡ GENIUS: Use hwaccel + stream copy + ultra-fast filter
-        # This avoids re-encoding entirely and just adds padding metadata
-        filter_complex = f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color={padding_color}"
-        
-        # Use hardware acceleration if available, stream copy codec, ultra-fast settings
-        cmd = [
-            "ffmpeg",
-            "-hwaccel", "auto",  # Auto-detect hardware acceleration
-            "-i", input_path,
-            "-vf", filter_complex,
-            "-c:v", "libx264",
-            "-preset", "ultrafast",  # ⚡ FASTEST encoding (was veryfast)
-            "-crf", "28",  # Lower quality for speed (was 23)
-            "-c:a", "aac",
-            "-b:a", "96k",  # Lower bitrate for speed (was 128k)
-            "-y",
-            output_path
-        ]
-        
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=30  # ⚡ Reduced timeout from 60s to 30s
-        )
-        
-        success = result.returncode == 0
-        if success:
-            print(f"[RATIO ✅] Applied {aspect_ratio} ({config['name']})")
-        return success
-        
-    except Exception as e:
-        print(f"[Ratio Error] {e}")
-        return False
-
 # add_header moved below after app initialization to avoid referencing `app` before it's defined.
 
 # =====================================================
@@ -438,6 +501,8 @@ def _apply_aspect_ratio(input_path: str, output_path: str, aspect_ratio: str = "
 
 def _process_moment_parallel(args):
     """
+    DEPRECATED (route-layer intelligence path).
+    Active only when HS_APP_LEGACY_MOMENT_POLICY=1.
      ⚡ FAST: Process a single moment in parallel
     Returns: (idx, final_moment, text, start_r, end_r, final_score, base_score, semantic_quality, duration)
     """
@@ -571,6 +636,10 @@ def _polish_top_longform_moments(
     source_duration_s: float,
     logger=None,
 ) -> list:
+    """
+    DEPRECATED (route-layer post-curation path).
+    Active only when HS_APP_LEGACY_MOMENT_POLICY=1.
+    """
     if not wav_path or not moment_results:
         return moment_results
 
@@ -679,35 +748,167 @@ def _polish_top_longform_moments(
 
     return polished
 
+
+def _map_orchestrator_moment_for_clipgen(moment: dict, idx: int, log) -> tuple | None:
+    """
+    Adapter boundary: map orchestrator-ranked moment contract to clip generation tuple.
+    No scoring/policy logic here; pure shape translation + guardrails.
+    """
+    try:
+        log.info("[ROUTE-CONTRACT] incoming idx=%d keys=%s", idx, list((moment or {}).keys()))
+        m = dict(moment or {})
+        start = m.get("start")
+        end = m.get("end")
+
+        if start is None or end is None:
+            log.warning("[ROUTE-CONTRACT] idx=%d missing_start_or_end", idx)
+            return None
+
+        start = float(start)
+        end = float(end)
+        if end <= start:
+            log.warning("[ROUTE-CONTRACT] skip idx=%d reason=invalid_range start=%.3f end=%.3f", idx, start, end)
+            return None
+
+        signals = m.get("signals") or {}
+        validation = m.get("validation") or {}
+        required_signal_families = ("psychology", "narrative", "semantic", "engagement")
+        missing_families = [k for k in required_signal_families if k not in signals]
+        if missing_families:
+            log.warning("[ROUTE-CONTRACT] idx=%d missing_signal_families=%s", idx, ",".join(missing_families))
+
+        accepted = bool(validation.get("accepted", True))
+        if not accepted:
+            log.info("[ROUTE-CONTRACT] skip idx=%d reason=validation_reject reasons=%s", idx, validation.get("reasons"))
+            return None
+
+        score = float(m.get("viral_score", m.get("score_enriched", m.get("score", 0.0))) or 0.0)
+        semantic_quality = float(
+            ((signals.get("semantic") or {}).get("semantic_quality"))
+            if isinstance(signals.get("semantic"), dict)
+            else m.get("confidence", score)
+            or score
+        )
+        text = str(m.get("text", "") or "").strip()
+        duration = max(0.01, end - start)
+
+        final_moment = dict(m)
+        final_moment["start"] = round(start, 2)
+        final_moment["end"] = round(end, 2)
+        final_moment["final_score"] = float(score)
+        final_moment.setdefault("base_score", float(m.get("score", score) or score))
+        final_moment.setdefault("confidence", float(semantic_quality))
+        final_moment.setdefault("rank", int(idx + 1))
+        final_moment.setdefault("is_best", idx == 0)
+        final_moment.setdefault("is_recommended", idx < 3)
+
+        return (
+            int(idx),
+            final_moment,
+            text,
+            round(start, 2),
+            round(end, 2),
+            float(score),
+            float(final_moment.get("base_score", score) or score),
+            float(semantic_quality),
+            float(duration),
+        )
+    except Exception as e:
+        log.warning("[ROUTE-CONTRACT] skip idx=%d reason=exception err=%s", idx, e)
+        return None
+
 # =====================================================
 # 🌟 APP CONFIGURATION
 # =====================================================
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
 app = Flask(__name__)
 app.config.from_object('settings.Config')
 app.secret_key = app.config["SECRET_KEY"]
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+validate_runtime_profile(logging.getLogger(__name__))
+
+external_base_url = (app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+if external_base_url:
+    parsed_external_url = urlparse(external_base_url)
+    if parsed_external_url.scheme in ("http", "https") and parsed_external_url.netloc:
+        app.config["EXTERNAL_BASE_URL"] = external_base_url
+        app.config["SERVER_NAME"] = parsed_external_url.netloc
+        app.config["PREFERRED_URL_SCHEME"] = parsed_external_url.scheme
+    else:
+        app.logger.warning(
+            "[OAUTH-DEBUG] Ignoring invalid EXTERNAL_BASE_URL=%r. Expected format: http(s)://host[:port]",
+            external_base_url,
+        )
+        app.config["EXTERNAL_BASE_URL"] = ""
+
+if app.config.get("PREFERRED_URL_SCHEME") == "https":
+    os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
+else:
+    # Local HTTP OAuth only; production should run over HTTPS.
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 # ==========================
 # 🌐 GOOGLE OAUTH SETUP
 
-app.config.from_object('settings.Config')
-
 # Logger for use throughout the app (used by the analyze route)
 log = app.logger
+_start_resource_monitor_thread()
 
 @app.after_request
 def add_header(response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
+    if RESOURCE_LOG_ENABLED and RESOURCE_LOG_REQUESTS and _should_log_request_resource(request.path):
+        try:
+            start_t = getattr(g, "_res_req_t0", None)
+            start = getattr(g, "_res_req_snapshot", None)
+            if start_t is not None and isinstance(start, dict):
+                end = _snapshot_resources(include_children=RESOURCE_INCLUDE_CHILDREN)
+                elapsed_s = max(0.0, float(time.perf_counter() - start_t))
+                rss_delta_mb = _bytes_to_mb(int(end.get("rss", 0)) - int(start.get("rss", 0)))
+                child_rss_delta_mb = _bytes_to_mb(int(end.get("child_rss", 0)) - int(start.get("child_rss", 0)))
+                cpu_delta_s = float(end.get("cpu_s", 0.0)) - float(start.get("cpu_s", 0.0))
+                child_cpu_delta_s = float(end.get("child_cpu_s", 0.0)) - float(start.get("child_cpu_s", 0.0))
+                log.info(
+                    "[RES][REQ] %s %s status=%s wall=%.2fs rss=%.1f->%.1fMB (d=%.1fMB) "
+                    "child_rss=%.1f->%.1fMB (d=%.1fMB) cpu_d=%.2fs child_cpu_d=%.2fs",
+                    request.method,
+                    request.path,
+                    response.status_code,
+                    elapsed_s,
+                    _bytes_to_mb(start.get("rss", 0)),
+                    _bytes_to_mb(end.get("rss", 0)),
+                    rss_delta_mb,
+                    _bytes_to_mb(start.get("child_rss", 0)),
+                    _bytes_to_mb(end.get("child_rss", 0)),
+                    child_rss_delta_mb,
+                    cpu_delta_s,
+                    child_cpu_delta_s,
+                )
+        except Exception:
+            pass
     return response
-app.config["GOOGLE_OAUTH_CLIENT_ID"] = (
-    os.getenv("GOOGLE_OAUTH_CLIENT_ID", app.config.get("GOOGLE_OAUTH_CLIENT_ID", "")) or ""
-).strip()
-app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = (
-    os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", app.config.get("GOOGLE_OAUTH_CLIENT_SECRET", "")) or ""
-).strip()
+
+def _resolve_oauth_config(base_var_name):
+    direct_value = (os.getenv(base_var_name, app.config.get(base_var_name, "")) or "").strip()
+    if direct_value:
+        return direct_value, base_var_name
+
+    prefer_prod = app.config.get("PREFERRED_URL_SCHEME") == "https"
+    suffixes = ("_PROD", "_LOCAL") if prefer_prod else ("_LOCAL", "_PROD")
+    for suffix in suffixes:
+        env_name = f"{base_var_name}{suffix}"
+        scoped_value = (os.getenv(env_name) or "").strip()
+        if scoped_value:
+            return scoped_value, env_name
+
+    return "", base_var_name
+
+
+client_id, client_id_source = _resolve_oauth_config("GOOGLE_OAUTH_CLIENT_ID")
+client_secret, client_secret_source = _resolve_oauth_config("GOOGLE_OAUTH_CLIENT_SECRET")
+app.config["GOOGLE_OAUTH_CLIENT_ID"] = client_id
+app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = client_secret
 app.logger.info(
     "[OAUTH-DEBUG] ENV CLIENT_ID=%r",
     os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
@@ -726,6 +927,22 @@ app.logger.info(
     bool(app.config.get("GOOGLE_OAUTH_CLIENT_SECRET")),
     len(app.config.get("GOOGLE_OAUTH_CLIENT_SECRET") or ""),
 )
+app.logger.info("[OAUTH-DEBUG] CLIENT_ID_SOURCE=%s", client_id_source)
+app.logger.info("[OAUTH-DEBUG] CLIENT_SECRET_SOURCE=%s", client_secret_source)
+app.logger.info(
+    "[OAUTH-DEBUG] EXTERNAL_BASE_URL=%r",
+    app.config.get("EXTERNAL_BASE_URL"),
+)
+if app.config.get("EXTERNAL_BASE_URL"):
+    app.logger.info(
+        "[OAUTH-DEBUG] FORCED_CALLBACK_URI=%s/login/google/authorized",
+        app.config.get("EXTERNAL_BASE_URL"),
+    )
+else:
+    app.logger.info(
+        "[OAUTH-DEBUG] DEFAULT_LOCAL_CALLBACK_URI=http://127.0.0.1:%s/login/google/authorized",
+        os.getenv("PORT", "10000"),
+    )
 
 from flask_dance.contrib.google import make_google_blueprint, google
 
@@ -766,16 +983,11 @@ def load_user(user_id):
 # ✅ Register blueprints AFTER all routes are defined inside them
 app.register_blueprint(auth, url_prefix="/auth")
 
-# compatibility aliases – templates and redirects still point at /login or
-# /google_login even though the real handlers live under /auth.
+# compatibility alias: templates and redirects still point at /login.
 @app.route("/login")
 def login_alias():
     # preserve any query args such as next
     return redirect(url_for("auth.login", **request.args))
-
-@app.route("/google_login")
-def google_login_alias():
-    return redirect(url_for("auth.google_login", **request.args))
 
 from routes.feedback import feedback_bp
 app.register_blueprint(feedback_bp, url_prefix="/api")
@@ -789,7 +1001,7 @@ app_context.push()
 if os.environ.get("HS_WARMUP_ON_STARTUP", "0").strip().lower() in ("1", "true", "yes", "on"):
     try:
         from viral_finder.gemini_transcript_engine import warmup as _warmup_transcriber
-        _warmup_transcriber(model_name="small", prefer_gpu=False)
+        _warmup_transcriber(model_name="small", prefer_gpu=True)
     except Exception as e:
         print(f"[WARMUP] Model pre-load optional, will load on first request: {e}")
 
@@ -1159,7 +1371,18 @@ def results(job_id):
             if job.analysis_data:
                 # Parse JSON analysis data
                 import json as jsonmodule
-                analysis_results = jsonmodule.loads(job.analysis_data)
+                raw = jsonmodule.loads(job.analysis_data)
+                # worker v2 envelope has top-level keys and a "clips" list
+                if isinstance(raw, dict) and "clips" in raw:
+                    # preserve envelope fields for template if needed
+                    analysis_results = raw.get("clips", []) or []
+                    # stash extra info for later (status/confidence)
+                    job._worker_envelope = raw
+                elif isinstance(raw, list):
+                    analysis_results = raw
+                else:
+                    # unknown shape, fallback to empty
+                    analysis_results = []
             else:
                 analysis_results = []
         except:
@@ -1271,19 +1494,57 @@ def results(job_id):
 
                 return SelectionReason(primary=primary, secondary=secondary, risk=risk), why[:4]
 
+            def explain_clip(moment: dict) -> dict:
+                m = dict(moment or {})
+                hook_seg = m.get("hook_segment") if isinstance(m.get("hook_segment"), dict) else {}
+                payoff_seg = m.get("payoff_segment") if isinstance(m.get("payoff_segment"), dict) else {}
+                hook = str(hook_seg.get("text", "") or "").strip()
+                payoff = str(payoff_seg.get("text", "") or "").strip()
+                arc_complete = bool(m.get("arc_complete", False))
+                signals = m.get("signals") if isinstance(m.get("signals"), dict) else {}
+                narrative = signals.get("narrative", {}) if isinstance(signals.get("narrative"), dict) else {}
+                engagement = signals.get("engagement", {}) if isinstance(signals.get("engagement"), dict) else {}
+                energy = float(engagement.get("energy", engagement.get("classic", 0.0)) or 0.0)
+
+                explanation = {}
+                if hook:
+                    explanation["hook"] = hook
+                if payoff:
+                    explanation["payoff"] = payoff
+                if arc_complete:
+                    explanation["structure"] = "Complete narrative arc detected"
+                else:
+                    explanation["structure"] = "Partial arc; clip selected for strongest local payoff"
+                explanation["retention"] = (
+                    "Strong vocal energy increases viewer retention"
+                    if energy > 0.2
+                    else "Calm pacing suitable for explanatory clips"
+                )
+                explanation["build"] = str(m.get("build_text", "") or "").strip()
+                return explanation
+
             transformed_clips = []
             for idx, simple_clip in enumerate(analysis_results):
+                signals = simple_clip.get("signals") if isinstance(simple_clip.get("signals"), dict) else {}
+                narrative_sig = signals.get("narrative", {}) if isinstance(signals.get("narrative"), dict) else {}
+                engagement_sig = signals.get("engagement", {}) if isinstance(signals.get("engagement"), dict) else {}
+                semantic_sig = signals.get("semantic", {}) if isinstance(signals.get("semantic"), dict) else {}
+                psychology_sig = signals.get("psychology", {}) if isinstance(signals.get("psychology"), dict) else {}
+
                 base_score = float(simple_clip.get("base_score", simple_clip.get("score", 0.5)) or 0.0)
-                final_score = float(simple_clip.get("score", 0.5) or 0.0)
-                hook_score = float(simple_clip.get("hook_score", final_score) or 0.0)
-                open_loop_score = float(simple_clip.get("open_loop_score", final_score) or 0.0)
+                final_score = float(simple_clip.get("final_score", simple_clip.get("score", 0.5)) or 0.0)
+                hook_score = float(simple_clip.get("hook_score", narrative_sig.get("hook_score", final_score)) or 0.0)
+                open_loop_score = float(simple_clip.get("open_loop_score", narrative_sig.get("open_loop_score", 0.0)) or 0.0)
                 pattern_break_score = float(simple_clip.get("pattern_break_score", hook_score) or 0.0)
-                ending_strength = float(simple_clip.get("ending_strength", final_score) or 0.0)
-                payoff_resolution_score = float(simple_clip.get("payoff_resolution_score", open_loop_score) or 0.0)
-                rewatch_score = float(simple_clip.get("rewatch_score", final_score) or 0.0)
-                information_density_score = float(simple_clip.get("information_density_score", final_score) or 0.0)
-                virality_confidence = float(simple_clip.get("virality_confidence", 1.0) or 0.0)
+                ending_strength = float(simple_clip.get("ending_strength", narrative_sig.get("ending_strength", final_score)) or 0.0)
+                payoff_resolution_score = float(simple_clip.get("payoff_resolution_score", narrative_sig.get("payoff_resolution_score", open_loop_score)) or 0.0)
+                rewatch_score = float(simple_clip.get("rewatch_score", narrative_sig.get("rewatch_score", final_score)) or 0.0)
+                information_density_score = float(simple_clip.get("information_density_score", narrative_sig.get("information_density_score", final_score)) or 0.0)
+                virality_confidence = float(simple_clip.get("virality_confidence", narrative_sig.get("virality_confidence", 1.0)) or 0.0)
                 duration_score = float(simple_clip.get("duration_score", final_score) or 0.0)
+                retention_score = float(engagement_sig.get("energy", engagement_sig.get("classic", max(open_loop_score, payoff_resolution_score))) or 0.0)
+                clarity_score = float(semantic_sig.get("semantic_quality", max(ending_strength, information_density_score)) or 0.0)
+                emotion_score = float(psychology_sig.get("tension_gradient", base_score) or 0.0)
                 hook_type = simple_clip.get("hook_type") or infer_hook_type(
                     hook_score,
                     open_loop_score,
@@ -1302,11 +1563,34 @@ def results(job_id):
                     duration_score,
                     virality_confidence,
                 )
+                explanation = explain_clip(simple_clip)
+                story_panel = {
+                    "hook": explanation.get("hook", ""),
+                    "build": explanation.get("build", ""),
+                    "payoff": explanation.get("payoff", ""),
+                }
+                if explanation.get("hook"):
+                    why_bullets = [f"HOOK: {explanation.get('hook')}"] + why_bullets
+                if explanation.get("payoff"):
+                    why_bullets = why_bullets + [f"PAYOFF: {explanation.get('payoff')}"]
+                if explanation.get("structure"):
+                    why_bullets = why_bullets + [f"STRUCTURE: {explanation.get('structure')}"]
+                if explanation.get("retention"):
+                    why_bullets = why_bullets + [f"RETENTION: {explanation.get('retention')}"]
 
                 rank = int(simple_clip.get("rank", idx + 1) or (idx + 1))
                 is_best = bool(simple_clip.get("is_best", rank == 1))
                 is_recommended = bool(simple_clip.get("is_recommended", rank <= 3))
                 confidence_pct = int(max(0.0, min(100.0, (final_score * (0.9 + (0.1 * virality_confidence)) * 100.0))))
+                
+                # 🔥 ARC QUALITY INDICATOR - Shows breakdwn of Hook/Payoff/Ending
+                arc_quality_pct = int(max(0.0, min(100.0,
+                    ((hook_score * 0.25) + (payoff_resolution_score * 0.35) + (ending_strength * 0.20) + (duration_score * 0.20)) * 100.0
+                )))
+                
+                # 🔥 VIRAL POTENTIAL - Replace percentage with emoji + intensity
+                viral_potential_emoji = "🔥" if confidence_pct >= 80 else "⚡" if confidence_pct >= 60 else "✨"
+                viral_potential_label = f"{viral_potential_emoji} {confidence_pct}%"
 
                 # Create proper ViralClip object from simple data
                 clip = ViralClip(
@@ -1322,12 +1606,12 @@ def results(job_id):
                     confidence=confidence_pct,
                     scores=ScoreBreakdown(
                         hook=hook_score,
-                        retention=max(open_loop_score, payoff_resolution_score),
-                        clarity=max(ending_strength, information_density_score),
-                        emotion=base_score,
+                        retention=retention_score,
+                        clarity=clarity_score,
+                        emotion=emotion_score,
                     ),
                     selection_reason=selection_reason,
-                    why=why_bullets,
+                    why=why_bullets[:6],
                     rank=rank,
                     is_best=is_best,
                     is_recommended=is_recommended,
@@ -1341,6 +1625,13 @@ def results(job_id):
                 clip.rewatch_score = rewatch_score
                 clip.information_density_score = information_density_score
                 clip.virality_confidence = virality_confidence
+                clip.explanation = explanation
+                clip.story_panel = story_panel
+                clip.story_patterns = list(simple_clip.get("story_patterns", []) or [])
+                # 🔥 ADD ARC QUALITY INDICATORS
+                clip.arc_quality_pct = arc_quality_pct
+                clip.viral_potential_label = viral_potential_label
+                clip.viral_potential_emoji = viral_potential_emoji
                 transformed_clips.append(clip)
             
             # Serialize to JSON for frontend
@@ -1370,6 +1661,9 @@ def results(job_id):
                         "risk": clip.selection_reason.risk,
                     },
                     "why": clip.why,
+                    "explanation": getattr(clip, "explanation", {}),
+                    "story_structure": getattr(clip, "story_panel", {}),
+                    "story_patterns": getattr(clip, "story_patterns", []),
                     "rank": clip.rank,
                     "is_best": clip.is_best,
                     "is_recommended": getattr(clip, "is_recommended", False),
@@ -1377,6 +1671,16 @@ def results(job_id):
                     "start_time": clip.start_time,
                     "end_time": clip.end_time,
                     "duration": clip.duration,
+                    # 🔥 ARC QUALITY INDICATORS - NEW FIELDS
+                    "arc_quality_pct": getattr(clip, "arc_quality_pct", 0),
+                    "arc_quality_breakdown": {
+                        "hook": int(getattr(clip, "pattern_break_score", 0.0) * 25),
+                        "payoff": int(getattr(clip, "payoff_resolution_score", 0.0) * 35),
+                        "ending": int(getattr(clip, "scores", {}).clarity * 20) if hasattr(clip, "scores") else 0,
+                        "duration": int(getattr(clip, "duration", 0) / 40 * 20) if getattr(clip, "duration", 0) <= 40 else 20,
+                    },
+                    # 🔥 VIRAL POTENTIAL INDICATOR - NEW FIELDS\n                    "viral_potential_emoji": getattr(clip, "viral_potential_emoji", "✨"),
+                    "viral_potential_label": getattr(clip, "viral_potential_label", f"✨ {clip.confidence}%"),
                 }
             
             clips_json = [clip_to_dict(c) for c in transformed_clips]
@@ -1387,13 +1691,17 @@ def results(job_id):
             clips_json = []
         
         # 4. Render results template with data
+        extra_ctx = {}
+        if hasattr(job, '_worker_envelope'):
+            extra_ctx['worker_envelope'] = job._worker_envelope
         response = make_response(render_template(
             'results_new.html',
             clips_json=clips_json,
             free_status_json=get_free_status(current_user),
             pro_checkout_url=url_for("create_checkout_session", plan="pro"),
             job_id=job_id,
-            status=job.status
+            status=job.status,
+            **extra_ctx
         ))
         response.headers['Cache-Control'] = 'private, max-age=3600'
         return response
@@ -1410,6 +1718,59 @@ def results(job_id):
             job_id=job_id,
             error='Error loading results'
         )
+
+
+# ------------------------------------------------------------------
+# 👉 v2 worker API (async job submission & polling)
+# ------------------------------------------------------------------
+
+@app.route('/v2/analyze', methods=['POST'])
+@login_required
+def v2_analyze():
+    """JSON API endpoint used by Render to enqueue a worker job.
+
+    Request schema is validated by ``worker.contracts`` and persisted in
+    ``Job.analysis_data`` so the worker can read it later.  The job is
+    initially created with ``status='pending'`` which the worker will pick up.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        params = worker_contracts.validate_worker_request(data)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    job_id = params.get("job_id")
+    if Job.query.filter_by(id=job_id).first():
+        return jsonify({"ok": False, "error": "job_exists"}), 409
+
+    job = Job(
+        id=job_id,
+        user_id=current_user.id,
+        video_path=None,
+        transcript=None,
+        analysis_data=json.dumps(params),
+        status="pending",
+    )
+    db.session.add(job)
+    db.session.commit()
+
+    return jsonify({"ok": True, "job_id": job_id}), 200
+
+
+@app.route('/v2/result/<job_id>')
+@login_required
+def v2_result(job_id):
+    """Return job status and, when available, the worker result envelope."""
+    job = Job.query.filter_by(id=job_id, user_id=current_user.id).first()
+    if not job:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+    resp = {"ok": True, "status": job.status}
+    if job.analysis_data:
+        try:
+            resp["result"] = json.loads(job.analysis_data)
+        except Exception:
+            resp["result"] = job.analysis_data
+    return jsonify(resp)
 
 
 @app.route('/checkout')
@@ -1575,6 +1936,12 @@ class YoutubeCaptchaError(Exception):
 def _qa_mode_enabled() -> bool:
     return str(os.getenv("HS_QA_MODE", "0")).strip().lower() in ("1", "true", "yes", "on")
 
+def _open_testing_mode_enabled() -> bool:
+    """
+    Global switch to temporarily open trial/free limits during internal testing.
+    """
+    return str(os.getenv("HS_OPEN_TESTING_MODE", "1")).strip().lower() in ("1", "true", "yes", "on")
+
 def qa_event(event_name: str, **payload) -> None:
     if not _qa_mode_enabled():
         return
@@ -1598,6 +1965,18 @@ from datetime import datetime, timedelta
 from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 import json
+from viral_finder.ingestion_guard import (
+    CanonicalMediaObject,
+    analyze_audio_integrity,
+    analyze_transcript_integrity,
+    canonical_to_dict,
+    compute_vad_removed_ratio,
+    ingestion_cache_key,
+    load_ingestion_cache,
+    probe_media,
+    save_ingestion_cache,
+    score_acquisition,
+)
 
 FREE_CLIP_LIMIT = 3
 
@@ -1674,6 +2053,16 @@ def get_plan_limits(plan_type: str) -> dict:
     """
     key = (plan_type or "trial").strip().lower()
     base = PLAN_LIMITS.get(key, PLAN_LIMITS["trial"])
+    if key == "trial" and _open_testing_mode_enabled():
+        # Testing mode: unlock trial constraints without changing stored plan_type.
+        unlocked = dict(base)
+        unlocked["max_duration_seconds"] = 0
+        unlocked["watermark"] = False
+        unlocked["priority"] = "fastest"
+        unlocked["hd_enabled"] = True
+        unlocked["bulk_enabled"] = True
+        unlocked["advanced_ai"] = True
+        return unlocked
     # Return a shallow copy so callers can modify safely.
     return dict(base)
 
@@ -1708,6 +2097,15 @@ def get_free_status(user) -> dict:
       - Starter/Pro/Industry are treated as fully paid for this API.
     """
     plan_type = get_user_plan_type(user)
+    if plan_type == "trial" and _open_testing_mode_enabled():
+        return {
+            "is_paid": True,
+            "free_clips_used": 0,
+            "free_downloads_used": 0,
+            "free_clips_left": FREE_CLIP_LIMIT,
+            "claimed_clip_ids": [],
+            "plan_type": plan_type,
+        }
 
     if plan_type != "trial":
         return {
@@ -1777,7 +2175,7 @@ def analyze_video():
     plan_limits = get_plan_limits(plan_type)
 
     # Enforce trial analyze quota before doing any heavy work.
-    if plan_type == "trial":
+    if plan_type == "trial" and not _open_testing_mode_enabled():
         try:
             used = int(getattr(current_user, "trial_analyze_count", 0) or 0)
         except Exception:
@@ -1793,6 +2191,38 @@ def analyze_video():
                 ), 403
             flash("Your free trial analyze has been used. Upgrade to continue.", "error")
             return redirect("/pricing")
+
+    # If the worker mode is enabled we don't perform heavy analysis here;
+    # instead enqueue a job and return immediately.  This keeps the web process
+    # light and lets the worker pick it up.
+    if os.environ.get("HS_WORKER_MODE"):
+        # build request payload from form fields
+        job_id_val = str(uuid.uuid4())
+        req = {
+            "job_id": job_id_val,
+            "source_url": request.form.get("youtube_url", "").strip(),
+            "profile": request.form.get("profile", DEFAULT_WORKER_PROFILE),
+            "min_clips": request.form.get("min_clips", 3),
+            "max_duration_sec": request.form.get("max_duration_sec"),
+            "debug": request.form.get("debug", "").lower() in ("1", "true", "yes"),
+        }
+        try:
+            params = worker_contracts.validate_worker_request(req)
+        except Exception as e:
+            return analyze_error(f"Worker request invalid: {e}", 400)
+        # create pending job row
+        job = Job(
+            id=params["job_id"],
+            user_id=current_user.id,
+            video_path=None,
+            transcript=None,
+            analysis_data=json.dumps(params),
+            status="pending",
+        )
+        db.session.add(job)
+        db.session.commit()
+        # respond with job id; clips_count unknown yet
+        return analyze_success(job.id, 0)
 
     # One active analyze per user at a time (prevents duplicate jobs/log spam).
     user_id_for_lock = getattr(current_user, "id", None)
@@ -1937,9 +2367,27 @@ def analyze_video():
     # --------------------------------------------------
     # 0) Validate input
     # --------------------------------------------------
+    # legacy form-based analyze route remains unchanged; it still does full
+    # in-process extraction.  New async jobs use /v2/analyze below.
     youtube_url = request.form.get("youtube_url", "").strip()
     if not youtube_url:
         return analyze_error("Please paste a valid YouTube URL.", 400)
+
+    ingest_cache_dir = os.environ.get("HS_INGESTION_CACHE_DIR", ".hotshort_ingestion_cache").strip() or ".hotshort_ingestion_cache"
+    ingest_cache_key_value = ingestion_cache_key(youtube_url)
+    ingest_signature = _ingestion_signature()
+    ingest_cache = load_ingestion_cache(
+        ingest_cache_dir,
+        ingest_cache_key_value,
+        max_age_s=float(os.environ.get("HS_INGESTION_CACHE_MAX_AGE_S", "86400") or 86400.0),
+    )
+    ingest_cache_valid = bool(
+        isinstance(ingest_cache, dict)
+        and str(ingest_cache.get("signature") or "") == str(ingest_signature)
+    )
+    if ingest_cache and (not ingest_cache_valid):
+        log.info("[INGEST] cache invalidated source=%s reason=signature_mismatch", ingest_cache_key_value[:12])
+        ingest_cache = None
 
     analyze_t0 = time.time()
     log.info("[ANALYZE] Starting: %s", youtube_url)
@@ -1949,41 +2397,103 @@ def analyze_video():
     job_id = str(uuid.uuid4())
 
     # --------------------------------------------------
-    # 1) Metadata + transcript analysis (segment‑first pipeline)
+    # 1) Metadata prefetch + full-download-first ingest
     # --------------------------------------------------
     # Fetch lightweight metadata so we can show a preview and make decisions
-    try:
-        metadata = fetch_youtube_metadata(youtube_url)
-        log.info("[ANALYZE] metadata fetched: %s", metadata)
-    except Exception as e:
-        log.warning("[ANALYZE] metadata fetch failed: %s", e)
-        metadata = {}
+    metadata = {}
+    cached_metadata = dict((ingest_cache or {}).get("metadata") or {}) if isinstance(ingest_cache, dict) else {}
+    refresh_metadata = _env_bool("HS_INGEST_REFRESH_METADATA", True)
+    fresh_metadata = {}
+    if refresh_metadata:
+        try:
+            fresh_metadata = fetch_youtube_metadata(youtube_url) or {}
+            log.info("[ANALYZE] metadata fetched: %s", fresh_metadata)
+        except Exception as e:
+            log.warning("[ANALYZE] metadata fetch failed: %s", e)
+            fresh_metadata = {}
+    if cached_metadata and fresh_metadata:
+        cached_id = str(cached_metadata.get("video_id") or "").strip()
+        fresh_id = str(fresh_metadata.get("video_id") or "").strip()
+        try:
+            cached_d = float(cached_metadata.get("duration") or 0.0)
+            fresh_d = float(fresh_metadata.get("duration") or 0.0)
+        except Exception:
+            cached_d = 0.0
+            fresh_d = 0.0
+        if (cached_id and fresh_id and cached_id != fresh_id) or (cached_d > 0 and fresh_d > 0 and abs(cached_d - fresh_d) > 3.0):
+            log.info(
+                "[INGEST] cache invalidated source=%s reason=metadata_drift cached(id=%s,dur=%.2f) fresh(id=%s,dur=%.2f)",
+                ingest_cache_key_value[:12],
+                cached_id,
+                cached_d,
+                fresh_id,
+                fresh_d,
+            )
+            ingest_cache = None
+            cached_metadata = {}
+    if fresh_metadata:
+        metadata = fresh_metadata
+    elif cached_metadata:
+        metadata = cached_metadata
+        log.info("[INGEST] metadata cache hit source=%s", ingest_cache_key_value[:12])
 
-    # Grab whatever text transcript is available from YouTube (no media download).
+    # Transcript is intentionally derived from local media only, after full
+    # acquisition + audio extraction.
     transcript_segments = []
-    try:
-        transcript_segments = fetch_youtube_transcript(youtube_url)
-        log.info("[ANALYZE] transcript segments from youtube: %d", len(transcript_segments))
-    except Exception as e:
-        log.warning("[ANALYZE] transcript fetch failed: %s", e)
-
-    # Choose a candidate window before touching video data.  This could later
-    # use NLP over ``transcript_segments``; for now we fall back to a simple
-    # duration-based generator that avoids any heavy processing.
-    start_ts, end_ts = select_segment_from_transcript(
-        transcript_segments, metadata.get("duration")
-    )
-    log.info("[ANALYZE] preselected segment %.2f-%.2f", start_ts, end_ts)
 
     # --------------------------------------------------
-    # 2) Download only the needed segment
+    # 2) Download full media first (deterministic ingest)
     # --------------------------------------------------
     stage_t0 = time.time()
     video_path = None
+    media_probe = {}
+    acquisition_attempts = []
+    acquisition_quality_score = 0.0
+    js_runtime_ok = True
     try:
-        video_path = download_youtube_segment(
-            youtube_url, start_ts, end_ts, job_id=job_id
+        js_runtime_ok = _js_runtime_available()
+        video_path = download_youtube_video(
+            youtube_url,
+            output_dir="downloads",
+            job_id=job_id,
         )
+        if video_path and os.path.exists(video_path):
+            media_probe = probe_media(video_path)
+            size_b = int(os.path.getsize(video_path) if os.path.exists(video_path) else 0)
+            metadata_duration = float((metadata or {}).get("duration") or 0.0)
+            expected_duration = metadata_duration if metadata_duration > 0.0 else float(
+                media_probe.get("duration") or 0.0
+            )
+            acquisition_quality_score, components = score_acquisition(
+                media_probe=media_probe,
+                expected_duration=expected_duration,
+                metadata_duration=metadata_duration,
+                file_size_bytes=size_b,
+            )
+            if not js_runtime_ok:
+                acquisition_quality_score *= 0.70
+                components["js_runtime_penalty"] = 0.30
+            acquisition_attempts = [
+                {
+                    "path_name": "full_default",
+                    "format": str(os.environ.get("HS_YTDLP_FORMAT", "") or "default"),
+                    "ok": True,
+                    "path": video_path,
+                    "probe": media_probe,
+                    "size_bytes": size_b,
+                    "score": round(float(acquisition_quality_score), 4),
+                    "components": components,
+                }
+            ]
+        else:
+            acquisition_attempts = [
+                {
+                    "path_name": "full_default",
+                    "format": str(os.environ.get("HS_YTDLP_FORMAT", "") or "default"),
+                    "ok": False,
+                    "error": "media_missing",
+                }
+            ]
         log_mem("after download")
     except YoutubeRateLimitError as e:
         log.warning("[ANALYZE] Download rate-limited by YouTube: %s", e)
@@ -2001,13 +2511,37 @@ def analyze_video():
         log.warning("[ANALYZE] Download error: %s", e)
     log.info("[TIMING] stage=download wall=%.2fs", (time.time() - stage_t0))
 
+    # Phase 1 suppression disable: do not gate cognition by acquisition score.
+    # Keep telemetry/logging, but force threshold to zero.
+    min_acq_score = 0.0
+    if (not video_path) or (not os.path.exists(video_path)):
+        return analyze_error("Ingestion failed: media acquisition unavailable.", 400)
+    if not js_runtime_ok:
+        log.warning("[INGEST] JS runtime missing (node/deno). YouTube extraction quality may degrade.")
+    log.info(
+        "[INGEST] acquisition score=%.3f attempts=%d selected=%s",
+        float(acquisition_quality_score or 0.0),
+        len(acquisition_attempts or []),
+        os.path.basename(video_path) if video_path else "none",
+    )
+    if float(acquisition_quality_score or 0.0) < float(min_acq_score):
+        log.warning(
+            "[INGEST] Acquisition quality below threshold score=%.3f min=%.3f attempts=%d",
+            float(acquisition_quality_score or 0.0),
+            float(min_acq_score),
+            len(acquisition_attempts or []),
+        )
+        return analyze_error(
+            "Ingestion quality too low. Source fetch was incomplete. Please retry (or enable JS runtime: node/deno).",
+            422,
+        )
+
     ok_media, reason = check_media_invariants(video_path)
     if not ok_media:
-        log.error("[ANALYZE] Media invariant violated: %s", reason)
-        return analyze_error("We couldn't download this video. Try again.", 400)
+        # Phase 3: ingestion invariants are advisory, not hard gates.
+        log.warning("[ANALYZE] Media invariant warning (continuing): %s", reason)
 
-    # ``video_path`` may refer to a short segment; the original full
-    # video duration lives in ``metadata`` if our prefetch succeeded.
+    # Prefer metadata duration for policy checks; fall back to media probe.
     if 'metadata' in locals() and metadata.get('duration'):
         source_video_duration_s = float(metadata.get('duration') or 0.0)
     else:
@@ -2045,22 +2579,32 @@ def analyze_video():
     fast_longform_threshold_s = float(os.environ.get("HS_FAST_LONGFORM_SECONDS", "480") or 480.0)  # 8m
     is_fast_longform = fast_longform_enabled and source_video_duration_s >= fast_longform_threshold_s
     log.info(
-        "[FAST-LANE] duration=%.2fs enabled=%s threshold=%.2fs active=%s",
+        "[FAST-LANE] duration=%.2fs enabled=%s threshold=%.2fs active=%s profile=%s",
         source_video_duration_s,
         fast_longform_enabled,
         fast_longform_threshold_s,
         is_fast_longform,
+        PIPELINE_PROFILE,
     )
-    low_memory_mode = os.environ.get(
-        "HS_LOW_MEMORY_MODE",
-        "1" if IS_RENDER_RUNTIME else "0",
-    ).strip().lower() in ("1", "true", "yes", "on")
+    # Phase 1 suppression disable: always run full cognition path (no low-memory moments).
+    low_memory_mode = False
 
-    # ``transcript_segments`` may have been populated by a lightweight
-    # fetch above (youtube captions).  Preserve it, otherwise fall back to
-    # an empty list so the later logic still works.
+    # Transcript is produced after local audio extraction.
     transcript_segments = transcript_segments or []
     wav_path = None
+    audio_integrity = {
+        "audio_integrity_score": 0.0,
+        "silence_ratio": 1.0,
+        "snr_estimate_db": 0.0,
+        "clipping_ratio": 0.0,
+        "spectral_flatness": 1.0,
+    }
+    transcript_integrity = {
+        "transcript_integrity_score": 0.0,
+        "segment_count": 0,
+        "sentence_boundary_density": 0.0,
+    }
+    vad_removed_ratio = 1.0
 
     if low_memory_mode:
         # Render free tier fallback: skip heavy transcription/orchestration.
@@ -2080,6 +2624,19 @@ def analyze_video():
             log.error("[AUDIO] Extraction failed: %s", e)
             return analyze_error("Audio extraction failed. Try again.", 500)
         log.info("[TIMING] stage=extract_wav wall=%.2fs", (time.time() - stage_t0))
+        # Phase 3: integrity analysis is optional telemetry only.
+        try:
+            audio_integrity = analyze_audio_integrity(wav_path)
+            log.info(
+                "[INGEST] audio_integrity score=%.3f silence=%.3f snr=%.2fdB clip=%.4f flat=%.3f",
+                float(audio_integrity.get("audio_integrity_score", 0.0) or 0.0),
+                float(audio_integrity.get("silence_ratio", 0.0) or 0.0),
+                float(audio_integrity.get("snr_estimate_db", 0.0) or 0.0),
+                float(audio_integrity.get("clipping_ratio", 0.0) or 0.0),
+                float(audio_integrity.get("spectral_flatness", 0.0) or 0.0),
+            )
+        except Exception as e:
+            log.warning("[INGEST] audio integrity telemetry skipped: %s", e)
 
         # Precompute transcript on clean wav and seed cache for orchestrator
         stage_t0 = time.time()
@@ -2089,14 +2646,31 @@ def analyze_video():
             transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
             if is_fast_longform:
                 transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
+            use_vad_override = None
+            vad_profile_override = None
             transcript_segments = _extract_transcript(
                 wav_path,
                 model_name=transcript_model_name,
                 prefer_gpu=True,
                 prefer_trust=False,
+                use_vad_override=use_vad_override,
+                vad_profile_override=vad_profile_override,
             )
+            seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
+            # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
+            try:
+                vad_removed_ratio = compute_vad_removed_ratio(seg_dur, transcript_segments or [])
+                transcript_integrity = analyze_transcript_integrity(transcript_segments or [], expected_duration=seg_dur)
+            except Exception as e:
+                log.warning("[INGEST] transcript integrity telemetry skipped: %s", e)
             log_mem("after transcript")
-            log.info("[TRANSCRIPT] model=%s segments=%d", transcript_model_name, len(transcript_segments or []))
+            log.info(
+                "[TRANSCRIPT] model=%s segments=%d integrity=%.3f vad_removed=%.3f",
+                transcript_model_name,
+                len(transcript_segments or []),
+                float(transcript_integrity.get("transcript_integrity_score", 0.0) or 0.0),
+                float(vad_removed_ratio),
+            )
             _save_cached_transcript(video_path, transcript_segments or [])
         except Exception as e:
             log.error("[TRANSCRIPT] Prefill failed: %s", e)
@@ -2125,9 +2699,16 @@ def analyze_video():
                 top_k = top_k_default
 
             top_k = max(3, min(20, int(top_k)))
-            moments = orchestrate(video_path, top_k=top_k)
+            
+            # ⚡ HARD-FORCE STAGED MODE: Ensure we use the new pipeline (L4/L7/L9) instead of legacy Ultron V33.
+            # We explicitly disable fallback to prevent legacy Ultron from running silently.
+            os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
+            clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
+            print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
+            moments = clips
+
             log.info(
-                "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d)",
+                "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d) pipeline_mode=staged (FORCED) allow_fallback=False",
                 top_k,
                 source_video_duration_s,
                 top_k_default,
@@ -2138,6 +2719,46 @@ def analyze_video():
             log.exception("[ANALYZE] Orchestrator failed: %s", e)
             return analyze_error("Analysis failed. Please try another video.", 500)
         log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+
+    transcript_status = "missing"
+    if transcript_segments:
+        t_score = float(transcript_integrity.get("transcript_integrity_score", 0.0) or 0.0)
+        transcript_status = "ok" if t_score >= 0.72 else "partial"
+    res_w = media_probe.get("width")
+    res_h = media_probe.get("height")
+    canonical_media_obj = CanonicalMediaObject(
+        video_path=str(video_path or ""),
+        audio_path=str(wav_path or ""),
+        duration=float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0),
+        resolution=(int(res_w), int(res_h)) if (res_w and res_h) else None,
+        bitrate=float(media_probe.get("bit_rate") or 0.0) if media_probe.get("bit_rate") else None,
+        transcript_status=transcript_status,
+        acquisition_quality_score=float(acquisition_quality_score or 0.0),
+        audio_integrity_score=float(audio_integrity.get("audio_integrity_score", 0.0) or 0.0),
+        transcript_integrity_score=float(transcript_integrity.get("transcript_integrity_score", 0.0) or 0.0),
+        acquisition_attempts=list(acquisition_attempts or []),
+    )
+    save_ingestion_cache(
+        ingest_cache_dir,
+        ingest_cache_key_value,
+        {
+            "saved_at": time.time(),
+            "signature": ingest_signature,
+            "source_url_hash": ingest_cache_key_value,
+            "metadata": metadata or {},
+            "source_transcript_segments": transcript_segments or [],
+            "transcript_engine": {
+                "model": os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+                "longform_model": os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny"),
+                "use_vad_override": use_vad_override if "use_vad_override" in locals() else None,
+                "vad_profile_override": vad_profile_override if "vad_profile_override" in locals() else None,
+            },
+            "canonical_media": canonical_to_dict(canonical_media_obj),
+            "audio_integrity": audio_integrity,
+            "transcript_integrity": transcript_integrity,
+            "vad_removed_ratio": float(vad_removed_ratio),
+        },
+    )
 
     if not moments:
         return analyze_error("No viral moments detected. Try another video.", 400)
@@ -2152,15 +2773,18 @@ def analyze_video():
     # 4) Create Job (processing)
     # --------------------------------------------------
     try:
-        # persist a bit of context so the frontend / debugging tools can show
-        # what was selected before we downloaded the segment.
+        # persist ingestion context for frontend/debug tooling
         import json
         analysis_blob = {}
-        if 'start_ts' in locals() and 'end_ts' in locals():
-            analysis_blob['preselected_start'] = start_ts
-            analysis_blob['preselected_end'] = end_ts
         if 'metadata' in locals():
             analysis_blob['metadata'] = metadata
+        analysis_blob["ingestion"] = {
+            "canonical_media": canonical_to_dict(canonical_media_obj),
+            "audio_integrity": audio_integrity,
+            "transcript_integrity": transcript_integrity,
+            "vad_removed_ratio": float(vad_removed_ratio),
+            "js_runtime_available": bool(js_runtime_ok),
+        }
 
         job = Job(
             id=job_id,
@@ -2178,79 +2802,94 @@ def analyze_video():
         return analyze_error("Failed to initialize analysis job.", 500)
 
     # --------------------------------------------------
-    # 5) Process moments (parallel) + Quality-mode curation
-    log_mem("after moments")
+    # 5) Route-level moment mapping only (orchestrator owns intelligence/ranking)
     # --------------------------------------------------
-    global_transcript = transcript_segments or []
+    log_mem("after moments")
+    legacy_route_policy = _env_bool("HS_APP_LEGACY_MOMENT_POLICY", False)
+    log.info(
+        "[ROUTE] ranking_owner=orchestrator legacy_policy=%s input_moments=%d",
+        legacy_route_policy,
+        len(moments or []),
+    )
+    print("DEBUG moments sample:", (moments or [])[:1])
     if isinstance(moments, dict):
-        global_transcript = moments.get("transcript") or global_transcript
+        moments = moments.get("candidates") or moments.get("moments") or []
+    if not isinstance(moments, list):
+        moments = []
 
-    tasks = [(idx, m, global_transcript, log) for idx, m in enumerate(moments)]
-
-    stage_t0 = time.time()
-    moment_workers_cfg = int(os.environ.get("HS_MOMENT_MAX_WORKERS", "0") or 0)
-    if moment_workers_cfg > 0:
-        moment_workers = max(1, min(16, moment_workers_cfg))
-    else:
-        # Render free tier is memory-constrained; keep processing single-threaded by default.
-        moment_workers = 1 if IS_RENDER_RUNTIME else max(2, min(8, (os.cpu_count() or 4)))
     moment_results = []
-    with ThreadPoolExecutor(max_workers=moment_workers) as pool:
-        futures = [pool.submit(_process_moment_parallel, t) for t in tasks]
-        for f in as_completed(futures):
-            r = f.result()
-            if r:
-                moment_results.append(r)
-    log.info("[TIMING] stage=moment_process wall=%.2fs workers=%d in=%d out=%d", (time.time() - stage_t0), moment_workers, len(tasks), len(moment_results))
+    stage_t0 = time.time()
 
-    # Curator pass: rank by final_score DESC (tie-break by pattern-break/payoff/hook dominance), mark top 2–3 as recommended
-    moment_results.sort(
-        key=lambda x: (
-            -float(x[5] or 0.0),  # final_score
-            -float((x[1] or {}).get("pattern_break_score", 0.0) or 0.0),  # pattern interrupt tiebreak
-            -float((x[1] or {}).get("payoff_resolution_score", 0.0) or 0.0),  # setup->payoff tiebreak
-            -float((x[1] or {}).get("hook_score", 0.0) or 0.0),  # hook dominance tiebreak
-            -float(x[6] or 0.0),  # base_score
-            float(x[3] or 0.0),   # start time
+    if legacy_route_policy:
+        log.warning("[ROUTE] using legacy route moment policy (deprecated)")
+        global_transcript = transcript_segments or []
+        if isinstance(moments, dict):
+            global_transcript = moments.get("transcript") or global_transcript
+
+        tasks = [(idx, m, global_transcript, log) for idx, m in enumerate(moments)]
+        moment_workers_cfg = int(os.environ.get("HS_MOMENT_MAX_WORKERS", "0") or 0)
+        if moment_workers_cfg > 0:
+            moment_workers = max(1, min(16, moment_workers_cfg))
+        else:
+            memory_budget_mb = max(128.0, _env_float("HS_MEMORY_BUDGET_MB", 550.0))
+            if IS_RENDER_RUNTIME or (BALANCED_SCIENTIST_PROFILE and memory_budget_mb <= 650.0):
+                moment_workers = 1
+            else:
+                moment_workers = max(2, min(8, (os.cpu_count() or 4)))
+        with ThreadPoolExecutor(max_workers=moment_workers) as pool:
+            futures = [pool.submit(_process_moment_parallel, t) for t in tasks]
+            for f in as_completed(futures):
+                r = f.result()
+                if r:
+                    moment_results.append(r)
+        log.info(
+            "[TIMING] stage=moment_process_legacy wall=%.2fs workers=%d in=%d out=%d",
+            (time.time() - stage_t0),
+            moment_workers,
+            len(tasks),
+            len(moment_results),
         )
-    )
-    recommended_n = 3 if len(moment_results) >= 3 else len(moment_results)
-    if recommended_n == 3:
+        # legacy polish retained only for rollback mode
         try:
-            third = float(moment_results[2][5] or 0.0)
-            if third < 0.35:
-                recommended_n = 2
+            source_duration_s = max(
+                float(seg.get("end", seg.get("start", 0.0)) or 0.0)
+                for seg in (global_transcript or [])
+                if isinstance(seg, dict)
+            )
         except Exception:
-            pass
-
-    # Re-index for stable filenames / DB ordering, but never truncate: show all generated clips.
-    ranked = []
-    for new_idx, r in enumerate(moment_results):
-        _, final_moment, text, start_r, end_r, final_score, base_score, semantic_quality, duration = r
-        try:
-            final_moment["rank"] = int(new_idx + 1)
-            final_moment["is_best"] = (new_idx == 0)
-            final_moment["is_recommended"] = (new_idx < int(recommended_n))
-        except Exception:
-            pass
-
-        ranked.append((new_idx, final_moment, text, start_r, end_r, final_score, base_score, semantic_quality, duration))
-
-    moment_results = ranked
-    try:
-        source_duration_s = max(
-            float(seg.get("end", seg.get("start", 0.0)) or 0.0)
-            for seg in (global_transcript or [])
-            if isinstance(seg, dict)
+            source_duration_s = 0.0
+        moment_results = _polish_top_longform_moments(
+            wav_path=wav_path,
+            moment_results=moment_results,
+            source_duration_s=source_duration_s,
+            logger=log,
         )
-    except Exception:
-        source_duration_s = 0.0
-    moment_results = _polish_top_longform_moments(
-        wav_path=wav_path,
-        moment_results=moment_results,
-        source_duration_s=source_duration_s,
-        logger=log,
-    )
+    else:
+        accepted_count = 0
+        for idx, m in enumerate(moments or []):
+            mapped = _map_orchestrator_moment_for_clipgen(m, idx, log)
+            if mapped:
+                moment_results.append(mapped)
+                accepted_count += 1
+        log.info(
+            "[TIMING] stage=moment_process_route_adapter wall=%.2fs in=%d accepted=%d",
+            (time.time() - stage_t0),
+            len(moments or []),
+            accepted_count,
+        )
+        print("DEBUG mapped results:", len(moment_results))
+        # preserve orchestrator order as authoritative ranking
+        normalized = []
+        for new_idx, r in enumerate(moment_results):
+            _, final_moment, text, start_r, end_r, final_score, base_score, semantic_quality, duration = r
+            try:
+                final_moment["rank"] = int(new_idx + 1)
+                final_moment["is_best"] = (new_idx == 0)
+                final_moment["is_recommended"] = (new_idx < 3)
+            except Exception:
+                pass
+            normalized.append((new_idx, final_moment, text, start_r, end_r, final_score, base_score, semantic_quality, duration))
+        moment_results = normalized
 
     # --------------------------------------------------
     # 6) Generate clips (parallel)
@@ -2557,6 +3196,14 @@ def analyze_video():
                     "virality_confidence": float(final_moment.get("virality_confidence", 0.0) or 0.0),
                     "duration_score": float(final_moment.get("duration_score", 0.0) or 0.0),
                     "final_score": float(final_moment.get("final_score", final_score) or final_score),
+                    "arc_score": float(final_moment.get("arc_score", final_score) or final_score),
+                    "editor_score": float(final_moment.get("editor_score", 0.0) or 0.0),
+                    "signals": final_moment.get("signals", {}) if isinstance(final_moment.get("signals"), dict) else {},
+                    "hook_segment": final_moment.get("hook_segment", {}) if isinstance(final_moment.get("hook_segment"), dict) else {},
+                    "payoff_segment": final_moment.get("payoff_segment", {}) if isinstance(final_moment.get("payoff_segment"), dict) else {},
+                    "build_text": str(final_moment.get("build_text", "") or ""),
+                    "story_patterns": list(final_moment.get("story_patterns", []) or []),
+                    "arc_complete": bool(final_moment.get("arc_complete", False)),
                     "rank": int(final_moment.get("rank", idx + 1) or (idx + 1)),
                     "is_best": bool(final_moment.get("is_best", idx == 0)),
                     "is_recommended": bool(final_moment.get("is_recommended", idx < 3)),
@@ -2631,6 +3278,14 @@ def analyze_video():
                     "virality_confidence": row.get("virality_confidence"),
                     "duration_score": row.get("duration_score"),
                     "final_score": row.get("final_score"),
+                    "arc_score": row.get("arc_score"),
+                    "editor_score": row.get("editor_score"),
+                    "signals": row.get("signals") or {},
+                    "hook_segment": row.get("hook_segment") or {},
+                    "payoff_segment": row.get("payoff_segment") or {},
+                    "build_text": row.get("build_text") or "",
+                    "story_patterns": row.get("story_patterns") or [],
+                    "arc_complete": row.get("arc_complete"),
                     "rank": row.get("rank"),
                     "is_best": row.get("is_best"),
                     "is_recommended": row.get("is_recommended"),
@@ -2685,7 +3340,7 @@ def analyze_video():
     log.info("[TIMING] stage=analyze_total wall=%.2fs", (time.time() - analyze_t0))
 
     # Count a successful full analyze against the trial quota.
-    if plan_type == "trial":
+    if plan_type == "trial" and not _open_testing_mode_enabled():
         try:
             used = int(getattr(current_user, "trial_analyze_count", 0) or 0)
             if used < 1:
@@ -2936,6 +3591,7 @@ def analyze_video():
 import yt_dlp
 import os
 import re
+import shutil
 import browser_cookie3
 
 
@@ -2949,6 +3605,7 @@ def fetch_youtube_metadata(url):
 
     ydl_opts = {
         "quiet": True,
+        "no_warnings": True,
         "skip_download": True,
         # avoid writing anything to disk
     }
@@ -3008,6 +3665,249 @@ def select_segment_from_transcript(transcript_segments, duration_s=None):
     return 0.0, min(30.0, float(duration_s or 30.0))
 
 
+def _js_runtime_available() -> bool:
+    try:
+        return bool(shutil.which("node") or shutil.which("deno"))
+    except Exception:
+        return False
+
+
+def _ingestion_signature() -> str:
+    # Any change here invalidates ingestion cache reuse automatically.
+    fields = {
+        "ytdlp_format": os.environ.get("HS_YTDLP_FORMAT", ""),
+        "transcript_model": os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+        "transcript_long_model": os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny"),
+        "vad_profile": os.environ.get("HS_VAD_PROFILE", "quality"),
+        "vad_pregate": os.environ.get("HS_VAD_PREGATE", "0"),
+        "vad_skip_above": os.environ.get("HS_VAD_SKIP_ABOVE_SECONDS", "900"),
+        "vad_turbo_above": os.environ.get("HS_VAD_TURBO_ABOVE_SECONDS", "300"),
+        "force_vad": os.environ.get("HS_FORCE_VAD", "0"),
+        "cognition_engine": os.environ.get("HS_COGNITION_ENGINE", "legacy"),
+        "js_runtime": "1" if _js_runtime_available() else "0",
+        "ingest_schema_rev": "v2",
+    }
+    raw = "|".join(f"{k}={fields[k]}" for k in sorted(fields.keys()))
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def _download_youtube_segment_with_format(url, start, end, output_dir="downloads", job_id=None, format_selector=None):
+    os.makedirs(output_dir, exist_ok=True)
+    safe_job = None
+    try:
+        safe_job = re.sub(r"[^a-zA-Z0-9_-]", "_", job_id) if job_id else None
+    except Exception:
+        safe_job = None
+
+    fmt = (format_selector or "bestvideo+bestaudio/best").strip()
+    ydl_opts = {
+        "format": fmt,
+        "merge_output_format": "mp4",
+        "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "download_ranges": (lambda info, ydl: [{"start_time": start, "end_time": end}]),
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        file_path = None
+        if safe_job:
+            expected = os.path.join(output_dir, f"{safe_job}.mp4")
+            if os.path.exists(expected):
+                file_path = expected
+        if not file_path:
+            file_path = ydl.prepare_filename(info)
+            if (not os.path.exists(file_path)) and os.path.exists(file_path + ".mp4"):
+                file_path = file_path + ".mp4"
+    return file_path
+
+
+def _copy_segment_ffmpeg(src_path, start_s, end_s, out_path):
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        str(max(0.0, float(start_s or 0.0))),
+        "-to",
+        str(max(float(start_s or 0.0) + 0.2, float(end_s or 0.0))),
+        "-i",
+        src_path,
+        "-c",
+        "copy",
+        out_path,
+    ]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    return out_path
+
+
+def acquire_youtube_media_robust(url, start, end, output_dir="downloads", job_id=None, metadata=None):
+    """
+    Stage 1 ingestion: multi-path acquisition with explicit quality scoring.
+    Returns (best_path, acquisition_quality_score, attempts, media_probe, js_runtime_ok).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    attempts = []
+    expected_duration = max(1.0, float(end or 0.0) - float(start or 0.0))
+    metadata_duration = float((metadata or {}).get("duration") or 0.0)
+    js_runtime_ok = _js_runtime_available()
+
+    candidate_specs = [
+        ("segment_default", "bestvideo+bestaudio/best", True),
+        ("segment_progressive", "best[ext=mp4][protocol!=dash]/best[protocol!=dash]", True),
+        ("segment_minimal", "worst[ext=mp4][protocol!=dash]/worst[protocol!=dash]", True),
+    ]
+    good_enough_score = max(0.0, min(1.0, _env_float("HS_ACQ_GOOD_ENOUGH_SCORE", 0.90)))
+    best = None
+    best_score = 0.0
+    best_probe = None
+
+    for idx, (name, fmt, is_segment) in enumerate(candidate_specs):
+        try:
+            candidate_job = f"{job_id}_ing_{idx}" if job_id else None
+            if is_segment:
+                p = _download_youtube_segment_with_format(
+                    url=url,
+                    start=start,
+                    end=end,
+                    output_dir=output_dir,
+                    job_id=candidate_job,
+                    format_selector=fmt,
+                )
+            else:
+                p = download_youtube_video(url, output_dir=output_dir, job_id=candidate_job)
+            if not p or (not os.path.exists(p)):
+                raise RuntimeError("media_missing")
+            probe = probe_media(p)
+            size_b = int(os.path.getsize(p) if os.path.exists(p) else 0)
+
+            # ✳️ Fail‑safe guard against truncated/JS-failure segments
+            if probe.get("ok") and probe.get("duration", 0.0) < 60.0 and metadata_duration > 300.0:
+                warning = {"starvation_detected": True, "reason": "partial_download_or_js_failure"}
+                log.warning("acquisition warning: %s", warning)
+                attempts.append({
+                    "path_name": name,
+                    "format": fmt,
+                    "ok": False,
+                    "path": p,
+                    "probe": probe,
+                    "size_bytes": size_b,
+                    "warning": warning,
+                })
+                # don't score this attempt, move to next candidate
+                continue
+
+            score, components = score_acquisition(
+                media_probe=probe,
+                expected_duration=expected_duration,
+                metadata_duration=metadata_duration,
+                file_size_bytes=size_b,
+            )
+            if not js_runtime_ok:
+                score *= 0.70
+                components["js_runtime_penalty"] = 0.30
+            attempt = {
+                "path_name": name,
+                "format": fmt,
+                "ok": True,
+                "path": p,
+                "probe": probe,
+                "size_bytes": size_b,
+                "score": round(float(score), 4),
+                "components": components,
+            }
+            attempts.append(attempt)
+            if score > best_score:
+                best = p
+                best_score = float(score)
+                best_probe = probe
+            if best_score >= good_enough_score:
+                # Early exit to avoid avoidable latency once acquisition quality is strong.
+                break
+        except Exception as e:
+            msg = str(e) or repr(e)
+            if "HTTP Error 429" in msg or "Too Many Requests" in msg or "429:" in msg:
+                raise YoutubeRateLimitError(msg)
+            if "Sign in to confirm" in msg or "not a bot" in msg.lower():
+                raise YoutubeCaptchaError(msg)
+            attempts.append(
+                {
+                    "path_name": name,
+                    "format": fmt,
+                    "ok": False,
+                    "error": msg,
+                }
+            )
+
+    # Path D fallback: full minimal fetch + ffmpeg copy to requested segment.
+    if (best is None or best_score < 0.72):
+        try:
+            full_job = f"{job_id}_full_fallback" if job_id else None
+            full_path = download_youtube_video(url, output_dir=output_dir, job_id=full_job)
+            if full_path and os.path.exists(full_path):
+                seg_path = os.path.join(output_dir, f"{job_id or ingestion_cache_key(url)}_fallback_segment.mp4")
+                _copy_segment_ffmpeg(full_path, start, end, seg_path)
+                probe = probe_media(seg_path)
+                size_b = int(os.path.getsize(seg_path) if os.path.exists(seg_path) else 0)
+
+                # starvation guard on fallback copy as well
+                if probe.get("ok") and probe.get("duration", 0.0) < 60.0 and metadata_duration > 300.0:
+                    warning = {"starvation_detected": True, "reason": "partial_download_or_js_failure"}
+                    log.warning("acquisition warning (fallback): %s", warning)
+                    attempts.append({
+                        "path_name": "full_fallback_segment_copy",
+                        "format": "full_minimal+copy",
+                        "ok": False,
+                        "path": seg_path,
+                        "probe": probe,
+                        "size_bytes": size_b,
+                        "warning": warning,
+                    })
+                else:
+                    score, components = score_acquisition(
+                        media_probe=probe,
+                        expected_duration=expected_duration,
+                        metadata_duration=metadata_duration,
+                        file_size_bytes=size_b,
+                    )
+                    if not js_runtime_ok:
+                        score *= 0.70
+                        components["js_runtime_penalty"] = 0.30
+                    attempts.append(
+                        {
+                            "path_name": "full_fallback_segment_copy",
+                            "format": "full_minimal+copy",
+                            "ok": True,
+                            "path": seg_path,
+                            "probe": probe,
+                            "size_bytes": size_b,
+                            "score": round(float(score), 4),
+                            "components": components,
+                        }
+                    )
+                    if score > best_score:
+                        best = seg_path
+                        best_score = float(score)
+                        best_probe = probe
+        except Exception as e:
+            msg = str(e) or repr(e)
+            if "HTTP Error 429" in msg or "Too Many Requests" in msg or "429:" in msg:
+                raise YoutubeRateLimitError(msg)
+            if "Sign in to confirm" in msg or "not a bot" in msg.lower():
+                raise YoutubeCaptchaError(msg)
+            attempts.append(
+                {
+                    "path_name": "full_fallback_segment_copy",
+                    "format": "full_minimal+copy",
+                    "ok": False,
+                    "error": msg,
+                }
+            )
+
+    return best, float(best_score), attempts, (best_probe or {}), js_runtime_ok
+
+
 def download_youtube_segment(url, start, end, output_dir="downloads", job_id=None):
     """Download only the specified time range from a YouTube URL.
 
@@ -3026,6 +3926,7 @@ def download_youtube_segment(url, start, end, output_dir="downloads", job_id=Non
         "merge_output_format": "mp4",
         "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
         "quiet": True,
+        "no_warnings": True,
         "noplaylist": True,
         "download_ranges": (lambda info, ydl: [{"start_time": start, "end_time": end}]),
     }
@@ -3082,10 +3983,8 @@ def download_youtube_video(url, output_dir="downloads", job_id=None):
     except Exception:
         safe_job = None
 
-    low_memory_mode = os.environ.get(
-        "HS_LOW_MEMORY_MODE",
-        "1" if IS_RENDER_RUNTIME else "0",
-    ).strip().lower() in ("1", "true", "yes", "on")
+    # Phase 1 suppression disable: always prefer full-quality download format.
+    low_memory_mode = False
     default_format = (
         "worst[ext=mp4][protocol!=dash]/worst[protocol!=dash]"
         if low_memory_mode
@@ -3107,12 +4006,6 @@ def download_youtube_video(url, output_dir="downloads", job_id=None):
         "fragment_retries": 5,
         "sleep_interval": 5,
         "max_sleep_interval": 15,
-        # Prefer Android client which is typically less aggressively rate-limited.
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android"],
-            }
-        },
     }
 
     try:
@@ -3304,7 +4197,7 @@ def download_clip(clip_id):
     is_paid_plan = plan_type in ("starter", "pro", "industry")
 
     # Trial: enforce 3-clip export limit (server-side authoritative).
-    if is_trial_plan:
+    if is_trial_plan and not _open_testing_mode_enabled():
         try:
             used = int(getattr(current_user, "trial_clip_exports", 0) or 0)
         except Exception:
@@ -3521,13 +4414,13 @@ def download_clip(clip_id):
                 def _lockup_draw(label_out: str) -> str:
                     if safe_font:
                         return (
-                            f"[b1]drawtext=fontfile={safe_font}:text=HOTSHORT:"
+                            f"[b1]drawtext=fontfile={safe_font}:text=Made with HotShort:"
                             f"fontcolor=#FFD36A@1.0:fontsize={font_size}:"
                             f"x={logo_w}+{pad_x}:y=(h-th)/2:"
                             f"shadowcolor=#000000@0.20:shadowx=1:shadowy=1[{label_out}];"
                         )
                     return (
-                        f"[b1]drawtext=text=HOTSHORT:"
+                        f"[b1]drawtext=text=Made with HotShort:"
                         f"fontcolor=#FFD36A@1.0:fontsize={font_size}:"
                         f"x={logo_w}+{pad_x}:y=(h-th)/2:"
                         f"shadowcolor=#000000@0.20:shadowx=1:shadowy=1[{label_out}];"
@@ -3536,8 +4429,8 @@ def download_clip(clip_id):
                 # Attempt 1: cinematic lockup + subtle golden shine sweep (first ~1.2s).
                 # If this fails for any reason, we gracefully degrade to a non-shine version.
                 #
-                # Production default: OFF (FFmpeg filter compatibility varies across builds).
-                # Enable with: HS_WATERMARK_SHINE=1
+                # Premium shiny effect disabled by default (requires advanced FFmpeg support).
+                # Can be enabled with: HS_WATERMARK_SHINE=1
                 enable_shine = str(os.environ.get("HS_WATERMARK_SHINE", "0") or "0").strip().lower() in (
                     "1",
                     "true",
@@ -3982,10 +4875,16 @@ def download_clip(clip_id):
     out_path = _cached_path(abs_path, "watermarked", asset, "wm_v9")
     chosen_path = abs_path
     watermark_ok = False
+    
+    app.logger.info("[DOWNLOAD] Watermark processing: required=%s, plan=%s, asset=%s", watermark_required, plan_type, asset)
+    
     try:
         if not os.path.exists(out_path):
+            app.logger.info("[DOWNLOAD] Generating watermark: %s -> %s", abs_path, out_path)
             _render_watermark(abs_path, out_path)
         watermark_ok = os.path.exists(out_path) and not os.path.isdir(out_path) and os.path.getsize(out_path) > 0
+        if watermark_ok:
+            app.logger.info("[DOWNLOAD] Watermark file created successfully: %s (size=%d)", out_path, os.path.getsize(out_path))
     except Exception as e:
         cmd = getattr(e, "cmd", None)
         stderr = getattr(e, "stderr", "") or ""
@@ -4009,7 +4908,7 @@ def download_clip(clip_id):
         return jsonify({"error": "watermark_failed"}), 503
 
     # If we reach here and it's a trial export, increment the trial clip counter.
-    if is_trial_plan:
+    if is_trial_plan and not _open_testing_mode_enabled():
         try:
             used = int(getattr(current_user, "trial_clip_exports", 0) or 0)
             if used < FREE_CLIP_LIMIT:
@@ -4131,5 +5030,3 @@ if __name__ == "__main__":
         print("✅ Database tables initialized")
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
-
-

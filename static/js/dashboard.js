@@ -38,6 +38,21 @@
      STATE
      ===================== */
   let _isAnalyzing = false;
+  const GLOBAL_LAST_URL_KEY = "last_analyzed_url";
+
+  function getDashboardUserId() {
+    try {
+      const ctx = document.getElementById("dashboardContext");
+      const v = (ctx && ctx.dataset && ctx.dataset.userId) ? String(ctx.dataset.userId).trim() : "";
+      return v || "anon";
+    } catch (e) {
+      return "anon";
+    }
+  }
+
+  function getScopedLastUrlKey() {
+    return `${GLOBAL_LAST_URL_KEY}:u:${getDashboardUserId()}`;
+  }
 
   /* =====================
      UTILITIES
@@ -719,7 +734,7 @@
     carousel.innerHTML = "";
 
     try {
-      try { localStorage.setItem("last_analyzed_url", ytUrl); } catch (e) {}
+      try { localStorage.setItem(getScopedLastUrlKey(), ytUrl); } catch (e) {}
       analyticsPing("analyze_click", { youtube_url: ytUrl });
 
       // build FormData
@@ -842,13 +857,14 @@
     // wire click once
     analyzeBtn.addEventListener("click", handleAnalyzeClick);
 
-    // restore last url
+    // restore last url (scoped by logged-in user id)
     try {
-      const last = localStorage.getItem("last_analyzed_url");
-      if (last) {
-        const yt = document.querySelector(SEL.yt);
-        if (yt) yt.value = last;
-      }
+      const yt = document.querySelector(SEL.yt);
+      if (yt) yt.value = "";
+      const scoped = localStorage.getItem(getScopedLastUrlKey());
+      if (scoped && yt) yt.value = scoped;
+      // Clean old global key to avoid cross-account leakage on shared browsers.
+      localStorage.removeItem(GLOBAL_LAST_URL_KEY);
     } catch (e) {}
 
     ensurePreviewModal();

@@ -3,6 +3,7 @@ import re
 import hashlib
 import math
 import statistics
+import os
 from collections import namedtuple, deque, Counter
 from typing import List, Tuple, Dict, Any, Optional, Union
 import logging
@@ -645,8 +646,20 @@ def detect_conclusion_marker(text: str) -> bool:
             return True
 
     return False
+def _env_float(name: str, default: float) -> float:
+    try:
+        raw = os.getenv(name)
+        if raw is None or str(raw).strip() == "":
+            return float(default)
+        return float(raw)
+    except Exception:
+        return float(default)
+
+
 SIM_THRESHOLD_SHORT = 0.38
-SEM_SIM_THRESHOLD_DEFAULT = 0.33
+COALESCE_TIME_TOL_DEFAULT = max(0.0, _env_float("HS_IDEA_COALESCE_TIME_TOL", 0.25))
+SEM_SIM_THRESHOLD_DEFAULT = min(0.99, max(0.0, _env_float("HS_IDEA_COALESCE_SEM_THR", 0.50)))
+IDEA_MAX_NODE_SECONDS = max(3.0, _env_float("HS_IDEA_MAX_NODE_SECONDS", 15.0))
 SIM_THRESHOLD_LONG = 0.33
 # Break an arc when semantic overlap between consecutive segments drops below this
 SEM_DRIFT_BREAK = 0.30
@@ -685,10 +698,18 @@ def same_thought(current_text_window: str,
 # ----------------------------------------
 
 # Minimum curiosity score to consider a clip
-CURIO_SELECT_CUTOFF = 0.28
+CURIO_SELECT_CUTOFF = min(0.95, max(0.0, _env_float("HS_SELECTOR_CURIO_CUTOFF", 0.28)))
 
 # Minimum punch confidence to consider a clip
-PUNCH_SELECT_CUTOFF = 0.28
+PUNCH_SELECT_CUTOFF = min(0.95, max(0.0, _env_float("HS_SELECTOR_PUNCH_CUTOFF", 0.28)))
+
+# Diversity-selector defaults
+SELECT_RELAX_CURIO_DELTA_DEFAULT = min(0.30, max(0.0, _env_float("HS_SELECTOR_RELAX_CURIO_DELTA", 0.08)))
+SELECT_RELAX_PUNCH_DELTA_DEFAULT = min(0.30, max(0.0, _env_float("HS_SELECTOR_RELAX_PUNCH_DELTA", 0.08)))
+SELECT_RELAX_SEM_FLOOR_DEFAULT = min(0.80, max(0.20, _env_float("HS_SELECTOR_RELAX_SEM_FLOOR", 0.45)))
+SELECT_BASE_SEM_FLOOR = 0.52
+SELECT_STRICT_PASS_WEIGHT = min(1.50, max(0.30, _env_float("HS_DIVERSITY_STRICT_PASS_WEIGHT", 1.00)))
+SELECT_RELAX_PASS_WEIGHT = min(1.00, max(0.20, _env_float("HS_DIVERSITY_RELAX_PASS_WEIGHT", 0.85)))
 
 # If a node is a strong resolution, suppress it (avoid boring endings)
 RESOLUTION_SUPPRESS_CUTOFF = 0.15
@@ -780,40 +801,87 @@ def _slice_max(arr, s, e):
 
 log = logging.getLogger(__name__)
 
-# --------- Fallback helpers (if your repo already has these, they'll be used instead) ----------
-try:
-    from viral_finder.ultron_finder_v33 import text_overlap
-except Exception:
-    def text_overlap(a: str, b: str) -> float:
-        """Simple overlap: Jaccard on words (fast fallback)."""
-        if not a or not b:
-            return 0.0
-        wa = set(re.findall(r"\w+", a.lower()))
-        wb = set(re.findall(r"\w+", b.lower()))
-        if not wa or not wb:
-            return 0.0
-        inter = wa & wb
-        uni = wa | wb
-        return float(len(inter)) / (len(uni) + 1e-9)
+# Lightweight text overlap utility.
+# Avoid importing ultron_finder_v33 here because that import path can transitively
+# load heavy semantic models at module import time.
+def text_overlap(a: str, b: str) -> float:
+    """Simple overlap: Jaccard on words (fast fallback)."""
+    if not a or not b:
+        return 0.0
+    wa = set(re.findall(r"\w+", a.lower()))
+    wb = set(re.findall(r"\w+", b.lower()))
+    if not wa or not wb:
+        return 0.0
+    inter = wa & wb
+    uni = wa | wb
+    return float(len(inter)) / (len(uni) + 1e-9)
 
-try:
-    from viral_finder.ultron_brain import ultron_brain_score
-except Exception:
-    def ultron_brain_score(text, brain=None):
-        """
-        Fallback brain scorer:
-        returns (impact, meaning, novelty, emotion, clarity) in [0,1]
-        naive heuristics: punctuation, question, length
-        """
-        if not text:
-            return 0.0, 0.0, 0.0, 0.0, 0.0
-        t = text.lower()
-        impact = 0.6 if "!" in text else 0.2
-        meaning = min(1.0, len(text.split()) / 30.0)
-        novelty = 0.25 if "new" in t or "novel" in t or "secret" in t else 0.05
-        emotion = 0.3 if any(w in t for w in ("amazing","insane","crazy","shocking")) else 0.05
-        clarity = 0.5
-        return impact, meaning, novelty, emotion, clarity
+_brain_loader_attempted = False
+_brain_loader_ok = False
+_brain_loader_reason = "not_attempted"
+
+
+def _default_brain_score(text, brain=None):
+    """
+    Fallback brain scorer:
+    returns (impact, meaning, novelty, emotion, clarity) in [0,1]
+    naive heuristics: punctuation, question, length
+    """
+    if not text:
+        return 0.0, 0.0, 0.0, 0.0, 0.0
+    t = text.lower()
+    impact = 0.6 if "!" in text else 0.2
+    meaning = min(1.0, len(text.split()) / 30.0)
+    novelty = 0.25 if "new" in t or "novel" in t or "secret" in t else 0.05
+    emotion = 0.3 if any(w in t for w in ("amazing", "insane", "crazy", "shocking")) else 0.05
+    clarity = 0.5
+    return impact, meaning, novelty, emotion, clarity
+
+
+_runtime_ultron_brain_score = _default_brain_score
+
+
+def _brain_enabled() -> bool:
+    raw_new = os.getenv("HS_BRAIN_ENABLE_ENRICH", "")
+    if raw_new.strip() != "":
+        return str(raw_new).strip().lower() in ("1", "true", "yes", "on")
+    raw_old = os.getenv("HS_ORCH_BRAIN_ENABLED", "")
+    if raw_old.strip() != "":
+        return str(raw_old).strip().lower() in ("1", "true", "yes", "on")
+    is_render = (
+        str(os.environ.get("RENDER", "")).strip().lower() in ("1", "true", "yes", "on")
+        or bool(os.environ.get("RENDER_SERVICE_ID"))
+    )
+    return not is_render
+
+
+def _ensure_brain_score_runtime() -> None:
+    global _brain_loader_attempted, _brain_loader_ok, _brain_loader_reason, _runtime_ultron_brain_score
+    if _brain_loader_attempted:
+        return
+    _brain_loader_attempted = True
+    if not _brain_enabled():
+        _brain_loader_ok = False
+        _brain_loader_reason = "disabled_by_env"
+        _runtime_ultron_brain_score = _default_brain_score
+        log.info("[BRAIN] idea_graph lazy=1 enabled=0 reason=%s", _brain_loader_reason)
+        return
+    try:
+        from viral_finder.ultron_brain import ultron_brain_score as _real_ultron_brain_score
+
+        _runtime_ultron_brain_score = _real_ultron_brain_score
+        _brain_loader_ok = True
+        _brain_loader_reason = "loaded"
+        log.info("[BRAIN] idea_graph lazy=1 enabled=1 reason=loaded")
+    except Exception as exc:
+        _brain_loader_ok = False
+        _brain_loader_reason = str(exc)
+        _runtime_ultron_brain_score = _default_brain_score
+        log.warning("[BRAIN] idea_graph lazy=1 enabled=1 fallback=%s", _brain_loader_reason)
+
+
+if str(os.getenv("HS_BRAIN_EAGER_IMPORT", "0")).strip().lower() in ("1", "true", "yes", "on"):
+    _ensure_brain_score_runtime()
 
 # ---------------- Core: features -> curiosity/tension -> punch detection ----------------
 
@@ -831,6 +899,7 @@ def compute_segment_features(segments, aud=None, vis=None, brain=None):
     """
     N = len(segments)
     feats = []
+    _ensure_brain_score_runtime()
     # build quick time->value maps for audio/visual (per-second average)
     def mean_in_range(list_of_dicts, key, s, e):
         if not list_of_dicts:
@@ -860,7 +929,7 @@ def compute_segment_features(segments, aud=None, vis=None, brain=None):
         sem_density = min(1.0, (word_count / duration) / 6.0)  # tuned: 6 words/sec -> density 1
 
         # brain vector provides richer signals if available
-        impact, meaning, novelty, emotion, clarity = ultron_brain_score(text, brain)
+        impact, meaning, novelty, emotion, clarity = _runtime_ultron_brain_score(text, brain)
 
         sim_prev = 0.0
         if i > 0:
@@ -1904,8 +1973,16 @@ def indices_to_time(feats, start_idx, end_idx, pad_before=0.4, pad_after=0.6):
 # ----------------------------------------
 # Core: build idea graph
 # ----------------------------------------
-def build_idea_graph(transcript: List[Dict], aud: Optional[List[Dict]] = None, vis: Optional[List[Dict]] = None,
-                     curiosity_candidates: Optional[List[Any]] = None, brain: Optional[Any] = None) -> List[IdeaNode]:
+def build_idea_graph(
+    transcript: List[Dict],
+    aud: Optional[List[Dict]] = None,
+    vis: Optional[List[Dict]] = None,
+    curiosity_candidates: Optional[List[Any]] = None,
+    narrative_triggers: Optional[List[Dict[str, Any]]] = None,
+    brain: Optional[Any] = None,
+    disable_coalesce: bool = False,
+    disable_node_cap: bool = False,
+) -> List[IdeaNode]:
     """
     Build idea nodes from transcript segments.
 
@@ -1925,6 +2002,12 @@ def build_idea_graph(transcript: List[Dict], aud: Optional[List[Dict]] = None, v
     ends = [float(seg.get("end", seg.get("start", 0.0) + 0.01)) for seg in transcript]
     durations = [max(0.01, e - s) for s, e in zip(starts, ends)]
     avg_seg_dur = float(statistics.mean(durations)) if durations else 0.5
+    log.info(
+        "[COALESCE-CONFIG] time_tol=%.2f sem_thr=%.2f max_node_secs=%.2f",
+        float(COALESCE_TIME_TOL_DEFAULT),
+        float(SEM_SIM_THRESHOLD_DEFAULT),
+        float(IDEA_MAX_NODE_SECONDS),
+    )
 
     arcs = []
     cur_s = 0
@@ -2034,7 +2117,9 @@ def build_idea_graph(transcript: List[Dict], aud: Optional[List[Dict]] = None, v
         nodes.append(node)
 
     # dedupe / coalesce nodes that are extremely similar or overlapping heavily
-    nodes = coalesce_nodes(nodes)
+    if not disable_coalesce:
+        cap = 0.0 if disable_node_cap else float(IDEA_MAX_NODE_SECONDS)
+        nodes = coalesce_nodes(nodes, max_node_secs=cap)
 
     # If external curiosity candidates are provided, use them to seed or refine nodes.
     if curiosity_candidates:
@@ -2099,7 +2184,44 @@ def build_idea_graph(transcript: List[Dict], aud: Optional[List[Dict]] = None, v
                 continue
 
         # re-coalesce after injecting candidates
-        nodes = coalesce_nodes(nodes)
+        if not disable_coalesce:
+            cap = 0.0 if disable_node_cap else float(IDEA_MAX_NODE_SECONDS)
+            nodes = coalesce_nodes(nodes, max_node_secs=cap)
+
+    # Narrative trigger boost (non-ML O(n*m), bounded by node count, small in practice)
+    if narrative_triggers:
+        def _ovr(a_s, a_e, b_s, b_e):
+            inter = max(0.0, min(a_e, b_e) - max(a_s, b_s))
+            if inter <= 0.0:
+                return 0.0
+            shorter = max(1e-6, min(a_e - a_s, b_e - b_s))
+            return float(inter / shorter)
+
+        boosted_nodes = []
+        for n in nodes:
+            metrics = dict(n.metrics or {})
+            trigger_hits = []
+            trigger_weight = 0.0
+            trigger_type = None
+            for tr in narrative_triggers:
+                ts = float(tr.get("start", 0.0) or 0.0)
+                te = float(tr.get("end", ts) or ts)
+                if _ovr(float(n.start_time), float(n.end_time), ts, te) <= 0.0:
+                    continue
+                conf = float(tr.get("confidence", 0.0) or 0.0)
+                trigger_weight = max(trigger_weight, conf)
+                if trigger_type is None:
+                    trigger_type = tr.get("type")
+                trigger_hits.append(tr)
+            if trigger_hits:
+                metrics["narrative_trigger_weight"] = round(float(trigger_weight), 4)
+                metrics["narrative_trigger_type"] = trigger_type
+                metrics["narrative_trigger_count"] = int(len(trigger_hits))
+                boosted_sem = min(1.0, float(n.semantic_quality) + (0.10 * float(trigger_weight)))
+                boosted_nodes.append(n._replace(semantic_quality=round(boosted_sem, 3), metrics=metrics))
+            else:
+                boosted_nodes.append(n)
+        nodes = boosted_nodes
 
     # DEBUG: log grouping summary and pairwise semantic similarity
     try:
@@ -2113,14 +2235,14 @@ def build_idea_graph(transcript: List[Dict], aud: Optional[List[Dict]] = None, v
 
         # Logging-only invariants for regression detection (no behavior change)
         if N > 40 and len(nodes) < 3:
-            log.error("[INVARIANT] transcript_segments=%d idea_nodes=%d arcs=%d", N, len(nodes), len(arcs))
+            log.warning("[INVARIANT] transcript_segments=%d idea_nodes=%d arcs=%d", N, len(nodes), len(arcs))
         if len(nodes) == 1:
             n0 = nodes[0]
             try:
                 dur = float(n0.end_time) - float(n0.start_time)
             except Exception:
                 dur = 0.0
-            log.error(
+            log.warning(
                 "[INVARIANT] idea_nodes=1 node_words=%d node_chars=%d dur=%.2fs start=%.2f end=%.2f",
                 len(tokens(n0.text or "")),
                 len(n0.text or ""),
@@ -2136,16 +2258,160 @@ def build_idea_graph(transcript: List[Dict], aud: Optional[List[Dict]] = None, v
 # ----------------------------------------
 # Coalescing / dedupe
 # ----------------------------------------
-def coalesce_nodes(nodes: List[IdeaNode], time_tol: float = 0.6, sem_sim_threshold: float = SEM_SIM_THRESHOLD_DEFAULT) -> List[IdeaNode]:
+def _split_node_if_too_long(node: IdeaNode, max_node_secs: float) -> List[IdeaNode]:
+    """Split an oversized idea node into contiguous chunks by segment boundaries."""
+    try:
+        duration = float(node.end_time) - float(node.start_time)
+    except Exception:
+        duration = 0.0
+
+    if max_node_secs <= 0 or duration <= max_node_secs:
+        return [node]
+
+    segs = list(node.segments or [])
+    if len(segs) <= 1:
+        return [node]
+
+    split_nodes = []
+    chunk = []
+    chunk_start_idx = int(node.start_idx)
+    seg_idx_cursor = int(node.start_idx)
+
+    def _build_chunk(chunk_segs: List[Dict[str, Any]], start_idx: int) -> Optional[IdeaNode]:
+        if not chunk_segs:
+            return None
+        try:
+            start_t = float(chunk_segs[0].get("start", node.start_time))
+        except Exception:
+            start_t = float(node.start_time)
+        try:
+            end_t = float(chunk_segs[-1].get("end", start_t))
+        except Exception:
+            end_t = float(start_t)
+        if end_t <= start_t:
+            end_t = start_t + 0.01
+
+        txt = " ".join((s.get("text", "") or "").strip() for s in chunk_segs).strip()
+        txt = normalize_text(txt)
+        wc = len(tokens(txt))
+        curio = detect_curiosity_score(txt)
+        punch = 0.0
+        if detect_conclusion_marker(txt):
+            punch += 0.65
+        punch += detect_contrast_strength(txt) * 0.25
+        if "?" in txt:
+            punch += 0.12
+        punch = min(1.0, punch)
+        sem = min(
+            1.0,
+            0.25
+            + (min(1.0, wc / 40.0) * 0.4)
+            + (curio * 0.25)
+            + (detect_contrast_strength(txt) * 0.1),
+        )
+        end_idx = int(start_idx + max(0, len(chunk_segs) - 1))
+        return IdeaNode(
+            start_idx=int(start_idx),
+            end_idx=end_idx,
+            start_time=float(start_t),
+            end_time=float(end_t),
+            segments=chunk_segs,
+            text=txt,
+            state=node.state,
+            curiosity_score=round(float(curio), 3),
+            punch_confidence=round(float(punch), 3),
+            semantic_quality=round(float(max(sem, 0.0)), 3),
+            fingerprint=fingerprint_text((txt or "")[:2000]),
+            metrics=dict(node.metrics or {}),
+        )
+
+    for seg in segs:
+        seg_start = float(seg.get("start", chunk[0].get("start", seg.get("start", 0.0)) if chunk else seg.get("start", 0.0)))
+        seg_end = float(seg.get("end", seg_start))
+        if chunk:
+            chunk_window = float(seg_end) - float(chunk[0].get("start", seg_start))
+            if chunk_window > max_node_secs:
+                built = _build_chunk(chunk, chunk_start_idx)
+                if built is not None:
+                    split_nodes.append(built)
+                chunk = [seg]
+                chunk_start_idx = seg_idx_cursor
+            else:
+                chunk.append(seg)
+        else:
+            chunk = [seg]
+            chunk_start_idx = seg_idx_cursor
+        seg_idx_cursor += 1
+
+    built_last = _build_chunk(chunk, chunk_start_idx)
+    if built_last is not None:
+        split_nodes.append(built_last)
+
+    if len(split_nodes) > 1:
+        log.info(
+            "[COALESCE] force_split node %.2f-%.2f dur=%.2fs chunks=%d max_node_secs=%.2f",
+            float(node.start_time),
+            float(node.end_time),
+            float(duration),
+            len(split_nodes),
+            float(max_node_secs),
+        )
+
+    return split_nodes or [node]
+
+
+def _force_split_overlong_nodes(nodes: List[IdeaNode], max_node_secs: float) -> List[IdeaNode]:
+    if not nodes or max_node_secs <= 0:
+        return nodes or []
+    out = []
+    for n in nodes:
+        out.extend(_split_node_if_too_long(n, max_node_secs=max_node_secs))
+    return out
+
+
+def coalesce_nodes(
+    nodes: List[IdeaNode],
+    time_tol: float = COALESCE_TIME_TOL_DEFAULT,
+    sem_sim_threshold: float = SEM_SIM_THRESHOLD_DEFAULT,
+    max_node_secs: float = IDEA_MAX_NODE_SECONDS,
+) -> List[IdeaNode]:
     if not nodes:
         return []
+    raw_cap = float(max_node_secs if max_node_secs is not None else IDEA_MAX_NODE_SECONDS)
+    cap_enabled = raw_cap > 0.0
+    max_node_secs = max(3.0, raw_cap) if cap_enabled else 1e9
+    ordered_nodes = sorted(nodes, key=lambda x: (x.start_time, -x.semantic_quality))
+
+    dense_ratio = 0.0
+    adaptive_time_tol = float(time_tol)
+    if len(ordered_nodes) > 1:
+        gaps0 = []
+        for idx in range(1, len(ordered_nodes)):
+            g = float(ordered_nodes[idx].start_time - ordered_nodes[idx - 1].end_time)
+            gaps0.append(g)
+        nonneg_gaps = [max(0.0, g) for g in gaps0]
+        if nonneg_gaps:
+            dense_hits = sum(1 for g in nonneg_gaps if g <= 0.08)
+            dense_ratio = float(dense_hits) / float(len(nonneg_gaps))
+            if dense_ratio >= 0.75:
+                adaptive_time_tol = min(adaptive_time_tol, 0.18)
+            elif dense_ratio >= 0.60:
+                adaptive_time_tol = min(adaptive_time_tol, 0.22)
+    log.info(
+        "[COALESCE-CONFIG] base_time_tol=%.2f adaptive_time_tol=%.2f sem_thr=%.2f dense_ratio=%.2f max_node_secs=%.2f",
+        float(time_tol),
+        float(adaptive_time_tol),
+        float(sem_sim_threshold),
+        float(dense_ratio),
+        float(max_node_secs),
+    )
 
     merge_stats = {"total": 0, "overlap": 0, "close": 0, "sem": 0, "close_and_sem": 0, "exhaust": 0}
     gap_samples = []
     sem_samples = []
 
     merged = []
-    for n in sorted(nodes, key=lambda x: (x.start_time, -x.semantic_quality)):
+    for n in ordered_nodes:
         if not merged:
             merged.append(n)
             continue
@@ -2209,14 +2475,20 @@ def coalesce_nodes(nodes: List[IdeaNode], time_tol: float = 0.6, sem_sim_thresho
 
         # Merge policy (rollback): merge dense micro-nodes into bounded windows.
         # This avoids collapsing everything into one node while keeping nodes large enough to qualify.
+        prev_dur = max(0.01, float(prev.end_time - prev.start_time))
+        curr_dur = max(0.01, float(n.end_time - n.start_time))
+        local_time_tol = float(adaptive_time_tol)
+        if gap >= 0.0:
+            local_time_tol = min(local_time_tol, max(0.08, min(0.25, 0.45 * min(prev_dur, curr_dur))))
+        local_sem_thr = float(sem_sim_threshold) + (0.07 if gap <= 0.08 else 0.0)
+        local_sem_thr = min(0.95, local_sem_thr)
         overlap_hit = (gap < 0.0)
-        close_hit = (gap <= time_tol)
-        sem_hit = (sem_sim >= sem_sim_threshold)
+        close_hit = (gap <= local_time_tol)
+        sem_hit = (sem_sim >= local_sem_thr)
         exhaust_hit = (exhaustion_end is not None)
-        max_node_secs = 60.0
         merged_len = float(max(prev.end_time, n.end_time) - min(prev.start_time, n.start_time))
-        within_cap = merged_len <= max_node_secs
-        merge_hit = overlap_hit or exhaust_hit or (close_hit and within_cap)
+        within_cap = (not cap_enabled) or (merged_len <= max_node_secs)
+        merge_hit = overlap_hit or exhaust_hit or (close_hit and sem_hit and within_cap)
         if merge_hit:
             merge_stats["total"] += 1
             if overlap_hit:
@@ -2297,7 +2569,7 @@ def coalesce_nodes(nodes: List[IdeaNode], time_tol: float = 0.6, sem_sim_thresho
             gap_max = max(gap_samples) if gap_samples else 0.0
             sem_min = min(sem_samples) if sem_samples else 0.0
             sem_max = max(sem_samples) if sem_samples else 0.0
-            log.error(
+            log.warning(
                 "[COALESCE] collapse in=%d out=%d merges=%d overlap_hit=%d close_hit=%d sem_hit=%d close_and_sem=%d exhaust_hit=%d time_tol=%.2f sem_thr=%.2f gap_min=%.3f gap_max=%.3f sem_min=%.3f sem_max=%.3f",
                 len(nodes),
                 len(merged),
@@ -2307,7 +2579,7 @@ def coalesce_nodes(nodes: List[IdeaNode], time_tol: float = 0.6, sem_sim_thresho
                 merge_stats["sem"],
                 merge_stats["close_and_sem"],
                 merge_stats["exhaust"],
-                float(time_tol),
+                float(adaptive_time_tol),
                 float(sem_sim_threshold),
                 float(gap_min),
                 float(gap_max),
@@ -2317,26 +2589,310 @@ def coalesce_nodes(nodes: List[IdeaNode], time_tol: float = 0.6, sem_sim_thresho
     except Exception:
         pass
 
-    return merged
+    if not cap_enabled:
+        return merged
+    return _force_split_overlong_nodes(merged, max_node_secs=max_node_secs)
 
 # ----------------------------------------
 # Candidate selector: pick clip-worthy nodes
 # ----------------------------------------
+def _select_candidate_clips_v2(
+    nodes: List[IdeaNode],
+    top_k: int = 12,
+    transcript: Optional[List[Dict]] = None,
+    ensure_sentence_complete: bool = False,
+    allow_multi_angle: bool = False,
+    min_target: int = 0,
+    diversity_mode: str = "balanced",
+    max_overlap_ratio: float = 0.35,
+    curio_cutoff: Optional[float] = None,
+    punch_cutoff: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    if not nodes:
+        return []
+
+    diversity_mode = str(diversity_mode or "balanced").strip().lower()
+    min_target = max(0, int(min_target or 0))
+    max_overlap_ratio = min(0.95, max(0.05, float(max_overlap_ratio or 0.35)))
+
+    relax_curio_delta = float(SELECT_RELAX_CURIO_DELTA_DEFAULT)
+    relax_punch_delta = float(SELECT_RELAX_PUNCH_DELTA_DEFAULT)
+    relax_sem_floor = float(SELECT_RELAX_SEM_FLOOR_DEFAULT)
+    selected_curio_cutoff = float(CURIO_SELECT_CUTOFF if curio_cutoff is None else max(0.0, min(1.0, curio_cutoff)))
+    selected_punch_cutoff = float(PUNCH_SELECT_CUTOFF if punch_cutoff is None else max(0.0, min(1.0, punch_cutoff)))
+
+    log.info(
+        "[DIVERSITY-CONFIG] selector mode=%s min_target=%d allow_multi_angle=%s max_overlap=%.2f relax(curio=%.2f,punch=%.2f,sem_floor=%.2f) pass_w(strict=%.2f,relaxed=%.2f)",
+        diversity_mode,
+        min_target,
+        allow_multi_angle,
+        max_overlap_ratio,
+        relax_curio_delta,
+        relax_punch_delta,
+        relax_sem_floor,
+        float(SELECT_STRICT_PASS_WEIGHT),
+        float(SELECT_RELAX_PASS_WEIGHT),
+    )
+
+    def _build_candidates(curio_cutoff: float, punch_cutoff: float, sem_floor: float, pass_name: str) -> List[Dict[str, Any]]:
+        pass_candidates = []
+        seen_fp_local = set()
+        for n in nodes:
+            qualifies = False
+            if n.state == RESOLUTION and n.curiosity_score < RESOLUTION_SUPPRESS_CUTOFF:
+                continue
+            if n.state == RESOLUTION and n.semantic_quality >= 0.30:
+                qualifies = True
+            elif (n.curiosity_score >= curio_cutoff and n.punch_confidence >= punch_cutoff) or n.semantic_quality >= sem_floor:
+                qualifies = True
+
+            if not qualifies:
+                log.debug(
+                    "[SELECT] skipped node %.1f-%.1f state=%s curio=%.2f punch=%.2f sem=%.2f pass=%s",
+                    n.start_time,
+                    n.end_time,
+                    n.state,
+                    n.curiosity_score,
+                    n.punch_confidence,
+                    n.semantic_quality,
+                    pass_name,
+                )
+                continue
+
+            if not allow_multi_angle and n.fingerprint in seen_fp_local:
+                log.debug("[SELECT] skipped node %.1f-%.1f duplicate fingerprint", n.start_time, n.end_time)
+                continue
+            seen_fp_local.add(n.fingerprint)
+
+            metrics = dict(n.metrics or {}) if isinstance(n.metrics, dict) else {}
+            audio = float(metrics.get("audio_mean", 0.0) or 0.0)
+            motion = float(metrics.get("motion_mean", 0.0) or 0.0)
+            energy = math.sqrt(max(0.0, audio * motion)) if (audio and motion) else (audio or motion)
+            curiosity_peak = float(metrics.get("curiosity_peak", 0.0) or 0.0)
+            curiosity_start = float(metrics.get("curiosity_at_start", 0.0) or 0.0)
+            narrative_trigger_weight = float(metrics.get("narrative_trigger_weight", 0.0) or 0.0)
+
+            score = (0.40 * n.semantic_quality) + (0.26 * n.punch_confidence) + (0.16 * n.curiosity_score) + (0.08 * energy)
+            score += (0.12 * curiosity_peak) + (0.06 * curiosity_start)
+            score += (0.10 * narrative_trigger_weight)
+            pass_weight = SELECT_STRICT_PASS_WEIGHT if pass_name == "strict" else SELECT_RELAX_PASS_WEIGHT
+            score *= float(pass_weight)
+            score = round(min(1.0, score), 4)
+
+            if n.state == RESOLUTION and n.curiosity_score >= curio_cutoff:
+                label = "Revealing Truth"
+            elif n.punch_confidence >= 0.6:
+                label = "Insight / Punch"
+            elif n.curiosity_score >= (curio_cutoff + 0.12):
+                label = "Curiosity Hook"
+            elif n.semantic_quality >= 0.6:
+                label = "Story / Explanation"
+            else:
+                label = "Context Builder"
+
+            reason_pieces = []
+            if n.curiosity_score > (curio_cutoff - 0.05):
+                reason_pieces.append("curiosity")
+            if n.punch_confidence > (punch_cutoff - 0.10):
+                reason_pieces.append("punch")
+            if n.semantic_quality > 0.4:
+                reason_pieces.append("semantic")
+
+            sentiment_score = 0.0
+            try:
+                sentiment_score = metrics.get("sentiment", metrics.get("sentiment_compound", metrics.get("emotion", 0.0)))
+            except Exception:
+                sentiment_score = 0.0
+            audio_flatness = 0.0
+            try:
+                audio_flatness = metrics.get("audio_flatness", metrics.get("spectral_flatness", 0.0))
+            except Exception:
+                audio_flatness = 0.0
+
+            try:
+                is_sarcastic, sarcasm_score = detect_sarcasm(n.text or "", sentiment_score, audio_flatness)
+            except Exception:
+                is_sarcastic, sarcasm_score = (False, 0.0)
+
+            if is_sarcastic:
+                score = round(score * 0.55, 4)
+                reason_pieces.append("sarcasm")
+                try:
+                    metrics["sarcasm"] = sarcasm_score
+                except Exception:
+                    pass
+
+            reason = " | ".join(reason_pieces) or "balanced"
+            cand = {
+                "text": n.text,
+                "start": n.start_time,
+                "end": n.end_time,
+                "score": score,
+                "label": label,
+                "reason": reason,
+                "curiosity": n.curiosity_score,
+                "punch_confidence": n.punch_confidence,
+                "semantic_quality": n.semantic_quality,
+                "fingerprint": n.fingerprint,
+                "metrics": metrics,
+                "select_pass": pass_name,
+            }
+
+            if ensure_sentence_complete and transcript:
+                try:
+                    new_end = sentence_complete_extend(cand["start"], cand["end"], transcript)
+                    cand["end"] = float(new_end)
+                except Exception:
+                    pass
+
+            pass_candidates.append(cand)
+        return pass_candidates
+
+    strict_candidates = _build_candidates(
+        curio_cutoff=selected_curio_cutoff,
+        punch_cutoff=selected_punch_cutoff,
+        sem_floor=float(SELECT_BASE_SEM_FLOOR),
+        pass_name="strict",
+    )
+
+    relaxed_candidates = []
+    if min_target > 0 and len(strict_candidates) < min_target and diversity_mode in ("balanced", "maximum", "max", "diverse"):
+        relaxed_candidates = _build_candidates(
+            curio_cutoff=max(0.0, selected_curio_cutoff - relax_curio_delta),
+            punch_cutoff=max(0.0, selected_punch_cutoff - relax_punch_delta),
+            sem_floor=max(float(relax_sem_floor), float(SELECT_BASE_SEM_FLOOR) - 0.07),
+            pass_name="relaxed",
+        )
+        log.info(
+            "[DIVERSITY] selector second_pass strict=%d relaxed=%d min_target=%d",
+            len(strict_candidates),
+            len(relaxed_candidates),
+            min_target,
+        )
+
+    candidates_by_fp = {}
+    pass_priority = {"strict": 2, "relaxed": 1}
+    for c in strict_candidates + relaxed_candidates:
+        fp = c.get("fingerprint") or fingerprint_text((c.get("text", "") or "")[:2000])
+        prev = candidates_by_fp.get(fp)
+        if prev is None:
+            candidates_by_fp[fp] = c
+            continue
+        prev_rank = pass_priority.get(prev.get("select_pass", ""), 0)
+        cur_rank = pass_priority.get(c.get("select_pass", ""), 0)
+        if (c.get("score", 0.0), cur_rank) > (prev.get("score", 0.0), prev_rank):
+            candidates_by_fp[fp] = c
+
+    candidates = list(candidates_by_fp.values())
+    log.info(
+        "[SELECT] raw_candidates=%d strict=%d relaxed=%d (from %d nodes)",
+        len(candidates),
+        len(strict_candidates),
+        len(relaxed_candidates),
+        len(nodes),
+    )
+    if len(candidates) < 2:
+        log.warning("[INVARIANT] raw_candidates=%d (from %d nodes) < 2", len(candidates), len(nodes))
+
+    def _overlap_ratio(a_s: float, a_e: float, b_s: float, b_e: float) -> float:
+        inter = max(0.0, min(a_e, b_e) - max(a_s, b_s))
+        if inter <= 0.0:
+            return 0.0
+        shorter = max(1e-6, min((a_e - a_s), (b_e - b_s)))
+        return float(inter / shorter)
+
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    final = []
+    used_ranges = []
+    for c in candidates:
+        s = float(c["start"])
+        e = float(c["end"])
+        drop = False
+        for (us, ue, existing_label) in used_ranges:
+            ranges_overlap = not (e <= us or s >= ue)
+            if not ranges_overlap:
+                continue
+
+            ratio = _overlap_ratio(s, e, us, ue)
+            if not allow_multi_angle:
+                drop = True
+                break
+
+            same_label = (c.get("label") == existing_label)
+            if same_label and ratio > max_overlap_ratio:
+                log.info(
+                    "[DIVERSITY] overlap_drop %.1f-%.1f with %.1f-%.1f ratio=%.2f label=%s",
+                    s, e, us, ue, ratio, c.get("label"),
+                )
+                drop = True
+                break
+            if (not same_label) and ratio > max_overlap_ratio:
+                log.info(
+                    "[DIVERSITY] overlap_drop %.1f-%.1f with %.1f-%.1f ratio=%.2f labels=%s/%s",
+                    s, e, us, ue, ratio, c.get("label"), existing_label,
+                )
+                drop = True
+                break
+            if (not same_label) and ratio <= max_overlap_ratio:
+                log.debug(
+                    "[DIVERSITY] overlap_keep %.1f-%.1f with %.1f-%.1f ratio=%.2f labels=%s/%s",
+                    s, e, us, ue, ratio, c.get("label"), existing_label,
+                )
+
+        if drop:
+            continue
+
+        final.append(c)
+        used_ranges.append((s, e, c.get("label")))
+        if len(final) >= top_k:
+            break
+
+    log.info("[SELECT] final_candidates=%d (top_k=%d)", len(final), top_k)
+    if len(nodes) >= 3 and len(final) < 2:
+        log.warning(
+            "[INVARIANT] idea_nodes=%d raw_candidates=%d final=%d allow_multi_angle=%s curio_cutoff=%.2f punch_cutoff=%.2f",
+            len(nodes),
+            len(candidates),
+            len(final),
+            allow_multi_angle,
+            selected_curio_cutoff,
+            selected_punch_cutoff,
+        )
+
+    return final
+
+
 def select_candidate_clips(
     nodes: List[IdeaNode],
     top_k: int = 12,
     transcript: Optional[List[Dict]] = None,
     ensure_sentence_complete: bool = False,
-    allow_multi_angle: bool = False
+    allow_multi_angle: bool = False,
+    min_target: int = 0,
+    diversity_mode: str = "balanced",
+    max_overlap_ratio: float = 0.35,
+    curio_cutoff: Optional[float] = None,
+    punch_cutoff: Optional[float] = None,
 ) -> List[Dict[str,Any]]:
 
     """
     Convert IdeaNodes into candidate clip dicts with scoring and pick top_k.
     Each candidate dict contains start,end,text,score,labels,reason...
     """
-    if not nodes:
-        return []
+    return _select_candidate_clips_v2(
+        nodes=nodes,
+        top_k=top_k,
+        transcript=transcript,
+        ensure_sentence_complete=ensure_sentence_complete,
+        allow_multi_angle=allow_multi_angle,
+        min_target=min_target,
+        diversity_mode=diversity_mode,
+        max_overlap_ratio=max_overlap_ratio,
+        curio_cutoff=curio_cutoff,
+        punch_cutoff=punch_cutoff,
+    )
 
+    """
     candidates = []
     seen_fp = set()
 
@@ -2449,7 +3005,7 @@ def select_candidate_clips(
 
     log.info("[SELECT] raw_candidates=%d (from %d nodes)", len(candidates), len(nodes))
     if len(candidates) < 2:
-        log.error("[INVARIANT] raw_candidates=%d (from %d nodes) < 2", len(candidates), len(nodes))
+        log.warning("[INVARIANT] raw_candidates=%d (from %d nodes) < 2", len(candidates), len(nodes))
     for c in candidates:
         log.debug("[SELECT] raw window %.1f-%.1f score=%.3f label=%s curio=%.2f punch=%.2f sem=%.2f", c["start"], c["end"], c["score"], c["label"], c["curiosity"], c["punch_confidence"], c["semantic_quality"])
 
@@ -2475,9 +3031,10 @@ def select_candidate_clips(
 
     log.info("[SELECT] final_candidates=%d (top_k=%d)", len(final), top_k)
     if len(nodes) >= 3 and len(final) < 2:
-        log.error("[INVARIANT] idea_nodes=%d raw_candidates=%d final=%d allow_multi_angle=%s curio_cutoff=%.2f punch_cutoff=%.2f", len(nodes), len(candidates), len(final), allow_multi_angle, CURIO_SELECT_CUTOFF, PUNCH_SELECT_CUTOFF)
+        log.warning("[INVARIANT] idea_nodes=%d raw_candidates=%d final=%d allow_multi_angle=%s curio_cutoff=%.2f punch_cutoff=%.2f", len(nodes), len(candidates), len(final), allow_multi_angle, CURIO_SELECT_CUTOFF, PUNCH_SELECT_CUTOFF)
 
     return final
+    """
 
 
 def debug_print_lens(candidates: List[Dict[str, Any]], transcript: Optional[List[Dict]] = None, top_n: int = 12):

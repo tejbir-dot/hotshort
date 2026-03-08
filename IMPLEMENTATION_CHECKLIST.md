@@ -165,6 +165,18 @@ Layer 2 Upgrade: detect_message_punch()
 - [x] Logs properly formatted
 - [x] Error messages clear
 
+### Worker Migration & Acquisition v2
+- [x] Added ``worker`` package with contracts + engine
+- [x] Async ``/v2/analyze`` job API and polling
+- [x] Signal acquisition stages A–D implemented
+- [x] Soft signal annotations (acquisition_score, degraded_transcript, etc.)
+- [x] Pre-segmentation for efficient downloads
+- [x] YouTube transcript fetch fallback
+- [x] Download & orchestrator integration in worker.main
+- [x] Diagnostics logged and surfaced to UI
+- [x] Tests added for acquisition and job processing
+- [x] UI updated to show worker envelope and diagnostics
+
 ### Documentation
 - [x] All changes documented
 - [x] Examples provided

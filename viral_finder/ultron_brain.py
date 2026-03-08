@@ -1,14 +1,25 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
 import json
-import torch
-import numpy as np
-from sentence_transformers import SentenceTransformer, util
+
+try:
+    import torch
+except Exception:
+    torch = None
+
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    from sentence_transformers import SentenceTransformer, util
+except Exception:
+    SentenceTransformer = None
+    util = None
 
 # ==============================
 #   ULTRON V33-X BRAIN SYSTEM
-#   CPU-ONLY • STABLE • EVOLVING
+#   GPU-AWARE - STABLE - EVOLVING
 # ==============================
 def get_fallback_brain():
     """
@@ -22,13 +33,18 @@ def get_fallback_brain():
     }
 
 ULTRON_BRAIN_PATH = "ultron_brain.json"
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") if torch is not None else "cpu"
 
-# ---- FORCE CPU MODEL ----
-embed_model = SentenceTransformer(
-    "sentence-transformers/all-MiniLM-L6-v2",
-    device=DEVICE
-)
+# ---- DYNAMIC DEVICE MODEL ----
+embed_model = None
+if SentenceTransformer is not None:
+    try:
+        embed_model = SentenceTransformer(
+            "sentence-transformers/all-MiniLM-L6-v2",
+            device=DEVICE
+        )
+    except Exception:
+        embed_model = None
 
 # ==============================
 # LOAD / SAVE
@@ -42,13 +58,17 @@ def load_ultron_brain():
             "emotion_weight": 1.0,
             "clarity_weight": 1.0,
             "pattern_memory": [],
-            "learning_rate": 0.03
+            "learning_rate": 0.03,
+            "semantic_enabled": bool(embed_model is not None),
         }
         save_ultron_brain(brain)
         return brain
 
     with open(ULTRON_BRAIN_PATH, "r") as f:
-        return json.load(f)
+        brain = json.load(f)
+    if "semantic_enabled" not in brain:
+        brain["semantic_enabled"] = bool(embed_model is not None)
+    return brain
 
 def save_ultron_brain(brain):
     with open(ULTRON_BRAIN_PATH, "w") as f:
@@ -71,7 +91,7 @@ def ultron_brain_score(text: str, brain: dict):
     brain.setdefault("novelty_weight", 1.0)
     brain.setdefault("emotion_weight", 1.0)
     brain.setdefault("clarity_weight", 1.0)
-    brain.setdefault("semantic_enabled", True)
+    brain.setdefault("semantic_enabled", bool(embed_model is not None))
 
     text = (text or "").strip()
     if not text:
@@ -113,6 +133,10 @@ def ultron_brain_score(text: str, brain: dict):
     # --------------------------------------------------
     # EMBEDDING MODE (PRODUCTION)
     # --------------------------------------------------
+    if embed_model is None or util is None or torch is None:
+        brain["semantic_enabled"] = False
+        return ultron_brain_score(text, brain)
+
     try:
         emb = embed_model.encode(
             text,
@@ -200,11 +224,16 @@ def ultron_brain_score(text: str, brain: dict):
 # ==============================
 
 def ultron_learn(brain, impact, final_score):
+    if brain is None:
+        return
     reward = max(0.0, impact * final_score)
-    lr = brain["learning_rate"]
+    lr = brain.get("learning_rate", 0.03)
 
     for k in ["meaning_weight","novelty_weight","emotion_weight","clarity_weight"]:
-        brain[k] += lr * (reward - 0.5)
-        brain[k] = float(np.clip(brain[k], 0.3, 3.0))
+        brain[k] = float(brain.get(k, 1.0)) + lr * (reward - 0.5)
+        if np is not None:
+            brain[k] = float(np.clip(brain[k], 0.3, 3.0))
+        else:
+            brain[k] = max(0.3, min(3.0, float(brain[k])))
 
     save_ultron_brain(brain)

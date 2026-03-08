@@ -169,8 +169,8 @@ def _vad_parameters_for(profile: str) -> Dict:
     # Default: quality-safe (no semantic loss; keep emotional micro-silences)
     return dict(
         threshold=0.5,
-        min_silence_duration_ms=400,
-        speech_pad_ms=250,
+        min_silence_duration_ms=800,
+        speech_pad_ms=350,
         # Deliberately omit min_speech_duration_ms to avoid dropping ultra-short interjections.
     )
 
@@ -1121,7 +1121,9 @@ def extract_transcript(path: str,
                        model_name: str = DEFAULT_MODEL, 
                        prefer_gpu: bool = DEFAULT_PRETEND_GPU,
                        force_recompute: bool = False, 
-                       prefer_trust: bool = False) -> List[Dict]:
+                       prefer_trust: bool = False,
+                       use_vad_override: Optional[bool] = None,
+                       vad_profile_override: Optional[str] = None) -> List[Dict]:
     """
     Main entry point.
     
@@ -1182,6 +1184,15 @@ def extract_transcript(path: str,
                     )
         else:
             vad_policy = "forced_on"
+        if vad_profile_override:
+            vp = str(vad_profile_override).strip().lower()
+            if vp in ("quality", "turbo"):
+                effective_vad_profile = vp
+                vad_policy = f"{vad_policy}|profile_override_{vp}"
+        if use_vad_override is not None:
+            use_vad = bool(use_vad_override)
+            vad_policy = f"{vad_policy}|use_vad_override_{int(bool(use_vad))}"
+
         _log("INFO", f"[VAD-POLICY] duration={duration:.2f}s use_vad={use_vad} profile={effective_vad_profile} policy={vad_policy}")
         
         if (not prefer_trust) or is_long:
