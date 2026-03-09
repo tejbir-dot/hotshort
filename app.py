@@ -195,6 +195,13 @@ import json
 # YouTube cookie manager for professional download handling
 from youtube_cookie_manager import get_cookie_manager, log_cookie_status
 
+# RunPod controller for on-demand GPU pod management
+try:
+    from runpod_controller import start_pod, stop_pod, wait_until_ready
+    RUNPOD_AVAILABLE = True
+except ImportError:
+    RUNPOD_AVAILABLE = False
+
 # Keep heavy editor stack lazy to avoid OOM during Render startup.
 ClipEditor = None
 ClipEditConfig = None
@@ -2756,6 +2763,21 @@ def analyze_video():
         except Exception as e:
             log.warning("[INGEST] audio integrity telemetry skipped: %s", e)
 
+        # --------------------------------------------------
+        # RunPod GPU Pod Lifecycle Management
+        # --------------------------------------------------
+        # Start GPU pod if RunPod is configured
+        if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+            try:
+                log.info("[RUNPOD] Starting GPU pod...")
+                start_pod()
+                if wait_until_ready(timeout=120):
+                    log.info("[RUNPOD] Pod ready for GPU work")
+                else:
+                    log.warning("[RUNPOD] Pod did not become ready within timeout, continuing anyway...")
+            except Exception as e:
+                log.warning("[RUNPOD] Failed to start pod: %s", e)
+
         # Precompute transcript on clean wav and seed cache for orchestrator
         stage_t0 = time.time()
         try:
@@ -2792,6 +2814,13 @@ def analyze_video():
             _save_cached_transcript(video_path, transcript_segments or [])
         except Exception as e:
             log.error("[TRANSCRIPT] Prefill failed: %s", e)
+            # Stop pod before returning error
+            if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+                try:
+                    log.info("[RUNPOD] Stopping GPU pod due to error...")
+                    stop_pod()
+                except Exception as pod_err:
+                    log.warning("[RUNPOD] Failed to stop pod: %s", pod_err)
             return analyze_error("Transcription failed. Try another video.", 500)
         log.info("[TIMING] stage=transcript wall=%.2fs", (time.time() - stage_t0))
 
@@ -2835,8 +2864,25 @@ def analyze_video():
             )
         except Exception as e:
             log.exception("[ANALYZE] Orchestrator failed: %s", e)
+            # Stop pod before returning error
+            if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+                try:
+                    log.info("[RUNPOD] Stopping GPU pod due to error...")
+                    stop_pod()
+                except Exception as pod_err:
+                    log.warning("[RUNPOD] Failed to stop pod: %s", pod_err)
             return analyze_error("Analysis failed. Please try another video.", 500)
         log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+
+        # --------------------------------------------------
+        # Stop GPU pod after GPU work is complete
+        # --------------------------------------------------
+        if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+            try:
+                log.info("[RUNPOD] Stopping GPU pod after analysis complete...")
+                stop_pod()
+            except Exception as e:
+                log.warning("[RUNPOD] Failed to stop pod: %s", e)
 
     transcript_status = "missing"
     if transcript_segments:
