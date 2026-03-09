@@ -192,6 +192,9 @@ from utils.narrative_intelligence import (
 from worker import contracts as worker_contracts
 import json
 
+# YouTube cookie manager for professional download handling
+from youtube_cookie_manager import get_cookie_manager, log_cookie_status
+
 # Keep heavy editor stack lazy to avoid OOM during Render startup.
 ClipEditor = None
 ClipEditConfig = None
@@ -791,6 +794,88 @@ def _map_orchestrator_moment_for_clipgen(moment: dict, idx: int, log) -> tuple |
         )
         text = str(m.get("text", "") or "").strip()
         duration = max(0.01, end - start)
+        original_duration = duration
+        
+        # COMPENSATORY FIX: Normalize durations to resolve orchestrator inconsistencies
+        # Orchestrator provides inconsistent start/end based on payoff detection
+        # When payoff_idx=None, duration varies wildly; when found, still inconsistent
+        payoff_idx = m.get("payoff_idx")
+        hook_idx = m.get("hook_idx")
+        
+        NORMAL_CLIP_DURATION = 40.0  # Standard clip length (seconds)
+        MIN_CLIP_DURATION = 25.0     # Minimum viable clip
+        MAX_CLIP_DURATION = 50.0     # Maximum before needing optimization
+        MAX_EXTENSION_FOR_PAYOFF = 3.0  # Max additional seconds for payoff breathing room
+        PAYOFF_BREATHING_THRESHOLD = 0.45  # Trigger breathing room extension
+        
+        duration_correction_reason = None
+        
+        if payoff_idx is None:
+            # Payoff not detected - normalize to standard duration
+            if duration < MIN_CLIP_DURATION or duration > MAX_CLIP_DURATION:
+                duration = NORMAL_CLIP_DURATION
+                end = start + duration
+                duration_correction_reason = "payoff_not_found"
+        elif duration < MIN_CLIP_DURATION:
+            # Payoff found but clip too short (indicates payoff very close to hook)
+            # Extend to minimum viable length
+            if duration < 25.0:  # Very short clips need extension
+                duration = MIN_CLIP_DURATION
+                end = start + duration
+                duration_correction_reason = "payoff_too_close"
+        elif duration > MAX_CLIP_DURATION:
+            # Clip too long - reduce to maximum
+            duration = MAX_CLIP_DURATION
+            end = start + duration
+            duration_correction_reason = "exceeds_max_length"
+        
+        # 🎯 PAYOFF BREATHING ROOM: Allow strong payoffs to breathe
+        # If payoff resolution is strong, extend the clip end by 2-3 seconds
+        # This lets the final statement land fully without feeling cut off
+        payoff_resolution_score = float(
+            ((signals.get("narrative") or {}).get("payoff_resolution_score", 0.0))
+            if isinstance(signals.get("narrative"), dict)
+            else m.get("payoff_resolution_score", 0.0)
+            or 0.0
+        )
+        payoff_breathing_applied = False
+        if payoff_resolution_score > PAYOFF_BREATHING_THRESHOLD and payoff_idx is not None:
+            # Extend clip end to give payoff breathing room
+            extension = min(MAX_EXTENSION_FOR_PAYOFF, 2.5)  # 2.5s ideal extension
+            proposed_end = end + extension
+            
+            # Clamp to max duration
+            max_allowed_end = start + MAX_CLIP_DURATION
+            final_end = min(proposed_end, max_allowed_end)
+            
+            if final_end > end:
+                breathing_gain = final_end - end
+                end = final_end
+                duration = end - start
+                duration_correction_reason = (duration_correction_reason or "standard") + "+payoff_breathing"
+                payoff_breathing_applied = True
+                log.info(
+                    "[PAYOFF-BREATHING] idx=%d applied breathing_room=%.2fs "
+                    "payoff_score=%.2f new_end=%.2f",
+                    idx,
+                    breathing_gain,
+                    payoff_resolution_score,
+                    end
+                )
+        
+        if duration_correction_reason:
+            log.info(
+                "[DURATION-FIX] idx=%d clip_corrected reason=%s "
+                "payoff_idx=%s hook_idx=%s original=%.1fs adjusted=%.1fs "
+                "payoff_breathing=%s",
+                idx,
+                duration_correction_reason,
+                payoff_idx,
+                hook_idx,
+                original_duration,
+                duration,
+                payoff_breathing_applied
+            )
 
         final_moment = dict(m)
         final_moment["start"] = round(start, 2)
@@ -801,6 +886,10 @@ def _map_orchestrator_moment_for_clipgen(moment: dict, idx: int, log) -> tuple |
         final_moment.setdefault("rank", int(idx + 1))
         final_moment.setdefault("is_best", idx == 0)
         final_moment.setdefault("is_recommended", idx < 3)
+        final_moment["duration_corrected"] = duration_correction_reason is not None
+        final_moment["original_duration"] = original_duration
+        final_moment["payoff_breathing_applied"] = payoff_breathing_applied
+        final_moment["payoff_resolution_score"] = payoff_resolution_score
 
         return (
             int(idx),
@@ -852,6 +941,9 @@ else:
 # Logger for use throughout the app (used by the analyze route)
 log = app.logger
 _start_resource_monitor_thread()
+
+# Initialize YouTube cookie manager and log status
+log_cookie_status()
 
 @app.after_request
 def add_header(response):
@@ -1421,9 +1513,35 @@ def results(job_id):
             import json as jsonmodule
             from utils.clip_schema import SelectionReason, ScoreBreakdown, PlatformVariants, ViralClip
             
-            # Preserve server ranking if present
+            # Preserve server ranking if present - sort by composite quality score
             try:
-                analysis_results = sorted(analysis_results, key=lambda c: int(c.get("rank", 10**9)))
+                def calculate_clip_score_result(c):
+                    """Composite score for ranking - higher is better"""
+                    final_score = float(c.get("final_score", 0.0) or 0.0)
+                    virality_confidence = float(c.get("virality_confidence", 0.0) or 0.0)
+                    hook_score = float(c.get("hook_score", 0.0) or 0.0)
+                    arc_score = float(c.get("arc_score", 0.0) or 0.0)
+                    duration_score = float(c.get("duration_score", 0.0) or 0.0)
+                    editor_score = float(c.get("editor_score", 0.0) or 0.0)
+                    open_loop_score = float(c.get("open_loop_score", 0.0) or 0.0)
+                    
+                    return (
+                        0.25 * final_score +
+                        0.20 * virality_confidence +
+                        0.15 * hook_score +
+                        0.15 * arc_score +
+                        0.10 * duration_score +
+                        0.10 * editor_score +
+                        0.05 * open_loop_score
+                    )
+                
+                analysis_results = sorted(analysis_results, key=calculate_clip_score_result, reverse=True)
+                
+                # Re-rank clips after sorting
+                for new_idx, clip in enumerate(analysis_results, 1):
+                    clip["rank"] = new_idx
+                    clip["is_best"] = (new_idx == 1)
+                    clip["is_recommended"] = (new_idx <= 3)
             except Exception:
                 pass
 
@@ -3239,7 +3357,41 @@ def analyze_video():
 
     # Persist all clip rows in one DB transaction (avoids per-clip fsync/sync stalls).
     try:
-        pending_rows.sort(key=lambda r: int(r.get("rank", 10**9)))
+        # Calculate composite quality score for proper ranking
+        def calculate_clip_score(row):
+            """
+            Composite score: weights quality metrics to rank best clips first
+            Higher score = better clip, will be sorted in descending order
+            """
+            final_score = float(row.get("final_score", 0.0) or 0.0)
+            virality_confidence = float(row.get("virality_confidence", 0.0) or 0.0)
+            hook_score = float(row.get("hook_score", 0.0) or 0.0)
+            arc_score = float(row.get("arc_score", 0.0) or 0.0)
+            duration_score = float(row.get("duration_score", 0.0) or 0.0)
+            editor_score = float(row.get("editor_score", 0.0) or 0.0)
+            open_loop_score = float(row.get("open_loop_score", 0.0) or 0.0)
+            
+            # Weighted composite score (best clips will have highest score)
+            composite = (
+                0.25 * final_score +
+                0.20 * virality_confidence +
+                0.15 * hook_score +
+                0.15 * arc_score +
+                0.10 * duration_score +
+                0.10 * editor_score +
+                0.05 * open_loop_score
+            )
+            return composite
+        
+        # Sort by composite score (descending - highest first)
+        pending_rows.sort(key=lambda r: calculate_clip_score(r), reverse=True)
+        
+        # Re-rank after sorting
+        for new_idx, row in enumerate(pending_rows, 1):
+            row["rank"] = new_idx
+            row["is_best"] = (new_idx == 1)
+            row["is_recommended"] = (new_idx <= 3)
+        
         clip_models = []
         for row in pending_rows:
             clip = Clip(
@@ -3311,9 +3463,34 @@ def analyze_video():
     )
     log.info("[OPT] clip_loop_nlp_calls=0")
 
-    # Ensure ranked/stable ordering regardless of thread completion order
+    # Sort clips by composite quality score (best first)
     try:
-        generated_clips.sort(key=lambda c: int(c.get("rank", 10**9)))
+        def calculate_clip_score(c):
+            """Composite score for ranking - higher is better"""
+            final_score = float(c.get("final_score", 0.0) or 0.0)
+            virality_confidence = float(c.get("virality_confidence", 0.0) or 0.0)
+            hook_score = float(c.get("hook_score", 0.0) or 0.0)
+            arc_score = float(c.get("arc_score", 0.0) or 0.0)
+            duration_score = float(c.get("duration_score", 0.0) or 0.0)
+            editor_score = float(c.get("editor_score", 0.0) or 0.0)
+            open_loop_score = float(c.get("open_loop_score", 0.0) or 0.0)
+            
+            return (
+                0.25 * final_score +
+                0.20 * virality_confidence +
+                0.15 * hook_score +
+                0.15 * arc_score +
+                0.10 * duration_score +
+                0.10 * editor_score +
+                0.05 * open_loop_score
+            )
+        
+        # Sort by score descending (best first) and re-rank
+        generated_clips.sort(key=calculate_clip_score, reverse=True)
+        for new_idx, clip in enumerate(generated_clips, 1):
+            clip["rank"] = new_idx
+            clip["is_best"] = (new_idx == 1)
+            clip["is_recommended"] = (new_idx <= 3)
     except Exception:
         pass
 
@@ -3966,89 +4143,188 @@ def download_youtube_segment(url, start, end, output_dir="downloads", job_id=Non
         return None
 
 
-def download_youtube_video(url, output_dir="downloads", job_id=None):
+def download_with_fallback(url, output_dir="downloads", job_id=None):
     """
-    Deterministic blocking download (rollback mode):
-    - No cache, no fallback, no fragment or chunk flags.
-    - Single yt-dlp call; returns merged MP4 path or None on failure.
-    - Hardened with retries + backoff + extractor_args to reduce 429s.
+    3-layer resilient YouTube download with automatic fallback strategy.
+    
+    Layer 1 (fast): Basic yt-dlp
+    Layer 2 (cookies): yt-dlp with cookies
+    Layer 3 (spoof): Android client spoof
+    
+    Returns file_path on success, None on complete failure.
     """
-    os.makedirs(output_dir, exist_ok=True)
-
     import yt_dlp
-
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
     safe_job = None
     try:
         safe_job = re.sub(r"[^a-zA-Z0-9_-]", "_", job_id) if job_id else None
     except Exception:
         safe_job = None
-
-    # Phase 1 suppression disable: always prefer full-quality download format.
-    low_memory_mode = False
-    default_format = (
-        "worst[ext=mp4][protocol!=dash]/worst[protocol!=dash]"
-        if low_memory_mode
-        else "best[ext=mp4][protocol!=dash]/best[protocol!=dash]"
+    
+    # Strategy definitions
+    strategies = [
+        {
+            "name": "normal",
+            "desc": "Basic yt-dlp (fast path)",
+            "opts": {
+                "format": "best",
+                "quiet": True,
+                "no_warnings": True,
+                "geo_bypass": True,
+                "nocheckcertificate": True,
+                "socket_timeout": 30,
+                "retries": 3,
+            }
+        },
+        {
+            "name": "cookies",
+            "desc": "yt-dlp with cookies",
+            "opts": {
+                "format": "best",
+                "quiet": True,
+                "no_warnings": True,
+                "geo_bypass": True,
+                "nocheckcertificate": True,
+                "socket_timeout": 30,
+                "retries": 3,
+                "cookiefile": "cookies.txt",
+            }
+        },
+        {
+            "name": "android",
+            "desc": "Android client spoof",
+            "opts": {
+                "format": "best",
+                "quiet": True,
+                "no_warnings": True,
+                "geo_bypass": True,
+                "nocheckcertificate": True,
+                "socket_timeout": 30,
+                "retries": 3,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android"],
+                    }
+                },
+            }
+        },
+    ]
+    
+    for strategy in strategies:
+        try:
+            strategy_name = strategy["name"]
+            strategy_desc = strategy["desc"]
+            ydl_opts = strategy["opts"].copy()
+            
+            # Add common options
+            ydl_opts.update({
+                "merge_output_format": "mp4",
+                "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
+                "noplaylist": True,
+                "concurrent_fragment_downloads": 1,
+                "postprocessors": [{
+                    "key": "FFmpegVideoConvertor",
+                    "preferedformat": "mp4",
+                }],
+            })
+            
+            # Skip cookies layer if no cookies file exists
+            if strategy_name == "cookies" and not os.path.exists("cookies.txt"):
+                log.debug("[DOWNLOAD] Skipping cookies strategy (no cookies.txt found)")
+                continue
+            
+            log.info(
+                "[DOWNLOAD] Layer %s: %s url=%s",
+                strategy_name.upper(),
+                strategy_desc,
+                url
+            )
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                
+                # Determine output file path
+                file_path = None
+                if safe_job:
+                    expected = os.path.join(output_dir, f"{safe_job}.mp4")
+                    if os.path.exists(expected):
+                        file_path = expected
+                
+                if not file_path:
+                    file_path = ydl.prepare_filename(info)
+                    if (not os.path.exists(file_path)) and os.path.exists(file_path + ".mp4"):
+                        file_path = file_path + ".mp4"
+                
+                log.info(
+                    "[DOWNLOAD] ✅ SUCCESS with strategy=%s file=%s",
+                    strategy_name,
+                    os.path.basename(file_path) if file_path else "unknown"
+                )
+                return file_path
+        
+        except Exception as e:
+            error_msg = str(e) or repr(e)
+            log.debug(
+                "[DOWNLOAD] ❌ Layer %s failed: %s",
+                strategy_name,
+                error_msg[:100]
+            )
+            continue
+    
+    # All strategies exhausted
+    log.error(
+        "[DOWNLOAD] ❌ ALL LAYERS FAILED url=%s. "
+        "Video may be geo-blocked, age-restricted, or YouTube is blocking this IP.",
+        url
     )
-    ytdlp_format = (os.environ.get("HS_YTDLP_FORMAT", default_format) or default_format).strip()
+    return None
 
-    ydl_opts = {
-        # Force progressive MP4; forbid DASH to avoid fragment races.
-        "format": ytdlp_format,
-        "merge_output_format": "mp4",
-        # IMPORTANT: never reuse %(id)s when concurrent requests hit the same video.
-        "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
-        "quiet": True,
-        "noplaylist": True,
-        "concurrent_fragment_downloads": 1,  # extra safety; should be unused when DASH is excluded
-        # Retries + backoff to reduce transient 429s on shared IPs.
-        "retries": 5,
-        "fragment_retries": 5,
-        "sleep_interval": 5,
-        "max_sleep_interval": 15,
-    }
 
-    try:
-        log.info("[ANALYZE] Starting yt-dlp download job_id=%s url=%s", safe_job, url)
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            # When merge_output_format=mp4, prefer the deterministic output path
-            file_path = None
-            if safe_job:
-                expected = os.path.join(output_dir, f"{safe_job}.mp4")
-                if os.path.exists(expected):
-                    file_path = expected
-            if not file_path:
-                file_path = ydl.prepare_filename(info)
-                if (not os.path.exists(file_path)) and os.path.exists(file_path + ".mp4"):
-                    file_path = file_path + ".mp4"
+def download_youtube_video(url, output_dir="downloads", job_id=None):
+    """
+    Professional YouTube video download with 3-layer resilient fallback strategy.
+    
+    Implements resilient 3-layer strategy:
+    1. Layer 1: Fast path with geo_bypass
+    2. Layer 2: With cookies (if available)
+    3. Layer 3: Android client spoof
+    
+    Uses youtube_cookie_manager for cookie status tracking and logging.
+    
+    Returns:
+        file_path on success, None on failure (all layers exhausted)
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get professional cookie manager for status logging
+    cookie_manager = get_cookie_manager(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Log download start with cookie status
+    log.info(
+        "[ANALYZE] Download starting: url=%s job_id=%s cookies_valid=%s",
+        url,
+        job_id,
+        cookie_manager.is_valid,
+    )
+    
+    # Use resilient 3-layer fallback strategy
+    file_path = download_with_fallback(url, output_dir, job_id)
+    
+    if file_path:
         log.info(
-            "[ANALYZE] yt-dlp download finished job_id=%s file=%s",
-            safe_job,
+            "[ANALYZE] ✅ Download successful: file=%s",
             os.path.basename(file_path),
         )
         return file_path
-    except Exception as e:
-        msg = str(e) or repr(e)
-        # Surface rate-limits explicitly so the caller can provide a better UX.
-        if "HTTP Error 429" in msg or "Too Many Requests" in msg or "429:" in msg:
-            log.warning(
-                "[DOWNLOAD] YouTube rate limited this IP (HTTP 429 / Too Many Requests). url=%s msg=%s",
-                url,
-                msg,
-            )
-            raise YoutubeRateLimitError(msg)
-
-        # Bot/captcha challenge - sign-in required messages
-        if "Sign in to confirm" in msg or "not a bot" in msg.lower():
-            log.warning(
-                "[DOWNLOAD] YouTube blocked download with captcha bot-check. url=%s msg=%s",
-                url,
-                msg,
-            )
-            raise YoutubeCaptchaError(msg)
-
-        log.error("[DOWNLOAD ERROR] yt-dlp failed url=%s error=%s", url, msg)
+    else:
+        log.error(
+            "[ANALYZE] ❌ Download failed after all strategies. "
+            "Cookie status: valid=%s url=%s",
+            cookie_manager.is_valid,
+            url,
+        )
         return None
 
 
@@ -5028,5 +5304,5 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
         print("✅ Database tables initialized")
-    port = int(os.environ.get("PORT", "10000"))
+    port = int(os.environ.get("PORT", "8888"))
     app.run(host="0.0.0.0", port=port)
