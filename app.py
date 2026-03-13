@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 import hashlib
 from urllib.parse import urlparse
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Dict
 from dotenv import load_dotenv
 
 # instrumentation helpers
@@ -201,6 +201,100 @@ try:
     RUNPOD_AVAILABLE = True
 except ImportError:
     RUNPOD_AVAILABLE = False
+
+# RunPod GPU integration functions
+def send_transcription_request(audio_path: str) -> List[Dict]:
+    """Send audio file to RunPod GPU for transcription."""
+    import requests
+
+    endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+    if not endpoint:
+        raise RuntimeError("RUNPOD_ENDPOINT_ID not configured")
+
+    url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
+
+    # Read audio file
+    with open(audio_path, 'rb') as f:
+        audio_data = f.read()
+
+    # Prepare request
+    files = {'audio': ('audio.wav', audio_data, 'audio/wav')}
+    data = {
+        'task': 'transcribe',
+        'model': os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+    }
+
+    headers = {
+        'Authorization': f"Bearer {os.environ.get('RUNPOD_API_KEY')}"
+    }
+
+    log.info("[RUNPOD] Sending transcription request to GPU endpoint...")
+    response = requests.post(url, files=files, data=data, headers=headers, timeout=300)
+
+    if response.status_code != 200:
+        raise RuntimeError(f"RunPod transcription failed: {response.status_code} - {response.text}")
+
+    result = response.json()
+    if result.get('status') != 'COMPLETED':
+        raise RuntimeError(f"RunPod transcription incomplete: {result.get('status')}")
+
+    # Extract transcript segments from response
+    output = result.get('output', {})
+    segments = output.get('segments', [])
+
+    log.info("[RUNPOD] Transcription completed: %d segments", len(segments))
+    return segments
+
+def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
+    """Send transcript and video metadata to RunPod GPU for analysis."""
+    import requests
+
+    endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+    if not endpoint:
+        raise RuntimeError("RUNPOD_ENDPOINT_ID not configured")
+
+    url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
+
+    # Prepare request data
+    data = {
+        'task': 'analyze',
+        'transcript': transcript,
+        'video_metadata': {
+            'duration': get_video_duration(video_path),
+            'path': video_path
+        }
+    }
+
+    headers = {
+        'Authorization': f"Bearer {os.environ.get('RUNPOD_API_KEY')}",
+        'Content-Type': 'application/json'
+    }
+
+    log.info("[RUNPOD] Sending analysis request to GPU endpoint...")
+    response = requests.post(url, json=data, headers=headers, timeout=300)
+
+    if response.status_code != 200:
+        raise RuntimeError(f"RunPod analysis failed: {response.status_code} - {response.text}")
+
+    result = response.json()
+    if result.get('status') != 'COMPLETED':
+        raise RuntimeError(f"RunPod analysis incomplete: {result.get('status')}")
+
+    log.info("[RUNPOD] Analysis completed")
+    return result.get('output', {})
+
+def get_video_duration(video_path: str) -> float:
+    """Get video duration in seconds."""
+    try:
+        import subprocess
+        result = subprocess.run([
+            'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', video_path
+        ], capture_output=True, text=True)
+        import json
+        data = json.loads(result.stdout)
+        return float(data['format']['duration'])
+    except Exception:
+        return 0.0
 
 # Keep heavy editor stack lazy to avoid OOM during Render startup.
 ClipEditor = None
@@ -2780,21 +2874,31 @@ def analyze_video():
         # Precompute transcript on clean wav and seed cache for orchestrator
         stage_t0 = time.time()
         try:
-            from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
-            from viral_finder.orchestrator import _save_cached_transcript
-            transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
-            if is_fast_longform:
-                transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
-            use_vad_override = None
-            vad_profile_override = None
-            transcript_segments = _extract_transcript(
-                wav_path,
-                model_name=transcript_model_name,
-                prefer_gpu=True,
-                prefer_trust=False,
-                use_vad_override=use_vad_override,
-                vad_profile_override=vad_profile_override,
-            )
+            # Use RunPod GPU for transcription if available
+            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+            runpod_api_key = os.getenv("RUNPOD_API_KEY")
+
+            if runpod_endpoint and runpod_api_key:
+                log.info("[TRANSCRIPT] Using RunPod GPU for transcription")
+                transcript_segments = send_transcription_request(wav_path)
+            else:
+                log.info("[TRANSCRIPT] Using local CPU for transcription (RunPod not configured)")
+                from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
+                from viral_finder.orchestrator import _save_cached_transcript
+                transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+                if is_fast_longform:
+                    transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
+                use_vad_override = None
+                vad_profile_override = None
+                transcript_segments = _extract_transcript(
+                    wav_path,
+                    model_name=transcript_model_name,
+                    prefer_gpu=True,
+                    prefer_trust=False,
+                    use_vad_override=use_vad_override,
+                    vad_profile_override=vad_profile_override,
+                )
+
             seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
             # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
             try:
@@ -2804,12 +2908,14 @@ def analyze_video():
                 log.warning("[INGEST] transcript integrity telemetry skipped: %s", e)
             log_mem("after transcript")
             log.info(
-                "[TRANSCRIPT] model=%s segments=%d integrity=%.3f vad_removed=%.3f",
-                transcript_model_name,
+                "[TRANSCRIPT] segments=%d integrity=%.3f vad_removed=%.3f",
                 len(transcript_segments or []),
                 float(transcript_integrity.get("transcript_integrity_score", 0.0) or 0.0),
                 float(vad_removed_ratio),
             )
+
+            # Save transcript cache for orchestrator
+            from viral_finder.orchestrator import _save_cached_transcript
             _save_cached_transcript(video_path, transcript_segments or [])
         except Exception as e:
             log.error("[TRANSCRIPT] Prefill failed: %s", e)
@@ -2828,30 +2934,41 @@ def analyze_video():
         # --------------------------------------------------
         stage_t0 = time.time()
         try:
-            from viral_finder.orchestrator import orchestrate
-            top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
-            top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
-            min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
+            # Use RunPod GPU for analysis if available
+            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+            runpod_api_key = os.getenv("RUNPOD_API_KEY")
 
-            # Simple, strong targeting:
-            # - 20m+ videos: ask for 12 candidates (stable 9-12 output goal)
-            # - other longform: at least longform floor
-            if source_video_duration_s >= 1200:
-                top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
-            elif source_video_duration_s >= fast_longform_threshold_s:
-                # Safety floor: never under-generate for longform, even if env is stale/misconfigured.
-                top_k = max(top_k_longform, min_longform_k)
+            if runpod_endpoint and runpod_api_key:
+                log.info("[ANALYSIS] Using RunPod GPU for viral moment detection")
+                analysis_result = send_analysis_request(transcript_segments, video_path)
+                moments = analysis_result.get('moments', [])
+                log.info("[RUNPOD] Analysis found %d viral moments", len(moments))
             else:
-                top_k = top_k_default
+                log.info("[ANALYSIS] Using local CPU for viral moment detection (RunPod not configured)")
+                from viral_finder.orchestrator import orchestrate
+                top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
+                top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
+                min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
 
-            top_k = max(3, min(20, int(top_k)))
-            
-            # ⚡ HARD-FORCE STAGED MODE: Ensure we use the new pipeline (L4/L7/L9) instead of legacy Ultron V33.
-            # We explicitly disable fallback to prevent legacy Ultron from running silently.
-            os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
-            clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
-            print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
-            moments = clips
+                # Simple, strong targeting:
+                # - 20m+ videos: ask for 12 candidates (stable 9-12 output goal)
+                # - other longform: at least longform floor
+                if source_video_duration_s >= 1200:
+                    top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
+                elif source_video_duration_s >= fast_longform_threshold_s:
+                    # Safety floor: never under-generate for longform, even if env is stale/misconfigured.
+                    top_k = max(top_k_longform, min_longform_k)
+                else:
+                    top_k = top_k_default
+
+                top_k = max(3, min(20, int(top_k)))
+                
+                # ⚡ HARD-FORCE STAGED MODE: Ensure we use the new pipeline (L4/L7/L9) instead of legacy Ultron V33.
+                # We explicitly disable fallback to prevent legacy Ultron from running silently.
+                os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
+                clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
+                print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
+                moments = clips
 
             log.info(
                 "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d) pipeline_mode=staged (FORCED) allow_fallback=False",
