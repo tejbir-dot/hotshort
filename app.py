@@ -203,8 +203,8 @@ except ImportError:
     RUNPOD_AVAILABLE = False
 
 # RunPod GPU integration functions
-def send_transcription_request(audio_path: str) -> List[Dict]:
-    """Send audio file to RunPod GPU for transcription."""
+def send_transcription_request(youtube_url: str) -> List[Dict]:
+    """Send YouTube URL to RunPod GPU for download, audio extraction, and transcription."""
     import requests
 
     endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
@@ -213,23 +213,20 @@ def send_transcription_request(audio_path: str) -> List[Dict]:
 
     url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
 
-    # Read audio file
-    with open(audio_path, 'rb') as f:
-        audio_data = f.read()
-
-    # Prepare request
-    files = {'audio': ('audio.wav', audio_data, 'audio/wav')}
+    # Prepare request with YouTube URL
     data = {
-        'task': 'transcribe',
+        'task': 'transcribe_youtube',
+        'youtube_url': youtube_url,
         'model': os.environ.get("HS_TRANSCRIPT_MODEL", "small")
     }
 
     headers = {
-        'Authorization': f"Bearer {os.environ.get('RUNPOD_API_KEY')}"
+        'Authorization': f"Bearer {os.environ.get('RUNPOD_API_KEY')}",
+        'Content-Type': 'application/json'
     }
 
-    log.info("[RUNPOD] Sending transcription request to GPU endpoint...")
-    response = requests.post(url, files=files, data=data, headers=headers, timeout=300)
+    log.info("[RUNPOD] Sending transcription request with YouTube URL to GPU endpoint...")
+    response = requests.post(url, json=data, headers=headers, timeout=600)  # Increased timeout for download
 
     if response.status_code != 200:
         raise RuntimeError(f"RunPod transcription failed: {response.status_code} - {response.text}")
@@ -2880,7 +2877,7 @@ def analyze_video():
 
             if runpod_endpoint and runpod_api_key:
                 log.info("[TRANSCRIPT] Using RunPod GPU for transcription")
-                transcript_segments = send_transcription_request(wav_path)
+                transcript_segments = send_transcription_request(youtube_url)
             else:
                 log.info("[TRANSCRIPT] Using local CPU for transcription (RunPod not configured)")
                 from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
