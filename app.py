@@ -2310,10 +2310,9 @@ def analyze_video():
                 return jsonify(
                     {
                         "ok": False,
-                        "error": "TRIAL_USED",
-                        "redirect": "/pricing",
+                        "action": "show_pricing_modal",
                     }
-                ), 403
+                ), 200
             flash("Your free trial analyze has been used. Upgrade to continue.", "error")
             return redirect("/pricing")
 
@@ -4531,7 +4530,8 @@ def download_clip(clip_id):
                 clip_id=clip_id,
                 used=used,
             )
-            return jsonify({"error": "TRIAL_USED", "redirect": "/pricing"}), 403
+            # Return JSON response that triggers pricing modal on frontend
+            return jsonify({"action": "show_pricing_modal"}), 200
 
     # HD export (quality mode) is only available when explicitly enabled for the plan.
     if want_quality and not hd_enabled:
@@ -4607,13 +4607,17 @@ def download_clip(clip_id):
             return None
 
     def _watermark_asset() -> str | None:
+        # Priority: watermark.png > logo_icon.png > logo.png
         candidates = [
-            os.path.join(app.root_path, "static", "branding", "logo_icon.png"),
             os.path.join(app.root_path, "static", "branding", "watermark.png"),
+            os.path.join(app.root_path, "static", "branding", "logo_icon.png"),
+            os.path.join(app.root_path, "static", "branding", "logo.png"),
         ]
         for p in candidates:
             if os.path.exists(p) and not os.path.isdir(p):
+                app.logger.debug("[WATERMARK] Using asset: %s", p)
                 return p
+        app.logger.warning("[WATERMARK] No branding assets found in static/branding/")
         return None
 
     def _find_fontfile() -> str | None:
@@ -4674,14 +4678,14 @@ def download_clip(clip_id):
         # Premium cinematic watermark placement (subtle imprint)
         # - centered at bottom
         # - bottom offset: ~4–5% of height (never touches edge)
-        # - size: 14% of width, clamped to [80..180]
-        pad_y = max(18, int(height * 0.048))
-        wm_w = _clamp(int(width * 0.14), 80, 180)
+        # - size: 16% of width, clamped to [100..200] for better visibility
+        pad_y = max(20, int(height * 0.05))
+        wm_w = _clamp(int(width * 0.16), 100, 200)
         # Make a compact horizontal lockup: [logo][HOTSHORT]
-        wm_h = max(28, int(round(wm_w * 0.33)))
-        logo_w = max(24, int(round(wm_h * 0.92)))
-        pad_x = max(6, int(round(wm_h * 0.16)))
-        font_size = max(12, int(round(wm_h * 0.56)))
+        wm_h = max(32, int(round(wm_w * 0.35)))
+        logo_w = max(28, int(round(wm_h * 0.95)))
+        pad_x = max(8, int(round(wm_h * 0.18)))
+        font_size = max(14, int(round(wm_h * 0.6)))
 
         asset = _watermark_asset()
         fontfile = _find_fontfile()
@@ -4711,14 +4715,14 @@ def download_clip(clip_id):
         try:
             attempts: list[list[str]] = []
             if asset and os.path.exists(asset) and not os.path.isdir(asset):
-                # Subtle brand imprint (0.12–0.18); slightly higher by default to remain visible
-                # across dark content and typical player overlays.
+                # Professional watermark imprint (0.18–0.25) - more visible but still elegant
+                # across all content types and player overlays.
                 try:
-                    wm_alpha = float(os.environ.get("HS_WATERMARK_ALPHA", "0.17") or "0.17")
+                    wm_alpha = float(os.environ.get("HS_WATERMARK_ALPHA", "0.22") or "0.22")
                 except Exception:
-                    wm_alpha = 0.17
-                wm_alpha = max(0.12, min(0.18, wm_alpha))
-                shadow_alpha = max(0.02, min(0.08, wm_alpha * 0.35))
+                    wm_alpha = 0.22
+                wm_alpha = max(0.18, min(0.25, wm_alpha))
+                shadow_alpha = max(0.04, min(0.10, wm_alpha * 0.4))
 
                 # Fade in for the first 0.8s; optional fade out during last 0.5s.
                 dur = _probe_duration(input_path)
@@ -4737,15 +4741,17 @@ def download_clip(clip_id):
                     if safe_font:
                         return (
                             f"[b1]drawtext=fontfile={safe_font}:text=Made with HotShort:"
-                            f"fontcolor=#FFD36A@1.0:fontsize={font_size}:"
+                            f"fontcolor=#FFD700@1.0:fontsize={font_size}:"
                             f"x={logo_w}+{pad_x}:y=(h-th)/2:"
-                            f"shadowcolor=#000000@0.20:shadowx=1:shadowy=1[{label_out}];"
+                            f"shadowcolor=#000000@0.30:shadowx=2:shadowy=2:"
+                            f"borderw=1:bordercolor=#FFFFFF@0.15[{label_out}];"
                         )
                     return (
                         f"[b1]drawtext=text=Made with HotShort:"
-                        f"fontcolor=#FFD36A@1.0:fontsize={font_size}:"
+                        f"fontcolor=#FFD700@1.0:fontsize={font_size}:"
                         f"x={logo_w}+{pad_x}:y=(h-th)/2:"
-                        f"shadowcolor=#000000@0.20:shadowx=1:shadowy=1[{label_out}];"
+                        f"shadowcolor=#000000@0.30:shadowx=2:shadowy=2:"
+                        f"borderw=1:bordercolor=#FFFFFF@0.15[{label_out}];"
                     )
 
                 # Attempt 1: cinematic lockup + subtle golden shine sweep (first ~1.2s).
@@ -5018,7 +5024,7 @@ def download_clip(clip_id):
                     ]
                 )
             else:
-                # Text fallback to avoid hard failures when the logo asset isn't present.
+                # Premium text fallback - elegant and professional branding
                 dur = _probe_duration(input_path)
                 fade = "fade=t=in:st=0:d=0.8:alpha=1"
                 if dur and dur > 1.6:
@@ -5029,9 +5035,10 @@ def download_clip(clip_id):
                 draw = (
                     "drawtext="
                     f"text='{wm_text}':"
-                    "fontcolor=white@0.12:"
-                    "shadowcolor=#000000@0.35:shadowx=1:shadowy=1:"
-                    "fontsize=h*0.028:"
+                    "fontcolor=#FFD700@0.20:"
+                    "shadowcolor=#000000@0.40:shadowx=2:shadowy=2:"
+                    "borderw=2:bordercolor=#FFFFFF@0.10:"
+                    "fontsize=h*0.032:"
                     f"x=(w-tw)/2:y=h-th-{pad_y}"
                 )
                 if fontfile:
@@ -5198,19 +5205,21 @@ def download_clip(clip_id):
     chosen_path = abs_path
     watermark_ok = False
     
-    app.logger.info("[DOWNLOAD] Watermark processing: required=%s, plan=%s, asset=%s", watermark_required, plan_type, asset)
+    app.logger.info("[DOWNLOAD] Watermark processing: required=%s, plan=%s, asset=%s", watermark_required, plan_type, asset or "none")
     
     try:
         if not os.path.exists(out_path):
-            app.logger.info("[DOWNLOAD] Generating watermark: %s -> %s", abs_path, out_path)
+            app.logger.info("[DOWNLOAD] Generating premium watermark: %s -> %s", abs_path, out_path)
             _render_watermark(abs_path, out_path)
         watermark_ok = os.path.exists(out_path) and not os.path.isdir(out_path) and os.path.getsize(out_path) > 0
         if watermark_ok:
-            app.logger.info("[DOWNLOAD] Watermark file created successfully: %s (size=%d)", out_path, os.path.getsize(out_path))
+            app.logger.info("[DOWNLOAD] Premium watermark applied successfully: %s (size=%d)", out_path, os.path.getsize(out_path))
+        else:
+            app.logger.warning("[DOWNLOAD] Watermark generation failed or produced empty file")
     except Exception as e:
         cmd = getattr(e, "cmd", None)
         stderr = getattr(e, "stderr", "") or ""
-        app.logger.error("[DOWNLOAD] Watermarking failed; blocking free-tier export for clip_id=%s", clip_id)
+        app.logger.error("[DOWNLOAD] Premium watermarking failed; blocking free-tier export for clip_id=%s", clip_id)
         if cmd:
             app.logger.error("[DOWNLOAD] Watermark cmd: %s", " ".join(map(str, cmd)))
         if stderr:
