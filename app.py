@@ -4324,7 +4324,14 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
         safe_job = re.sub(r"[^a-zA-Z0-9_-]", "_", job_id) if job_id else None
     except Exception:
         safe_job = None
-    
+
+    # Proxy support: allow routing yt-dlp through a residential proxy to avoid YouTube bot blocks.
+    # Example: set YTDLP_PROXY=http://user:pass@1.2.3.4:1234
+    proxy = os.environ.get("YTDLP_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+
+    # Ensure we resolve the cookie file path relative to the app (not cwd)
+    cookies_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+
     # Strategy definitions
     strategies = [
         {
@@ -4391,12 +4398,21 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
                     "preferedformat": "mp4",
                 }],
             })
-            
+
+            # Proxy support (residential proxy helps bypass bot check)
+            if proxy:
+                ydl_opts["proxy"] = proxy
+                log.debug("[DOWNLOAD] Using proxy for yt-dlp: %s", proxy)
+
             # Skip cookies layer if no cookies file exists
-            if strategy_name == "cookies" and not os.path.exists("cookies.txt"):
-                log.debug("[DOWNLOAD] Skipping cookies strategy (no cookies.txt found)")
+            if strategy_name == "cookies" and not os.path.exists(cookies_path):
+                log.debug("[DOWNLOAD] Skipping cookies strategy (no cookies file found at %s)", cookies_path)
                 continue
-            
+
+            # Ensure cookies layer uses an absolute path
+            if strategy_name == "cookies":
+                ydl_opts["cookiefile"] = cookies_path
+
             log.info(
                 "[DOWNLOAD] Layer %s: %s url=%s",
                 strategy_name.upper(),
