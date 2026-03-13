@@ -4332,11 +4332,22 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
     # Ensure we resolve the cookie file path relative to the app (not cwd)
     cookies_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
 
+    # Common anti-bot spoofing options
+    spoof_headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+    }
+
     # Strategy definitions
     strategies = [
         {
             "name": "normal",
-            "desc": "Basic yt-dlp (fast path)",
+            "desc": "Basic yt-dlp with browser headers",
             "opts": {
                 "format": "best",
                 "quiet": True,
@@ -4345,11 +4356,13 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
                 "nocheckcertificate": True,
                 "socket_timeout": 30,
                 "retries": 3,
+                "user_agent": spoof_headers['User-Agent'],
+                "http_headers": spoof_headers,
             }
         },
         {
             "name": "cookies",
-            "desc": "yt-dlp with cookies",
+            "desc": "yt-dlp with cookies and headers",
             "opts": {
                 "format": "best",
                 "quiet": True,
@@ -4359,11 +4372,13 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
                 "socket_timeout": 30,
                 "retries": 3,
                 "cookiefile": "cookies.txt",
+                "user_agent": spoof_headers['User-Agent'],
+                "http_headers": spoof_headers,
             }
         },
         {
             "name": "android",
-            "desc": "Android client spoof",
+            "desc": "Android client spoof with headers",
             "opts": {
                 "format": "best",
                 "quiet": True,
@@ -4376,6 +4391,11 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
                     "youtube": {
                         "player_client": ["android"],
                     }
+                },
+                "user_agent": 'com.google.android.youtube/19.09.36 (Linux; U; Android 11; SM-G973F) gzip',
+                "http_headers": {
+                    **spoof_headers,
+                    'User-Agent': 'com.google.android.youtube/19.09.36 (Linux; U; Android 11; SM-G973F) gzip',
                 },
             }
         },
