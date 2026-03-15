@@ -1154,9 +1154,7 @@ with app.app_context():
 # ==========================
 db.init_app(app)
 with app.app_context():
-    # TEMPORARY: drop and recreate tables to apply profile_pic type change
-    # WARNING: this wipes all existing data!
-    db.drop_all()
+    # Ensure tables exist (safe to call on every startup)
     db.create_all()
 
 migrate = Migrate(app, db)
