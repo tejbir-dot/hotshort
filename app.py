@@ -4487,6 +4487,56 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
     return None
 
 
+def _download_via_runpod(youtube_url: str, output_dir: str, job_id: str | None = None) -> str:
+    """Ask RunPod to download the YouTube video and return a local path."""
+    import requests
+
+    endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+    api_key = os.getenv("RUNPOD_API_KEY")
+    if not endpoint or not api_key:
+        raise RuntimeError("RunPod not configured (missing RUNPOD_ENDPOINT_ID or RUNPOD_API_KEY)")
+
+    url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
+    payload = {
+        "task": "download",
+        "youtube_url": youtube_url,
+        "job_id": job_id,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    log.info("[RUNPOD] request download task for %s", youtube_url)
+    resp = requests.post(url, json=payload, headers=headers, timeout=600)
+    if resp.status_code != 200:
+        raise RuntimeError(f"RunPod download failed: {resp.status_code} - {resp.text}")
+
+    result = resp.json()
+    if result.get("status") != "COMPLETED":
+        raise RuntimeError(f"RunPod download not completed: {result.get('status')}")
+
+    output = result.get("output") or {}
+    file_url = output.get("file_url") or output.get("video_url") or output.get("download_url")
+    if not file_url:
+        raise RuntimeError("RunPod download response missing file URL")
+
+    # Stream the file locally so existing clip logic can operate.
+    local_path = os.path.join(output_dir, f"{job_id or uuid.uuid4().hex}.mp4")
+    os.makedirs(output_dir, exist_ok=True)
+
+    log.info("[RUNPOD] downloading file from RunPod URL to %s", local_path)
+    with requests.get(file_url, stream=True, timeout=600) as r:
+        r.raise_for_status()
+        with open(local_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+    return local_path
+
+
 def download_youtube_video(url, output_dir="downloads", job_id=None):
     """
     Professional YouTube video download with 3-layer resilient fallback strategy.
@@ -4502,6 +4552,14 @@ def download_youtube_video(url, output_dir="downloads", job_id=None):
         file_path on success, None on failure (all layers exhausted)
     """
     os.makedirs(output_dir, exist_ok=True)
+
+    # Prefer RunPod download if enabled.
+    if os.environ.get("HS_RUNPOD_DOWNLOAD", "0").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            return _download_via_runpod(url, output_dir=output_dir, job_id=job_id)
+        except Exception as e:
+            log.warning("[RUNPOD] download fallback failed: %s", e)
+            # fallback to local download below
 
     # Get professional cookie manager for status logging
     cookie_manager = get_cookie_manager(os.path.dirname(os.path.abspath(__file__)))
