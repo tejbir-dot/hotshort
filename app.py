@@ -1184,8 +1184,20 @@ app.register_blueprint(feedback_bp, url_prefix="/api")
 from routes.admin import admin_bp
 app.register_blueprint(admin_bp, url_prefix="/admin")
 
-app_context = app.app_context()
-app_context.push()
+def init_app():
+    """Initialize app state that requires an application context.
+
+    This is called on import so Gunicorn/WSGI workers have DB tables ready
+    without relying on `if __name__ == "__main__"`.
+    """
+
+    with app.app_context():
+        # Ensure required database tables exist (safe to call repeatedly).
+        db.create_all()
+
+
+# Ensure initialization runs for Gunicorn/WSGI imports.
+init_app()
 
 # Optional warmup: disabled by default in constrained environments (e.g. Render free tier).
 if os.environ.get("HS_WARMUP_ON_STARTUP", "0").strip().lower() in ("1", "true", "yes", "on"):
@@ -2129,7 +2141,7 @@ from datetime import datetime, timedelta
 
     # 5) Session Cache
     # ---------------------------------
-from flask import request, jsonify, current_app as app
+from flask import request, jsonify
 from flask_login import login_required, current_user
 import os, logging, random, math
 
@@ -5505,9 +5517,7 @@ def generate_clip_for_job(video_path, start, end):
 
 
 if __name__ == "__main__":
-    # Create all tables on startup (in case migrations haven't run yet)
-    with app.app_context():
-        db.create_all()
-        print("✅ Database tables initialized")
-    port = int(os.environ.get("PORT", "8888"))
+    # When running via `python app.py`, use PORT if provided (defaults to 10000).
+    # When running under Gunicorn, this block is skipped.
+    port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
