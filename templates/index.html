@@ -1300,16 +1300,29 @@
               body: new URLSearchParams({ youtube_url: url })
             });
 
-            // If server redirected (some setups), follow
-            if(res.redirected){ window.location.href = res.url; return; }
-
-            const data = await res.json().catch(()=> null);
-            if(data && data.ok && data.redirect){
-              window.location.href = data.redirect; return;
+            // If we get a redirect (login page) or an auth failure, follow it.
+            if (res.redirected || res.status === 401 || res.status === 403) {
+              window.location.href = '/login?next=' + encodeURIComponent('/dashboard');
+              return;
             }
 
-            if(data && data.error){ showMessage(form, 'Error: ' + data.error); }
-            else showMessage(form, 'Analysis started - opening results.');
+            const data = await res.json().catch(() => null);
+            // If response is HTML (login page), it'll fail to parse as JSON; redirect.
+            if (!data) {
+              window.location.href = '/login?next=' + encodeURIComponent('/dashboard');
+              return;
+            }
+
+            if (data.ok && data.redirect) {
+              window.location.href = data.redirect;
+              return;
+            }
+
+            if (data.error) {
+              showMessage(form, 'Error: ' + data.error);
+            } else {
+              showMessage(form, 'Analysis started - opening results.');
+            }
           }catch(err){
             showMessage(form, 'Network error. Please try again.');
             console.error('Analyze error', err);

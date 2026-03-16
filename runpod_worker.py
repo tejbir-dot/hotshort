@@ -4,18 +4,60 @@ from faster_whisper import WhisperModel
 import subprocess
 import tempfile
 
+# Optional helper: upload output to S3 (for public URL delivery)
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    boto3 = None
+
 model = WhisperModel("small", device="cuda")
 
+
+def _upload_to_s3(local_path: str) -> str | None:
+    """Upload a local file to S3 and return a public URL.
+
+    Environment variables (optional):
+      - AWS_S3_BUCKET or S3_BUCKET
+      - AWS_REGION (default: us-east-1)
+      - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+    If the env vars are not set or boto3 is unavailable, this returns None.
+    """
+    bucket = os.environ.get("AWS_S3_BUCKET") or os.environ.get("S3_BUCKET")
+    if not bucket or boto3 is None:
+        return None
+
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    key = os.path.basename(local_path)
+
+    try:
+        s3 = boto3.client(
+            "s3",
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+            region_name=region,
+        )
+        s3.upload_file(local_path, bucket, key, ExtraArgs={"ACL": "public-read"})
+        return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
+    except (BotoCoreError, ClientError, Exception) as e:
+        print("S3 upload failed:", e)
+        return None
+
+
 def handler(event):
+    """RunPod worker handler.
+
+    Supports:
+      - task="download": download YouTube -> return {"file_url": "https://..."}
+      - task="transcribe_youtube": download + whisper transcription.
     """
-    RunPod worker handler for YouTube transcription.
-    Downloads video, extracts audio, runs Whisper transcription.
-    """
+
     input_data = event.get("input", {})
     task = input_data.get("task")
     youtube_url = input_data.get("youtube_url")
 
-    if task != "transcribe_youtube" or not youtube_url:
+    if not task or not youtube_url:
         return {"error": "Invalid task or missing youtube_url"}
 
     try:
@@ -48,6 +90,23 @@ def handler(event):
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([youtube_url])
+
+            # If RunPod is used as a download proxy, return a public URL for the file.
+            if task == "download":
+                file_url = _upload_to_s3(video_path)
+                if not file_url:
+                    # Fail early: Render cannot download file:// URLs.
+                    return {
+                        "error": "S3 upload failed (no AWS_S3_BUCKET or credentials configured), cannot provide a public file_url."
+                    }
+
+                print("DOWNLOAD DONE:", video_path, "->", file_url)
+
+                return {
+                    "output": {
+                        "file_url": file_url
+                    }
+                }
 
             # Extract audio with ffmpeg
             subprocess.run([
