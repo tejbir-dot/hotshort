@@ -107,10 +107,10 @@ def handler(event):
 
     input_data = event.get("input", {})
     task = input_data.get("task")
-    youtube_url = input_data.get("youtube_url")
+    youtube_url = input_data.get("youtube_url") or input_data.get("url")
 
     if not task or not youtube_url:
-        return {"error": "Invalid task or missing youtube_url"}
+        return {"error": "Invalid task or missing youtube_url/url"}
 
     try:
         # Create temp directory

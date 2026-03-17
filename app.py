@@ -1307,6 +1307,26 @@ def analytics():
 def api_free_status():
     return jsonify(get_free_status(current_user))
 
+
+@app.route("/api/runpod-download", methods=["POST"])
+@login_required
+def api_runpod_download():
+    """Trigger RunPod to download a YouTube video and return a public URL.
+
+    Request JSON: {"url": "https://youtu.be/.."}
+    Response JSON: {"video_url": "https://..."}
+    """
+    data = request.get_json(silent=True) or {}
+    youtube_url = (data.get("url") or data.get("youtube_url") or "").strip()
+    if not youtube_url:
+        return jsonify({"error": "Missing url"}), 400
+
+    video_url = download_youtube_video(youtube_url, return_url=True)
+    if not video_url:
+        return jsonify({"error": "RunPod download failed"}), 500
+
+    return jsonify({"video_url": video_url})
+
 import stripe
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
 
@@ -4042,38 +4062,9 @@ def _ingestion_signature() -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
-def _download_youtube_segment_with_format(url, start, end, output_dir="downloads", job_id=None, format_selector=None):
-    os.makedirs(output_dir, exist_ok=True)
-    safe_job = None
-    try:
-        safe_job = re.sub(r"[^a-zA-Z0-9_-]", "_", job_id) if job_id else None
-    except Exception:
-        safe_job = None
-
-    fmt = (format_selector or "bestvideo+bestaudio/best").strip()
-    ydl_opts = {
-        "format": fmt,
-        "merge_output_format": "mp4",
-        "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "download_ranges": (lambda info, ydl: [{"start_time": start, "end_time": end}]),
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        file_path = None
-        if safe_job:
-            expected = os.path.join(output_dir, f"{safe_job}.mp4")
-            if os.path.exists(expected):
-                file_path = expected
-        if not file_path:
-            file_path = ydl.prepare_filename(info)
-            if (not os.path.exists(file_path)) and os.path.exists(file_path + ".mp4"):
-                file_path = file_path + ".mp4"
-    return file_path
-
+# NOTE: Segment-level downloading with yt-dlp was removed to keep Render lightweight.
+# For scaling, the RunPod worker handles all yt-dlp downloads and Cloudinary uploads.
+# If you need local segment downloads in the future, reintroduce a safe helper here.
 
 def _copy_segment_ffmpeg(src_path, start_s, end_s, out_path):
     cmd = [
@@ -4117,17 +4108,9 @@ def acquire_youtube_media_robust(url, start, end, output_dir="downloads", job_id
     for idx, (name, fmt, is_segment) in enumerate(candidate_specs):
         try:
             candidate_job = f"{job_id}_ing_{idx}" if job_id else None
-            if is_segment:
-                p = _download_youtube_segment_with_format(
-                    url=url,
-                    start=start,
-                    end=end,
-                    output_dir=output_dir,
-                    job_id=candidate_job,
-                    format_selector=fmt,
-                )
-            else:
-                p = download_youtube_video(url, output_dir=output_dir, job_id=candidate_job)
+            # Prefer using RunPod for all downloads so Render does not run yt-dlp locally.
+            # The worker handles downloading + Cloudinary uploads.
+            p = download_youtube_video(url, output_dir=output_dir, job_id=candidate_job)
             if not p or (not os.path.exists(p)):
                 raise RuntimeError("media_missing")
             probe = probe_media(p)
@@ -4492,8 +4475,18 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
     return None
 
 
-def _download_via_runpod(youtube_url: str, output_dir: str, job_id: str | None = None) -> str:
-    """Ask RunPod to download the YouTube video and return a local path."""
+def _download_via_runpod(
+    youtube_url: str,
+    output_dir: str | None,
+    job_id: str | None = None,
+    return_url_only: bool = False,
+) -> str:
+    """Ask RunPod to download the YouTube video.
+
+    By default this streams the downloaded file from RunPod to a local path.
+    When ``return_url_only=True``, it returns the public URL from Cloudinary
+    (no local download).
+    """
     import requests
 
     endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
@@ -4505,6 +4498,7 @@ def _download_via_runpod(youtube_url: str, output_dir: str, job_id: str | None =
     payload = {
         "input": {
             "task": "download",
+            "url": youtube_url,
             "youtube_url": youtube_url,
             "job_id": job_id,
         }
@@ -4550,7 +4544,13 @@ def _download_via_runpod(youtube_url: str, output_dir: str, job_id: str | None =
     if not isinstance(file_url, str) or not file_url.startswith("http"):
         raise RuntimeError(f"RunPod returned non-public file_url: {file_url!r}")
 
+    if return_url_only:
+        return file_url
+
     # Stream the file locally so existing clip logic can operate.
+    if not output_dir:
+        raise RuntimeError("output_dir is required when return_url_only=False")
+
     local_path = os.path.join(output_dir, f"{job_id or uuid.uuid4().hex}.mp4")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -4565,12 +4565,23 @@ def _download_via_runpod(youtube_url: str, output_dir: str, job_id: str | None =
     return local_path
 
 
-def download_youtube_video(url, output_dir="downloads", job_id=None):
+def download_youtube_video(url, output_dir="downloads", job_id=None, return_url=False):
     """Download a YouTube video using RunPod.
+
+    When ``return_url`` is True, this returns the public video URL from Cloudinary
+    (no local file download).
 
     Render should never attempt a local yt-dlp download; it must use RunPod.
     If RunPod is disabled or fails, this returns None.
     """
+    if return_url:
+        log.info("[DOWNLOAD] ⚡ Using RunPod download (URL-only) url=%s job_id=%s", url, job_id)
+        try:
+            return _download_via_runpod(url, output_dir=None, job_id=job_id, return_url_only=True)
+        except Exception as e:
+            log.error("[RUNPOD] download failed: %s", e)
+            return None
+
     os.makedirs(output_dir, exist_ok=True)
 
     # Prefer RunPod download (Render should use RunPod exclusively)
