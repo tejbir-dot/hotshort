@@ -4506,12 +4506,14 @@ def _download_via_runpod(
 
     log.info("[RUNPOD] request download task for %s", youtube_url)
     resp = requests.post(url, json=payload, headers=headers, timeout=600)
-    log.info("[RUNPOD] RESPONSE: %s", resp.text)
+    log.info("[RUNPOD] RESPONSE (text): %s", resp.text)
 
     if resp.status_code != 200:
         raise RuntimeError(f"RunPod download failed: {resp.status_code} - {resp.text}")
 
     data = resp.json()
+    log.info("[RUNPOD] RESPONSE (json): %s", data)
+
     status = data.get("status")
     run_id = data.get("id") or data.get("run_id")
     log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)

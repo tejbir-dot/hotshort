@@ -154,6 +154,8 @@ def handler(event):
                     }
 
                 print("DOWNLOAD DONE:", video_path, "->", video_url)
+                print("UPLOAD RESULT:", video_url)
+                print("VIDEO URL:", video_url)
 
                 # Return a stable public URL that can be used by web clients.
                 return {"video_url": video_url}
