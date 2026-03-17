@@ -11,6 +11,58 @@ try:
 except ImportError:
     boto3 = None
 
+# Optional helper: upload output to Cloudinary (for public URL delivery)
+try:
+    import cloudinary
+    import cloudinary.uploader
+    _CLOUDINARY_AVAILABLE = True
+except ImportError:
+    cloudinary = None
+    _CLOUDINARY_AVAILABLE = False
+
+
+def _configure_cloudinary() -> bool:
+    """Configure cloudinary from environment variables.
+
+    Returns True if Cloudinary is configured and ready to upload.
+
+    Expected env vars:
+      - CLOUDINARY_CLOUD_NAME
+      - CLOUDINARY_API_KEY
+      - CLOUDINARY_API_SECRET
+    """
+
+    if not _CLOUDINARY_AVAILABLE:
+        return False
+
+    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME")
+    api_key = os.environ.get("CLOUDINARY_API_KEY")
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+
+    if not (cloud_name and api_key and api_secret):
+        return False
+
+    cloudinary.config(
+        cloud_name=cloud_name,
+        api_key=api_key,
+        api_secret=api_secret,
+    )
+    return True
+
+
+def _upload_to_cloudinary(local_path: str) -> str | None:
+    """Upload a local file to Cloudinary and return a public URL."""
+
+    if not _configure_cloudinary():
+        return None
+
+    try:
+        result = cloudinary.uploader.upload(local_path, resource_type="video")
+        return result.get("secure_url")
+    except Exception as e:
+        print("Cloudinary upload failed:", e)
+        return None
+
 model = WhisperModel("small", device="cuda")
 
 
@@ -93,20 +145,18 @@ def handler(event):
 
             # If RunPod is used as a download proxy, return a public URL for the file.
             if task == "download":
-                file_url = _upload_to_s3(video_path)
-                if not file_url:
+                # Prefer Cloudinary when it is configured (CLOUDINARY_* env vars).
+                video_url = _upload_to_cloudinary(video_path) or _upload_to_s3(video_path)
+                if not video_url:
                     # Fail early: Render cannot download file:// URLs.
                     return {
-                        "error": "S3 upload failed (no AWS_S3_BUCKET or credentials configured), cannot provide a public file_url."
+                        "error": "Upload failed (no cloud provider configured), cannot provide a public video_url."
                     }
 
-                print("DOWNLOAD DONE:", video_path, "->", file_url)
+                print("DOWNLOAD DONE:", video_path, "->", video_url)
 
-                return {
-                    "output": {
-                        "file_url": file_url
-                    }
-                }
+                # Return a stable public URL that can be used by web clients.
+                return {"video_url": video_url}
 
             # Extract audio with ffmpeg
             subprocess.run([
