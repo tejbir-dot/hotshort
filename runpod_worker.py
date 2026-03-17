@@ -1,5 +1,6 @@
 import os
 import yt_dlp
+import runpod
 from faster_whisper import WhisperModel
 import subprocess
 import tempfile
@@ -181,3 +182,9 @@ def handler(event):
 
     except Exception as e:
         return {"error": str(e)}
+
+
+# RunPod serverless handler entrypoint
+runpod.serverless.start({
+    "handler": handler
+})
