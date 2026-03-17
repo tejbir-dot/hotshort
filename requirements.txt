@@ -106,7 +106,7 @@ transformers==4.57.3
 typing_extensions==4.15.0
 ultralytics==8.3.230
 ultralytics-thop==2.0.18
-urllib3==2.5.0
+urllib3>=1.26,<2
 URLObject==3.0.0
 webrtcvad==2.0.10
 Werkzeug==3.0.2
