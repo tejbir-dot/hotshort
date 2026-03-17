@@ -3967,27 +3967,22 @@ import browser_cookie3
 
 
 def fetch_youtube_metadata(url):
-    """Fetch only metadata for a YouTube URL without downloading any media.
+    """Fetch only metadata for a YouTube URL without invoking yt-dlp.
 
-    Returns a dict with video_id, title, duration, thumbnail (when available).
-    Uses ``yt_dlp`` in ``skip_download`` mode which avoids RAM/CPU spikes.
+    This is intentionally lightweight to avoid bot checks and heavy downloads.
     """
-    import yt_dlp
+    try:
+        m = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", url)
+        video_id = m.group(1) if m else url
+    except Exception:
+        video_id = url
 
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        # avoid writing anything to disk
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-
+    # Return minimal metadata; further enrichment can be added later.
     return {
-        "video_id": info.get("id"),
-        "title": info.get("title"),
-        "duration": info.get("duration"),
-        "thumbnail": info.get("thumbnail"),
+        "video_id": video_id,
+        "title": "",
+        "duration": 0,
+        "thumbnail": "",
     }
 
 
@@ -4518,27 +4513,42 @@ def _download_via_runpod(
 
     data = resp.json()
     status = data.get("status")
-    log.info("[RUNPOD] STATUS: %s", status)
+    run_id = data.get("id") or data.get("run_id")
+    log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)
 
-    # Poll until the worker finishes (RunPod runsync can return IN_PROGRESS initially)
-    while status == "IN_PROGRESS":
-        log.info("[RUNPOD] waiting for job to finish...")
-        time.sleep(3)
+    # Poll until the worker finishes (RunPod may return IN_QUEUE / IN_PROGRESS).
+    # Prefer the dedicated status endpoint if we have a run id.
+    for attempt in range(30):
+        if status == "COMPLETED":
+            break
+        if status == "FAILED":
+            raise RuntimeError("RunPod download failed: FAILED")
 
-        resp = requests.post(url, json=payload, headers=headers, timeout=600)
+        log.info("[RUNPOD] waiting for job to finish... (status=%s)", status)
+        time.sleep(2)
+
+        if run_id:
+            status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+            resp = requests.get(status_url, headers=headers, timeout=60)
+        else:
+            # Fallback: re-post the original request (runsync) to refresh status.
+            resp = requests.post(url, json=payload, headers=headers, timeout=600)
+
         if resp.status_code != 200:
             raise RuntimeError(f"RunPod download failed: {resp.status_code} - {resp.text}")
+
         data = resp.json()
         status = data.get("status")
-        log.info("[RUNPOD] STATUS: %s", status)
+        run_id = run_id or data.get("id") or data.get("run_id")
+        log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)
 
     if status != "COMPLETED":
-        raise RuntimeError(f"RunPod download failed: {status}")
+        raise RuntimeError(f"RunPod download failed (non-completed status): {status}")
 
     output = data.get("output") or {}
-    file_url = output.get("file_url")
+    file_url = output.get("file_url") or output.get("video_url")
     if not file_url:
-        raise RuntimeError("RunPod download response missing file_url")
+        raise RuntimeError("RunPod download response missing video_url/file_url")
 
     # Ensure the worker returned a public URL that Render can access
     if not isinstance(file_url, str) or not file_url.startswith("http"):
