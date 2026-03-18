@@ -120,3 +120,4 @@ runpod
 yt-dlp
 cloudinary
 faster-whisper
+gunicorn
