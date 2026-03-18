@@ -1,0 +1,3 @@
+2026-03-17 20:50:58,701 | WARNING | Syntax error in C:\Users\n\Documents\hotshort\MANUAL_TESTING_GUIDE.py: (unicode error) 'unicodeescape' codec can't decode bytes in position 130-131: truncated \UXXXXXXXX escape (<unknown>, line 7)
+2026-03-17 20:50:59,330 | WARNING | Syntax error in C:\Users\n\Documents\hotshort\MANUAL_TESTING_GUIDE.py: (unicode error) 'unicodeescape' codec can't decode bytes in position 130-131: truncated \UXXXXXXXX escape (<unknown>, line 7)
+2026-03-17 20:50:59,801 | WARNING | Syntax error in C:\Users\n\Documents\hotshort\MANUAL_TESTING_GUIDE.py: (unicode error) 'unicodeescape' codec can't decode bytes in position 130-131: truncated \UXXXXXXXX escape (<unknown>, line 7)

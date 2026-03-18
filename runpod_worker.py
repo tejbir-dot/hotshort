@@ -36,17 +36,17 @@ def _configure_cloudinary() -> bool:
     if not _CLOUDINARY_AVAILABLE:
         return False
 
-    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME")
-    api_key = os.environ.get("CLOUDINARY_API_KEY")
-    api_secret = os.environ.get("CLOUDINARY_API_SECRET")
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+    api_key = os.getenv("CLOUDINARY_API_KEY")
+    api_secret = os.getenv("CLOUDINARY_API_SECRET")
 
     if not (cloud_name and api_key and api_secret):
         return False
 
     cloudinary.config(
-        cloud_name=cloud_name,
-        api_key=api_key,
-        api_secret=api_secret,
+        cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+        api_key=os.getenv("CLOUDINARY_API_KEY"),
+        api_secret=os.getenv("CLOUDINARY_API_SECRET"),
     )
     return True
 
@@ -104,6 +104,7 @@ def handler(event):
     Supports:
       - task="download": download YouTube -> return {"file_url": "https://..."}
       - task="transcribe_youtube": download + whisper transcription.
+      - task="orchestrate": download + full fast viral-finder orchestration.
     """
 
     input_data = event.get("input", {})
@@ -161,7 +162,26 @@ def handler(event):
                 # Return a stable public URL that can be used by web clients.
                 return {"video_url": video_url}
 
-            # Extract audio with ffmpeg
+            # If RunPod is used for orchestration, run the full pipeline.
+            if task == "orchestrate":
+                try:
+                    from viral_finder.orchestrator import orchestrate
+                except Exception as e:
+                    return {"error": f"Failed to import orchestrator: {e}"}
+
+                # Pass both video path and source URL for any components that need it.
+                clips = orchestrate(
+                    video_path,
+                    top_k=int(os.environ.get("HS_ORCH_TOP_K", "8")),
+                    prefer_gpu=True,
+                    use_cache=True,
+                    allow_fallback=False,
+                    pipeline_mode=os.environ.get("HS_ORCH_PIPELINE_MODE", None),
+                )
+
+                return {"status": "ok", "clips": clips}
+
+            # Extract audio with ffmpeg (fallback transcription path)
             subprocess.run([
                 "ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path
             ], check=True, capture_output=True)
