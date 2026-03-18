@@ -1321,11 +1321,17 @@ def api_runpod_download():
     if not youtube_url:
         return jsonify({"error": "Missing url"}), 400
 
-    video_url = download_youtube_video(youtube_url, return_url=True)
-    if not video_url:
-        return jsonify({"error": "RunPod download failed"}), 500
+    try:
+        result = _orchestrate_via_runpod(youtube_url, job_id=None)
+    except Exception as e:
+        log.error("[RUNPOD] orchestrate failed: %s", e)
+        return jsonify({"error": "RunPod orchestrate failed"}), 500
 
-    return jsonify({"video_url": video_url})
+    clips = result.get("clips") if isinstance(result, dict) else None
+    if clips is None:
+        return jsonify({"error": "RunPod orchestrate returned unexpected output"}), 500
+
+    return jsonify({"clips": clips})
 
 import stripe
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
@@ -4611,6 +4617,76 @@ def download_youtube_video(url, output_dir="downloads", job_id=None, return_url=
         "Set HS_RUNPOD_DOWNLOAD=1 and ensure RUNPOD_ENDPOINT_ID/RUNPOD_API_KEY are configured."
     )
     return None
+
+
+def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 900) -> dict:
+    """Ask RunPod to run the full orchestrator pipeline and return the result."""
+    import requests
+
+    endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+    api_key = os.getenv("RUNPOD_API_KEY")
+    if not endpoint or not api_key:
+        raise RuntimeError("RunPod not configured (missing RUNPOD_ENDPOINT_ID or RUNPOD_API_KEY)")
+
+    url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
+    payload = {
+        "input": {
+            "task": "orchestrate",
+            "url": youtube_url,
+            "youtube_url": youtube_url,
+            "job_id": job_id,
+        }
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    log.info("[RUNPOD] request orchestrate task for %s", youtube_url)
+    resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    log.info("[RUNPOD] RESPONSE (text): %s", resp.text)
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"RunPod orchestrate failed: {resp.status_code} - {resp.text}")
+
+    data = resp.json()
+    log.info("[RUNPOD] RESPONSE (json): %s", data)
+
+    status = data.get("status")
+    run_id = data.get("id") or data.get("run_id")
+    log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)
+
+    for attempt in range(30):
+        if status == "COMPLETED":
+            break
+        if status == "FAILED":
+            raise RuntimeError("RunPod orchestrate failed: FAILED")
+
+        log.info("[RUNPOD] waiting for job to finish... (status=%s)", status)
+        time.sleep(2)
+
+        if run_id:
+            status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+            resp = requests.get(status_url, headers=headers, timeout=60)
+        else:
+            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+
+        if resp.status_code != 200:
+            raise RuntimeError(f"RunPod orchestrate failed: {resp.status_code} - {resp.text}")
+
+        data = resp.json()
+        status = data.get("status")
+        run_id = run_id or data.get("id") or data.get("run_id")
+        log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)
+
+    if status != "COMPLETED":
+        raise RuntimeError(f"RunPod orchestrate failed (non-completed status): {status}")
+
+    output = data.get("output") or {}
+
+    # Expected output from worker: {"status":"ok", "clips": [...]}
+    return output
 
 
 # def download_youtube_video(youtube_url, output_path):
