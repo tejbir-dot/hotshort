@@ -113,6 +113,52 @@
       }
     }
 
+    /* Analyze shimmer/aurora effect (homepage) */
+    .aurora-active::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9998;
+      pointer-events: none;
+      background: radial-gradient(circle at 10% 20%, rgba(100, 180, 255, 0.20), transparent 42%),
+                  radial-gradient(circle at 80% 30%, rgba(185, 100, 255, 0.18), transparent 44%),
+                  radial-gradient(circle at 50% 75%, rgba(255, 210, 100, 0.14), transparent 46%);
+      animation: auroraFill 2.5s ease-in-out infinite;
+      opacity: 1;
+    }
+
+    @keyframes auroraFill {
+      0% { filter: hue-rotate(0deg) blur(12px); opacity: 0.42; }
+      50% { filter: hue-rotate(35deg) blur(18px); opacity: 0.6; }
+      100% { filter: hue-rotate(0deg) blur(12px); opacity: 0.42; }
+    }
+
+    #homeAnalyzeBtn.loading {
+      position: relative;
+      overflow: hidden;
+      color: #fff;
+      z-index: 10;
+      box-shadow: 0 0 20px rgba(255, 230, 143, 0.55);
+      transform: scale(1.02);
+    }
+
+    #homeAnalyzeBtn.loading::after {
+      content: '';
+      position: absolute;
+      inset: -10%;
+      background: linear-gradient(15deg, rgba(255,186,63,0.35), rgba(86, 184, 255,0.35), rgba(187, 97, 255,0.35));
+      opacity: 0.35;
+      filter: blur(8px);
+      animation: buttonAurora 1.8s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes buttonAurora {
+      0% { transform: translateX(-45%) rotate(0deg); }
+      50% { transform: translateX(45%) rotate(2deg); }
+      100% { transform: translateX(-45%) rotate(0deg); }
+    }
+
     /* Navigation */
     nav {
       position: fixed;
@@ -1291,7 +1337,11 @@
 
           // Logged-in: send JSON-style POST and handle redirect gracefully
           try{
-            if(btn){ btn.classList.add('thinking'); btn.disabled = true; }
+            if(btn){
+              btn.classList.add('thinking', 'loading');
+              btn.disabled = true;
+            }
+            document.body.classList.add('aurora-active');
             showMessage(form, 'Analyzing... sit tight - this takes ~30-60s', 5000);
 
             const res = await fetch('/analyze', {
@@ -1327,7 +1377,11 @@
             showMessage(form, 'Network error. Please try again.');
             console.error('Analyze error', err);
           }finally{
-            if(btn){ btn.classList.remove('thinking'); btn.disabled = false; }
+            if(btn){
+              btn.classList.remove('thinking', 'loading');
+              btn.disabled = false;
+            }
+            document.body.classList.remove('aurora-active');
           }
         });
       });
