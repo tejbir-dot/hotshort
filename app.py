@@ -211,7 +211,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
     if not endpoint:
         raise RuntimeError("RUNPOD_ENDPOINT_ID not configured")
 
-    url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
+    url = f"https://api.runpod.ai/v2/{endpoint}/run"
 
     # Prepare request with YouTube URL
     data = {
@@ -250,7 +250,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
     if not endpoint:
         raise RuntimeError("RUNPOD_ENDPOINT_ID not configured")
 
-    url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
+    url = f"https://api.runpod.ai/v2/{endpoint}/run"
 
     # Prepare request data
     data = {
@@ -1345,7 +1345,11 @@ def api_runpod_download():
 
     except Exception as e:
         log.error("[RUNPOD] orchestrate failed: %s", e)
-        return jsonify({"error": "RunPod orchestrate failed"}), 500
+        return jsonify({
+            "error": "RunPod orchestrate failed",
+            "message": str(e),
+            "hint": "Set RUNPOD_ENDPOINT_ID and RUNPOD_API_KEY in .env, and make sure HS_RUNPOD_DOWNLOAD=1 if you want RunPod mode."
+        }), 500
 
     finally:
         if pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
@@ -4517,7 +4521,8 @@ def _download_via_runpod(
     if not endpoint or not api_key:
         raise RuntimeError("RunPod not configured (missing RUNPOD_ENDPOINT_ID or RUNPOD_API_KEY)")
 
-    url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
+    # Use RunPod /run endpoint for async job submission, then poll /runs/{id} status.
+    url = f"https://api.runpod.ai/v2/{endpoint}/run"
     payload = {
         "input": {
             "task": "download",
@@ -4561,7 +4566,7 @@ def _download_via_runpod(
             status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
             resp = requests.get(status_url, headers=headers, timeout=60)
         else:
-            # Fallback: re-post the original request (runsync) to refresh status.
+            # Fallback: re-post the original request (/run) to refresh status.
             resp = requests.post(url, json=payload, headers=headers, timeout=600)
 
         if resp.status_code != 200:
@@ -4648,9 +4653,12 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
     endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
     api_key = os.getenv("RUNPOD_API_KEY")
     if not endpoint or not api_key:
-        raise RuntimeError("RunPod not configured (missing RUNPOD_ENDPOINT_ID or RUNPOD_API_KEY)")
+        raise RuntimeError(
+            "RunPod not configured: missing RUNPOD_ENDPOINT_ID and/or RUNPOD_API_KEY. "
+            "Set these in .env (or disable HS_RUNPOD_DOWNLOAD=0 for local mode)."
+        )
 
-    url = f"https://api.runpod.ai/v2/{endpoint}/runsync"
+    url = f"https://api.runpod.ai/v2/{endpoint}/run"
     payload = {
         "input": {
             "task": "orchestrate",
