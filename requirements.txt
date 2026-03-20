@@ -121,6 +121,8 @@ gunicorn
 
 flask-login
 flask-sqlalchemy
+flask-migrate
+flask-dance
 
 python-dotenv
 
