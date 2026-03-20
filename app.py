@@ -202,6 +202,15 @@ try:
 except ImportError:
     RUNPOD_AVAILABLE = False
 
+# RunPod mode: serverless (default) or pod (direct pod lifecycle)
+RUNPOD_MODE = os.getenv("RUNPOD_MODE", "serverless").strip().lower()
+
+# Helper to build the correct RunPod endpoint URL per mode
+def _runpod_task_url(endpoint: str) -> str:
+    if RUNPOD_MODE == "pod":
+        return f"https://api.runpod.ai/v2/{endpoint}/runsync"
+    return f"https://api.runpod.ai/v2/{endpoint}/run"
+
 # RunPod GPU integration functions
 def send_transcription_request(youtube_url: str) -> List[Dict]:
     """Send YouTube URL to RunPod GPU for download, audio extraction, and transcription."""
@@ -211,7 +220,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
     if not endpoint:
         raise RuntimeError("RUNPOD_ENDPOINT_ID not configured")
 
-    url = f"https://api.runpod.ai/v2/{endpoint}/run"
+    url = _runpod_task_url(endpoint)
 
     # Prepare request with YouTube URL
     data = {
@@ -1323,7 +1332,7 @@ def api_runpod_download():
 
     pod_started = False
     try:
-        if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+        if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Starting GPU pod for download api...")
                 start_pod()
@@ -1352,7 +1361,7 @@ def api_runpod_download():
         }), 500
 
     finally:
-        if pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+        if RUNPOD_MODE == "pod" and pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Stopping GPU pod after api_runpod_download...")
                 stop_pod()
@@ -2923,8 +2932,8 @@ def analyze_video():
         # --------------------------------------------------
         # RunPod GPU Pod Lifecycle Management
         # --------------------------------------------------
-        # Start GPU pod if RunPod is configured
-        if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+        # Start GPU pod only in `pod` mode
+        if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Starting GPU pod...")
                 start_pod()
@@ -2983,8 +2992,8 @@ def analyze_video():
             _save_cached_transcript(video_path, transcript_segments or [])
         except Exception as e:
             log.error("[TRANSCRIPT] Prefill failed: %s", e)
-            # Stop pod before returning error
-            if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+            # Stop pod before returning error (pod mode only)
+            if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
                 try:
                     log.info("[RUNPOD] Stopping GPU pod due to error...")
                     stop_pod()
@@ -3055,9 +3064,9 @@ def analyze_video():
         log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
 
         # --------------------------------------------------
-        # Stop GPU pod after GPU work is complete
+        # Stop GPU pod after GPU work is complete (pod mode only)
         # --------------------------------------------------
-        if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+        if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Stopping GPU pod after analysis complete...")
                 stop_pod()
@@ -4521,8 +4530,8 @@ def _download_via_runpod(
     if not endpoint or not api_key:
         raise RuntimeError("RunPod not configured (missing RUNPOD_ENDPOINT_ID or RUNPOD_API_KEY)")
 
-    # Use RunPod /run endpoint for async job submission, then poll /runs/{id} status.
-    url = f"https://api.runpod.ai/v2/{endpoint}/run"
+    # Use correct RunPod task endpoint for current mode (serverless/pod)
+    url = _runpod_task_url(endpoint)
     payload = {
         "input": {
             "task": "download",
@@ -4658,7 +4667,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
             "Set these in .env (or disable HS_RUNPOD_DOWNLOAD=0 for local mode)."
         )
 
-    url = f"https://api.runpod.ai/v2/{endpoint}/run"
+    url = _runpod_task_url(endpoint)
     payload = {
         "input": {
             "task": "orchestrate",
@@ -4675,7 +4684,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
 
     pod_started = False
     try:
-        if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+        if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Starting GPU pod for orchestrate...")
                 start_pod()
@@ -4733,7 +4742,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
         return output
 
     finally:
-        if pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+        if RUNPOD_MODE == "pod" and pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Stopping GPU pod after orchestrate work complete...")
                 stop_pod()
