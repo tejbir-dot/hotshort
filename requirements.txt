@@ -116,8 +116,9 @@
 # yt-dlp==2026.1.29
 # cloudinary==1.32.0
 # runpod
+flask
+gunicorn
 runpod
 yt-dlp
 cloudinary
 faster-whisper
-gunicorn
