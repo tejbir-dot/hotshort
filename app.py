@@ -1321,17 +1321,39 @@ def api_runpod_download():
     if not youtube_url:
         return jsonify({"error": "Missing url"}), 400
 
+    pod_started = False
     try:
+        if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+            try:
+                log.info("[RUNPOD] Starting GPU pod for download api...")
+                start_pod()
+                pod_started = True
+                if wait_until_ready(timeout=120):
+                    log.info("[RUNPOD] Pod ready for download api")
+                else:
+                    log.warning("[RUNPOD] Pod did not become ready within timeout; continuing anyway")
+            except Exception as e:
+                log.warning("[RUNPOD] Failed to start pod: %s", e)
+
         result = _orchestrate_via_runpod(youtube_url, job_id=None)
+
+        clips = result.get("clips") if isinstance(result, dict) else None
+        if clips is None:
+            return jsonify({"error": "RunPod orchestrate returned unexpected output"}), 500
+
+        return jsonify({"clips": clips})
+
     except Exception as e:
         log.error("[RUNPOD] orchestrate failed: %s", e)
         return jsonify({"error": "RunPod orchestrate failed"}), 500
 
-    clips = result.get("clips") if isinstance(result, dict) else None
-    if clips is None:
-        return jsonify({"error": "RunPod orchestrate returned unexpected output"}), 500
-
-    return jsonify({"clips": clips})
+    finally:
+        if pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+            try:
+                log.info("[RUNPOD] Stopping GPU pod after api_runpod_download...")
+                stop_pod()
+            except Exception as e:
+                log.warning("[RUNPOD] Failed to stop pod in finalizer: %s", e)
 
 import stripe
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
@@ -4643,50 +4665,72 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
         "Content-Type": "application/json",
     }
 
-    log.info("[RUNPOD] request orchestrate task for %s", youtube_url)
-    resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
-    log.info("[RUNPOD] RESPONSE (text): %s", resp.text)
+    pod_started = False
+    try:
+        if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+            try:
+                log.info("[RUNPOD] Starting GPU pod for orchestrate...")
+                start_pod()
+                pod_started = True
+                if wait_until_ready(timeout=120):
+                    log.info("[RUNPOD] Pod ready for orchestrate")
+                else:
+                    log.warning("[RUNPOD] Pod did not become ready within timeout; continuing anyway")
+            except Exception as e:
+                log.warning("[RUNPOD] Failed to start pod: %s", e)
 
-    if resp.status_code != 200:
-        raise RuntimeError(f"RunPod orchestrate failed: {resp.status_code} - {resp.text}")
-
-    data = resp.json()
-    log.info("[RUNPOD] RESPONSE (json): %s", data)
-
-    status = data.get("status")
-    run_id = data.get("id") or data.get("run_id")
-    log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)
-
-    for attempt in range(30):
-        if status == "COMPLETED":
-            break
-        if status == "FAILED":
-            raise RuntimeError("RunPod orchestrate failed: FAILED")
-
-        log.info("[RUNPOD] waiting for job to finish... (status=%s)", status)
-        time.sleep(2)
-
-        if run_id:
-            status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
-            resp = requests.get(status_url, headers=headers, timeout=60)
-        else:
-            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        log.info("[RUNPOD] request orchestrate task for %s", youtube_url)
+        resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        log.info("[RUNPOD] RESPONSE (text): %s", resp.text)
 
         if resp.status_code != 200:
             raise RuntimeError(f"RunPod orchestrate failed: {resp.status_code} - {resp.text}")
 
         data = resp.json()
+        log.info("[RUNPOD] RESPONSE (json): %s", data)
+
         status = data.get("status")
-        run_id = run_id or data.get("id") or data.get("run_id")
+        run_id = data.get("id") or data.get("run_id")
         log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)
 
-    if status != "COMPLETED":
-        raise RuntimeError(f"RunPod orchestrate failed (non-completed status): {status}")
+        for attempt in range(30):
+            if status == "COMPLETED":
+                break
+            if status == "FAILED":
+                raise RuntimeError("RunPod orchestrate failed: FAILED")
 
-    output = data.get("output") or {}
+            log.info("[RUNPOD] waiting for job to finish... (status=%s)", status)
+            time.sleep(2)
 
-    # Expected output from worker: {"status":"ok", "clips": [...]}
-    return output
+            if run_id:
+                status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+                resp = requests.get(status_url, headers=headers, timeout=60)
+            else:
+                resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+
+            if resp.status_code != 200:
+                raise RuntimeError(f"RunPod orchestrate failed: {resp.status_code} - {resp.text}")
+
+            data = resp.json()
+            status = data.get("status")
+            run_id = run_id or data.get("id") or data.get("run_id")
+            log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)
+
+        if status != "COMPLETED":
+            raise RuntimeError(f"RunPod orchestrate failed (non-completed status): {status}")
+
+        output = data.get("output") or {}
+
+        # Expected output from worker: {"status":"ok", "clips": [...]}
+        return output
+
+    finally:
+        if pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+            try:
+                log.info("[RUNPOD] Stopping GPU pod after orchestrate work complete...")
+                stop_pod()
+            except Exception as e:
+                log.warning("[RUNPOD] Failed to stop pod in finalizer: %s", e)
 
 
 # def download_youtube_video(youtube_url, output_path):
