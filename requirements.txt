@@ -118,7 +118,15 @@
 # runpod
 flask
 gunicorn
+
+flask-login
+flask-sqlalchemy
+
+python-dotenv
+
 runpod
 yt-dlp
 cloudinary
 faster-whisper
+
+psutil
