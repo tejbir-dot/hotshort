@@ -205,10 +205,18 @@ except ImportError:
 # RunPod mode: serverless (default) or pod (direct pod lifecycle)
 RUNPOD_MODE = os.getenv("RUNPOD_MODE", "serverless").strip().lower()
 
+# Local worker URL (for hybrid dev setup with ngrok)
+# Example: https://abc123.ngrok-free.app/run
+# Set via env var: LOCAL_WORKER_URL=https://...ngrok-free.app/run
+LOCAL_WORKER_URL = os.getenv("LOCAL_WORKER_URL", "").strip()
+
 # Helper to build the correct RunPod endpoint URL per mode
 def _runpod_task_url(endpoint: str) -> str:
     if RUNPOD_MODE == "pod":
         return f"https://api.runpod.ai/v2/{endpoint}/runsync"
+    # Hybrid uses local worker first but RunPod uses serverless endpoint URL
+    if RUNPOD_MODE == "hybrid":
+        return f"https://api.runpod.ai/v2/{endpoint}/run"
     return f"https://api.runpod.ai/v2/{endpoint}/run"
 
 # RunPod GPU integration functions
@@ -222,11 +230,17 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
 
     url = _runpod_task_url(endpoint)
 
-    # Prepare request with YouTube URL
+    # Prepare request with YouTube URL + cloud provider config for worker upload
     data = {
         'task': 'transcribe_youtube',
         'youtube_url': youtube_url,
-        'model': os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+        'model': os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+        'cloud_provider': {
+            'provider': 'cloudinary',
+            'cloud_name': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+            'api_key': os.environ.get('CLOUDINARY_API_KEY'),
+            'api_secret': os.environ.get('CLOUDINARY_API_SECRET'),
+        }
     }
 
     headers = {
@@ -259,15 +273,21 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
     if not endpoint:
         raise RuntimeError("RUNPOD_ENDPOINT_ID not configured")
 
-    url = f"https://api.runpod.ai/v2/{endpoint}/run"
+    url = _runpod_task_url(endpoint)
 
-    # Prepare request data
+    # Prepare request data + cloud provider config for worker upload
     data = {
         'task': 'analyze',
         'transcript': transcript,
         'video_metadata': {
             'duration': get_video_duration(video_path),
             'path': video_path
+        },
+        'cloud_provider': {
+            'provider': 'cloudinary',
+            'cloud_name': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+            'api_key': os.environ.get('CLOUDINARY_API_KEY'),
+            'api_secret': os.environ.get('CLOUDINARY_API_SECRET'),
         }
     }
 
@@ -1344,7 +1364,7 @@ def api_runpod_download():
             except Exception as e:
                 log.warning("[RUNPOD] Failed to start pod: %s", e)
 
-        result = _orchestrate_via_runpod(youtube_url, job_id=None)
+        result = process_video_hybrid(youtube_url, job_id=None)
 
         clips = result.get("clips") if isinstance(result, dict) else None
         if clips is None:
@@ -4538,6 +4558,12 @@ def _download_via_runpod(
             "url": youtube_url,
             "youtube_url": youtube_url,
             "job_id": job_id,
+            "cloud_provider": {
+                "provider": "cloudinary",
+                "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME"),
+                "api_key": os.environ.get("CLOUDINARY_API_KEY"),
+                "api_secret": os.environ.get("CLOUDINARY_API_SECRET"),
+            }
         }
     }
 
@@ -4655,6 +4681,67 @@ def download_youtube_video(url, output_dir="downloads", job_id=None, return_url=
     return None
 
 
+def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: int = 900) -> dict:
+    """
+    Try local worker first (via LOCAL_WORKER_URL), fallback to RunPod if unavailable.
+    This enables development testing with ngrok tunnel without requiring RunPod in serverless mode.
+    """
+    import requests
+
+    local_worker_url = os.getenv("LOCAL_WORKER_URL", "").strip()
+
+    # Try local worker first if configured
+    if local_worker_url:
+        try:
+            log.info("[HYBRID] Attempting local worker at %s for %s", local_worker_url, youtube_url)
+
+            payload = {
+                "input": {
+                    "task": "orchestrate",
+                    "url": youtube_url,
+                    "youtube_url": youtube_url,
+                    "job_id": job_id,
+                    "cloud_provider": {
+                        "provider": "cloudinary",
+                        "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME"),
+                        "api_key": os.environ.get("CLOUDINARY_API_KEY"),
+                        "api_secret": os.environ.get("CLOUDINARY_API_SECRET"),
+                    }
+                }
+            }
+
+            resp = requests.post(
+                local_worker_url,
+                json=payload,
+                timeout=timeout
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                output = data.get("output") or data.get("result") or data
+                # Check if response has expected keys (clips, status, etc.)
+                if output and ("clips" in output or "status" in output or "video_url" in output):
+                    log.info("[HYBRID] Local worker succeeded, returning result")
+                    return output
+                else:
+                    log.warning("[HYBRID] Local worker returned empty/unexpected response: %s", data)
+                    raise Exception("Local worker returned invalid response")
+            else:
+                log.warning("[HYBRID] Local worker returned %s: %s", resp.status_code, resp.text)
+                raise Exception(f"Local worker returned {resp.status_code}")
+
+        except requests.exceptions.Timeout:
+            log.warning("[HYBRID] Local worker timeout after %s seconds, falling back to RunPod", timeout)
+        except requests.exceptions.ConnectionError as e:
+            log.warning("[HYBRID] Local worker connection failed: %s, falling back to RunPod", e)
+        except Exception as e:
+            log.warning("[HYBRID] Local worker failed: %s, falling back to RunPod", e)
+
+    # Fallback to RunPod if local unavailable or disabled
+    log.info("[HYBRID] Falling back to RunPod for %s", youtube_url)
+    return _orchestrate_via_runpod(youtube_url, job_id, timeout)
+
+
 def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 900) -> dict:
     """Ask RunPod to run the full orchestrator pipeline and return the result."""
     import requests
@@ -4674,6 +4761,12 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
             "url": youtube_url,
             "youtube_url": youtube_url,
             "job_id": job_id,
+            "cloud_provider": {
+                "provider": "cloudinary",
+                "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME"),
+                "api_key": os.environ.get("CLOUDINARY_API_KEY"),
+                "api_secret": os.environ.get("CLOUDINARY_API_SECRET"),
+            }
         }
     }
 
