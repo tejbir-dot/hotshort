@@ -218,6 +218,26 @@ def handler(event):
 
 
 # RunPod serverless handler entrypoint
-runpod.serverless.start({
-    "handler": handler
-})
+import os
+
+if os.getenv("LOCAL_HTTP_WORKER") == "1":
+    from flask import Flask, request, jsonify
+
+    app = Flask(__name__)
+
+    @app.route("/", methods=["GET"])
+    def health():
+        return jsonify({"status": "ok", "message": "Worker ready. POST to /run with task data."})
+
+    @app.route("/run", methods=["POST"])
+    def run_local():
+        job = {"input": request.json}
+        result = handler(job)
+        return jsonify(result)
+
+    print("🚀 Local HTTP worker running on http://localhost:5000/run")
+    app.run(host="0.0.0.0", port=5000)
+
+else:
+    import runpod
+    runpod.serverless.start({"handler": handler})
