@@ -4,6 +4,9 @@ import runpod
 from faster_whisper import WhisperModel
 import subprocess
 import tempfile
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Optional helper: upload output to S3 (for public URL delivery)
 try:
@@ -110,6 +113,16 @@ def handler(event):
     input_data = event.get("input", {})
     task = input_data.get("task")
     youtube_url = input_data.get("youtube_url") or input_data.get("url")
+
+    # Extract cloud provider config from payload if provided (client passes credentials)
+    cloud_provider = input_data.get("cloud_provider", {})
+    if cloud_provider and isinstance(cloud_provider, dict):
+        if cloud_provider.get("cloud_name"):
+            os.environ["CLOUDINARY_CLOUD_NAME"] = cloud_provider.get("cloud_name", "")
+        if cloud_provider.get("api_key"):
+            os.environ["CLOUDINARY_API_KEY"] = cloud_provider.get("api_key", "")
+        if cloud_provider.get("api_secret"):
+            os.environ["CLOUDINARY_API_SECRET"] = cloud_provider.get("api_secret", "")
 
     if not task or not youtube_url:
         return {"error": "Invalid task or missing youtube_url/url"}
