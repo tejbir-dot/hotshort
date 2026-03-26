@@ -6,6 +6,11 @@ import subprocess
 import tempfile
 from dotenv import load_dotenv
 
+try:
+    import torch
+except ImportError:
+    torch = None
+
 load_dotenv()
 
 # Optional helper: upload output to S3 (for public URL delivery)
@@ -67,7 +72,21 @@ def _upload_to_cloudinary(local_path: str) -> str | None:
         print("Cloudinary upload failed:", e)
         return None
 
-model = WhisperModel("small", device="cuda")
+
+def _gpu_alive() -> bool:
+    try:
+        return bool(torch is not None and torch.cuda.is_available())
+    except Exception as e:
+        print("GPU health check failed:", e)
+        return False
+
+
+def _load_whisper_model() -> WhisperModel:
+    device = "cuda" if _gpu_alive() else "cpu"
+    return WhisperModel("small", device=device)
+
+
+model = _load_whisper_model()
 
 
 def _upload_to_s3(local_path: str) -> str | None:
@@ -113,6 +132,7 @@ def handler(event):
     input_data = event.get("input", {})
     task = input_data.get("task")
     youtube_url = input_data.get("youtube_url") or input_data.get("url")
+    transcript = input_data.get("transcript") or []
 
     # Extract cloud provider config from payload if provided (client passes credentials)
     cloud_provider = input_data.get("cloud_provider", {})
@@ -124,10 +144,38 @@ def handler(event):
         if cloud_provider.get("api_secret"):
             os.environ["CLOUDINARY_API_SECRET"] = cloud_provider.get("api_secret", "")
 
-    if not task or not youtube_url:
-        return {"error": "Invalid task or missing youtube_url/url"}
+    if not task:
+        return {"error": "Invalid task: missing task"}
+
+    if task == "healthcheck":
+        return {
+            "status": "ok",
+            "gpu": _gpu_alive(),
+        }
+
+    if task in {"download", "transcribe_youtube", "orchestrate"} and not youtube_url:
+        return {"error": f"Invalid task '{task}': missing youtube_url/url"}
+
+    if task == "analyze" and not transcript:
+        return {"error": "Invalid task 'analyze': missing transcript"}
 
     try:
+        if task == "analyze":
+            try:
+                from viral_finder.idea_graph import build_idea_graph, select_candidate_clips
+            except Exception as e:
+                return {"error": f"Failed to import analysis pipeline: {e}"}
+
+            top_k = int(input_data.get("top_k") or os.environ.get("HS_ORCH_TOP_K", "8"))
+            nodes = build_idea_graph(transcript) or []
+            moments = select_candidate_clips(
+                nodes,
+                top_k=top_k,
+                transcript=transcript,
+                ensure_sentence_complete=True,
+            ) or []
+            return {"status": "ok", "moments": moments}
+
         # Create temp directory
         with tempfile.TemporaryDirectory() as temp_dir:
             video_path = os.path.join(temp_dir, "video.mp4")
@@ -175,6 +223,22 @@ def handler(event):
                 # Return a stable public URL that can be used by web clients.
                 return {"video_url": video_url}
 
+            if task == "transcribe_youtube":
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path
+                ], check=True, capture_output=True)
+
+                segments, _ = model.transcribe(audio_path)
+                transcript = []
+                for s in segments:
+                    transcript.append({
+                        "start": s.start,
+                        "end": s.end,
+                        "text": s.text
+                    })
+
+                return {"status": "ok", "segments": transcript}
+
             # If RunPod is used for orchestration, run the full pipeline.
             if task == "orchestrate":
                 try:
@@ -194,7 +258,7 @@ def handler(event):
 
                 return {"status": "ok", "clips": clips}
 
-            # Extract audio with ffmpeg (fallback transcription path)
+            # Fallback: transcribe downloaded media for unrecognized legacy transcription callers.
             subprocess.run([
                 "ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path
             ], check=True, capture_output=True)
