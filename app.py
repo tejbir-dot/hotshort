@@ -220,6 +220,52 @@ def _runpod_task_url(endpoint: str) -> str:
     return f"https://api.runpod.ai/v2/{endpoint}/run"
 
 # RunPod GPU integration functions
+def _wait_for_runpod_completion(
+    *,
+    endpoint: str,
+    headers: dict,
+    initial_data: dict,
+    request_url: str,
+    request_payload: dict,
+    timeout: int,
+    task_label: str,
+    poll_attempts: int = 30,
+    poll_interval_s: int = 2,
+):
+    """Poll RunPod until the async job reaches a terminal state."""
+    import requests
+
+    data = initial_data or {}
+    status = data.get("status")
+    run_id = data.get("id") or data.get("run_id")
+    log.info("[RUNPOD] %s STATUS: %s (run_id=%s)", task_label, status, run_id)
+
+    for _ in range(poll_attempts):
+        if status == "COMPLETED":
+            return data
+        if status == "FAILED":
+            raise RuntimeError(f"RunPod {task_label} failed: FAILED")
+
+        log.info("[RUNPOD] %s waiting for job to finish... (status=%s)", task_label, status)
+        time.sleep(poll_interval_s)
+
+        if run_id:
+            status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+            resp = requests.get(status_url, headers=headers, timeout=60)
+        else:
+            resp = requests.post(request_url, json=request_payload, headers=headers, timeout=timeout)
+
+        if resp.status_code != 200:
+            raise RuntimeError(f"RunPod {task_label} failed: {resp.status_code} - {resp.text}")
+
+        data = resp.json()
+        status = data.get("status")
+        run_id = run_id or data.get("id") or data.get("run_id")
+        log.info("[RUNPOD] %s STATUS: %s (run_id=%s)", task_label, status, run_id)
+
+    raise RuntimeError(f"RunPod {task_label} failed (non-completed status): {status}")
+
+
 def send_transcription_request(youtube_url: str) -> List[Dict]:
     """Send YouTube URL to RunPod GPU for download, audio extraction, and transcription."""
     import requests
@@ -255,8 +301,16 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         raise RuntimeError(f"RunPod transcription failed: {response.status_code} - {response.text}")
 
     result = response.json()
-    if result.get('status') != 'COMPLETED':
-        raise RuntimeError(f"RunPod transcription incomplete: {result.get('status')}")
+    log.info("[RUNPOD] transcription response: %s", result)
+    result = _wait_for_runpod_completion(
+        endpoint=endpoint,
+        headers=headers,
+        initial_data=result,
+        request_url=url,
+        request_payload=data,
+        timeout=600,
+        task_label="transcription",
+    )
 
     # Extract transcript segments from response
     output = result.get('output', {})
@@ -303,8 +357,16 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
         raise RuntimeError(f"RunPod analysis failed: {response.status_code} - {response.text}")
 
     result = response.json()
-    if result.get('status') != 'COMPLETED':
-        raise RuntimeError(f"RunPod analysis incomplete: {result.get('status')}")
+    log.info("[RUNPOD] analysis response: %s", result)
+    result = _wait_for_runpod_completion(
+        endpoint=endpoint,
+        headers=headers,
+        initial_data=result,
+        request_url=url,
+        request_payload=data,
+        timeout=300,
+        task_label="analysis",
+    )
 
     log.info("[RUNPOD] Analysis completed")
     return result.get('output', {})
@@ -2466,6 +2528,14 @@ def analyze_video():
         return False
 
     def analyze_error(message: str, status_code: int = 400):
+        log.warning(
+            "[ANALYZE] Returning error status=%s message=%s url=%s user_id=%s wants_json=%s",
+            status_code,
+            message,
+            request.form.get("youtube_url", "").strip(),
+            getattr(current_user, "id", None),
+            wants_json_response(),
+        )
         if wants_json_response():
             return jsonify({"ok": False, "error": message}), status_code
         flash(message, "error")
@@ -2826,6 +2896,16 @@ def analyze_video():
     # Keep telemetry/logging, but force threshold to zero.
     min_acq_score = 0.0
     if (not video_path) or (not os.path.exists(video_path)):
+        log.warning(
+            "[INGEST] media acquisition unavailable url=%s job_id=%s render=%s hs_runpod_download=%s runpod_endpoint=%s runpod_key=%s attempts=%s",
+            youtube_url,
+            job_id,
+            IS_RENDER_RUNTIME,
+            os.environ.get("HS_RUNPOD_DOWNLOAD", "0"),
+            bool(os.environ.get("RUNPOD_ENDPOINT_ID")),
+            bool(os.environ.get("RUNPOD_API_KEY")),
+            acquisition_attempts,
+        )
         return analyze_error("Ingestion failed: media acquisition unavailable.", 400)
     if not js_runtime_ok:
         log.warning("[INGEST] JS runtime missing (node/deno). YouTube extraction quality may degrade.")
@@ -2967,23 +3047,15 @@ def analyze_video():
         # Precompute transcript on clean wav and seed cache for orchestrator
         stage_t0 = time.time()
         try:
-            # Use RunPod GPU for transcription if available
-            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
-            runpod_api_key = os.getenv("RUNPOD_API_KEY")
+            transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+            if is_fast_longform:
+                transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
+            use_vad_override = None
+            vad_profile_override = None
 
-            if runpod_endpoint and runpod_api_key:
-                log.info("[TRANSCRIPT] Using RunPod GPU for transcription")
-                transcript_segments = send_transcription_request(youtube_url)
-            else:
-                log.info("[TRANSCRIPT] Using local CPU for transcription (RunPod not configured)")
+            def _run_local_transcription():
                 from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
-                from viral_finder.orchestrator import _save_cached_transcript
-                transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
-                if is_fast_longform:
-                    transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
-                use_vad_override = None
-                vad_profile_override = None
-                transcript_segments = _extract_transcript(
+                return _extract_transcript(
                     wav_path,
                     model_name=transcript_model_name,
                     prefer_gpu=True,
@@ -2991,6 +3063,24 @@ def analyze_video():
                     use_vad_override=use_vad_override,
                     vad_profile_override=vad_profile_override,
                 )
+
+            # Use RunPod GPU for transcription if available
+            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+            runpod_api_key = os.getenv("RUNPOD_API_KEY")
+
+            if runpod_endpoint and runpod_api_key:
+                try:
+                    log.info("[TRANSCRIPT] Using RunPod GPU for transcription")
+                    transcript_segments = send_transcription_request(youtube_url)
+                except Exception as runpod_transcript_err:
+                    log.warning(
+                        "[TRANSCRIPT] RunPod transcription unavailable; falling back to local CPU. error=%s",
+                        runpod_transcript_err,
+                    )
+                    transcript_segments = _run_local_transcription()
+            else:
+                log.info("[TRANSCRIPT] Using local CPU for transcription (RunPod not configured)")
+                transcript_segments = _run_local_transcription()
 
             seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
             # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
@@ -3027,6 +3117,27 @@ def analyze_video():
         # --------------------------------------------------
         stage_t0 = time.time()
         try:
+            from viral_finder.orchestrator import orchestrate
+            top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
+            top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
+            min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
+
+            if source_video_duration_s >= 1200:
+                top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
+            elif source_video_duration_s >= fast_longform_threshold_s:
+                top_k = max(top_k_longform, min_longform_k)
+            else:
+                top_k = top_k_default
+
+            top_k = max(3, min(20, int(top_k)))
+
+            def _run_local_analysis():
+                log.info("[ANALYSIS] Using local CPU for viral moment detection")
+                os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
+                clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
+                print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
+                return clips
+
             # Use RunPod GPU for analysis if available
             runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
             runpod_api_key = os.getenv("RUNPOD_API_KEY")
@@ -3072,15 +3183,34 @@ def analyze_video():
                 min_longform_k,
             )
         except Exception as e:
+            recovered_analysis = False
             log.exception("[ANALYZE] Orchestrator failed: %s", e)
-            # Stop pod before returning error
-            if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+            if os.environ.get("RUNPOD_ENDPOINT_ID") and os.environ.get("RUNPOD_API_KEY"):
                 try:
-                    log.info("[RUNPOD] Stopping GPU pod due to error...")
-                    stop_pod()
-                except Exception as pod_err:
-                    log.warning("[RUNPOD] Failed to stop pod: %s", pod_err)
-            return analyze_error("Analysis failed. Please try another video.", 500)
+                    log.warning("[ANALYSIS] Retrying locally after RunPod analysis failure")
+                    os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
+                    moments = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
+                    print("DEBUG clips returned:", type(moments), len(moments) if moments else 0)
+                    log.info(
+                        "[FAST-LANE] local retry succeeded top_k=%d duration=%.1fs moments=%d",
+                        top_k,
+                        source_video_duration_s,
+                        len(moments or []),
+                    )
+                    recovered_analysis = True
+                except Exception as local_retry_err:
+                    log.exception("[ANALYSIS] Local retry after RunPod failure also failed: %s", local_retry_err)
+            if recovered_analysis:
+                log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+            else:
+            # Stop pod before returning error
+                if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+                    try:
+                        log.info("[RUNPOD] Stopping GPU pod due to error...")
+                        stop_pod()
+                    except Exception as pod_err:
+                        log.warning("[RUNPOD] Failed to stop pod: %s", pod_err)
+                return analyze_error("Analysis failed. Please try another video.", 500)
         log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
 
         # --------------------------------------------------
@@ -4646,13 +4776,14 @@ def _download_via_runpod(
 
 
 def download_youtube_video(url, output_dir="downloads", job_id=None, return_url=False):
-    """Download a YouTube video using RunPod.
+    """Download a YouTube video using RunPod or local yt-dlp.
 
     When ``return_url`` is True, this returns the public video URL from Cloudinary
     (no local file download).
 
     Render should never attempt a local yt-dlp download; it must use RunPod.
-    If RunPod is disabled or fails, this returns None.
+    Local/dev runtimes may fall back to the resilient yt-dlp downloader when
+    RunPod download is not enabled.
     """
     if return_url:
         log.info("[DOWNLOAD] ⚡ Using RunPod download (URL-only) url=%s job_id=%s", url, job_id)
@@ -4673,71 +4804,153 @@ def download_youtube_video(url, output_dir="downloads", job_id=None, return_url=
             log.error("[RUNPOD] download failed: %s", e)
             return None
 
-    # RunPod download not enabled; do not attempt local yt-dlp download on Render.
-    log.error(
-        "[DOWNLOAD] RunPod download disabled (HS_RUNPOD_DOWNLOAD not enabled). "
-        "Set HS_RUNPOD_DOWNLOAD=1 and ensure RUNPOD_ENDPOINT_ID/RUNPOD_API_KEY are configured."
+    if IS_RENDER_RUNTIME:
+        log.error(
+            "[DOWNLOAD] RunPod download disabled (HS_RUNPOD_DOWNLOAD not enabled). "
+            "Set HS_RUNPOD_DOWNLOAD=1 and ensure RUNPOD_ENDPOINT_ID/RUNPOD_API_KEY are configured."
+        )
+        return None
+
+    log.info(
+        "[DOWNLOAD] RunPod download disabled; using local yt-dlp fallback url=%s job_id=%s",
+        url,
+        job_id,
     )
-    return None
+    return download_with_fallback(url, output_dir=output_dir, job_id=job_id)
+
+
+def _hybrid_orchestrate_payload(youtube_url: str, job_id: str | None = None) -> dict:
+    return {
+        "input": {
+            "task": "orchestrate",
+            "url": youtube_url,
+            "youtube_url": youtube_url,
+            "job_id": job_id,
+            "cloud_provider": {
+                "provider": "cloudinary",
+                "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME"),
+                "api_key": os.environ.get("CLOUDINARY_API_KEY"),
+                "api_secret": os.environ.get("CLOUDINARY_API_SECRET"),
+            },
+        }
+    }
+
+
+def _local_worker_health_url(local_worker_url: str) -> str:
+    base_url = (local_worker_url or "").strip()
+    if base_url.endswith("/run"):
+        return f"{base_url[:-4]}/"
+    return base_url
+
+
+def _local_worker_is_alive(local_worker_url: str, timeout: int = 5) -> bool:
+    import requests
+
+    health_url = _local_worker_health_url(local_worker_url)
+    if not health_url:
+        return False
+
+    try:
+        resp = requests.get(health_url, timeout=min(timeout, 5))
+        if resp.status_code == 200:
+            log.info("[HYBRID] Local worker healthy at %s", health_url)
+            return True
+        log.warning("[HYBRID] Local worker healthcheck returned %s from %s", resp.status_code, health_url)
+    except requests.exceptions.RequestException as e:
+        log.warning("[HYBRID] Local worker healthcheck failed for %s: %s", health_url, e)
+    return False
+
+
+def _orchestrate_via_local_worker(
+    local_worker_url: str,
+    youtube_url: str,
+    job_id: str | None = None,
+    timeout: int = 900,
+) -> dict:
+    import requests
+
+    payload = _hybrid_orchestrate_payload(youtube_url, job_id=job_id)
+    resp = requests.post(local_worker_url, json=payload, timeout=timeout)
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Local worker returned {resp.status_code}: {resp.text}")
+
+    data = resp.json()
+    output = data.get("output") or data.get("result") or data
+    if output and ("clips" in output or "status" in output or "video_url" in output):
+        return output
+
+    raise RuntimeError(f"Local worker returned invalid response: {data}")
+
+
+def _local_gpu_available() -> bool:
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return True
+    except Exception as e:
+        log.warning("[HYBRID] torch.cuda.is_available() check failed: %s", e)
+
+    try:
+        from viral_finder.transcript_engine import resolve_device
+
+        return resolve_device(prefer_gpu=True) == "cuda"
+    except Exception as e:
+        log.warning("[HYBRID] Local GPU detection failed: %s", e)
+        return False
+
+
+def _orchestrate_via_local_gpu(
+    youtube_url: str,
+    job_id: str | None = None,
+    timeout: int = 900,
+) -> dict:
+    del timeout  # Local path uses stage-level timeouts inside the pipeline.
+
+    from viral_finder.orchestrator import orchestrate
+
+    output_dir = os.environ.get("HS_HYBRID_OUTPUT_DIR", "downloads")
+    video_path = download_youtube_video(youtube_url, output_dir=output_dir, job_id=job_id)
+    if not video_path or not os.path.exists(video_path):
+        raise RuntimeError("Local GPU path could not acquire media")
+
+    top_k = int(os.environ.get("HS_ORCH_TOP_K", "8") or 8)
+    pipeline_mode = os.environ.get("HS_ORCH_PIPELINE_MODE", None)
+    clips = orchestrate(
+        video_path,
+        top_k=top_k,
+        prefer_gpu=True,
+        use_cache=True,
+        allow_fallback=False,
+        pipeline_mode=pipeline_mode,
+    )
+    return {"status": "ok", "clips": clips}
 
 
 def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: int = 900) -> dict:
     """
-    Try local worker first (via LOCAL_WORKER_URL), fallback to RunPod if unavailable.
-    This enables development testing with ngrok tunnel without requiring RunPod in serverless mode.
+    Priority routing for orchestration:
+    1. Local worker
+    2. Local GPU
+    3. RunPod
     """
-    import requests
-
     local_worker_url = os.getenv("LOCAL_WORKER_URL", "").strip()
 
-    # Try local worker first if configured
-    if local_worker_url:
+    if local_worker_url and _local_worker_is_alive(local_worker_url, timeout=timeout):
         try:
-            log.info("[HYBRID] Attempting local worker at %s for %s", local_worker_url, youtube_url)
-
-            payload = {
-                "input": {
-                    "task": "orchestrate",
-                    "url": youtube_url,
-                    "youtube_url": youtube_url,
-                    "job_id": job_id,
-                    "cloud_provider": {
-                        "provider": "cloudinary",
-                        "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME"),
-                        "api_key": os.environ.get("CLOUDINARY_API_KEY"),
-                        "api_secret": os.environ.get("CLOUDINARY_API_SECRET"),
-                    }
-                }
-            }
-
-            resp = requests.post(
-                local_worker_url,
-                json=payload,
-                timeout=timeout
-            )
-
-            if resp.status_code == 200:
-                data = resp.json()
-                output = data.get("output") or data.get("result") or data
-                # Check if response has expected keys (clips, status, etc.)
-                if output and ("clips" in output or "status" in output or "video_url" in output):
-                    log.info("[HYBRID] Local worker succeeded, returning result")
-                    return output
-                else:
-                    log.warning("[HYBRID] Local worker returned empty/unexpected response: %s", data)
-                    raise Exception("Local worker returned invalid response")
-            else:
-                log.warning("[HYBRID] Local worker returned %s: %s", resp.status_code, resp.text)
-                raise Exception(f"Local worker returned {resp.status_code}")
-
-        except requests.exceptions.Timeout:
-            log.warning("[HYBRID] Local worker timeout after %s seconds, falling back to RunPod", timeout)
-        except requests.exceptions.ConnectionError as e:
-            log.warning("[HYBRID] Local worker connection failed: %s, falling back to RunPod", e)
+            log.info("[HYBRID] Routing to local worker for %s", youtube_url)
+            return _orchestrate_via_local_worker(local_worker_url, youtube_url, job_id=job_id, timeout=timeout)
         except Exception as e:
-            log.warning("[HYBRID] Local worker failed: %s, falling back to RunPod", e)
+            log.warning("[HYBRID] Local worker failed: %s", e)
 
-    # Fallback to RunPod if local unavailable or disabled
+    if _local_gpu_available():
+        try:
+            log.info("[HYBRID] Routing to local GPU for %s", youtube_url)
+            return _orchestrate_via_local_gpu(youtube_url, job_id=job_id, timeout=timeout)
+        except Exception as e:
+            log.warning("[HYBRID] Local GPU orchestration failed: %s", e)
+
     log.info("[HYBRID] Falling back to RunPod for %s", youtube_url)
     return _orchestrate_via_runpod(youtube_url, job_id, timeout)
 
