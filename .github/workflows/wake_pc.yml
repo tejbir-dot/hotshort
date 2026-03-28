@@ -1,0 +1,15 @@
+name: Wake HotShort PC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install wakeonlan
+        run: sudo apt update && sudo apt install wakeonlan -y
+
+      - name: Send Wake Packet
+        run: wakeonlan 30:56:0F:19:9D:1B
