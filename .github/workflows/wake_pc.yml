@@ -8,8 +8,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Connect to Tailscale
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }}
+
       - name: Install wakeonlan
-        run: sudo apt update && sudo apt install wakeonlan -y
+        run: sudo apt install wakeonlan -y
 
       - name: Send Wake Packet
         run: wakeonlan 30:56:0F:19:9D:1B
