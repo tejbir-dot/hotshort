@@ -20,4 +20,4 @@ jobs:
         run: sudo apt install wakeonlan -y
 
       - name: Send Wake Packet
-        run: wakeonlan 30:56:0F:19:9D:1B
+        run: wakeonlan -i 192.168.1.255 30:56:0F:19:9D:1B
