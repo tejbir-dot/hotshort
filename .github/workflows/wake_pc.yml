@@ -16,8 +16,6 @@ jobs:
         run: |
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Install wakeonlan
-        run: sudo apt install wakeonlan -y
-
-      - name: Send Wake Packet
-        run: wakeonlan -i 192.168.1.255 30:56:0F:19:9D:1B
+      - name: Wake PC via Tailscale
+        run: |
+          tailscale wake desktop-4hlpudi
