@@ -12,4 +12,4 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y curl
 
       - name: Wake PC via phone relay
-        run: curl http://100.122.45.112:8080/wakepc
+        run: curl https://lived-cdna-nominations-psp.trycloudflare.com/wakepc
