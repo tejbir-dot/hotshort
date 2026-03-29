@@ -18,4 +18,4 @@ jobs:
 
       - name: Wake PC via Tailscale
         run: |
-          tailscale wake desktop-4hlpudi
+          wakeonlan -i 100.84.32.34 30:56:0F:19:9D:1B
