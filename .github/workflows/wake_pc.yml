@@ -8,8 +8,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install curl
-        run: sudo apt-get update && sudo apt-get install -y curl
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Connect to Tailscale
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }}
 
       - name: Wake PC via phone relay
-        run: curl https://lived-cdna-nominations-psp.trycloudflare.com/wakepc
+        run: |
+          curl http://100.122.45.112:8080/wakepc
