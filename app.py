@@ -177,7 +177,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from models.user import db, User, Clip, Job, FreeClipClaim
 from flask_migrate import Migrate
 from video_pipeline import generate_clip_for_job
-from routes.auth import auth  # 👈 all auth routes now separated
+from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
 # from viral_finder.viral_finder_engine_v30 import find_viral_moments as backup_find
 from utils.narrative_intelligence import (
@@ -477,6 +477,10 @@ def _pipeline_profile() -> str:
 
 PIPELINE_PROFILE = _pipeline_profile()
 BALANCED_SCIENTIST_PROFILE = PIPELINE_PROFILE == "balanced_scientist"
+MAX_CONCURRENT_ANALYZE_PER_USER = max(
+    1,
+    min(8, int(os.environ.get("HS_MAX_CONCURRENT_ANALYZE_PER_USER", "2") or 2)),
+)
 
 # default worker profile when /v2/analyze does not provide one
 DEFAULT_WORKER_PROFILE = os.environ.get("HS_PROFILE_DEFAULT", "balanced").strip().lower()
@@ -486,14 +490,17 @@ def _acquire_analyze_lock_for_user(user_id):
     with _analyze_locks_guard:
         lock = _analyze_locks.get(key)
         if lock is None:
-            lock = threading.Lock()
+            lock = threading.BoundedSemaphore(MAX_CONCURRENT_ANALYZE_PER_USER)
             _analyze_locks[key] = lock
     if lock.acquire(blocking=False):
         return lock
     return None
 
-def _analyze_file_lock_path(user_id) -> str:
-    return os.path.join(tempfile.gettempdir(), f"hs_analyze_user_{str(user_id)}.lock")
+def _analyze_file_lock_path(user_id, slot_idx=None) -> str:
+    base = f"hs_analyze_user_{str(user_id)}"
+    if slot_idx is None:
+        return os.path.join(tempfile.gettempdir(), f"{base}.lock")
+    return os.path.join(tempfile.gettempdir(), f"{base}.{int(slot_idx)}.lock")
 
 def _read_lock_pid(lock_path: str):
     try:
@@ -522,42 +529,46 @@ def _pid_is_alive(pid: int) -> bool:
 
 def _acquire_analyze_file_lock_for_user(user_id):
     """
-    Cross-process lock to prevent duplicate analyze runs when multiple worker
-    processes exist (e.g., debug reloader / multi-process serving).
+    Cross-process slot lock to cap same-user analyze concurrency across
+    multiple processes (e.g., debug reloader / multi-process serving).
     """
-    lock_path = _analyze_file_lock_path(user_id)
     stale_after_s = int(os.environ.get("HS_ANALYZE_LOCK_STALE_SECONDS", "900") or 900)
+    for slot_idx in range(MAX_CONCURRENT_ANALYZE_PER_USER):
+        lock_path = _analyze_file_lock_path(user_id, slot_idx)
 
-    try:
-        if os.path.exists(lock_path):
-            # If lock owner pid is gone, recover immediately.
-            lock_pid = _read_lock_pid(lock_path)
-            if lock_pid is not None and not _pid_is_alive(lock_pid):
-                try:
-                    os.remove(lock_path)
-                except Exception:
-                    pass
-
-            age_s = time.time() - os.path.getmtime(lock_path)
-            if age_s > float(stale_after_s):
-                try:
-                    os.remove(lock_path)
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    try:
-        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         try:
-            os.write(fd, f"pid={os.getpid()} ts={time.time():.3f}\n".encode("utf-8", "ignore"))
-        finally:
-            os.close(fd)
-        return lock_path
-    except FileExistsError:
-        return None
-    except Exception:
-        return None
+            if os.path.exists(lock_path):
+                lock_pid = _read_lock_pid(lock_path)
+                if lock_pid is not None and not _pid_is_alive(lock_pid):
+                    try:
+                        os.remove(lock_path)
+                    except Exception:
+                        pass
+
+                age_s = time.time() - os.path.getmtime(lock_path)
+                if age_s > float(stale_after_s):
+                    try:
+                        os.remove(lock_path)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(
+                    fd,
+                    f"pid={os.getpid()} slot={slot_idx} ts={time.time():.3f}\n".encode("utf-8", "ignore"),
+                )
+            finally:
+                os.close(fd)
+            return lock_path
+        except FileExistsError:
+            continue
+        except Exception:
+            continue
+    return None
 
 def _release_analyze_file_lock(lock_path: str):
     try:
@@ -1109,14 +1120,63 @@ if external_base_url:
     parsed_external_url = urlparse(external_base_url)
     if parsed_external_url.scheme in ("http", "https") and parsed_external_url.netloc:
         app.config["EXTERNAL_BASE_URL"] = external_base_url
-        app.config["SERVER_NAME"] = parsed_external_url.netloc
         app.config["PREFERRED_URL_SCHEME"] = parsed_external_url.scheme
+        # Do not pin SERVER_NAME from EXTERNAL_BASE_URL.
+        # Flask will otherwise reject valid requests coming from ngrok or other
+        # temporary hosts with 404s when the Host header differs from the local
+        # development URL. Keep EXTERNAL_BASE_URL only as an outbound URL hint.
     else:
         app.logger.warning(
             "[OAUTH-DEBUG] Ignoring invalid EXTERNAL_BASE_URL=%r. Expected format: http(s)://host[:port]",
             external_base_url,
         )
         app.config["EXTERNAL_BASE_URL"] = ""
+
+backend_url = (app.config.get("BACKEND_URL") or app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+app.config["BACKEND_URL"] = backend_url
+frontend_url = (app.config.get("FRONTEND_URL") or "").strip().rstrip("/")
+app.config["FRONTEND_URL"] = frontend_url
+
+
+def _origin_tuple(url_value):
+    parsed = urlparse((url_value or "").strip())
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return (parsed.scheme, parsed.netloc)
+    return ("", "")
+
+
+frontend_origin = _origin_tuple(frontend_url)
+backend_origin = _origin_tuple(backend_url)
+cross_site_frontend = bool(frontend_origin[1] and backend_origin[1] and frontend_origin != backend_origin)
+if cross_site_frontend:
+    app.config["SESSION_COOKIE_SAMESITE"] = "None"
+    app.config["SESSION_COOKIE_SECURE"] = True
+    app.config["REMEMBER_COOKIE_SAMESITE"] = "None"
+    app.config["REMEMBER_COOKIE_SECURE"] = True
+
+
+@app.context_processor
+def inject_backend_url():
+    return {
+        "BACKEND_URL": app.config.get("BACKEND_URL", ""),
+        "FRONTEND_URL": app.config.get("FRONTEND_URL", ""),
+    }
+
+
+def _allowed_cors_origin():
+    request_origin = (request.headers.get("Origin") or "").strip().rstrip("/")
+    frontend = (app.config.get("FRONTEND_URL") or "").strip().rstrip("/")
+    if request_origin and frontend and request_origin == frontend:
+        return request_origin
+    return ""
+
+
+@app.before_request
+def handle_frontend_preflight():
+    if request.method == "OPTIONS":
+        allowed_origin = _allowed_cors_origin()
+        if allowed_origin:
+            return ("", 204)
 
 if app.config.get("PREFERRED_URL_SCHEME") == "https":
     os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
@@ -1139,6 +1199,13 @@ def add_header(response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
+    allowed_origin = _allowed_cors_origin()
+    if allowed_origin:
+        response.headers["Access-Control-Allow-Origin"] = allowed_origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        response.headers["Vary"] = "Origin"
     if RESOURCE_LOG_ENABLED and RESOURCE_LOG_REQUESTS and _should_log_request_resource(request.path):
         try:
             start_t = getattr(g, "_res_req_t0", None)
@@ -2256,7 +2323,7 @@ def google_login():
         db.session.commit()
 
     login_user(user)
-    return redirect(url_for("dashboard"))
+    return build_post_login_redirect(session.pop("post_login_next", None))
 
 # ==========================
 # 🚀 REST OF YOUR CLIP SYSTEM
@@ -2617,7 +2684,10 @@ def analyze_video():
                 pass
         if file_analyze_lock:
             _release_analyze_file_lock(file_analyze_lock)
-        return analyze_error("Analysis already running. Please wait for current job to finish.", 429)
+        return analyze_error(
+            f"Maximum {MAX_CONCURRENT_ANALYZE_PER_USER} analyses already running for this account. Please wait for one to finish.",
+            429,
+        )
 
     @after_this_request
     def _release_user_analyze_lock(response):
@@ -3064,23 +3134,8 @@ def analyze_video():
                     vad_profile_override=vad_profile_override,
                 )
 
-            # Use RunPod GPU for transcription if available
-            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
-            runpod_api_key = os.getenv("RUNPOD_API_KEY")
-
-            if runpod_endpoint and runpod_api_key:
-                try:
-                    log.info("[TRANSCRIPT] Using RunPod GPU for transcription")
-                    transcript_segments = send_transcription_request(youtube_url)
-                except Exception as runpod_transcript_err:
-                    log.warning(
-                        "[TRANSCRIPT] RunPod transcription unavailable; falling back to local CPU. error=%s",
-                        runpod_transcript_err,
-                    )
-                    transcript_segments = _run_local_transcription()
-            else:
-                log.info("[TRANSCRIPT] Using local CPU for transcription (RunPod not configured)")
-                transcript_segments = _run_local_transcription()
+            log.info("[TRANSCRIPT] Using local CPU for transcription (RunPod disabled)")
+            transcript_segments = _run_local_transcription()
 
             seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
             # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
@@ -3138,41 +3193,11 @@ def analyze_video():
                 print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
                 return clips
 
-            # Use RunPod GPU for analysis if available
-            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
-            runpod_api_key = os.getenv("RUNPOD_API_KEY")
+            # RunPod disabled for analysis in this flow; always prefer local staged pipeline.
+            log.info("[ANALYSIS] Using local CPU for viral moment detection (RunPod disabled)")
+            moments = _run_local_analysis()
 
-            if runpod_endpoint and runpod_api_key:
-                log.info("[ANALYSIS] Using RunPod GPU for viral moment detection")
-                analysis_result = send_analysis_request(transcript_segments, video_path)
-                moments = analysis_result.get('moments', [])
-                log.info("[RUNPOD] Analysis found %d viral moments", len(moments))
-            else:
-                log.info("[ANALYSIS] Using local CPU for viral moment detection (RunPod not configured)")
-                from viral_finder.orchestrator import orchestrate
-                top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
-                top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
-                min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
-
-                # Simple, strong targeting:
-                # - 20m+ videos: ask for 12 candidates (stable 9-12 output goal)
-                # - other longform: at least longform floor
-                if source_video_duration_s >= 1200:
-                    top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
-                elif source_video_duration_s >= fast_longform_threshold_s:
-                    # Safety floor: never under-generate for longform, even if env is stale/misconfigured.
-                    top_k = max(top_k_longform, min_longform_k)
-                else:
-                    top_k = top_k_default
-
-                top_k = max(3, min(20, int(top_k)))
                 
-                # ⚡ HARD-FORCE STAGED MODE: Ensure we use the new pipeline (L4/L7/L9) instead of legacy Ultron V33.
-                # We explicitly disable fallback to prevent legacy Ultron from running silently.
-                os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
-                clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
-                print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
-                moments = clips
 
             log.info(
                 "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d) pipeline_mode=staged (FORCED) allow_fallback=False",
@@ -3185,24 +3210,8 @@ def analyze_video():
         except Exception as e:
             recovered_analysis = False
             log.exception("[ANALYZE] Orchestrator failed: %s", e)
-            if os.environ.get("RUNPOD_ENDPOINT_ID") and os.environ.get("RUNPOD_API_KEY"):
-                try:
-                    log.warning("[ANALYSIS] Retrying locally after RunPod analysis failure")
-                    os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
-                    moments = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
-                    print("DEBUG clips returned:", type(moments), len(moments) if moments else 0)
-                    log.info(
-                        "[FAST-LANE] local retry succeeded top_k=%d duration=%.1fs moments=%d",
-                        top_k,
-                        source_video_duration_s,
-                        len(moments or []),
-                    )
-                    recovered_analysis = True
-                except Exception as local_retry_err:
-                    log.exception("[ANALYSIS] Local retry after RunPod failure also failed: %s", local_retry_err)
             if recovered_analysis:
                 log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
-            else:
             # Stop pod before returning error
                 if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
                     try:
@@ -4843,22 +4852,43 @@ def _local_worker_health_url(local_worker_url: str) -> str:
     return base_url
 
 
-def _local_worker_is_alive(local_worker_url: str, timeout: int = 5) -> bool:
+def _local_worker_status(local_worker_url: str, timeout: int = 5) -> dict:
     import requests
 
     health_url = _local_worker_health_url(local_worker_url)
     if not health_url:
-        return False
+        return {"alive": False, "can_accept": False, "reason": "missing_url"}
 
     try:
         resp = requests.get(health_url, timeout=min(timeout, 5))
         if resp.status_code == 200:
-            log.info("[HYBRID] Local worker healthy at %s", health_url)
-            return True
+            data = resp.json() if resp.content else {}
+            can_accept = bool(data.get("can_accept", True))
+            inflight = int(data.get("inflight", 0) or 0)
+            queue_depth = int(data.get("queue_depth", 0) or 0)
+            max_concurrency = int(data.get("max_concurrency", 0) or 0)
+            max_queue = int(data.get("max_queue", 0) or 0)
+            log.info(
+                "[HYBRID] Local worker healthy at %s can_accept=%s inflight=%s queue=%s max_concurrency=%s max_queue=%s",
+                health_url,
+                can_accept,
+                inflight,
+                queue_depth,
+                max_concurrency,
+                max_queue,
+            )
+            return {
+                "alive": True,
+                "can_accept": can_accept,
+                "inflight": inflight,
+                "queue_depth": queue_depth,
+                "max_concurrency": max_concurrency,
+                "max_queue": max_queue,
+            }
         log.warning("[HYBRID] Local worker healthcheck returned %s from %s", resp.status_code, health_url)
     except requests.exceptions.RequestException as e:
         log.warning("[HYBRID] Local worker healthcheck failed for %s: %s", health_url, e)
-    return False
+    return {"alive": False, "can_accept": False, "reason": "unreachable"}
 
 
 def _orchestrate_via_local_worker(
@@ -4871,6 +4901,9 @@ def _orchestrate_via_local_worker(
 
     payload = _hybrid_orchestrate_payload(youtube_url, job_id=job_id)
     resp = requests.post(local_worker_url, json=payload, timeout=timeout)
+
+    if resp.status_code == 429:
+        raise RuntimeError("Local worker is busy")
 
     if resp.status_code != 200:
         raise RuntimeError(f"Local worker returned {resp.status_code}: {resp.text}")
@@ -4937,12 +4970,23 @@ def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: i
     """
     local_worker_url = os.getenv("LOCAL_WORKER_URL", "").strip()
 
-    if local_worker_url and _local_worker_is_alive(local_worker_url, timeout=timeout):
+    local_worker = _local_worker_status(local_worker_url, timeout=timeout) if local_worker_url else None
+
+    if local_worker and local_worker.get("alive") and local_worker.get("can_accept"):
         try:
             log.info("[HYBRID] Routing to local worker for %s", youtube_url)
             return _orchestrate_via_local_worker(local_worker_url, youtube_url, job_id=job_id, timeout=timeout)
         except Exception as e:
             log.warning("[HYBRID] Local worker failed: %s", e)
+    elif local_worker and local_worker.get("alive"):
+        log.info(
+            "[HYBRID] Local worker busy for %s (inflight=%s queue=%s); falling back",
+            youtube_url,
+            local_worker.get("inflight"),
+            local_worker.get("queue_depth"),
+        )
+        log.info("[HYBRID] Falling back to RunPod for %s", youtube_url)
+        return _orchestrate_via_runpod(youtube_url, job_id, timeout)
 
     if _local_gpu_available():
         try:

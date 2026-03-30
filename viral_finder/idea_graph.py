@@ -710,6 +710,9 @@ SELECT_RELAX_SEM_FLOOR_DEFAULT = min(0.80, max(0.20, _env_float("HS_SELECTOR_REL
 SELECT_BASE_SEM_FLOOR = 0.52
 SELECT_STRICT_PASS_WEIGHT = min(1.50, max(0.30, _env_float("HS_DIVERSITY_STRICT_PASS_WEIGHT", 1.00)))
 SELECT_RELAX_PASS_WEIGHT = min(1.00, max(0.20, _env_float("HS_DIVERSITY_RELAX_PASS_WEIGHT", 0.85)))
+SELECT_STRICT_MIN_TARGET_DEFAULT = max(0, int(_env_float("HS_SELECTOR_STRICT_MIN_TARGET", 0)))
+SELECT_RELAX_MAX_CANDIDATES_DEFAULT = max(1, int(_env_float("HS_SELECTOR_RELAX_MAX_CANDIDATES", 8)))
+SELECT_RELAX_DYNAMIC_ENABLE_DEFAULT = str(os.getenv("HS_SELECTOR_RELAX_DYNAMIC_ENABLE", "1")).strip().lower() in ("1", "true", "yes", "on")
 
 # If a node is a strong resolution, suppress it (avoid boring endings)
 RESOLUTION_SUPPRESS_CUTOFF = 0.15
@@ -2618,13 +2621,56 @@ def _select_candidate_clips_v2(
     relax_curio_delta = float(SELECT_RELAX_CURIO_DELTA_DEFAULT)
     relax_punch_delta = float(SELECT_RELAX_PUNCH_DELTA_DEFAULT)
     relax_sem_floor = float(SELECT_RELAX_SEM_FLOOR_DEFAULT)
+    relax_dynamic_enable = bool(SELECT_RELAX_DYNAMIC_ENABLE_DEFAULT)
+    relax_max_candidates = max(1, int(SELECT_RELAX_MAX_CANDIDATES_DEFAULT or 1))
     selected_curio_cutoff = float(CURIO_SELECT_CUTOFF if curio_cutoff is None else max(0.0, min(1.0, curio_cutoff)))
     selected_punch_cutoff = float(PUNCH_SELECT_CUTOFF if punch_cutoff is None else max(0.0, min(1.0, punch_cutoff)))
+    strict_min_target = max(min_target, int(SELECT_STRICT_MIN_TARGET_DEFAULT or 0))
+    transcript_items = list(transcript or [])
+    transcript_duration = 0.0
+    if transcript_items:
+        try:
+            transcript_duration = max(0.0, float(transcript_items[-1].get("end", transcript_items[-1].get("start", 0.0)) or 0.0) - float(transcript_items[0].get("start", 0.0) or 0.0))
+        except Exception:
+            transcript_duration = 0.0
+    total_words = 0
+    for item in transcript_items:
+        try:
+            total_words += len(str(item.get("text", "") or "").split())
+        except Exception:
+            pass
+    words_per_second = (float(total_words) / transcript_duration) if transcript_duration > 0.5 else 0.0
+    transcript_density = min(2.0, max(0.0, words_per_second / 2.8))
+    node_density = min(2.0, float(len(nodes)) / float(max(1, top_k * 2)))
+    avg_motion = 0.0
+    avg_audio = 0.0
+    avg_semantic = 0.0
+    if nodes:
+        avg_motion = sum(float((dict(n.metrics or {}) if isinstance(n.metrics, dict) else {}).get("motion_mean", 0.0) or 0.0) for n in nodes) / float(len(nodes))
+        avg_audio = sum(float((dict(n.metrics or {}) if isinstance(n.metrics, dict) else {}).get("audio_mean", 0.0) or 0.0) for n in nodes) / float(len(nodes))
+        avg_semantic = sum(float(getattr(n, "semantic_quality", 0.0) or 0.0) for n in nodes) / float(len(nodes))
+    content_hint = "balanced"
+    if transcript_density < 0.45 and avg_motion > 0.18 and avg_semantic < 0.55:
+        content_hint = "visual_sparse"
+    elif transcript_density > 1.15 and node_density > 1.0:
+        content_hint = "dense_talk"
+
+    if relax_dynamic_enable:
+        dynamic_relax = min(0.08, 0.03 * max(0.0, node_density - 1.0)) + min(0.06, 0.04 * max(0.0, 0.80 - transcript_density))
+        if content_hint == "dense_talk":
+            dynamic_relax += 0.02
+        relax_curio_delta = min(0.30, max(relax_curio_delta, relax_curio_delta + dynamic_relax))
+        relax_punch_delta = min(0.30, max(relax_punch_delta, relax_punch_delta + (dynamic_relax * 0.85)))
+        if content_hint == "visual_sparse":
+            relax_sem_floor = min(0.80, max(relax_sem_floor, SELECT_BASE_SEM_FLOOR + 0.02))
+        elif content_hint == "dense_talk":
+            relax_sem_floor = max(0.20, relax_sem_floor - 0.03)
 
     log.info(
-        "[DIVERSITY-CONFIG] selector mode=%s min_target=%d allow_multi_angle=%s max_overlap=%.2f relax(curio=%.2f,punch=%.2f,sem_floor=%.2f) pass_w(strict=%.2f,relaxed=%.2f)",
+        "[DIVERSITY-CONFIG] selector mode=%s min_target=%d strict_floor=%d allow_multi_angle=%s max_overlap=%.2f relax(curio=%.2f,punch=%.2f,sem_floor=%.2f) pass_w(strict=%.2f,relaxed=%.2f) density=%.2f nodes=%.2f hint=%s",
         diversity_mode,
         min_target,
+        strict_min_target,
         allow_multi_angle,
         max_overlap_ratio,
         relax_curio_delta,
@@ -2632,6 +2678,9 @@ def _select_candidate_clips_v2(
         relax_sem_floor,
         float(SELECT_STRICT_PASS_WEIGHT),
         float(SELECT_RELAX_PASS_WEIGHT),
+        transcript_density,
+        node_density,
+        content_hint,
     )
 
     def _build_candidates(curio_cutoff: float, punch_cutoff: float, sem_floor: float, pass_name: str) -> List[Dict[str, Any]]:
@@ -2714,14 +2763,46 @@ def _select_candidate_clips_v2(
             except Exception:
                 is_sarcastic, sarcasm_score = (False, 0.0)
 
+            if ("yeah right" in (n.text or "").lower()) or ("as if" in (n.text or "").lower()):
+                is_sarcastic = True
+                sarcasm_score = max(float(sarcasm_score or 0.0), 0.72)
+
             if is_sarcastic:
-                score = round(score * 0.55, 4)
+                sarcasm_penalty = 0.45 if pass_name == "relaxed" else 0.55
+                score = round(score * sarcasm_penalty, 4)
                 reason_pieces.append("sarcasm")
                 try:
                     metrics["sarcasm"] = sarcasm_score
                 except Exception:
                     pass
 
+            content_shape_penalty = 0.0
+            transcript_conf = float(metrics.get("transcript_confidence", metrics.get("confidence", 1.0)) or 1.0)
+            if content_hint == "visual_sparse" and transcript_conf < 0.55 and n.semantic_quality < 0.62:
+                content_shape_penalty = 0.10
+            elif transcript_density < 0.35 and n.curiosity_score < 0.30 and n.punch_confidence < 0.32:
+                content_shape_penalty = 0.06
+            if content_shape_penalty > 0.0:
+                score = round(max(0.0, score - content_shape_penalty), 4)
+                reason_pieces.append("content_shape")
+
+            payoff_hint = max(
+                float(metrics.get("payoff_confidence", 0.0) or 0.0),
+                float(metrics.get("completion_score", 0.0) or 0.0),
+                float(metrics.get("ending_strength", 0.0) or 0.0),
+            )
+            relaxed_readiness = round(
+                min(
+                    1.0,
+                    (0.34 * float(n.semantic_quality))
+                    + (0.22 * float(n.punch_confidence))
+                    + (0.14 * float(n.curiosity_score))
+                    + (0.10 * float(curiosity_peak))
+                    + (0.12 * float(payoff_hint))
+                    + (0.08 * (1.0 - min(1.0, float(sarcasm_score or 0.0)))),
+                ),
+                4,
+            )
             reason = " | ".join(reason_pieces) or "balanced"
             cand = {
                 "text": n.text,
@@ -2736,14 +2817,12 @@ def _select_candidate_clips_v2(
                 "fingerprint": n.fingerprint,
                 "metrics": metrics,
                 "select_pass": pass_name,
+                "sarcasm_score": round(float(sarcasm_score or 0.0), 4),
+                "content_hint": content_hint,
+                "content_shape_penalty": round(float(content_shape_penalty), 4),
+                "relaxed_readiness": relaxed_readiness,
+                "payoff_hint": round(float(payoff_hint), 4),
             }
-
-            if ensure_sentence_complete and transcript:
-                try:
-                    new_end = sentence_complete_extend(cand["start"], cand["end"], transcript)
-                    cand["end"] = float(new_end)
-                except Exception:
-                    pass
 
             pass_candidates.append(cand)
         return pass_candidates
@@ -2756,18 +2835,35 @@ def _select_candidate_clips_v2(
     )
 
     relaxed_candidates = []
-    if min_target > 0 and len(strict_candidates) < min_target and diversity_mode in ("balanced", "maximum", "max", "diverse"):
+    second_pass_target = max(min_target, strict_min_target)
+    if second_pass_target > 0 and len(strict_candidates) < second_pass_target and diversity_mode in ("balanced", "maximum", "max", "diverse"):
         relaxed_candidates = _build_candidates(
             curio_cutoff=max(0.0, selected_curio_cutoff - relax_curio_delta),
             punch_cutoff=max(0.0, selected_punch_cutoff - relax_punch_delta),
             sem_floor=max(float(relax_sem_floor), float(SELECT_BASE_SEM_FLOOR) - 0.07),
             pass_name="relaxed",
         )
+        relaxed_floor = max(0.22, min(0.72, (selected_curio_cutoff + selected_punch_cutoff) * 0.35))
+        clustered_relaxed: List[Dict[str, Any]] = []
+        relaxed_by_cluster: Dict[int, int] = {}
+        for cand in sorted(relaxed_candidates, key=lambda x: (float(x.get("relaxed_readiness", x.get("score", 0.0)) or 0.0), float(x.get("score", 0.0) or 0.0)), reverse=True):
+            if float(cand.get("relaxed_readiness", cand.get("score", 0.0)) or 0.0) < relaxed_floor:
+                continue
+            cluster_key = int(float(cand.get("start", 0.0) or 0.0) // 12.0)
+            if relaxed_by_cluster.get(cluster_key, 0) >= 1:
+                continue
+            clustered_relaxed.append(cand)
+            relaxed_by_cluster[cluster_key] = relaxed_by_cluster.get(cluster_key, 0) + 1
+            if len(clustered_relaxed) >= relax_max_candidates:
+                break
+        relaxed_candidates = clustered_relaxed
         log.info(
-            "[DIVERSITY] selector second_pass strict=%d relaxed=%d min_target=%d",
+            "[DIVERSITY] selector second_pass strict=%d relaxed=%d min_target=%d floor=%.2f cap=%d",
             len(strict_candidates),
             len(relaxed_candidates),
-            min_target,
+            second_pass_target,
+            relaxed_floor,
+            relax_max_candidates,
         )
 
     candidates_by_fp = {}
@@ -2846,6 +2942,13 @@ def _select_candidate_clips_v2(
         used_ranges.append((s, e, c.get("label")))
         if len(final) >= top_k:
             break
+
+    if ensure_sentence_complete and transcript_items:
+        for cand in final:
+            try:
+                cand["end"] = float(sentence_complete_extend(cand["start"], cand["end"], transcript_items))
+            except Exception:
+                pass
 
     log.info("[SELECT] final_candidates=%d (top_k=%d)", len(final), top_k)
     if len(nodes) >= 3 and len(final) < 2:

@@ -22,6 +22,7 @@ import math
 import hashlib
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
@@ -297,6 +298,25 @@ def _env_float(name: str, default: float) -> float:
         return float(raw)
     except Exception:
         return float(default)
+
+
+def _candidate_cache_tolerance_s() -> float:
+    return max(0.1, _env_float("HS_ORCH_NARRATIVE_CACHE_TOLERANCE_S", 0.5))
+
+
+def _stable_text_fingerprint(text: str) -> str:
+    payload = str(text or "").strip().lower().encode("utf-8", "ignore")
+    return hashlib.md5(payload).hexdigest()[:12]
+
+
+def _normalized_candidate_cache_key(candidate: Dict[str, Any], transcript_len: int, tolerance_s: Optional[float] = None) -> str:
+    tol = max(0.1, float(tolerance_s or _candidate_cache_tolerance_s()))
+    start = float(candidate.get("start", 0.0) or 0.0)
+    end = float(candidate.get("end", start) or start)
+    start_q = round(start / tol) * tol
+    end_q = round(end / tol) * tol
+    fingerprint = candidate.get("fingerprint") or _stable_text_fingerprint(candidate.get("text", ""))
+    return f"{transcript_len}:{round(start_q, 2)}:{round(end_q, 2)}:{fingerprint}"
 
 
 IS_RENDER_RUNTIME = (
@@ -667,7 +687,109 @@ def _shadow_metrics(godmode: List[Dict], legacy: List[Dict], top_k: int, target_
 # Enrichment (parallel-friendly)
 # -------------------------
 
-def enrich_candidate(candidate: Dict, aud: List[Dict], vis: List[Dict], brain) -> Dict:
+def _cheap_candidate_score(candidate: Dict[str, Any]) -> float:
+    metrics = candidate.get("metrics", {}) or {}
+    curiosity = _clamp01(candidate.get("curiosity", 0.0))
+    punch = _clamp01(candidate.get("punch_confidence", 0.0))
+    semantic = _clamp01(candidate.get("semantic_quality", candidate.get("score", 0.0)))
+    payoff_hint = _clamp01(candidate.get("payoff_hint", metrics.get("payoff_confidence", 0.0)))
+    curiosity_peak = _clamp01(metrics.get("curiosity_peak", candidate.get("curiosity", 0.0)))
+    hook_strength = _clamp01(candidate.get("hook_strength", candidate.get("score", 0.0)))
+    sarcasm_penalty = 1.0 - min(0.65, _clamp01(candidate.get("sarcasm_score", metrics.get("sarcasm", 0.0))) * 0.75)
+    score = (
+        (0.28 * semantic)
+        + (0.22 * punch)
+        + (0.18 * curiosity)
+        + (0.14 * curiosity_peak)
+        + (0.10 * payoff_hint)
+        + (0.08 * hook_strength)
+    )
+    return round(float(_clamp01(score) * sarcasm_penalty), 4)
+
+
+def _prepare_candidates_for_enrichment(ctx: "PipelineContext") -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    candidates = dedupe_by_time(list(ctx.raw_candidates or []), time_tol=_candidate_cache_tolerance_s())
+    top_k = max(1, int(ctx.top_k or 1))
+    budget_default = max(top_k * 3, top_k + 4)
+    budget = max(top_k, _env_int("HS_SELECTOR_PRE_ENRICH_BUDGET", budget_default))
+    strict_first = _env_bool("HS_ORCH_ENRICH_STRICT_FIRST", True)
+    relaxed_cap = max(1, _env_int("HS_SELECTOR_RELAX_MAX_CANDIDATES", max(2, top_k)))
+    reserved_relaxed = min(relaxed_cap, max(1, budget // 3))
+    reserved_hooks = min(max(1, top_k // 2), max(1, budget // 4))
+
+    strict_candidates: List[Dict[str, Any]] = []
+    relaxed_candidates: List[Dict[str, Any]] = []
+    hook_candidates: List[Dict[str, Any]] = []
+    for cand in candidates:
+        enriched = dict(cand)
+        enriched["pre_enrich_score"] = _cheap_candidate_score(enriched)
+        if bool(enriched.get("hook_seed")):
+            hook_candidates.append(enriched)
+        elif str(enriched.get("select_pass", "strict") or "strict") == "relaxed":
+            relaxed_candidates.append(enriched)
+        else:
+            strict_candidates.append(enriched)
+
+    strict_candidates.sort(key=lambda x: float(x.get("pre_enrich_score", x.get("score", 0.0)) or 0.0), reverse=True)
+    relaxed_candidates.sort(
+        key=lambda x: (
+            float(x.get("pre_enrich_score", x.get("score", 0.0)) or 0.0),
+            float(x.get("relaxed_readiness", x.get("score", 0.0)) or 0.0),
+        ),
+        reverse=True,
+    )
+    hook_candidates.sort(key=lambda x: float(x.get("pre_enrich_score", x.get("score", 0.0)) or 0.0), reverse=True)
+
+    selected: List[Dict[str, Any]] = []
+    if strict_first:
+        strict_budget = min(len(strict_candidates), budget)
+        selected.extend(strict_candidates[:strict_budget])
+        remaining = max(0, budget - len(selected))
+        if remaining > 0:
+            selected.extend(relaxed_candidates[: min(reserved_relaxed, remaining)])
+            remaining = max(0, budget - len(selected))
+        if remaining > 0:
+            selected.extend(hook_candidates[: min(reserved_hooks, remaining)])
+    else:
+        merged = sorted(
+            strict_candidates + relaxed_candidates + hook_candidates,
+            key=lambda x: float(x.get("pre_enrich_score", x.get("score", 0.0)) or 0.0),
+            reverse=True,
+        )
+        selected = merged[:budget]
+
+    if len(selected) < min(len(candidates), budget):
+        existing_keys = {
+            _normalized_candidate_cache_key(item, len(ctx.transcript or []))
+            for item in selected
+        }
+        fallback_pool = strict_candidates + relaxed_candidates + hook_candidates
+        for cand in fallback_pool:
+            cache_key = _normalized_candidate_cache_key(cand, len(ctx.transcript or []))
+            if cache_key in existing_keys:
+                continue
+            selected.append(cand)
+            existing_keys.add(cache_key)
+            if len(selected) >= min(len(candidates), budget):
+                break
+
+    pass_counts = Counter(str(c.get("select_pass", "strict") or "strict") for c in selected if not c.get("hook_seed"))
+    return selected, {
+        "budget": budget,
+        "strict_first": 1 if strict_first else 0,
+        "input_candidates": len(candidates),
+        "strict_candidates": len(strict_candidates),
+        "relaxed_candidates": len(relaxed_candidates),
+        "hook_candidates": len(hook_candidates),
+        "selected_candidates": len(selected),
+        "selected_strict": int(pass_counts.get("strict", 0)),
+        "selected_relaxed": int(pass_counts.get("relaxed", 0)),
+        "selected_hooks": sum(1 for c in selected if c.get("hook_seed")),
+        "filtered_out": max(0, len(candidates) - len(selected)),
+    }
+
+
+def enrich_candidate(candidate: Dict, aud: List[Dict], vis: List[Dict], brain, cache_bucket: Optional[Dict[str, Any]] = None) -> Dict:
     """Add audio/motion/brain/semantic fields to a candidate dict.
     Runs fast local fallbacks when heavy models are missing.
     """
@@ -677,10 +799,15 @@ def enrich_candidate(candidate: Dict, aud: List[Dict], vis: List[Dict], brain) -
     except Exception:
         a_avg = 0.0; m_avg = 0.0
 
-    try:
-        impact, meaning, novelty, emotion, clarity = _runtime_ultron_brain_score(candidate.get('text','') or '', brain)
-    except Exception:
-        impact = meaning = novelty = emotion = clarity = 0.0
+    semantic_cache = cache_bucket if isinstance(cache_bucket, dict) else {}
+    semantic_tuple = semantic_cache.get("semantic")
+    if not semantic_tuple:
+        try:
+            semantic_tuple = _runtime_ultron_brain_score(candidate.get('text','') or '', brain)
+        except Exception:
+            semantic_tuple = (0.0, 0.0, 0.0, 0.0, 0.0)
+        semantic_cache["semantic"] = semantic_tuple
+    impact, meaning, novelty, emotion, clarity = semantic_tuple
 
     # fuse -> classic energy
     classic = fuse(0.05 + candidate.get('hook', 0.0), a_avg, m_avg)
@@ -794,6 +921,7 @@ class PipelineContext:
     final_candidates: List[Dict[str, Any]] = field(default_factory=list)
     ranked_output: List[Dict[str, Any]] = field(default_factory=list)
     narrative_score_cache: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    candidate_feature_cache: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     brain: Any = None
     stage_stats: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     transcript_source: str = "unknown"
@@ -1079,7 +1207,15 @@ def _run_candidate_generation(ctx: PipelineContext) -> None:
             log.warning("[ORCH] candidate generation degraded: %s", exc)
             candidates = []
     ctx.raw_candidates = candidates
-    _record_stage(ctx, "L5_CANDIDATE_GENERATION", produced=len(candidates), wall_s=round(time.time() - t0, 3))
+    pass_counts = Counter(str(c.get("select_pass", "strict") or "strict") for c in candidates if not c.get("hook_seed"))
+    _record_stage(
+        ctx,
+        "L5_CANDIDATE_GENERATION",
+        produced=len(candidates),
+        strict=int(pass_counts.get("strict", 0)),
+        relaxed=int(pass_counts.get("relaxed", 0)),
+        wall_s=round(time.time() - t0, 3),
+    )
 
 
 def _run_global_hook_hunter(ctx: PipelineContext) -> None:
@@ -1129,7 +1265,12 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
         if seg_end <= seg_start:
             continue
         seg_text = str(seg.get("text", "") or "").strip()
-        seg_scores = compute_quality_scores(transcript, seg_start, seg_end) if compute_quality_scores else {}
+        cache_key = _normalized_candidate_cache_key({"start": seg_start, "end": seg_end, "text": seg_text}, len(transcript))
+        cache_bucket = ctx.candidate_feature_cache.setdefault(cache_key, {})
+        seg_scores = cache_bucket.get("narrative")
+        if seg_scores is None:
+            seg_scores = compute_quality_scores(transcript, seg_start, seg_end) if compute_quality_scores else {}
+            cache_bucket["narrative"] = dict(seg_scores or {})
         hook_score = _clamp01(seg_scores.get("hook_score", 0.0))
         pattern_break_score = _clamp01(seg_scores.get("pattern_break_score", 0.0))
         open_loop_score = _clamp01(seg_scores.get("open_loop_score", 0.0))
@@ -1200,7 +1341,7 @@ def _estimate_insight_count(text: str) -> int:
 
 
 def _extract_narrative_scores(transcript: List[Dict[str, Any]], cand: Dict[str, Any]) -> Dict[str, float]:
-    cache_obj = cand.get("_narr_cache")
+    cache_obj = cand.get("_feature_cache")
     cache = cache_obj if isinstance(cache_obj, dict) else None
     if not compute_quality_scores:
         return {}
@@ -1209,13 +1350,12 @@ def _extract_narrative_scores(transcript: List[Dict[str, Any]], cand: Dict[str, 
         e = float(cand.get("end", s) or s)
         if not transcript or e <= s:
             return {}
-        cache_key = f"{round(s, 2)}:{round(e, 2)}:{len(transcript)}"
-        if cache is not None and cache_key in cache:
-            return dict(cache[cache_key])
+        if cache is not None and "narrative" in cache:
+            return dict(cache["narrative"])
         payload = compute_quality_scores(transcript, s, e) or {}
         norm = {k: _clamp01(v) for k, v in payload.items() if isinstance(v, (int, float))}
         if cache is not None:
-            cache[cache_key] = dict(norm)
+            cache["narrative"] = dict(norm)
         return norm
     except Exception:
         return {}
@@ -1238,9 +1378,18 @@ def _run_enrichment(ctx: PipelineContext) -> None:
     enable_alignment = _env_bool("HS_ENABLE_ALIGNMENT_SCORING", True)
     enable_tension_gradient = _env_bool("HS_ENABLE_TENSION_GRADIENT", True)
     enable_viral_density = _env_bool("HS_ENABLE_VIRAL_DENSITY", True)
-    for c in (ctx.raw_candidates or []):
+    selected_candidates, budget_stats = _prepare_candidates_for_enrichment(ctx)
+    narrative_cache_hits = 0
+    semantic_cache_hits = 0
+    for c in selected_candidates:
         cand = dict(c)
-        cand["_narr_cache"] = ctx.narrative_score_cache
+        cache_key = _normalized_candidate_cache_key(cand, len(ctx.transcript or []))
+        cache_bucket = ctx.candidate_feature_cache.setdefault(cache_key, {})
+        if "narrative" in cache_bucket:
+            narrative_cache_hits += 1
+        if "semantic" in cache_bucket:
+            semantic_cache_hits += 1
+        cand["_feature_cache"] = cache_bucket
         cand_start = float(cand.get("start", 0.0) or 0.0)
         cand_end = float(cand.get("end", cand_start) or cand_start)
         overlapping_triggers = []
@@ -1255,9 +1404,11 @@ def _run_enrichment(ctx: PipelineContext) -> None:
             cand_end = min(media_end, cand_end + 4.0)
             cand["start"] = round(cand_start, 2)
             cand["end"] = round(max(cand_start + 0.01, cand_end), 2)
+            cache_key = _normalized_candidate_cache_key(cand, len(ctx.transcript or []))
+            cache_bucket = ctx.candidate_feature_cache.setdefault(cache_key, cache_bucket)
 
         cand.setdefault("score_base", float(cand.get("score", 0.0) or 0.0))
-        cand = enrich_candidate(cand, ctx.audio_features, ctx.visual_features, ctx.brain)
+        cand = enrich_candidate(cand, ctx.audio_features, ctx.visual_features, ctx.brain, cache_bucket=cache_bucket)
         semantic_quality = float(cand.get("semantic_quality", cand.get("score_base", 0.0)) or 0.0)
         score_enriched = (
             0.40 * float(cand.get("impact", 0.0) or 0.0) +
@@ -1334,7 +1485,7 @@ def _run_enrichment(ctx: PipelineContext) -> None:
         cand["alignment_score"] = alignment_score
         cand["viral_density"] = viral_density
         cand["duration_s"] = duration_s
-        cand.pop("_narr_cache", None)
+        cand.pop("_feature_cache", None)
         cand["provenance"] = {"stage": "L7_SIGNAL_ENRICHMENT"}
         out.append(cand)
     # Aggregated Ultron semantic output summary into orchestrator logs.
@@ -1357,6 +1508,14 @@ def _run_enrichment(ctx: PipelineContext) -> None:
         ctx,
         "L7_SIGNAL_ENRICHMENT",
         produced=len(out),
+        input_candidates=int(budget_stats.get("input_candidates", len(ctx.raw_candidates or []))),
+        selected_candidates=int(budget_stats.get("selected_candidates", len(selected_candidates))),
+        selected_strict=int(budget_stats.get("selected_strict", 0)),
+        selected_relaxed=int(budget_stats.get("selected_relaxed", 0)),
+        selected_hooks=int(budget_stats.get("selected_hooks", 0)),
+        filtered_out=int(budget_stats.get("filtered_out", 0)),
+        narrative_cache_hits=narrative_cache_hits,
+        semantic_cache_hits=semantic_cache_hits,
         avg_alignment=round(sum(float(c.get("alignment_score", 0.0) or 0.0) for c in out) / float(max(1, len(out))), 4),
         signal_completeness_ratio=round(
             sum(1 for c in out if all(k in c.get("signals", {}) for k in ("psychology", "semantic", "narrative", "engagement")))
@@ -1462,11 +1621,16 @@ def _run_validation(ctx: PipelineContext) -> None:
     ctx.enriched_candidates = accepted
     ctx.validated_candidates = list(accepted or [])
     ctx.rejected_candidates = rejected
+    reject_counter = Counter()
+    for cand in rejected:
+        for reason in ((cand.get("validation", {}) or {}).get("reasons", []) or []):
+            reject_counter[str(reason)] += 1
     _record_stage(
         ctx,
         "L8_VALIDATION_GATES",
         accepted=len(accepted),
         rejected=len(rejected),
+        reject_reasons=dict(sorted(reject_counter.items())),
         wall_s=round(time.time() - t0, 3),
     )
 
@@ -1560,6 +1724,7 @@ def _run_ranking(ctx: PipelineContext) -> None:
         "L9_CLIP_SELECTOR_RANKING",
         ranked=len(ranked),
         returned=len(final),
+        final_pass_provenance=dict(sorted(Counter(str(c.get("select_pass", "strict") or "strict") for c in final if not c.get("hook_seed")).items())),
         avg_viral_score=round(sum(float(c.get("viral_score", 0.0) or 0.0) for c in final) / float(max(1, len(final))), 4),
         wall_s=round(time.time() - t0, 3),
     )

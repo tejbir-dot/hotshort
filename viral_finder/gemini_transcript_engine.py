@@ -66,6 +66,8 @@ VAD_PREGATE = os.environ.get("HS_VAD_PREGATE", "0").strip().lower() in ("1", "tr
 VAD_BENCH = os.environ.get("HS_VAD_BENCH", "0").strip().lower() in ("1", "true", "yes", "on")
 VAD_COMPARE = os.environ.get("HS_VAD_COMPARE", "0").strip().lower() in ("1", "true", "yes", "on")
 HS_TWO_PASS = os.environ.get("HS_TWO_PASS", "0").strip().lower() in ("1", "true", "yes", "on")
+HS_AUTO_TWO_PASS_GPU = os.environ.get("HS_AUTO_TWO_PASS_GPU", "1").strip().lower() in ("1", "true", "yes", "on")
+HS_AUTO_TWO_PASS_MAX_SECONDS = float(os.environ.get("HS_AUTO_TWO_PASS_MAX_SECONDS", "720") or 720.0)
 HS_FORCE_BASELINE = os.environ.get("HS_FORCE_BASELINE", "0").strip().lower() in ("1", "true", "yes", "on")
 HS_TWO_PASS_MAX_WINDOW_SECONDS = float(os.environ.get("HS_TWO_PASS_MAX_WINDOW_SECONDS", "26") or 26.0)
 HS_TWO_PASS_MIN_WINDOW_SECONDS = float(os.environ.get("HS_TWO_PASS_MIN_WINDOW_SECONDS", "10") or 10.0)
@@ -74,7 +76,7 @@ HS_TWO_PASS_LOGPROB_MIN = float(os.environ.get("HS_TWO_PASS_LOGPROB_MIN", "-1.10
 HS_TWO_PASS_WORDS_PER_SEC_MIN = float(os.environ.get("HS_TWO_PASS_WORDS_PER_SEC_MIN", "1.10") or 1.10)
 HS_TWO_PASS_BASELINE_COMPARE = os.environ.get("HS_TWO_PASS_BASELINE_COMPARE", "0").strip().lower() in ("1", "true", "yes", "on")
 VAD_TURBO_ABOVE_SECONDS = float(os.environ.get("HS_VAD_TURBO_ABOVE_SECONDS", "300") or 300)  # 5m
-VAD_SKIP_ABOVE_SECONDS = float(os.environ.get("HS_VAD_SKIP_ABOVE_SECONDS", "900") or 900)    # 15m
+VAD_SKIP_ABOVE_SECONDS = float(os.environ.get("HS_VAD_SKIP_ABOVE_SECONDS", "1800") or 1800)    # 30m
 VAD_SMART_SKIP_ENABLED = os.environ.get("HS_VAD_SMART_SKIP_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
 VAD_SMART_MIN_SECONDS = float(os.environ.get("HS_VAD_SMART_MIN_SECONDS", "300") or 300)  # 5m
 VAD_SMART_MAX_SECONDS = float(os.environ.get("HS_VAD_SMART_MAX_SECONDS", "900") or 900)  # 15m
@@ -616,8 +618,9 @@ def _transcribe_two_pass_accelerated(
         overlap = _token_overlap(prev_text, text) if i > 0 else 1.0
         first_seg_start = float(segs[0]["start"]) if segs else float(ws)
         drift = abs(first_seg_start - float(ws))
-        # Treat large temporal gaps between chunks as potential drift boundaries.
-        if prev_end is not None and ws < prev_end:
+        # Only penalize real uncovered gaps between chunk windows.
+        # Overlap is intentional in two-pass mode and should not force HQ re-decode.
+        if prev_end is not None and ws > prev_end:
             drift = max(drift, abs(ws - prev_end))
         needs_hq = (
             _looks_hook_cta_or_punch(text)
@@ -849,8 +852,17 @@ def transcribe_turbo(
         _log("INFO", "[BASELINE] HS_FORCE_BASELINE=1 -> using baseline VAD-only transcription.")
         return _transcribe_baseline_vad(model, path, use_vad, vad_params)
 
-    if HS_TWO_PASS:
+    auto_two_pass = (
+        HS_AUTO_TWO_PASS_GPU
+        and device == "cuda"
+        and audio_duration > 0
+        and audio_duration <= HS_AUTO_TWO_PASS_MAX_SECONDS
+        and str(model_name or "").strip().lower() not in {"tiny", "tiny.en"}
+    )
+    if HS_TWO_PASS or auto_two_pass:
         try:
+            if auto_two_pass and not HS_TWO_PASS:
+                _log("INFO", f"[TWO-PASS] auto-enabled on GPU (duration={audio_duration:.2f}s model={model_name})")
             return _transcribe_two_pass_accelerated(
                 model=model,
                 path=path,

@@ -20,7 +20,13 @@ class Config:
     GOOGLE_OAUTH_CLIENT_SECRET_LOCAL = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_LOCAL", "")
     GOOGLE_OAUTH_CLIENT_ID_PROD = os.getenv("GOOGLE_OAUTH_CLIENT_ID_PROD", "")
     GOOGLE_OAUTH_CLIENT_SECRET_PROD = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_PROD", "")
-    EXTERNAL_BASE_URL = (os.getenv("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+    FRONTEND_URL = (os.getenv("FRONTEND_URL") or "").strip().rstrip("/")
+    BACKEND_URL = (os.getenv("BACKEND_URL") or os.getenv("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+    EXTERNAL_BASE_URL = (os.getenv("EXTERNAL_BASE_URL") or os.getenv("BACKEND_URL") or "").strip().rstrip("/")
+    SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+    SESSION_COOKIE_SECURE = (os.getenv("SESSION_COOKIE_SECURE", "0").strip().lower() in ("1", "true", "yes", "on"))
+    REMEMBER_COOKIE_SAMESITE = os.getenv("REMEMBER_COOKIE_SAMESITE", SESSION_COOKIE_SAMESITE)
+    REMEMBER_COOKIE_SECURE = (os.getenv("REMEMBER_COOKIE_SECURE", "0").strip().lower() in ("1", "true", "yes", "on"))
 
     # Stripe
     STRIPE_PUBLIC_KEY = os.getenv("STRIPE_PUBLIC_KEY", "")
