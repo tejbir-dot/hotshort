@@ -16,4 +16,4 @@ RUN pip install --upgrade pip
 # 👇 IMPORTANT FIX
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["python", "runpod_worker.py"]
+CMD ["python", "runpodworker.py"]

@@ -156,11 +156,12 @@
     <h1>✨ Join HotShort Studio</h1>
     <p>Turn your ideas into viral clips.</p>
     <form method="POST">
+      <input type="hidden" name="next" value="{{ next_target|default('/dashboard') }}" />
       <input type="email" name="email" placeholder="Email" required />
       <input type="password" name="password" placeholder="Password" required />
       <button type="submit">Sign Up</button>
     </form>
-    <p>Already have an account? <a href="/auth/login">Login</a></p>
+    <p>Already have an account? <a href="https://insectival-malaysia-redundant.ngrok-free.dev/auth/login?next={{ next_target|default('/dashboard')|urlencode }}">Login</a></p>
   </div>
 </body>
 </html>

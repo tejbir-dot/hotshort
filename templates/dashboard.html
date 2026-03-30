@@ -3,6 +3,30 @@
 {% block title %}Dashboard · HotShort Studio{% endblock %}
 
 {% block content %}
+<script>
+  async function requireAuth() {
+    try {
+      const res = await fetch('https://insectival-malaysia-redundant.ngrok-free.dev/auth/session', {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (!res.ok) {
+        window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent('/dashboard');
+        return;
+      }
+
+      const data = await res.json().catch(() => null);
+      if (!data || !data.logged_in) {
+        window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent('/dashboard');
+      }
+    } catch (err) {
+      window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent('/dashboard');
+    }
+  }
+
+  requireAuth();
+</script>
 <style>
   /* =====================================
      ELITE DASHBOARD: Glassy & Animated
@@ -54,6 +78,46 @@
   .glossy-bg::after { transform: rotate(180deg); animation-delay: -7s; }
   
   @keyframes glossySpin { to { transform: rotate(360deg); } }
+
+  body.dashboard-aurora::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 12% 22%, rgba(100, 180, 255, 0.24), transparent 42%),
+      radial-gradient(circle at 82% 28%, rgba(185, 100, 255, 0.22), transparent 44%),
+      radial-gradient(circle at 50% 78%, rgba(255, 210, 100, 0.18), transparent 46%);
+    animation: dashboardAuroraFill 2.5s ease-in-out infinite;
+    opacity: 1;
+  }
+
+  body.dashboard-aurora::after {
+    content: "";
+    position: fixed;
+    inset: -12%;
+    z-index: 1;
+    pointer-events: none;
+    background:
+      conic-gradient(from 0deg, rgba(255, 189, 89, 0.12), rgba(92, 185, 255, 0.14), rgba(200, 107, 255, 0.16), rgba(255, 189, 89, 0.12));
+    filter: blur(42px);
+    mix-blend-mode: screen;
+    animation: dashboardAuroraSweep 5.4s linear infinite;
+    opacity: 0.72;
+  }
+
+  @keyframes dashboardAuroraFill {
+    0% { filter: hue-rotate(0deg) blur(12px); opacity: 0.42; }
+    50% { filter: hue-rotate(35deg) blur(18px); opacity: 0.62; }
+    100% { filter: hue-rotate(0deg) blur(12px); opacity: 0.42; }
+  }
+
+  @keyframes dashboardAuroraSweep {
+    from { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(180deg) scale(1.04); }
+    to { transform: rotate(360deg) scale(1); }
+  }
 
   /* Page wrapper */
   main {
@@ -190,25 +254,94 @@
     display: block !important;
   }
 
+  .loader-visual {
+    position: relative;
+    width: min(220px, 72vw);
+    margin: 0 auto 18px;
+    padding: 14px;
+    border-radius: 28px;
+    background:
+      radial-gradient(circle at 50% 20%, rgba(255, 190, 95, 0.14), transparent 52%),
+      radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.08), transparent 56%),
+      linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255, 215, 170, 0.12);
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.42),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+    overflow: hidden;
+  }
+
+  .loader-visual::before {
+    content: "";
+    position: absolute;
+    inset: 10% 18%;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(255, 191, 82, 0.18), transparent 70%);
+    filter: blur(16px);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
+  .loader-animation {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 22px;
+    mix-blend-mode: screen;
+    filter:
+      saturate(1.04)
+      contrast(1.06)
+      drop-shadow(0 0 22px rgba(255, 196, 112, 0.12));
+  }
+
   .wave {
+    position: relative;
+    overflow: hidden;
     width: 240px;
-    height: 6px;
+    height: 8px;
     margin: 0 auto 18px;
     border-radius: 999px;
     background: linear-gradient(
       90deg,
-      rgba(255,215,160,0.2),
-      rgba(255,215,160,0.95),
-      rgba(255,215,160,0.2)
+      rgba(255, 194, 94, 0.16),
+      rgba(255, 244, 210, 0.92),
+      rgba(255, 194, 94, 0.16)
     );
-    background-size: 200% 100%;
-    animation: waveMove 1.8s ease-in-out infinite;
-    box-shadow: 0 0 20px rgba(255,215,160,0.4);
+    background-size: 240% 100%;
+    animation: waveMove 1.6s ease-in-out infinite;
+    box-shadow:
+      0 0 20px rgba(255, 215, 160, 0.45),
+      0 0 46px rgba(255, 176, 71, 0.18);
+  }
+
+  .wave::before {
+    content: "";
+    position: absolute;
+    inset: -40% -18%;
+    background: linear-gradient(
+      115deg,
+      transparent 20%,
+      rgba(255, 255, 255, 0.04) 34%,
+      rgba(255, 255, 255, 0.88) 50%,
+      rgba(255, 237, 188, 0.72) 58%,
+      transparent 74%
+    );
+    filter: blur(1px);
+    transform: translateX(-65%);
+    animation: waveShimmer 1.45s ease-in-out infinite;
   }
 
   @keyframes waveMove {
     0% { background-position: 0% 0; }
     100% { background-position: 200% 0; }
+  }
+
+  @keyframes waveShimmer {
+    0% { transform: translateX(-68%); opacity: 0.2; }
+    45% { opacity: 1; }
+    100% { transform: translateX(72%); opacity: 0.18; }
   }
 
   #loaderText {
@@ -217,6 +350,24 @@
     opacity: 0.85;
     color: var(--gold-100);
     font-weight: 500;
+    margin: 0;
+  }
+
+  .loader-caption {
+    margin: 0 auto 10px;
+    max-width: 420px;
+    font-size: 0.74rem;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: rgba(255, 236, 205, 0.52);
+  }
+
+  .loader-subtext {
+    margin: 10px auto 0;
+    max-width: 460px;
+    font-size: 0.82rem;
+    color: rgba(255, 235, 214, 0.68);
+    letter-spacing: 0.01em;
   }
   
   /* AI Thinking Pulse */
@@ -226,6 +377,24 @@
     transform: translateY(-1px);
     cursor: wait;
     opacity: 0.98;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .input-bar button.thinking::after {
+    content: "";
+    position: absolute;
+    inset: -16%;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      18deg,
+      rgba(255, 186, 63, 0.34),
+      rgba(86, 184, 255, 0.34),
+      rgba(187, 97, 255, 0.34)
+    );
+    filter: blur(8px);
+    animation: dashboardButtonAurora 1.8s ease-in-out infinite;
   }
 
   @keyframes thinkingPulse {
@@ -234,10 +403,25 @@
     100% { box-shadow: 0 8px 20px rgba(255,180,70,0.15); transform: translateY(0); }
   }
 
+  @keyframes dashboardButtonAurora {
+    0% { transform: translateX(-45%) rotate(0deg); opacity: 0.34; }
+    50% { transform: translateX(45%) rotate(2deg); opacity: 0.54; }
+    100% { transform: translateX(-45%) rotate(0deg); opacity: 0.34; }
+  }
+
   /* Loader subtle thinking enhancement */
   #loader.thinking .wave {
     box-shadow: 0 0 30px rgba(255,215,160,0.55);
-    animation-duration: 1.4s;
+    animation-duration: 1.2s;
+  }
+
+  #loader.thinking .loader-visual {
+    transform: translateY(-1px) scale(1.01);
+    box-shadow:
+      0 24px 70px rgba(0, 0, 0, 0.5),
+      0 0 42px rgba(255, 191, 82, 0.12),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
   }
 
   /* Disabled analyze button visual */
@@ -287,8 +471,9 @@
       justify-content: center;
     }
 
+    .loader-visual,
     .wave {
-      width: min(240px, 72vw);
+      width: min(220px, 72vw);
     }
   }
 
@@ -325,8 +510,17 @@
   </div>
 
   <div id="loader" class="loader" aria-hidden="true">
+    <p class="loader-caption">HotShort Intelligence</p>
+    <div class="loader-visual">
+      <img
+        class="loader-animation"
+        src="{{ url_for('static', filename='media/hotshort-thinking.gif') }}"
+        alt="HotShort AI analyzing video structure"
+      />
+    </div>
     <div class="wave"></div>
     <p id="loaderText">Analyzing video… this may take 30-60 seconds</p>
+    <p class="loader-subtext">Signal emerging from noise. Hooks, insights, and structure are being assembled.</p>
   </div>
 </section>
 

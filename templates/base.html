@@ -143,10 +143,10 @@
   </style>
 
   <!-- JS -->
-  <script defer src="{{ url_for('static', filename='js/dashboard.js', v='20260301a') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/dashboard.js', v='20260401a') }}"></script>
 </head>
 
-<body data-user-auth="{{ '1' if current_user.is_authenticated else '0' }}">
+<body data-user-auth="{{ '1' if current_user.is_authenticated else '0' }}" data-backend-url="https://insectival-malaysia-redundant.ngrok-free.dev">
 
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>

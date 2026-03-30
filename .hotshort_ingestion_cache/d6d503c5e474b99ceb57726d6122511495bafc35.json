@@ -1,0 +1,700 @@
+{
+  "saved_at": 1775060017.2764804,
+  "signature": "678597f53d0cf4d7674772b7720183811657a2e9",
+  "source_url_hash": "d6d503c5e474b99ceb57726d6122511495bafc35",
+  "metadata": {
+    "video_id": "Y3VZh05_7LI",
+    "title": "",
+    "duration": 0,
+    "thumbnail": ""
+  },
+  "source_transcript_segments": [
+    {
+      "start": 0.0,
+      "end": 4.08,
+      "text": "So I've been running this AI agent on my phone for the past few weeks."
+    },
+    {
+      "start": 4.08,
+      "end": 6.16,
+      "text": "I literally messaged it on Telegram."
+    },
+    {
+      "start": 6.16,
+      "end": 7.28,
+      "text": "I tell it what I need."
+    },
+    {
+      "start": 7.28,
+      "end": 14.72,
+      "text": "I can say, Hey, research the top five trending products in the pet accessories niche and give me supplier price estimate."
+    },
+    {
+      "start": 14.72,
+      "end": 21.12,
+      "text": "And just like that, it goes out and does all that work while I'm at the gym or eating dinner or just tune whatever I want."
+    },
+    {
+      "start": 21.12,
+      "end": 22.72,
+      "text": "It runs 24 seven."
+    },
+    {
+      "start": 22.72,
+      "end": 23.76,
+      "text": "It doesn't sleep."
+    },
+    {
+      "start": 23.3,
+      "end": 28.78,
+      "text": "sleep, it cost me like seven bucks a month, and I honestly set the whole thing up in two"
+    },
+    {
+      "start": 23.76,
+      "end": 24.72,
+      "text": "It cost me like."
+    },
+    {
+      "start": 28.78,
+      "end": 29.78,
+      "text": "minutes."
+    },
+    {
+      "start": 29.78,
+      "end": 33.62,
+      "text": "If you just stick with me for the next few minutes, I'm going to show you exactly how"
+    },
+    {
+      "start": 33.62,
+      "end": 34.86,
+      "text": "you can do this too."
+    },
+    {
+      "start": 34.86,
+      "end": 37.42,
+      "text": "So quick context, this is called Open Claw."
+    },
+    {
+      "start": 37.42,
+      "end": 38.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 38.42,
+      "end": 39.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 39.42,
+      "end": 40.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 40.42,
+      "end": 41.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 41.42,
+      "end": 42.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 42.42,
+      "end": 43.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 43.42,
+      "end": 44.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 44.42,
+      "end": 45.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 45.42,
+      "end": 46.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 46.42,
+      "end": 47.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 47.42,
+      "end": 48.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 48.42,
+      "end": 49.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 49.42,
+      "end": 50.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 50.42,
+      "end": 51.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 50.68,
+      "end": 54.8,
+      "text": "manage files, automate tasks, handle workflows,"
+    },
+    {
+      "start": 51.42,
+      "end": 52.42,
+      "text": "Open Claw."
+    },
+    {
+      "start": 54.8,
+      "end": 56.44,
+      "text": "save things in your Google Drive."
+    },
+    {
+      "start": 56.44,
+      "end": 60.6,
+      "text": "Think of it like a virtual employee that's always on."
+    },
+    {
+      "start": 60.6,
+      "end": 62.48,
+      "text": "The problem, and quite honestly,"
+    },
+    {
+      "start": 62.48,
+      "end": 65.32,
+      "text": "why I didn't make a tutorial about this before,"
+    },
+    {
+      "start": 65.32,
+      "end": 67.72,
+      "text": "is because setting up Open Claw"
+    },
+    {
+      "start": 67.72,
+      "end": 70.52,
+      "text": "used to be a complete nightmare."
+    },
+    {
+      "start": 70.52,
+      "end": 72.8,
+      "text": "I mean, you needed to buy a separate computer"
+    },
+    {
+      "start": 72.8,
+      "end": 75.92,
+      "text": "like a Mac Mini, a server, API keys,"
+    },
+    {
+      "start": 75.92,
+      "end": 78.12,
+      "text": "docking containers, terminal commands,"
+    },
+    {
+      "start": 78.12,
+      "end": 79.48,
+      "text": "basically a bunch of shit"
+    },
+    {
+      "start": 79.32,
+      "end": 85.0,
+      "text": "that scares off anyone who isn't a developer but the tool that I found handles all of this for you"
+    },
+    {
+      "start": 79.48,
+      "end": 80.88,
+      "text": "that scares off anyone who..."
+    },
+    {
+      "start": 85.0,
+      "end": 90.76,
+      "text": "including security like one click and it's all live if you're running an e-commerce business or"
+    },
+    {
+      "start": 90.76,
+      "end": 95.64,
+      "text": "just any online business or trying to start one there's a ton of repetitive work that eats into"
+    },
+    {
+      "start": 95.64,
+      "end": 101.48,
+      "text": "your day you know product research, competitor monitoring, writing ad copy, drafting emails,"
+    },
+    {
+      "start": 101.48,
+      "end": 105.96,
+      "text": "organizing data, I used to do all of that work manually. Now the platform I used"
+    },
+    {
+      "start": 104.51,
+      "end": 108.29,
+      "text": "Now, the platform I use for all of this is called Hostinger."
+    },
+    {
+      "start": 108.29,
+      "end": 112.51,
+      "text": "They have a dedicated OpenCloud product where they handle all the server stuff."
+    },
+    {
+      "start": 112.51,
+      "end": 115.01,
+      "text": "The AI configuration, everything."
+    },
+    {
+      "start": 115.01,
+      "end": 118.61,
+      "text": "It's even called One Click OpenCloud because you don't touch any of it."
+    },
+    {
+      "start": 118.61,
+      "end": 121.01,
+      "text": "You just push one button and it's all ready for you."
+    },
+    {
+      "start": 121.01,
+      "end": 123.25,
+      "text": "Now, I'll leave the link in the description below."
+    },
+    {
+      "start": 123.25,
+      "end": 127.17,
+      "text": "It's a special discount link because I've recently became a partner with Hostinger after"
+    },
+    {
+      "start": 127.17,
+      "end": 130.17,
+      "text": "using the OpenCloud product the past few weeks and loving it."
+    },
+    {
+      "start": 130.17,
+      "end": 131.73,
+      "text": "So you'll also get a special discount."
+    },
+    {
+      "start": 130.21,
+      "end": 131.73,
+      "text": "but you'll also get a special discount"
+    },
+    {
+      "start": 131.73,
+      "end": 133.05,
+      "text": "when you come in through that link."
+    },
+    {
+      "start": 133.05,
+      "end": 137.25,
+      "text": "It'll be around $7 USD per month on a 24 month option,"
+    },
+    {
+      "start": 137.25,
+      "end": 138.09,
+      "text": "but the price varies"
+    },
+    {
+      "start": 138.09,
+      "end": 139.97,
+      "text": "depending on how long you wanna use it for."
+    },
+    {
+      "start": 139.97,
+      "end": 141.25,
+      "text": "Once you put in your information"
+    },
+    {
+      "start": 141.25,
+      "end": 143.61,
+      "text": "and pay for your subscription, that's it."
+    },
+    {
+      "start": 143.61,
+      "end": 144.53,
+      "text": "You're in."
+    },
+    {
+      "start": 144.53,
+      "end": 147.05,
+      "text": "Hosting will automatically install Open Claw,"
+    },
+    {
+      "start": 147.05,
+      "end": 148.77,
+      "text": "configure and set everything up for you."
+    },
+    {
+      "start": 148.77,
+      "end": 151.41,
+      "text": "It genuinely takes like a minute or two"
+    },
+    {
+      "start": 151.41,
+      "end": 154.13,
+      "text": "to have everything ready and you're agent live."
+    },
+    {
+      "start": 154.13,
+      "end": 156.61,
+      "text": "You just pick what channel you wanna communicate in."
+    },
+    {
+      "start": 156.42,
+      "end": 160.42,
+      "text": "Follow the steps on screen, message this telegram account called Botfather,"
+    },
+    {
+      "start": 156.61,
+      "end": 158.09,
+      "text": "Follow the steps on screen."
+    },
+    {
+      "start": 160.42,
+      "end": 166.02,
+      "text": "and copy and paste a single token, and just like that your AI agent is now live right there on your"
+    },
+    {
+      "start": 166.02,
+      "end": 170.82,
+      "text": "phone. And you text it like you text a normal person, literally just a telegram contact that"
+    },
+    {
+      "start": 170.82,
+      "end": 175.94,
+      "text": "happens to be an AI that can do unlimited work for you. Now if you want you can also chat inside"
+    },
+    {
+      "start": 175.94,
+      "end": 181.14,
+      "text": "of the OpenClaw interface itself and have it learn a little bit more about you before using telegram,"
+    },
+    {
+      "start": 180.65,
+      "end": 183.35,
+      "text": "But it's the same thing. You can do it on telegram as well"
+    },
+    {
+      "start": 181.14,
+      "end": 181.94,
+      "text": "but it's the same thing."
+    },
+    {
+      "start": 183.35,
+      "end": 187.33,
+      "text": "So I want to see so crazy because like at this point I could be going and getting myself a coffee"
+    },
+    {
+      "start": 187.37,
+      "end": 191.09,
+      "text": "Well, I'm texting my agent and asking it to research a product niche for me"
+    },
+    {
+      "start": 191.09,
+      "end": 196.01,
+      "text": "And that's why this is way different from just using chat gpt. All right, so we've got the setup stuff out of the way"
+    },
+    {
+      "start": 196.33,
+      "end": 201.81,
+      "text": "Let me show you what I actually use this for on a day-to-day basis because that's the part that matters"
+    },
+    {
+      "start": 201.85,
+      "end": 206.53,
+      "text": "One of my use cases is product research. So this is basically where I'll open up the conversation"
+    },
+    {
+      "start": 205.0,
+      "end": 209.08,
+      "text": "basically where I'll open up the conversation with my agent, and I'll ask it to find products"
+    },
+    {
+      "start": 209.08,
+      "end": 213.6,
+      "text": "for me. I'll message it something like find me five products trending on TikTok in the"
+    },
+    {
+      "start": 213.6,
+      "end": 219.4,
+      "text": "home organization niche with an estimated margin above 40% and tell me which ones have"
+    },
+    {
+      "start": 219.4,
+      "end": 224.16,
+      "text": "the highest content potential. But within minutes, it comes back with a structured breakdown."
+    },
+    {
+      "start": 224.16,
+      "end": 228.92,
+      "text": "Now it's not perfect every time. It's still AI and I have to use my own judgment on what's"
+    },
+    {
+      "start": 228.92,
+      "end": 231.28,
+      "text": "actually worth testing, but it saves me hours."
+    },
+    {
+      "start": 229.8,
+      "end": 235.56,
+      "text": "but it saves me hours of doing the research myself scrolling TikTok and checking AliExpress links."
+    },
+    {
+      "start": 235.56,
+      "end": 240.36,
+      "text": "Now the second thing I like to use it for is ad copy. You know after I find the winning product"
+    },
+    {
+      "start": 240.36,
+      "end": 245.24,
+      "text": "and I need 10 different hook angles to test, I'll just text my agent the product details"
+    },
+    {
+      "start": 245.24,
+      "end": 249.64,
+      "text": "or the link to the product and it'll go ahead and generate 10 variations that are actually"
+    },
+    {
+      "start": 249.64,
+      "end": 254.68,
+      "text": "super solid too. From there what I do is I just copy the best ones into my UGC script templates"
+    },
+    {
+      "start": 254.68,
+      "end": 256.68,
+      "text": "and I'm rolling. Now third thing that I use it for"
+    },
+    {
+      "start": 254.76,
+      "end": 256.76,
+      "text": "I'm rolling. Now third thing that I use it for"
+    },
+    {
+      "start": 255.23,
+      "end": 259.83,
+      "text": "Now, third thing that I use it for is competitor research or competitor monitoring."
+    },
+    {
+      "start": 259.83,
+      "end": 262.19,
+      "text": "And this is the one that's honestly been super useful."
+    },
+    {
+      "start": 262.19,
+      "end": 264.87,
+      "text": "I have it checked competitor stores periodically."
+    },
+    {
+      "start": 264.87,
+      "end": 268.97,
+      "text": "I'll go ahead and copy and paste a link to a competitor and ask it to analyze the whole"
+    },
+    {
+      "start": 268.97,
+      "end": 271.15,
+      "text": "brand and show me what I can do better."
+    },
+    {
+      "start": 271.15,
+      "end": 274.87,
+      "text": "Really, the amount of research I can get on my competitors and on the market is endless"
+    },
+    {
+      "start": 274.87,
+      "end": 275.87,
+      "text": "when I use this thing."
+    },
+    {
+      "start": 275.87,
+      "end": 278.67,
+      "text": "I can also use my agent for content ideas on YouTube."
+    },
+    {
+      "start": 278.67,
+      "end": 282.07,
+      "text": "You know, if I'm stuck on a YouTube video idea or I don't know how to explain something"
+    },
+    {
+      "start": 282.07,
+      "end": 285.35,
+      "text": "to you guys."
+    },
+    {
+      "start": 283.81,
+      "end": 288.21,
+      "text": "my bot literally helped me out with scripting the ideas and conveying my message in a way"
+    },
+    {
+      "start": 288.21,
+      "end": 292.17,
+      "text": "that you can best understand. Again, I'll have the link below in the description with"
+    },
+    {
+      "start": 292.17,
+      "end": 296.41,
+      "text": "the special discount as well. And there's also a 30 day money back guarantee. So there's"
+    },
+    {
+      "start": 296.41,
+      "end": 300.21,
+      "text": "literally no risk if you just want to test this thing out. I've been testing a lot of"
+    },
+    {
+      "start": 300.21,
+      "end": 306.61,
+      "text": "AI tools this year and most of them are overhyped. This one tool I'm actually keeping having"
+    },
+    {
+      "start": 306.61,
+      "end": 310.65,
+      "text": "an assistant that can text for my phone at any hour of the day that goes out and does"
+    },
+    {
+      "start": 310.65,
+      "end": 314.17,
+      "text": "real work for me? That changes how I operate. Now if you want to see"
+    },
+    {
+      "start": 312.75,
+      "end": 317.35,
+      "text": "operate. Now, if you want to see the full AI e-commerce system that I use alongside"
+    },
+    {
+      "start": 317.35,
+      "end": 321.35,
+      "text": "this agent, you know, the spreadsheets, the prompts, the creative workflows,"
+    },
+    {
+      "start": 321.85,
+      "end": 326.51,
+      "text": "that's all 100% free inside my completely free mentorship program."
+    },
+    {
+      "start": 326.55,
+      "end": 331.27,
+      "text": "Do not go out there and buy a $4,000 course when you can get everything,"
+    },
+    {
+      "start": 331.27,
+      "end": 336.51,
+      "text": "including 24 seven support, a full AI e-commerce system and a full course video"
+    },
+    {
+      "start": 336.51,
+      "end": 339.61,
+      "text": "walking you through how to start e-commerce from scratch in my free"
+    },
+    {
+      "start": 339.61,
+      "end": 342.07,
+      "text": "mentorship program, which I'll also leave in the description below."
+    },
+    {
+      "start": 341.54,
+      "end": 345.78,
+      "text": "below. That's it for me. Thank you guys so much for watching. Let me know in the comments if you"
+    },
+    {
+      "start": 342.07,
+      "end": 343.07,
+      "text": "That's it for me."
+    },
+    {
+      "start": 345.78,
+      "end": 350.1,
+      "text": "want me to talk more about AI agents and AI workflows and how I'm using it in my businesses."
+    },
+    {
+      "start": 350.1,
+      "end": 354.26,
+      "text": "Don't forget to leave a like on the video and watch this video next if you want to see me"
+    },
+    {
+      "start": 354.26,
+      "end": 360.5,
+      "text": "live in the trenches building a business from scratch. Peace."
+    },
+    {
+      "start": 359.23,
+      "end": 361.29,
+      "text": "you"
+    }
+  ],
+  "transcript_engine": {
+    "model": "small",
+    "longform_model": "tiny",
+    "use_vad_override": null,
+    "vad_profile_override": null
+  },
+  "canonical_media": {
+    "video_path": "downloads\\32861235-518d-42b5-8e71-5e8414074310.mp4",
+    "audio_path": "downloads\\32861235-518d-42b5-8e71-5e8414074310.wav",
+    "duration": 361.209615,
+    "resolution": [
+      640,
+      360
+    ],
+    "bitrate": 260386.0,
+    "transcript_status": "ok",
+    "acquisition_quality_score": 1.0,
+    "audio_integrity_score": 0.6136714942855866,
+    "transcript_integrity_score": 0.9050656660412759,
+    "acquisition_attempts": [
+      {
+        "path_name": "full_default",
+        "format": "default",
+        "ok": true,
+        "path": "downloads\\32861235-518d-42b5-8e71-5e8414074310.mp4",
+        "probe": {
+          "ok": true,
+          "duration": 361.209615,
+          "width": 640,
+          "height": 360,
+          "bit_rate": 260386.0,
+          "audio_streams": 1,
+          "video_streams": 1,
+          "vcodec": "h264",
+          "acodec": "aac"
+        },
+        "size_bytes": 11756776,
+        "score": 1.0,
+        "components": {
+          "duration_match": 1.0,
+          "audio_presence": 1.0,
+          "video_presence": 1.0,
+          "codec_consistency": 1.0,
+          "size_completeness": 1.0,
+          "resolution_completeness": 1.0
+        }
+      }
+    ]
+  },
+  "audio_integrity": {
+    "ok": true,
+    "audio_integrity_score": 0.6136714942855866,
+    "silence_ratio": 0.13056478405315614,
+    "snr_estimate_db": 14.246,
+    "clipping_ratio": 0.0,
+    "rms_p10": 0.002557,
+    "rms_p90": 0.038838,
+    "spectral_flatness": 0.41452429305270583,
+    "sample_rate": 16000,
+    "channels": 1
+  },
+  "transcript_integrity": {
+    "ok": true,
+    "transcript_integrity_score": 0.9050656660412759,
+    "segment_count": 123,
+    "avg_words_per_segment": 11.195,
+    "sentence_boundary_density": 0.5122,
+    "repetition_rate": 0.1138,
+    "truncation_risk": 0.0,
+    "language_consistency": 1.0
+  },
+  "vad_removed_ratio": 0.0023798231395362013
+}

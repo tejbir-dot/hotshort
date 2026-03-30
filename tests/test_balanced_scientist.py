@@ -87,6 +87,83 @@ def test_selector_relaxed_pass_recovers_min_target():
     assert len(out) >= 3, f"expected relaxed recovery to hit min target, got {len(out)}"
 
 
+def test_selector_keeps_strict_pass_when_strong_candidates_exist():
+    os.environ["HS_SELECTOR_STRICT_MIN_TARGET"] = "0"
+    ig = _reload_idea_graph()
+    nodes = []
+    for i in range(3):
+        s = float(i * 14)
+        e = s + 7.5
+        txt = f"strong angle {i} secret truth"
+        nodes.append(
+            ig.IdeaNode(
+                start_idx=i,
+                end_idx=i,
+                start_time=s,
+                end_time=e,
+                segments=[{"start": s, "end": e, "text": txt}],
+                text=txt,
+                state=ig.DEVELOPMENT,
+                curiosity_score=0.42,
+                punch_confidence=0.46,
+                semantic_quality=0.71,
+                fingerprint=ig.fingerprint_text(txt),
+                metrics={"curiosity_peak": 0.5},
+            )
+        )
+    out = ig.select_candidate_clips(
+        nodes,
+        top_k=3,
+        transcript=[],
+        ensure_sentence_complete=False,
+        allow_multi_angle=True,
+        min_target=2,
+        diversity_mode="balanced",
+    )
+    assert out, "expected strict candidates"
+    assert all(c.get("select_pass") == "strict" for c in out), f"unexpected relaxed survivors: {out}"
+
+
+def test_selector_relaxed_pass_caps_same_time_cluster():
+    os.environ["HS_SELECTOR_RELAX_MAX_CANDIDATES"] = "2"
+    ig = _reload_idea_graph()
+    nodes = []
+    starts = [0.0, 3.0, 7.0, 15.0]
+    for i, s in enumerate(starts):
+        e = s + 6.5
+        txt = f"clustered angle {i} perspective"
+        nodes.append(
+            ig.IdeaNode(
+                start_idx=i,
+                end_idx=i,
+                start_time=s,
+                end_time=e,
+                segments=[{"start": s, "end": e, "text": txt}],
+                text=txt,
+                state=ig.DEVELOPMENT,
+                curiosity_score=0.21,
+                punch_confidence=0.20,
+                semantic_quality=0.48,
+                fingerprint=ig.fingerprint_text(txt),
+                metrics={"curiosity_peak": 0.26, "completion_score": 0.32},
+            )
+        )
+    out = ig.select_candidate_clips(
+        nodes,
+        top_k=6,
+        transcript=[],
+        ensure_sentence_complete=False,
+        allow_multi_angle=True,
+        min_target=4,
+        diversity_mode="balanced",
+    )
+    relaxed = [c for c in out if c.get("select_pass") == "relaxed"]
+    assert len(relaxed) <= 2, f"expected relaxed cap to apply, got {len(relaxed)}"
+    if len(relaxed) >= 2:
+        relaxed_clusters = {int(float(c.get("start", 0.0)) // 12.0) for c in relaxed}
+        assert len(relaxed_clusters) == len(relaxed), f"expected one relaxed candidate per cluster, got {relaxed}"
+
+
 def test_memory_pressure_levels():
     orch = importlib.import_module("viral_finder.orchestrator")
     old = orch._rss_mb

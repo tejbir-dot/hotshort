@@ -1,0 +1,235 @@
+{
+  "saved_at": 1774889347.078545,
+  "signature": "678597f53d0cf4d7674772b7720183811657a2e9",
+  "source_url_hash": "d684757e1e467fbea4a7cd3c390bee621317e7fa",
+  "metadata": {
+    "video_id": "yIarDv9G7JM",
+    "title": "",
+    "duration": 0,
+    "thumbnail": ""
+  },
+  "source_transcript_segments": [
+    {
+      "start": 0.0,
+      "end": 1.6,
+      "text": "Want a plan that actually works?"
+    },
+    {
+      "start": 1.6,
+      "end": 4.32,
+      "text": "Let me show you in three simple actionable steps."
+    },
+    {
+      "start": 4.32,
+      "end": 6.56,
+      "text": "Step one, define the true target."
+    },
+    {
+      "start": 6.56,
+      "end": 8.16,
+      "text": "Most people write down goals."
+    },
+    {
+      "start": 8.16,
+      "end": 10.8,
+      "text": "They sound inspiring, but they're not precise."
+    },
+    {
+      "start": 10.8,
+      "end": 13.04,
+      "text": "Here's what the top 1% do differently."
+    },
+    {
+      "start": 13.04,
+      "end": 14.56,
+      "text": "They define a true target."
+    },
+    {
+      "start": 14.56,
+      "end": 17.6,
+      "text": "One specific outcome with a non-negotiable deadline,"
+    },
+    {
+      "start": 17.6,
+      "end": 19.44,
+      "text": "such as not to grow on YouTube,"
+    },
+    {
+      "start": 19.44,
+      "end": 22.32,
+      "text": "but upload two videos a week for the next 30 days,"
+    },
+    {
+      "start": 22.32,
+      "end": 25.92,
+      "text": "not get fit, but lose three kilograms by August 1st."
+    },
+    {
+      "start": 25.37,
+      "end": 32.01,
+      "text": "first. Step two, know your X and Y. Now comes what almost nobody does, the breakdown of the target."
+    },
+    {
+      "start": 25.92,
+      "end": 26.56,
+      "text": "Step two,"
+    },
+    {
+      "start": 32.01,
+      "end": 37.21,
+      "text": "Most people just plan for if everything goes right, but success is built on anticipating"
+    },
+    {
+      "start": 37.21,
+      "end": 42.73,
+      "text": "what goes wrong. So list every obstacle you'll face. Use this formula. If you have X obstacle,"
+    },
+    {
+      "start": 42.73,
+      "end": 47.85,
+      "text": "then you'll tackle it with action Y and you should always anticipate your X and create your Ys."
+    },
+    {
+      "start": 47.85,
+      "end": 52.65,
+      "text": "For example, if I get an urge to eat a cheat meal during my fat loss journey, I'll grab a low calorie"
+    },
+    {
+      "start": 52.65,
+      "end": 54.17,
+      "text": "snack instead. Step three,"
+    },
+    {
+      "start": 52.96,
+      "end": 57.68,
+      "text": "instead. Step three, anchor and activate. This is the most ignored but crucial step,"
+    },
+    {
+      "start": 57.68,
+      "end": 62.32,
+      "text": "the one that turns your plan into a ritual. Most people make a plan and expect willpower"
+    },
+    {
+      "start": 62.32,
+      "end": 66.96,
+      "text": "to do the rest. But top performers don't rely on memory. They install the plan into their daily"
+    },
+    {
+      "start": 66.96,
+      "end": 72.0,
+      "text": "flow using two tools, anchors and reminders. An anchor is any action you already do every day,"
+    },
+    {
+      "start": 72.0,
+      "end": 76.8,
+      "text": "brushing your teeth, drinking coffee, opening your laptop. You attach your plan to that moment."
+    },
+    {
+      "start": 76.29,
+      "end": 80.61,
+      "text": "moment. Example, right after I brush my teeth I look at my three step plan. A"
+    },
+    {
+      "start": 76.8,
+      "end": 77.68,
+      "text": "Example, write a"
+    },
+    {
+      "start": 80.61,
+      "end": 83.97,
+      "text": "reminder is about external accountability because memory fades and"
+    },
+    {
+      "start": 83.97,
+      "end": 88.09,
+      "text": "motivation drops. You need external triggers. Use sticky notes, calendar"
+    },
+    {
+      "start": 88.09,
+      "end": 92.25,
+      "text": "events, even ask a friend to check in. The goal is to create a trigger plus"
+    },
+    {
+      "start": 92.25,
+      "end": 95.93,
+      "text": "ping system that makes your plan"
+    },
+    {
+      "start": 92.664,
+      "end": 94.824,
+      "text": "system that makes your plan unavoidable."
+    }
+  ],
+  "transcript_engine": {
+    "model": "small",
+    "longform_model": "tiny",
+    "use_vad_override": null,
+    "vad_profile_override": null
+  },
+  "canonical_media": {
+    "video_path": "downloads\\b4229f6f-a68c-442f-b4e9-6f55f21e354c.mp4",
+    "audio_path": "downloads\\b4229f6f-a68c-442f-b4e9-6f55f21e354c.wav",
+    "duration": 94.853515,
+    "resolution": [
+      640,
+      360
+    ],
+    "bitrate": 513825.0,
+    "transcript_status": "ok",
+    "acquisition_quality_score": 1.0,
+    "audio_integrity_score": 0.6560544047580863,
+    "transcript_integrity_score": 0.9066666666666667,
+    "acquisition_attempts": [
+      {
+        "path_name": "full_default",
+        "format": "default",
+        "ok": true,
+        "path": "downloads\\b4229f6f-a68c-442f-b4e9-6f55f21e354c.mp4",
+        "probe": {
+          "ok": true,
+          "duration": 94.853515,
+          "width": 640,
+          "height": 360,
+          "bit_rate": 513825.0,
+          "audio_streams": 1,
+          "video_streams": 1,
+          "vcodec": "h264",
+          "acodec": "aac"
+        },
+        "size_bytes": 6092268,
+        "score": 1.0,
+        "components": {
+          "duration_match": 1.0,
+          "audio_presence": 1.0,
+          "video_presence": 1.0,
+          "codec_consistency": 1.0,
+          "size_completeness": 1.0,
+          "resolution_completeness": 1.0
+        }
+      }
+    ]
+  },
+  "audio_integrity": {
+    "ok": true,
+    "audio_integrity_score": 0.6560544047580863,
+    "silence_ratio": 0.12842682412484183,
+    "snr_estimate_db": 10.562,
+    "clipping_ratio": 0.0,
+    "rms_p10": 0.018346,
+    "rms_p90": 0.10135,
+    "spectral_flatness": 0.5403555912832672,
+    "sample_rate": 16000,
+    "channels": 1
+  },
+  "transcript_integrity": {
+    "ok": true,
+    "transcript_integrity_score": 0.9066666666666667,
+    "segment_count": 30,
+    "avg_words_per_segment": 11.033,
+    "sentence_boundary_density": 0.4,
+    "repetition_rate": 0.0,
+    "truncation_risk": 0.0,
+    "language_consistency": 1.0
+  },
+  "vad_removed_ratio": 0.0
+}

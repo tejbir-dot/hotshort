@@ -27,9 +27,15 @@ def _semantic_validation_rescue(candidate: Dict[str, Any], failure_reason: str) 
     viral_density = _clamp01(candidate.get("viral_density", 0.0))
     alignment = _clamp01(candidate.get("alignment_score", 0.0))
     payoff_conf = _clamp01(psychology.get("payoff_confidence", candidate.get("payoff_confidence", 0.0)))
+    sarcasm_score = _clamp01(candidate.get("sarcasm_score", candidate.get("metrics", {}).get("sarcasm", 0.0) if isinstance(candidate.get("metrics", {}), dict) else 0.0))
+    content_penalty = _clamp01(candidate.get("content_shape_penalty", 0.0))
 
     semantic_strength = max(semantic_quality, (0.5 * impact) + (0.3 * meaning) + (0.2 * clarity))
     narrative_strength = max(completion, trigger_score, viral_density)
+    if sarcasm_score >= 0.65 and failure_reason != "no_curve":
+        return False
+    if content_penalty >= 0.10 and semantic_strength < 0.72:
+        return False
 
     if failure_reason == "no_curiosity_drop":
         return semantic_strength >= 0.56 and narrative_strength >= 0.40

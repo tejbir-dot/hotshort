@@ -1,0 +1,345 @@
+{
+  "saved_at": 1775212573.3545098,
+  "signature": "678597f53d0cf4d7674772b7720183811657a2e9",
+  "source_url_hash": "d0dae201af31d66bda7a4e56f9a0a014498cd37c",
+  "metadata": {
+    "video_id": "03op5ZA9OYs",
+    "title": "",
+    "duration": 0,
+    "thumbnail": ""
+  },
+  "source_transcript_segments": [
+    {
+      "start": 0.0,
+      "end": 8.4,
+      "text": "Most people start learning to code by picking a programming language, Python, JavaScript, C++, yeah?"
+    },
+    {
+      "start": 8.4,
+      "end": 14.24,
+      "text": "You need it to write code, but what really makes someone a high-level programmer isn't how well they know syntax."
+    },
+    {
+      "start": 14.24,
+      "end": 18.8,
+      "text": "It's how well they solve problems. And that's a skill most tutorials never teach."
+    },
+    {
+      "start": 18.8,
+      "end": 21.92,
+      "text": "Let me show you what I mean. A while back."
+    },
+    {
+      "start": 21.92,
+      "end": 26.88,
+      "text": "I was building a small app that needed to show the top three most used words in a text file."
+    },
+    {
+      "start": 26.88,
+      "end": 29.44,
+      "text": "Sounds easy, right? At first, I'd"
+    },
+    {
+      "start": 27.98,
+      "end": 34.14,
+      "text": "At first, I jumped straight into code, opened VS Code, imported libraries started typing"
+    },
+    {
+      "start": 34.14,
+      "end": 35.14,
+      "text": "loops."
+    },
+    {
+      "start": 35.14,
+      "end": 37.78,
+      "text": "10 minutes later, I was completely stuck."
+    },
+    {
+      "start": 37.78,
+      "end": 39.44,
+      "text": "My logic was messy."
+    },
+    {
+      "start": 39.44,
+      "end": 43.94,
+      "text": "My output was wrong, and I remember thinking I know Python."
+    },
+    {
+      "start": 43.94,
+      "end": 46.02,
+      "text": "So why can't I solve this?"
+    },
+    {
+      "start": 46.02,
+      "end": 47.02,
+      "text": "Then it hit me."
+    },
+    {
+      "start": 47.02,
+      "end": 48.58,
+      "text": "I was coding too soon."
+    },
+    {
+      "start": 48.58,
+      "end": 50.22,
+      "text": "I wasn't solving the problem."
+    },
+    {
+      "start": 50.22,
+      "end": 52.26,
+      "text": "I was just writing syntax."
+    },
+    {
+      "start": 51.61,
+      "end": 55.73,
+      "text": "I close my editor and wrote the problem in plain English."
+    },
+    {
+      "start": 52.26,
+      "end": 53.06,
+      "text": "I closed my."
+    },
+    {
+      "start": 55.73,
+      "end": 58.17,
+      "text": "Find the most common words in a text."
+    },
+    {
+      "start": 58.17,
+      "end": 61.89,
+      "text": "Then I asked, how would I do this if I had to do it by hand?"
+    },
+    {
+      "start": 61.89,
+      "end": 63.89,
+      "text": "First I'd list out all the words."
+    },
+    {
+      "start": 63.89,
+      "end": 66.77,
+      "text": "Then count how many times each one shows up."
+    },
+    {
+      "start": 66.77,
+      "end": 68.69,
+      "text": "Finally then sort them by frequency."
+    },
+    {
+      "start": 68.69,
+      "end": 69.69,
+      "text": "Boom."
+    },
+    {
+      "start": 69.69,
+      "end": 71.29,
+      "text": "That's the actual logic."
+    },
+    {
+      "start": 71.29,
+      "end": 72.77,
+      "text": "No code needed yet."
+    },
+    {
+      "start": 72.77,
+      "end": 76.49,
+      "text": "Once I had that clear in my head, the code almost wrote itself."
+    },
+    {
+      "start": 76.49,
+      "end": 79.33,
+      "text": "Before I typed anything, I wrote the steps, 1."
+    },
+    {
+      "start": 79.33,
+      "end": 80.33,
+      "text": "Read the file."
+    },
+    {
+      "start": 80.16,
+      "end": 86.4,
+      "text": "Two, split the words, three, count them, four, sort and print the top three, then I coded"
+    },
+    {
+      "start": 80.33,
+      "end": 81.33,
+      "text": "2."
+    },
+    {
+      "start": 81.33,
+      "end": 82.33,
+      "text": "Split the words."
+    },
+    {
+      "start": 86.4,
+      "end": 89.04,
+      "text": "each step one by one."
+    },
+    {
+      "start": 89.04,
+      "end": 90.24,
+      "text": "Testing as I went."
+    },
+    {
+      "start": 90.24,
+      "end": 94.0,
+      "text": "It felt slow, but I wasn't guessing anymore, I was building."
+    },
+    {
+      "start": 94.0,
+      "end": 98.6,
+      "text": "That's when I realized high-level programmers don't start with how do I write this."
+    },
+    {
+      "start": 98.6,
+      "end": 101.2,
+      "text": "They start with how do I think about this."
+    },
+    {
+      "start": 101.2,
+      "end": 105.76,
+      "text": "When my result was off by one word, I didn't just fix it, I traced why."
+    },
+    {
+      "start": 105.76,
+      "end": 108.0,
+      "text": "I found out punctuation was breaking my words."
+    },
+    {
+      "start": 106.49,
+      "end": 111.17,
+      "text": "My punctuation was breaking my word splits, so I cleaned the text before counting."
+    },
+    {
+      "start": 111.17,
+      "end": 116.45,
+      "text": "That one small fix taught me more about thinking clearly than any syntax tutorial ever did."
+    },
+    {
+      "start": 116.45,
+      "end": 120.17,
+      "text": "Because every bug tells you how your brain assumed wrong."
+    },
+    {
+      "start": 120.17,
+      "end": 121.61,
+      "text": "So yeah?"
+    },
+    {
+      "start": 121.61,
+      "end": 125.41,
+      "text": "Learning a language is great, but writing code is the easy part."
+    },
+    {
+      "start": 125.41,
+      "end": 126.41,
+      "text": "Thinking clearly?"
+    },
+    {
+      "start": 126.41,
+      "end": 128.21,
+      "text": "That's the real skill."
+    },
+    {
+      "start": 128.21,
+      "end": 132.41,
+      "text": "Every time you slow down, break things down, and trace your thinking, you're training"
+    },
+    {
+      "start": 131.32,
+      "end": 135.48,
+      "text": "After thinking, you're training your brain to solve problems like a real developer."
+    },
+    {
+      "start": 132.41,
+      "end": 132.85,
+      "text": "your brain."
+    },
+    {
+      "start": 135.48,
+      "end": 141.12,
+      "text": "If you want to learn the fastest way to level up as a developer in 100s, watch my next video."
+    },
+    {
+      "start": 141.12,
+      "end": 144.44,
+      "text": "It'll show you how to turn any coding challenge into something you can actually do."
+    },
+    {
+      "start": 142.884,
+      "end": 144.884,
+      "text": "challenge into something you can actually handle."
+    }
+  ],
+  "transcript_engine": {
+    "model": "small",
+    "longform_model": "tiny",
+    "use_vad_override": null,
+    "vad_profile_override": null
+  },
+  "canonical_media": {
+    "video_path": "downloads\\08f4a539-4c4b-4f30-b205-b4ab81826961.mp4",
+    "audio_path": "downloads\\08f4a539-4c4b-4f30-b205-b4ab81826961.wav",
+    "duration": 145.914195,
+    "resolution": [
+      640,
+      360
+    ],
+    "bitrate": 319208.0,
+    "transcript_status": "ok",
+    "acquisition_quality_score": 1.0,
+    "audio_integrity_score": 0.8818059473429459,
+    "transcript_integrity_score": 0.9984467385095741,
+    "acquisition_attempts": [
+      {
+        "path_name": "full_default",
+        "format": "default",
+        "ok": true,
+        "path": "downloads\\08f4a539-4c4b-4f30-b205-b4ab81826961.mp4",
+        "probe": {
+          "ok": true,
+          "duration": 145.914195,
+          "width": 640,
+          "height": 360,
+          "bit_rate": 319208.0,
+          "audio_streams": 1,
+          "video_streams": 1,
+          "vcodec": "h264",
+          "acodec": "aac"
+        },
+        "size_bytes": 5822130,
+        "score": 1.0,
+        "components": {
+          "duration_match": 1.0,
+          "audio_presence": 1.0,
+          "video_presence": 1.0,
+          "codec_consistency": 1.0,
+          "size_completeness": 1.0,
+          "resolution_completeness": 1.0
+        }
+      }
+    ]
+  },
+  "audio_integrity": {
+    "ok": true,
+    "audio_integrity_score": 0.8818059473429459,
+    "silence_ratio": 0.26881425633995887,
+    "snr_estimate_db": 27.089,
+    "clipping_ratio": 0.0,
+    "rms_p10": 0.000361,
+    "rms_p90": 0.127096,
+    "spectral_flatness": 0.41829319590813757,
+    "sample_rate": 16000,
+    "channels": 1
+  },
+  "transcript_integrity": {
+    "ok": true,
+    "transcript_integrity_score": 0.9984467385095741,
+    "segment_count": 52,
+    "avg_words_per_segment": 9.192,
+    "sentence_boundary_density": 0.9423,
+    "repetition_rate": 0.0,
+    "truncation_risk": 0.0071,
+    "language_consistency": 1.0
+  },
+  "vad_removed_ratio": 0.007060279501936191
+}

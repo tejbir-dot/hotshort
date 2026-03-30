@@ -1,0 +1,965 @@
+{
+  "saved_at": 1774630202.9480414,
+  "signature": "678597f53d0cf4d7674772b7720183811657a2e9",
+  "source_url_hash": "0e6413b585e5187b65d1dc3e2ad23bea447a8938",
+  "metadata": {
+    "video_id": "3b--y2QjH3s",
+    "title": "",
+    "duration": 0,
+    "thumbnail": ""
+  },
+  "source_transcript_segments": [
+    {
+      "start": 0.0,
+      "end": 8.48,
+      "text": "If you're trying to break into machine learning and you're doing cookie cutter projects and basic online tutorials, it's just not gonna work."
+    },
+    {
+      "start": 8.48,
+      "end": 11.72,
+      "text": "It's like trying to win a Formula One race in a GoCarp."
+    },
+    {
+      "start": 11.72,
+      "end": 15.4,
+      "text": "Sure you'll move, but you definitely won't win the race."
+    },
+    {
+      "start": 15.4,
+      "end": 22.2,
+      "text": "So in this video, I want to break down the types of projects and frameworks that actually land you a job."
+    },
+    {
+      "start": 22.2,
+      "end": 26.72,
+      "text": "They're not easy though, but that's exactly why they'll get you hired."
+    },
+    {
+      "start": 26.72,
+      "end": 28.32,
+      "text": "Let's get into it."
+    },
+    {
+      "start": 30.0,
+      "end": 37.92,
+      "text": "Think about it. A machine learning research paper is a combination of months worth of work"
+    },
+    {
+      "start": 37.92,
+      "end": 44.0,
+      "text": "from leading practices in the field, summarized in just a few or tens of pages. The amount"
+    },
+    {
+      "start": 44.0,
+      "end": 50.0,
+      "text": "of knowledge in these research papers is phenomenal and you can access it in just a few hours."
+    },
+    {
+      "start": 50.0,
+      "end": 56.88,
+      "text": "So if you break down, dissect and just understand everything in a research paper, imagine how much"
+    },
+    {
+      "start": 56.88,
+      "end": 61.84,
+      "text": "you will learn. If we go back to the Formula 1 and Agi I used earlier, it's like building"
+    },
+    {
+      "start": 61.84,
+      "end": 66.72,
+      "text": "a Formula 1 car using just a Blueprints. Sure you may not have the exact knowledge that"
+    },
+    {
+      "start": 66.72,
+      "end": 71.6,
+      "text": "the original automotive engineers used to build the car, but by building it from the Blueprints,"
+    },
+    {
+      "start": 71.6,
+      "end": 76.4,
+      "text": "you understand how every not-em-bolt works and just how they're whole machine operates."
+    },
+    {
+      "start": 76.4,
+      "end": 81.52,
+      "text": "And when you finally do build that Formula 1 car from the Blueprints, you understand that"
+    },
+    {
+      "start": 81.52,
+      "end": 87.04,
+      "text": "the concept of racing a lot more. Now that kind of theory or anagy and also be used"
+    },
+    {
+      "start": 87.04,
+      "end": 92.64,
+      "text": "for machine learning. When you break down an algorithm to fundamental parts in a paper where"
+    },
+    {
+      "start": 92.64,
+      "end": 98.64,
+      "text": "there's loads of deep maths and then reconstruct it, like you will learn so much more in"
+    },
+    {
+      "start": 98.64,
+      "end": 102.48,
+      "text": "simply people who just implement packages all the time when they want to solve a problem."
+    },
+    {
+      "start": 102.48,
+      "end": 108.32,
+      "text": "Reimplementing a research paper will simply teach you so many skills. Number one, you will"
+    },
+    {
+      "start": 108.32,
+      "end": 112.56,
+      "text": "understand all the complex maps underpinning some of the most cutting edge models."
+    },
+    {
+      "start": 112.56,
+      "end": 116.96,
+      "text": "Number two, you will learn how to actually implement sophisticated models from scratch"
+    },
+    {
+      "start": 116.96,
+      "end": 122.24,
+      "text": "using basic libraries and native Python. Number three, you understand how to think more"
+    },
+    {
+      "start": 122.24,
+      "end": 127.2,
+      "text": "creatively and apply your current knowledge to new areas, which is something that you"
+    },
+    {
+      "start": 127.2,
+      "end": 132.16,
+      "text": "kind of really need if you want to be a really good machine learning engineer. And the best part"
+    },
+    {
+      "start": 132.16,
+      "end": 138.16,
+      "text": "is 99% of candidates are not doing this. So you will immediately stand out from the"
+    },
+    {
+      "start": 138.16,
+      "end": 143.68,
+      "text": "crowd. Now how you go about reading and implementing a research paper could be a whole"
+    },
+    {
+      "start": 143.68,
+      "end": 149.12,
+      "text": "video in itself. But let me break down the key steps for you. The first step is read the paper,"
+    },
+    {
+      "start": 149.12,
+      "end": 154.32,
+      "text": "then read it again and again and again. Read it enough times until you fully understand what's"
+    },
+    {
+      "start": 154.32,
+      "end": 159.84,
+      "text": "going on. Depending on your current skill level, this may take your while, but that's totally okay."
+    },
+    {
+      "start": 159.84,
+      "end": 165.36,
+      "text": "The second step is that even after you've read the paper multiple times and you're still"
+    },
+    {
+      "start": 165.36,
+      "end": 168.36,
+      "text": "on certain on certain topics, go and study them."
+    },
+    {
+      "start": 168.36,
+      "end": 172.44,
+      "text": "This is not procrastination because you're actively filling non-gabs that you have."
+    },
+    {
+      "start": 172.44,
+      "end": 177.28,
+      "text": "The third step is sketch the high-level architecture of the paper or the problem."
+    },
+    {
+      "start": 177.28,
+      "end": 181.04,
+      "text": "So why the inputs, why is the ML model, why is the outputs?"
+    },
+    {
+      "start": 181.04,
+      "end": 184.8,
+      "text": "Just like again, the high-level overview of what's going on in the paper."
+    },
+    {
+      "start": 184.8,
+      "end": 189.04,
+      "text": "The fourth step is implement the simplest part of the paper and get it working."
+    },
+    {
+      "start": 189.04,
+      "end": 194.64,
+      "text": "The fifth step is to expand on the simple part you just built and build a really naive"
+    },
+    {
+      "start": 194.64,
+      "end": 196.32,
+      "text": "for MVP prototype."
+    },
+    {
+      "start": 196.32,
+      "end": 200.64,
+      "text": "And finally, the last step is optimize and try to replicate the results."
+    },
+    {
+      "start": 200.64,
+      "end": 202.08,
+      "text": "The authors had in the paper."
+    },
+    {
+      "start": 202.08,
+      "end": 205.08,
+      "text": "Some papers I recommend that you implement are"
+    },
+    {
+      "start": 205.08,
+      "end": 206.8,
+      "text": "attention as all you need."
+    },
+    {
+      "start": 206.8,
+      "end": 209.6,
+      "text": "An image is worth 16 by 16 words,"
+    },
+    {
+      "start": 209.6,
+      "end": 212.76,
+      "text": "transformers for image recognition at scale."
+    },
+    {
+      "start": 212.76,
+      "end": 216.84,
+      "text": "Language models are few short learners and Laura."
+    },
+    {
+      "start": 216.84,
+      "end": 219.2,
+      "text": "Low rank adoption of large language models."
+    },
+    {
+      "start": 219.2,
+      "end": 223.36,
+      "text": "Now, these are mainly in the deep learning and like AI fields,"
+    },
+    {
+      "start": 223.36,
+      "end": 226.84,
+      "text": "but you can find papers on some new websites"
+    },
+    {
+      "start": 226.84,
+      "end": 229.96,
+      "text": "on specialists in autopic area that really interests you."
+    },
+    {
+      "start": 229.96,
+      "end": 232.6,
+      "text": "For example, some useful websites to find papers"
+    },
+    {
+      "start": 232.6,
+      "end": 235.5,
+      "text": "are trending papers on hugging face,"
+    },
+    {
+      "start": 235.5,
+      "end": 238.72,
+      "text": "ML papers of the week, and good old archive."
+    },
+    {
+      "start": 238.72,
+      "end": 240.72,
+      "text": "If you're going through a research paper"
+    },
+    {
+      "start": 240.72,
+      "end": 242.68,
+      "text": "and you're finding that you really lack"
+    },
+    {
+      "start": 242.68,
+      "end": 244.32,
+      "text": "some gaps in your knowledge,"
+    },
+    {
+      "start": 244.32,
+      "end": 246.2,
+      "text": "then I recommend you take a course"
+    },
+    {
+      "start": 246.2,
+      "end": 249.88,
+      "text": "from 365 data science who are kind of sponsoring this video."
+    },
+    {
+      "start": 249.88,
+      "end": 253.16,
+      "text": "365 data science is a leading online education"
+    },
+    {
+      "start": 253.16,
+      "end": 258.28,
+      "text": "platform with the number one most reviewed AI and data science course on trust pilots."
+    },
+    {
+      "start": 258.28,
+      "end": 260.64,
+      "text": "However, it gets even better."
+    },
+    {
+      "start": 260.64,
+      "end": 266.32,
+      "text": "From the 6th to 21st of November, all of their AI and data science courses are completely"
+    },
+    {
+      "start": 266.32,
+      "end": 267.32,
+      "text": "free."
+    },
+    {
+      "start": 267.32,
+      "end": 273.68,
+      "text": "So you get to learn AI, ML and data science from leading practitioners in the field are absolutely"
+    },
+    {
+      "start": 273.68,
+      "end": 276.2,
+      "text": "no cost and upskill your career."
+    },
+    {
+      "start": 276.2,
+      "end": 280.8,
+      "text": "I personally recommend their machine learning track which will teach you all the mass,"
+    },
+    {
+      "start": 280.8,
+      "end": 284.8,
+      "text": "statistics and machine learning algorithms for career in this field."
+    },
+    {
+      "start": 284.8,
+      "end": 289.92,
+      "text": "I'm confident that this course will fill many of the knowledge gaps you may have when reading"
+    },
+    {
+      "start": 289.92,
+      "end": 290.92,
+      "text": "research papers."
+    },
+    {
+      "start": 290.92,
+      "end": 296.32,
+      "text": "The track contains multiple short courses that teach you the essential information through short"
+    },
+    {
+      "start": 296.32,
+      "end": 299.32,
+      "text": "videos, hands-on problems and exams."
+    },
+    {
+      "start": 299.32,
+      "end": 301.68,
+      "text": "So you will learn through actual practice."
+    },
+    {
+      "start": 301.68,
+      "end": 305.48,
+      "text": "Not to mention at the end of the course you'll guess it's a bit difficult that you can add"
+    },
+    {
+      "start": 305.48,
+      "end": 306.48,
+      "text": "to your resume."
+    },
+    {
+      "start": 306.48,
+      "end": 315.04,
+      "text": "Learners from 365 data science now work at leading companies like Meta, Microsoft, HSBC,"
+    },
+    {
+      "start": 315.04,
+      "end": 317.6,
+      "text": "PWC and many many more."
+    },
+    {
+      "start": 317.6,
+      "end": 319.24,
+      "text": "So you've been great hands."
+    },
+    {
+      "start": 319.24,
+      "end": 326.84,
+      "text": "I will leave all of this linked in the description below for you to check out."
+    },
+    {
+      "start": 326.84,
+      "end": 328.96,
+      "text": "What projects should I build?"
+    },
+    {
+      "start": 328.96,
+      "end": 333.52,
+      "text": "This is the second most question I can ask, the first being how I got so handsome."
+    },
+    {
+      "start": 333.52,
+      "end": 338.64,
+      "text": "The thing is, most people don't understand that this question is flawed right from beginning."
+    },
+    {
+      "start": 338.64,
+      "end": 341.2,
+      "text": "A great project is personal to you."
+    },
+    {
+      "start": 341.2,
+      "end": 348.64,
+      "text": "So any project I suggest that you do will immediately be a bad project for your scenario."
+    },
+    {
+      "start": 348.64,
+      "end": 351.2,
+      "text": "Let me give you an example of a great project."
+    },
+    {
+      "start": 351.2,
+      "end": 355.32,
+      "text": "I mentioned this in one of my previous videos, but I'm going to repeat it here to"
+    },
+    {
+      "start": 355.32,
+      "end": 359.2,
+      "text": "really hammer home the points of the types of projects you should be building."
+    },
+    {
+      "start": 359.2,
+      "end": 364.64,
+      "text": "Not my previous company, we were hiring a junior data scientist who is specialized in"
+    },
+    {
+      "start": 364.64,
+      "end": 368.16,
+      "text": "optimization and operations research problems."
+    },
+    {
+      "start": 368.16,
+      "end": 372.28,
+      "text": "Now the person we end up hiring stood out for one key reason."
+    },
+    {
+      "start": 372.28,
+      "end": 378.72,
+      "text": "They had a highly relevant project to the job and it was a personal project where they"
+    },
+    {
+      "start": 378.72,
+      "end": 383.18,
+      "text": "told an interesting story about what they built the project and again, while it was very"
+    },
+    {
+      "start": 383.18,
+      "end": 384.64,
+      "text": "personal to them."
+    },
+    {
+      "start": 384.64,
+      "end": 392.8,
+      "text": "So this person, they were very interested in how to better allocate players in NFL fancy football."
+    },
+    {
+      "start": 392.8,
+      "end": 396.28,
+      "text": "So it's very similar to Premier League fancied football in the UK."
+    },
+    {
+      "start": 396.28,
+      "end": 401.6,
+      "text": "And every week you would have a certain budget and you have to select a team."
+    },
+    {
+      "start": 401.6,
+      "end": 406.04,
+      "text": "And people like this because you win money or you can be in tournaments."
+    },
+    {
+      "start": 406.04,
+      "end": 413.96,
+      "text": "So this person, what they did, is that they created an optimization algorithm to better allocate the players each week."
+    },
+    {
+      "start": 413.96,
+      "end": 417.24,
+      "text": "But it wasn't so much that they just built an algorithm."
+    },
+    {
+      "start": 417.24,
+      "end": 419.32,
+      "text": "They also read around the subject a lot."
+    },
+    {
+      "start": 419.32,
+      "end": 421.64,
+      "text": "So they looked at research papers, right?"
+    },
+    {
+      "start": 421.64,
+      "end": 426.44,
+      "text": "See the link and saw how, you know, optimization works for these types of problems."
+    },
+    {
+      "start": 426.44,
+      "end": 431.4,
+      "text": "They also looked at how other people who were like, you know, competing to win money in these competitions,"
+    },
+    {
+      "start": 432.12,
+      "end": 436.92,
+      "text": "how they approached the problem. Most of these were professors at top universities."
+    },
+    {
+      "start": 436.92,
+      "end": 441.4,
+      "text": "So they read around, they improved the optimization algorithm."
+    },
+    {
+      "start": 441.4,
+      "end": 446.52,
+      "text": "And again, it's an example of a very personal problem or personal thing they were interested in,"
+    },
+    {
+      "start": 446.52,
+      "end": 453.08,
+      "text": "that I was trying to solve using optimization. So again, the story is really nice and clear."
+    },
+    {
+      "start": 453.08,
+      "end": 457.72,
+      "text": "They have, you know, the actual thing they built is directly irrelevant for the job."
+    },
+    {
+      "start": 457.72,
+      "end": 462.52,
+      "text": "So there's no wonder why they got hired and that passion kind of showed through in the interview."
+    },
+    {
+      "start": 464.52,
+      "end": 469.56,
+      "text": "But the question you may have is, how do you come up with such projects for yourself?"
+    },
+    {
+      "start": 469.56,
+      "end": 472.76,
+      "text": "Well, let me give you a framework that you can follow."
+    },
+    {
+      "start": 472.76,
+      "end": 478.04,
+      "text": "Number one, list at least five things that you're interested in outside of work and they"
+    },
+    {
+      "start": 478.04,
+      "end": 480.12,
+      "text": "design and machine learning."
+    },
+    {
+      "start": 480.12,
+      "end": 487.96,
+      "text": "The second point, after you've listed those five things, think of five questions each for those"
+    },
+    {
+      "start": 487.96,
+      "end": 494.2,
+      "text": "topics you enjoy and just list things you like the answers to or ideas you like to explore."
+    },
+    {
+      "start": 494.2,
+      "end": 502.2,
+      "text": "At this point, you'll have 25 kind of ideas, processes, just 25 kind of concepts that interest you."
+    },
+    {
+      "start": 502.2,
+      "end": 509.4,
+      "text": "Number three, for those 25 ideas, think of ways that you can use machine learning to solve them or answer them."
+    },
+    {
+      "start": 509.4,
+      "end": 513.16,
+      "text": "Now, they don't have to be particularly grounded."
+    },
+    {
+      "start": 513.16,
+      "end": 519.24,
+      "text": "Like obviously don't try to create a project that where you create rebel dogs that will get walls."
+    },
+    {
+      "start": 519.24,
+      "end": 523.32,
+      "text": "but be creative, think of just random things that machine learning could solve,"
+    },
+    {
+      "start": 523.32,
+      "end": 527.24,
+      "text": "even if it seems kind of ridiculous or impossible at that point in time."
+    },
+    {
+      "start": 527.24,
+      "end": 533.16,
+      "text": "And finally, number four, out of those 25 kind of ideas that you can use machine learning,"
+    },
+    {
+      "start": 533.16,
+      "end": 538.12,
+      "text": "pick an idea which seems kind of reasonable but a little bit out of your reach,"
+    },
+    {
+      "start": 538.12,
+      "end": 542.92,
+      "text": "so that when you actually do try to implement it, it will push you and encourage you to"
+    },
+    {
+      "start": 542.92,
+      "end": 547.88,
+      "text": "learn new skills. That is the sweet spot. And I promise you if you follow this process,"
+    },
+    {
+      "start": 547.88,
+      "end": 553.48,
+      "text": "you will find a project that is personal to you and is challenging enough and you will like"
+    },
+    {
+      "start": 553.48,
+      "end": 558.76,
+      "text": "and one more key thing on this, the project you should select should take you about one to two"
+    },
+    {
+      "start": 558.76,
+      "end": 564.28,
+      "text": "months to build. It should be big enough but not massive but you want to make this like a cornerstone"
+    },
+    {
+      "start": 564.28,
+      "end": 571.96,
+      "text": "of your portfolio. However the idea on its own won't necessarily be sufficient. For that"
+    },
+    {
+      "start": 571.96,
+      "end": 575.24,
+      "text": "you need to build some complexity and scale to your project."
+    },
+    {
+      "start": 575.24,
+      "end": 578.76,
+      "text": "Now, this can be shown and expressed in many different ways."
+    },
+    {
+      "start": 578.76,
+      "end": 581.8,
+      "text": "The first one is that you deploy your whole project into end,"
+    },
+    {
+      "start": 581.8,
+      "end": 585.96,
+      "text": "using things like unetesting, production code, cloud systems,"
+    },
+    {
+      "start": 585.96,
+      "end": 589.64,
+      "text": "and containerization, the three things like Docker and Kubernetes."
+    },
+    {
+      "start": 589.64,
+      "end": 593.32,
+      "text": "Basically, a whole end-to-end machine learning life cycle project."
+    },
+    {
+      "start": 593.32,
+      "end": 596.12,
+      "text": "Number two, you can build a really complex"
+    },
+    {
+      "start": 596.12,
+      "end": 598.76,
+      "text": "and state-of-the-art machine learning algorithm."
+    },
+    {
+      "start": 598.76,
+      "end": 603.24,
+      "text": "This would be useful if you read lots of research papers and you could build something that is quite"
+    },
+    {
+      "start": 603.24,
+      "end": 605.24,
+      "text": "impressive or very cutting edge."
+    },
+    {
+      "start": 605.24,
+      "end": 606.24,
+      "text": "3."
+    },
+    {
+      "start": 606.24,
+      "end": 609.24,
+      "text": "You can make a more kind of product or user-facing."
+    },
+    {
+      "start": 609.24,
+      "end": 615.32,
+      "text": "IE make it that is live on the internet and users can interact with somehow and play around"
+    },
+    {
+      "start": 615.32,
+      "end": 616.32,
+      "text": "a bit."
+    },
+    {
+      "start": 616.32,
+      "end": 619.28,
+      "text": "So a little more of a kind of SaaS approach, you can say."
+    },
+    {
+      "start": 619.28,
+      "end": 620.28,
+      "text": "4."
+    },
+    {
+      "start": 620.28,
+      "end": 622.6,
+      "text": "Even solve the problem in different ways."
+    },
+    {
+      "start": 622.6,
+      "end": 628.04,
+      "text": "What that will look like is basically just applying a range of models to that problem."
+    },
+    {
+      "start": 628.04,
+      "end": 633.0,
+      "text": "There are many more ways of building sufficient complexity and scale to your project."
+    },
+    {
+      "start": 633.0,
+      "end": 634.8,
+      "text": "So don't get too overwhelmed."
+    },
+    {
+      "start": 634.8,
+      "end": 639.8,
+      "text": "The main thing is just start this process and just slowly build it over time."
+    },
+    {
+      "start": 639.8,
+      "end": 644.32,
+      "text": "And I promise you if you work on this an hour per day for two months, you'll have something"
+    },
+    {
+      "start": 644.32,
+      "end": 649.92,
+      "text": "that's really special and something you'll be really excited to talk about during interviews"
+    },
+    {
+      "start": 649.92,
+      "end": 656.12,
+      "text": "and something that will actually land you interviews."
+    },
+    {
+      "start": 656.12,
+      "end": 662.24,
+      "text": "If for some reason you don't fancy re-implementing a research paper or spending time building"
+    },
+    {
+      "start": 662.24,
+      "end": 666.96,
+      "text": "and coming up with your own project idea, let me give you some further ideas of projects"
+    },
+    {
+      "start": 666.96,
+      "end": 667.96,
+      "text": "you can build."
+    },
+    {
+      "start": 667.96,
+      "end": 672.32,
+      "text": "The first one is simply ask chatGBT for projects and see what it gives you."
+    },
+    {
+      "start": 672.32,
+      "end": 677.72,
+      "text": "The second one is enter Kaggle Competition but you kind of have to place well for it to"
+    },
+    {
+      "start": 677.72,
+      "end": 678.72,
+      "text": "be impressive."
+    },
+    {
+      "start": 678.72,
+      "end": 684.08,
+      "text": "The third one is use an AI or foundational model to solve a personal problem to you."
+    },
+    {
+      "start": 684.08,
+      "end": 688.42,
+      "text": "The full-form is code machine learning algorithms completely from scratch using things"
+    },
+    {
+      "start": 688.42,
+      "end": 692.9,
+      "text": "I numpi, even better if you can do it using native Python."
+    },
+    {
+      "start": 692.9,
+      "end": 697.88,
+      "text": "Now if you require even more hand-holding, these are some more specific projects that you"
+    },
+    {
+      "start": 697.88,
+      "end": 698.88,
+      "text": "can build."
+    },
+    {
+      "start": 698.88,
+      "end": 703.28,
+      "text": "The first one is a reinforcement learning algorithm for Pac-Man or any other games."
+    },
+    {
+      "start": 703.28,
+      "end": 708.16,
+      "text": "Second one is a computer vision model for classified images of pretty much anything."
+    },
+    {
+      "start": 708.16,
+      "end": 714.04,
+      "text": "The third one is a sentiment analysis on a social media platform about putting the topic."
+    },
+    {
+      "start": 714.04,
+      "end": 718.78,
+      "text": "4.4 is a recommendation system for any application you use."
+    },
+    {
+      "start": 718.78,
+      "end": 722.78,
+      "text": "And finally you can fine tune an LM for particular case."
+    },
+    {
+      "start": 722.78,
+      "end": 727.08,
+      "text": "Again, these are still kind of quite high level because like I said throughout this whole"
+    },
+    {
+      "start": 727.08,
+      "end": 732.82,
+      "text": "video, a good project is either you reimplement a research paper or you build something"
+    },
+    {
+      "start": 732.82,
+      "end": 734.34,
+      "text": "that's personal to you."
+    },
+    {
+      "start": 734.34,
+      "end": 737.4,
+      "text": "So stop procrastinating and do those two projects."
+    },
+    {
+      "start": 737.4,
+      "end": 742.36,
+      "text": "And after you've built those two projects, you're now ready to start applying for jobs."
+    },
+    {
+      "start": 742.36,
+      "end": 747.96,
+      "text": "to actually land interviews, need a rock solid resume. So what makes the difference between"
+    },
+    {
+      "start": 747.96,
+      "end": 753.4,
+      "text": "a resume that gets ignored and one that actually gets you hired? We'll see my previous video here"
+    },
+    {
+      "start": 753.4,
+      "end": 764.92,
+      "text": "where I'll break down that exact question. I'll see you there."
+    }
+  ],
+  "transcript_engine": {
+    "model": "small",
+    "longform_model": "tiny",
+    "use_vad_override": null,
+    "vad_profile_override": null
+  },
+  "canonical_media": {
+    "video_path": "downloads\\32b54e5b-4640-47ad-9a4c-287831ee841f.mp4",
+    "audio_path": "downloads\\32b54e5b-4640-47ad-9a4c-287831ee841f.wav",
+    "duration": 767.81424,
+    "resolution": [
+      640,
+      360
+    ],
+    "bitrate": 347909.0,
+    "transcript_status": "ok",
+    "acquisition_quality_score": 1.0,
+    "audio_integrity_score": 0.8403861148222577,
+    "transcript_integrity_score": 0.958261629342203,
+    "acquisition_attempts": [
+      {
+        "path_name": "full_default",
+        "format": "default",
+        "ok": true,
+        "path": "downloads\\32b54e5b-4640-47ad-9a4c-287831ee841f.mp4",
+        "probe": {
+          "ok": true,
+          "duration": 767.81424,
+          "width": 640,
+          "height": 360,
+          "bit_rate": 347909.0,
+          "audio_streams": 1,
+          "video_streams": 1,
+          "vcodec": "h264",
+          "acodec": "aac"
+        },
+        "size_bytes": 33391206,
+        "score": 1.0,
+        "components": {
+          "duration_match": 1.0,
+          "audio_presence": 1.0,
+          "video_presence": 1.0,
+          "codec_consistency": 1.0,
+          "size_completeness": 1.0,
+          "resolution_completeness": 1.0
+        }
+      }
+    ]
+  },
+  "audio_integrity": {
+    "ok": true,
+    "audio_integrity_score": 0.8403861148222577,
+    "silence_ratio": 0.23203959364417817,
+    "snr_estimate_db": 23.71,
+    "clipping_ratio": 0.0,
+    "rms_p10": 0.001291,
+    "rms_p90": 0.099515,
+    "spectral_flatness": 0.4085163503577837,
+    "sample_rate": 16000,
+    "channels": 1
+  },
+  "transcript_integrity": {
+    "ok": true,
+    "transcript_integrity_score": 0.958261629342203,
+    "segment_count": 176,
+    "avg_words_per_segment": 12.784,
+    "sentence_boundary_density": 0.5966,
+    "repetition_rate": 0.0,
+    "truncation_risk": 0.0038,
+    "language_consistency": 1.0
+  },
+  "vad_removed_ratio": 0.009500006147320293
+}

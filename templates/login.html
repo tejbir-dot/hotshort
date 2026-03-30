@@ -150,8 +150,8 @@
   {% endif %}
 {% endwith %}
   <div class="google-btn">
-  <a href="/login/google">
-    <img src="/static/google-icon.svg" alt="Google" /> Sign in with Google
+  <a href="https://insectival-malaysia-redundant.ngrok-free.dev/login/google?next={{ next_target|default('/dashboard')|urlencode }}">
+    <img src="https://insectival-malaysia-redundant.ngrok-free.dev/static/google-icon.svg" alt="Google" /> Sign in with Google
   </a>
 </div>
 
@@ -161,11 +161,12 @@
     <h1>🔥 HotShort Studio</h1>
     <p>Welcome back, creator.</p>
     <form method="POST">
+      <input type="hidden" name="next" value="{{ next_target|default('/dashboard') }}" />
       <input type="email" name="email" placeholder="Email" required />
       <input type="password" name="password" placeholder="Password" required />
       <button type="submit">Login</button>
     </form>
-    <p>Don't have an account? <a href="/auth/signup">Sign up</a></p>
+    <p>Don't have an account? <a href="https://insectival-malaysia-redundant.ngrok-free.dev/auth/signup?next={{ next_target|default('/dashboard')|urlencode }}">Sign up</a></p>
   </div>
 </body>
 </html>

@@ -89,3 +89,76 @@ def test_staged_pipeline_validation_rejects_before_rank(monkeypatch):
 
     out = orchestrator.orchestrate("dummy.mp4", top_k=2, pipeline_mode="staged", allow_fallback=False)
     assert out == []
+
+
+def test_enrichment_budget_prioritizes_strict_candidates(monkeypatch):
+    monkeypatch.setenv("HS_SELECTOR_PRE_ENRICH_BUDGET", "3")
+    monkeypatch.setenv("HS_ORCH_ENRICH_STRICT_FIRST", "1")
+    monkeypatch.setattr(orchestrator, "compute_quality_scores", lambda *args, **kwargs: {"hook_score": 0.2, "payoff_resolution_score": 0.2, "information_density_score": 0.2})
+    monkeypatch.setattr(
+        orchestrator,
+        "enrich_candidate",
+        lambda candidate, aud, vis, brain, cache_bucket=None: {
+            **candidate,
+            "impact": 0.5,
+            "meaning": 0.5,
+            "novelty": 0.4,
+            "emotion": 0.2,
+            "clarity": 0.6,
+            "classic": 0.5,
+            "audio": 0.2,
+            "motion": 0.2,
+            "semantic_quality": float(candidate.get("semantic_quality", 0.4)),
+        },
+    )
+    ctx = orchestrator.PipelineContext(path="dummy.mp4", top_k=2, allow_fallback=False)
+    ctx.transcript = [{"start": 0.0, "end": 20.0, "text": "full transcript context"}]
+    ctx.raw_candidates = [
+        {"start": 0.0, "end": 5.0, "text": "strict one", "score": 0.72, "select_pass": "strict", "semantic_quality": 0.7, "curiosity": 0.5, "punch_confidence": 0.5},
+        {"start": 6.0, "end": 11.0, "text": "strict two", "score": 0.68, "select_pass": "strict", "semantic_quality": 0.68, "curiosity": 0.44, "punch_confidence": 0.42},
+        {"start": 12.0, "end": 17.0, "text": "relaxed one", "score": 0.45, "select_pass": "relaxed", "semantic_quality": 0.49, "curiosity": 0.22, "punch_confidence": 0.2, "relaxed_readiness": 0.48},
+        {"start": 18.0, "end": 19.5, "text": "hook one", "score": 0.4, "hook_seed": True, "hook_strength": 0.5, "semantic_quality": 0.35},
+    ]
+    orchestrator._run_enrichment(ctx)
+    stats = ctx.stage_stats["L7_SIGNAL_ENRICHMENT"]
+    assert stats["selected_candidates"] == 3
+    assert stats["selected_strict"] == 2
+    assert stats["selected_relaxed"] <= 1
+
+
+def test_narrative_scores_use_candidate_cache(monkeypatch):
+    calls = {"count": 0}
+
+    def _fake_quality_scores(*args, **kwargs):
+        calls["count"] += 1
+        return {"hook_score": 0.31, "ending_strength": 0.44}
+
+    monkeypatch.setattr(orchestrator, "compute_quality_scores", _fake_quality_scores)
+    cache_bucket = {}
+    candidate = {"start": 0.0, "end": 5.0, "_feature_cache": cache_bucket}
+    transcript = [{"start": 0.0, "end": 5.0, "text": "segment"}]
+    first = orchestrator._extract_narrative_scores(transcript, candidate)
+    second = orchestrator._extract_narrative_scores(transcript, candidate)
+    assert first == second
+    assert calls["count"] == 1
+
+
+def test_validation_stage_records_reject_reasons(monkeypatch):
+    ctx = orchestrator.PipelineContext(path="dummy.mp4", top_k=2, allow_fallback=False)
+    monkeypatch.setattr(
+        orchestrator,
+        "apply_post_enrichment_validation",
+        lambda candidates, curve, min_peak, payoff_conf_thresh: (
+            [dict(candidates[0], validation={"accepted": True, "reasons": []})],
+            [dict(candidates[1], validation={"accepted": False, "reasons": ["payoff_low"]})],
+        ),
+    )
+    ctx.curiosity_curve = [(0.0, 0.1), (1.0, 0.15), (2.0, 0.12)]
+    ctx.enriched_candidates = [
+        {"start": 0.0, "end": 2.0, "text": "good clip", "payoff_confidence": 0.55, "signals": {"psychology": {"payoff_confidence": 0.55}}},
+        {"start": 3.0, "end": 5.0, "text": "weak clip", "payoff_confidence": 0.05, "signals": {"psychology": {"payoff_confidence": 0.05}}},
+    ]
+    orchestrator._run_validation(ctx)
+    stats = ctx.stage_stats["L8_VALIDATION_GATES"]
+    assert stats["rejected"] == 1
+    assert "payoff_low" in stats["reject_reasons"]

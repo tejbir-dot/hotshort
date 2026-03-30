@@ -482,9 +482,17 @@
       backdrop-filter: blur(8px);
       border: 1px solid rgba(255, 255, 255, 0.18);
       color: rgba(255, 255, 255, 0.95);
-      pointer-events: none;
+      pointer-events: auto;
       user-select: none;
       z-index: 3;
+      cursor: pointer;
+    }
+
+    .sound-hint.is-live {
+      background: linear-gradient(135deg, rgba(255, 196, 92, 0.94), rgba(255, 145, 56, 0.94));
+      color: #120900;
+      border-color: rgba(255, 242, 205, 0.65);
+      box-shadow: 0 14px 30px rgba(255, 162, 74, 0.24);
     }
 
     /* Clip content */
@@ -920,6 +928,15 @@
       .logo-footer-text {
         font-size: 0.7rem;
       }
+
+      .sound-hint {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        text-align: center;
+        padding: 10px 12px;
+        font-size: 0.86rem;
+      }
     }
 
     @media (max-width: 480px) {
@@ -1054,7 +1071,7 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
 
     <footer>
       <div class="footer-buttons">
-        <a href="/dashboard" class="btn-primary">← Back to Upload</a>
+        <a href="https://insectival-malaysia-redundant.ngrok-free.dev/dashboard" class="btn-primary">← Back to Upload</a>
       </div>
     </footer>
   </div>
@@ -1130,7 +1147,7 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
 
     function analyticsPing(evt, payload = {}) {
       try {
-        fetch('/analytics', {
+        fetch('https://insectival-malaysia-redundant.ngrok-free.dev/analytics', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
@@ -1307,7 +1324,7 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
 
     async function refreshFreeStatus() {
       try {
-        const resp = await fetch('/api/free-status', { credentials: 'same-origin' });
+        const resp = await fetch('https://insectival-malaysia-redundant.ngrok-free.dev/api/free-status', { credentials: 'include' });
         if (!resp.ok) return;
         const next = await resp.json();
         freeStatus = next || {};
@@ -1415,8 +1432,26 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
         document.querySelectorAll('[data-role="sound-hint"]').forEach((hint) => {
           const card = hint.closest('.clip-card');
           const active = !!(card && card.classList.contains('is-previewing'));
-          hint.style.display = (!soundPrefEnabled && active) ? '' : 'none';
+          const shouldShow = !soundPrefEnabled && active;
+          hint.style.display = shouldShow ? '' : 'none';
+          hint.classList.toggle('is-live', shouldShow);
         });
+      }
+
+      function setVideoSoundState(video, withSound) {
+        if (!video) return;
+        const enableSound = !!withSound;
+        try {
+          video.defaultMuted = !enableSound;
+          video.muted = !enableSound;
+          if (enableSound) {
+            video.removeAttribute('muted');
+            video.volume = 1;
+          } else {
+            video.setAttribute('muted', '');
+            video.volume = 0;
+          }
+        } catch (e) {}
       }
 
       function stopPreview(video, options = {}) {
@@ -1424,8 +1459,7 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
         if (!video) return;
         try {
           video.pause();
-          video.muted = true;
-          video.volume = 0;
+          setVideoSoundState(video, false);
           if (reset) video.currentTime = 0;
         } catch (e) {}
         const card = video.closest('.clip-card');
@@ -1448,19 +1482,23 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
         card.classList.add('is-previewing');
         activePreviewVideo = video;
         try {
-          video.muted = !withSound;
-          video.volume = withSound ? 0.85 : 0;
+          setVideoSoundState(video, withSound);
           const p = video.play && video.play();
           if (p && typeof p.catch === 'function') p.catch(() => {});
         } catch (e) {}
         syncSoundHints();
       }
 
-      function enableSoundForActivePreview() {
-        if (!activePreviewVideo) return;
+      function enableSoundForActivePreview(card = null, video = null) {
+        const targetVideo = video || activePreviewVideo;
+        const targetCard = card || (targetVideo && targetVideo.closest('.clip-card'));
+        if (!targetVideo || !targetCard) return;
         try { localStorage.setItem(SOUND_KEY, '1'); } catch (e) {}
         soundPrefEnabled = true;
-        startPreview(activePreviewVideo.closest('.clip-card'), activePreviewVideo, { withSound: true });
+        startPreview(targetCard, targetVideo, { withSound: true });
+        if (typeof window.showToast === 'function') {
+          window.showToast('Sound on', 'success', 1400);
+        }
       }
 
       clips.forEach((clip, index) => {
@@ -1564,8 +1602,10 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
         // Bind per-card interactions (must be inside the loop)
         const video = card.querySelector('video');
         if (video) {
+          video.defaultMuted = true;
           video.muted = true;
           video.playsInline = true;
+          video.setAttribute('muted', '');
           video.volume = 0;
           // Avoid autoplaying every card at once (perf + UX).
           video.pause();
@@ -1598,10 +1638,16 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
               if (hint) {
                 e.preventDefault();
                 e.stopPropagation();
-                enableSoundForActivePreview();
+                if (video) {
+                  enableSoundForActivePreview(card, video);
+                }
                 return;
               }
               if (!video) return;
+              if (activePreviewVideo === video && !video.paused && video.muted && !soundPrefEnabled) {
+                enableSoundForActivePreview(card, video);
+                return;
+              }
               if (activePreviewVideo === video && !video.paused) {
                 stopPreview(video);
                 return;
@@ -1697,7 +1743,7 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
             features: clip.scores || clip.metrics || {}
           };
           try {
-            const res = await fetch('/api/feedback', {
+            const res = await fetch('https://insectival-malaysia-redundant.ngrok-free.dev/api/feedback', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),

@@ -27,10 +27,10 @@
      LOADER TEXT STAGES
      ===================== */
   const LOADING_STAGES = [
-    "Scanning video for viral moments…",
-    "Detecting high-retention hooks…",
-    "Ranking clips by viral potential…",
-    "Finalizing best clip…",
+    "Extracting narrative structure...",
+    "Finding high-retention hooks...",
+    "Scoring viral potential...",
+    "Building clips...",
   ];
   let loaderInterval = null;
 
@@ -39,6 +39,23 @@
      ===================== */
   let _isAnalyzing = false;
   const GLOBAL_LAST_URL_KEY = "last_analyzed_url";
+
+  function getBackendBaseUrl() {
+    try {
+      const body = document.body;
+      const raw = body && body.dataset ? String(body.dataset.backendUrl || "").trim() : "";
+      return raw.replace(/\/+$/, "");
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function backendUrl(path) {
+    const normalizedPath = String(path || "");
+    const base = getBackendBaseUrl();
+    if (!base) return normalizedPath;
+    return `${base}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+  }
 
   function getDashboardUserId() {
     try {
@@ -110,12 +127,22 @@
 
   function analyticsPing(evt, payload = {}) {
     try {
-      fetch("/analytics", {
+      fetch(backendUrl("/analytics"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ event: evt, ...payload }),
       }).catch(() => {});
     } catch (e) {}
+  }
+
+  async function readJsonResponse(resp) {
+    const contentType = (resp.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("application/json")) {
+      const txt = await resp.text().catch(() => "");
+      throw new Error("Invalid JSON response: " + (txt || "").slice(0, 160));
+    }
+    return resp.json();
   }
 
   /* =====================
@@ -124,10 +151,17 @@
   function showLoader() {
     const loader = $id(SEL.loader.replace("#", "")) || elCreateLoader();
     const loaderText = $id(SEL.loaderText.replace("#", "")) || null;
+    const analyzeBtn = document.querySelector(SEL.analyzeBtn);
     if (!loader) return;
     let stage = 0;
     loader.classList.add("active");
+    loader.classList.add("thinking");
     loader.setAttribute("aria-hidden", "false");
+    document.body.classList.add("dashboard-aurora");
+    if (analyzeBtn) {
+      analyzeBtn.classList.add("thinking");
+      analyzeBtn.disabled = true;
+    }
     if (loaderText) loaderText.textContent = LOADING_STAGES[stage];
 
     // rotate text stages
@@ -140,29 +174,67 @@
 
   function hideLoader() {
     const loader = $id(SEL.loader.replace("#", "")) || null;
+    const analyzeBtn = document.querySelector(SEL.analyzeBtn);
     if (!loader) return;
     loader.classList.remove("active");
+    loader.classList.remove("thinking");
     loader.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("dashboard-aurora");
+    if (analyzeBtn) {
+      analyzeBtn.classList.remove("thinking");
+      analyzeBtn.disabled = false;
+    }
     if (loaderInterval) {
       clearInterval(loaderInterval);
       loaderInterval = null;
     }
   }
 
+  function persistLastUrl(value) {
+    try {
+      const trimmed = String(value || "").trim();
+      if (!trimmed) {
+        localStorage.removeItem(getScopedLastUrlKey());
+        return;
+      }
+      localStorage.setItem(getScopedLastUrlKey(), trimmed);
+    } catch (e) {}
+  }
+
+  function syncInputState(value) {
+    if (_isAnalyzing) return;
+    hideLoader();
+    persistLastUrl(value);
+  }
+
   function elCreateLoader() {
-    // creates a minimal loader bar to attach to DOM if missing
+    // creates a loader fallback if the dashboard template is missing it
     const loader = el("div", { attrs: { id: "loader" }, cls: "loader" });
+    loader.setAttribute("aria-hidden", "true");
     loader.style.display = "none";
-    loader.style.width = "260px";
-    loader.style.height = "6px";
     loader.style.margin = "30px auto";
-    loader.style.borderRadius = "5px";
-    loader.style.background = "linear-gradient(90deg,#f6d89e,#fff,#f6d89e)";
-    loader.style.backgroundSize = "300% 100%";
-    loader.style.animation = "dashLoad 1.8s linear infinite";
-    const text = el("p", { attrs: { id: "loaderText" }, cls: "loader-text", html: "Preparing analysis…" });
-    Object.assign(text.style, { textAlign: "center", color: "#f3d6a2", marginTop: "8px", fontSize: "13px" });
+    loader.style.textAlign = "center";
+    const caption = el("p", { cls: "loader-caption", html: "HotShort Intelligence" });
+    const visual = el("div", { cls: "loader-visual" });
+    const img = el("img", {
+      cls: "loader-animation",
+      attrs: {
+        src: "/static/media/hotshort-thinking.gif",
+        alt: "HotShort AI analyzing video structure",
+      },
+    });
+    const wave = el("div", { cls: "wave" });
+    const text = el("p", { attrs: { id: "loaderText" }, cls: "loader-text", html: "Preparing analysis..." });
+    const subtext = el("p", {
+      cls: "loader-subtext",
+      html: "Signal emerging from noise. Hooks, insights, and structure are being assembled.",
+    });
+    visual.appendChild(img);
+    loader.appendChild(caption);
+    loader.appendChild(visual);
+    loader.appendChild(wave);
     loader.appendChild(text);
+    loader.appendChild(subtext);
     return loader;
   }
 
@@ -723,6 +795,8 @@
       return;
     }
 
+    if (ytInput) ytInput.value = ytUrl;
+
     _isAnalyzing = true;
     showLoader();
 
@@ -734,7 +808,7 @@
     carousel.innerHTML = "";
 
     try {
-      try { localStorage.setItem(getScopedLastUrlKey(), ytUrl); } catch (e) {}
+      persistLastUrl(ytUrl);
       analyticsPing("analyze_click", { youtube_url: ytUrl });
 
       // build FormData
@@ -742,9 +816,10 @@
       fd.append("youtube_url", ytUrl);
       fd.append("mode", "final");
 
-      const resp = await fetch("/analyze", {
+      const resp = await fetch(backendUrl("/analyze"), {
         method: "POST",
         headers: { "Accept": "application/json" },
+        credentials: "include",
         body: fd
       });
       
@@ -761,13 +836,7 @@
         return;
       }
 
-      // robust JSON parsing
-      const contentType = (resp.headers.get("content-type") || "").toLowerCase();
-      if (!contentType.includes("application/json")) {
-        const txt = await resp.text().catch(() => "");
-        throw new Error("Invalid JSON response: " + (txt || "").slice(0, 160));
-      }
-      const data = await resp.json();
+      const data = await readJsonResponse(resp);
 
       hideLoader();
       
@@ -777,7 +846,7 @@
 
   // ✅ Short pause so user sees feedback
         setTimeout(() => {
-          window.location.href = data.redirect;
+          window.location.href = String(data.redirect || "").startsWith("http") ? data.redirect : backendUrl(data.redirect);
         }, 600);
 
         return;
@@ -863,6 +932,21 @@
       if (yt) yt.value = "";
       const scoped = localStorage.getItem(getScopedLastUrlKey());
       if (scoped && yt) yt.value = scoped;
+      if (yt) {
+        yt.addEventListener("input", () => syncInputState(yt.value));
+        yt.addEventListener("change", () => syncInputState(yt.value));
+        yt.addEventListener("paste", () => {
+          requestAnimationFrame(() => {
+            if (document.querySelector(SEL.yt) === yt) syncInputState(yt.value);
+          });
+        });
+        yt.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleAnalyzeClick(e);
+          }
+        });
+      }
       // Clean old global key to avoid cross-account leakage on shared browsers.
       localStorage.removeItem(GLOBAL_LAST_URL_KEY);
     } catch (e) {}
