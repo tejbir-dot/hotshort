@@ -524,4 +524,26 @@
   </div>
 </section>
 
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const btn = document.getElementById("analyzeBtn");
+    if (!btn) return;
+
+    btn.addEventListener("click", function () {
+      const urlInput = document.getElementById("yt");
+      const hasUrl = !!(urlInput && String(urlInput.value || "").trim());
+      if (!hasUrl) return;
+
+      document.body.classList.add("dashboard-aurora");
+      btn.classList.add("thinking");
+
+      const loader = document.getElementById("loader");
+      if (loader) {
+        loader.classList.add("active", "thinking");
+        loader.setAttribute("aria-hidden", "false");
+      }
+    }, { capture: true });
+  });
+</script>
+
 {% endblock %}
