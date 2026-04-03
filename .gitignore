@@ -12,15 +12,18 @@ hotshort_env/
 # Cache / temp
 cache/
 .hotshort_transcripts_cache/
+.hotshort_ingestion_cache/
 cache_transcript_*.json
 tests/payoff_failures.jsonl
 
 # Media / outputs
 *.mp4
 *.part
+*.bat
 downloads/
 output/
 temp_*
+data/*.db
 
 # OS
 .DS_Store

@@ -1,10 +1,12 @@
 import os
 import re
 import uuid
+import socket
 import time
 import tempfile
 import queue
 import threading
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 import hashlib
@@ -1395,6 +1397,155 @@ def index():
 def health():
     return "ok"
 
+
+def wake_hotshort_server():
+    """
+    Wake the HotShort worker host.
+
+    Preferred path:
+    - trigger a GitHub Actions workflow_dispatch that can relay a wake event
+
+    Fallback path:
+    - send a local Wake-on-LAN packet when a MAC is configured
+    """
+    repo = os.getenv("HOTSHORT_WAKE_GITHUB_REPO", "").strip()
+    workflow = os.getenv("HOTSHORT_WAKE_GITHUB_WORKFLOW", "wake.yml").strip() or "wake.yml"
+    ref = os.getenv("HOTSHORT_WAKE_GITHUB_REF", "main").strip() or "main"
+    token = os.getenv("HOTSHORT_WAKE_GITHUB_TOKEN", "").strip()
+
+    if repo and token:
+        dispatch_url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
+        try:
+            resp = requests.post(
+                dispatch_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={"ref": ref},
+                timeout=10,
+            )
+            if 200 <= resp.status_code < 300:
+                log.info("[WAKE] Triggered GitHub workflow dispatch repo=%s workflow=%s ref=%s", repo, workflow, ref)
+                return True
+            log.warning(
+                "[WAKE] GitHub workflow dispatch failed status=%s repo=%s workflow=%s body=%s",
+                resp.status_code,
+                repo,
+                workflow,
+                (resp.text or "")[:300],
+            )
+        except Exception:
+            log.exception("[WAKE] GitHub workflow dispatch raised an exception")
+
+    mac = os.getenv("HOTSHORT_WAKE_WOL_MAC", "30:56:0F:19:9D:1B").strip()
+    if not mac:
+        log.warning("[WAKE] No GitHub workflow config or WOL MAC available")
+        return False
+
+    try:
+        mac_bytes = bytes.fromhex(mac.replace(":", "").replace("-", ""))
+        packet = b"\xff" * 6 + mac_bytes * 16
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        try:
+            sock.sendto(packet, ("255.255.255.255", 9))
+            log.info("[WAKE] Wake-on-LAN packet sent to HotShort server")
+            return True
+        finally:
+            sock.close()
+    except Exception:
+        log.exception("[WAKE] Wake-on-LAN send failed")
+        return False
+
+
+def worker_alive():
+    """
+    Checks if the configured local worker service is running.
+    """
+    local_worker_url = (LOCAL_WORKER_URL or os.getenv("LOCAL_WORKER_URL", "")).strip()
+    if local_worker_url:
+        return _local_worker_is_alive(local_worker_url, timeout=2)
+
+    log.warning("[WAKE] LOCAL_WORKER_URL is not configured; treating worker as offline")
+    return False
+
+
+def _wake_wait_seconds() -> int:
+    try:
+        return max(0, int(os.getenv("HOTSHORT_WAKE_WAIT_SECONDS", "35") or 35))
+    except Exception:
+        return 35
+
+
+def ensure_worker_ready(timeout_seconds: int | None = None, retry_interval_seconds: int = 5) -> bool:
+    """
+    Ensure the remote/local worker is reachable before trying to analyze.
+
+    The hosted web app owns this orchestration so the browser never needs to
+    know about wake endpoints or tunnel URLs.
+    """
+    if worker_alive():
+        return True
+
+    wake_sent = wake_hotshort_server()
+    if not wake_sent:
+        log.warning("[WAKE] Could not send wake signal to worker host")
+        return False
+
+    wait_budget = timeout_seconds if timeout_seconds is not None else _wake_wait_seconds()
+    deadline = time.time() + max(0, wait_budget)
+    sleep_for = max(1, int(retry_interval_seconds))
+
+    while time.time() <= deadline:
+        time.sleep(sleep_for)
+        if worker_alive():
+            log.info("[WAKE] Worker became available after wake")
+            return True
+
+    log.warning("[WAKE] Worker did not become ready within %ss", wait_budget)
+    return False
+
+
+@app.route("/api/worker/status", methods=["GET"])
+@login_required
+def api_worker_status():
+    return jsonify({
+        "ok": True,
+        "alive": worker_alive(),
+        "wake_wait_seconds": _wake_wait_seconds(),
+    })
+
+
+@app.route("/api/worker/wake", methods=["POST"])
+@login_required
+def api_worker_wake():
+    if worker_alive():
+        return jsonify({
+            "ok": True,
+            "alive": True,
+            "already_awake": True,
+            "wake_wait_seconds": _wake_wait_seconds(),
+        })
+
+    wake_sent = wake_hotshort_server()
+    if not wake_sent:
+        return jsonify({
+            "ok": False,
+            "alive": False,
+            "error": "Wake signal could not be sent.",
+            "wake_wait_seconds": _wake_wait_seconds(),
+        }), 503
+
+    return jsonify({
+        "ok": True,
+        "alive": False,
+        "already_awake": False,
+        "wake_sent": True,
+        "wake_wait_seconds": _wake_wait_seconds(),
+    })
+
 @app.route('/prototype')
 def ui_prototype():
     # sample clips for prototype
@@ -2619,6 +2770,9 @@ def analyze_video():
             }), 200
         return redirect(redirect_url)
 
+    if not ensure_worker_ready():
+        return analyze_error("Worker is offline and did not come online after wake attempt.", 503)
+
     # Resolve current plan + limits once for this request.
     plan_type = get_user_plan_type(current_user)
     plan_limits = get_plan_limits(plan_type)
@@ -3099,27 +3253,40 @@ def analyze_video():
         except Exception as e:
             log.warning("[INGEST] audio integrity telemetry skipped: %s", e)
 
-        # --------------------------------------------------
-        # RunPod GPU Pod Lifecycle Management
-        # --------------------------------------------------
-        # Start GPU pod only in `pod` mode
-        if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+        pod_started = False
+
+        def _ensure_runpod_ready() -> bool:
+            nonlocal pod_started
+            if not (RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID")):
+                return False
+            if pod_started:
+                return True
             try:
-                log.info("[RUNPOD] Starting GPU pod...")
+                log.info("[RUNPOD] Starting GPU pod for fallback...")
                 start_pod()
+                pod_started = True
                 if wait_until_ready(timeout=120):
-                    log.info("[RUNPOD] Pod ready for GPU work")
+                    log.info("[RUNPOD] Pod ready for fallback work")
                 else:
                     log.warning("[RUNPOD] Pod did not become ready within timeout, continuing anyway...")
+                return True
             except Exception as e:
-                log.warning("[RUNPOD] Failed to start pod: %s", e)
+                log.warning("[RUNPOD] Failed to start pod for fallback: %s", e)
+                return False
 
         # Precompute transcript on clean wav and seed cache for orchestrator
         stage_t0 = time.time()
         try:
             transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
-            if is_fast_longform:
+            transcript_tiny_above_s = float(os.environ.get("HS_TRANSCRIPT_TINY_ABOVE_SECONDS", "1200") or 1200.0)
+            if source_video_duration_s >= transcript_tiny_above_s:
                 transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
+            log.info(
+                "[TRANSCRIPT] model=%s duration=%.2fs tiny_above=%.2fs",
+                transcript_model_name,
+                source_video_duration_s,
+                transcript_tiny_above_s,
+            )
             use_vad_override = None
             vad_profile_override = None
 
@@ -3134,8 +3301,35 @@ def analyze_video():
                     vad_profile_override=vad_profile_override,
                 )
 
-            log.info("[TRANSCRIPT] Using local CPU for transcription (RunPod disabled)")
-            transcript_segments = _run_local_transcription()
+            # Prefer local transcription first; only fall back to RunPod if local work fails.
+            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+            runpod_api_key = os.getenv("RUNPOD_API_KEY")
+
+            try:
+                log.info("[TRANSCRIPT] Using local GPU-first transcription")
+                transcript_segments = _run_local_transcription()
+            except Exception as local_transcript_err:
+                if runpod_endpoint and runpod_api_key:
+                    try:
+                        _ensure_runpod_ready()
+                        log.warning(
+                            "[TRANSCRIPT] Local transcription failed; falling back to RunPod. error=%s",
+                            local_transcript_err,
+                        )
+                        transcript_segments = send_transcription_request(youtube_url)
+                    except Exception as runpod_transcript_err:
+                        log.warning(
+                            "[TRANSCRIPT] RunPod fallback unavailable after local failure; retrying local path. local_error=%s runpod_error=%s",
+                            local_transcript_err,
+                            runpod_transcript_err,
+                        )
+                        transcript_segments = _run_local_transcription()
+                else:
+                    log.warning(
+                        "[TRANSCRIPT] Local transcription failed and RunPod not configured; retrying local path. error=%s",
+                        local_transcript_err,
+                    )
+                    transcript_segments = _run_local_transcription()
 
             seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
             # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
@@ -3187,17 +3381,30 @@ def analyze_video():
             top_k = max(3, min(20, int(top_k)))
 
             def _run_local_analysis():
-                log.info("[ANALYSIS] Using local CPU for viral moment detection")
+                log.info("[ANALYSIS] Using local GPU-first viral moment detection")
                 os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
                 clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
                 print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
                 return clips
 
-            # RunPod disabled for analysis in this flow; always prefer local staged pipeline.
-            log.info("[ANALYSIS] Using local CPU for viral moment detection (RunPod disabled)")
-            moments = _run_local_analysis()
+            # Prefer local analysis first; only fall back to RunPod if local work fails.
+            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+            runpod_api_key = os.getenv("RUNPOD_API_KEY")
 
-                
+            try:
+                moments = _run_local_analysis()
+            except Exception as local_analysis_err:
+                if runpod_endpoint and runpod_api_key:
+                    _ensure_runpod_ready()
+                    log.warning(
+                        "[ANALYSIS] Local analysis failed; falling back to RunPod. error=%s",
+                        local_analysis_err,
+                    )
+                    analysis_result = send_analysis_request(transcript_segments, video_path)
+                    moments = analysis_result.get('moments', [])
+                    log.info("[RUNPOD] Analysis found %d viral moments", len(moments))
+                else:
+                    raise
 
             log.info(
                 "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d) pipeline_mode=staged (FORCED) allow_fallback=False",
@@ -3210,10 +3417,25 @@ def analyze_video():
         except Exception as e:
             recovered_analysis = False
             log.exception("[ANALYZE] Orchestrator failed: %s", e)
+            if os.environ.get("RUNPOD_ENDPOINT_ID") and os.environ.get("RUNPOD_API_KEY"):
+                try:
+                    log.warning("[ANALYSIS] Local analysis path failed; retrying via RunPod fallback")
+                    _ensure_runpod_ready()
+                    analysis_result = send_analysis_request(transcript_segments, video_path)
+                    moments = analysis_result.get('moments', [])
+                    log.info(
+                        "[FAST-LANE] RunPod fallback succeeded top_k=%d duration=%.1fs moments=%d",
+                        top_k,
+                        source_video_duration_s,
+                        len(moments or []),
+                    )
+                    recovered_analysis = True
+                except Exception as runpod_retry_err:
+                    log.exception("[ANALYSIS] RunPod fallback after local analysis failure also failed: %s", runpod_retry_err)
             if recovered_analysis:
                 log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
             # Stop pod before returning error
-                if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+                if pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
                     try:
                         log.info("[RUNPOD] Stopping GPU pod due to error...")
                         stop_pod()
@@ -3225,7 +3447,7 @@ def analyze_video():
         # --------------------------------------------------
         # Stop GPU pod after GPU work is complete (pod mode only)
         # --------------------------------------------------
-        if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+        if pod_started and RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Stopping GPU pod after analysis complete...")
                 stop_pod()
@@ -3424,7 +3646,7 @@ def analyze_video():
         editor_cls, editor_cfg_cls = _load_world_editor()
     if enable_world_editor and editor_cls is not None and editor_cfg_cls is not None:
         try:
-            add_captions = os.environ.get("HS_EDIT_ADD_CAPTIONS", "0").strip().lower() in ("1", "true", "yes", "on")
+            add_captions = os.environ.get("HS_EDIT_ADD_CAPTIONS", "1").strip().lower() in ("1", "true", "yes", "on")
             world_editor_config = editor_cfg_cls(
                 target_ratio=os.environ.get("HS_EDIT_TARGET_RATIO", "9:16"),
                 translate_to=(os.environ.get("HS_EDIT_TRANSLATE_TO", "").strip() or None),
