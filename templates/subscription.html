@@ -278,7 +278,7 @@
         </div>
 
         <div class="cta">
-          <a class="btn" href="https://insectival-malaysia-redundant.ngrok-free.dev/dashboard">Start Free Trial</a>
+          <a class="btn" href="{{ url_for('dashboard') }}">Start Free Trial</a>
         </div>
       </div>
 
@@ -303,7 +303,7 @@
         </div>
 
         <div class="cta">
-          <a class="btn" href="https://insectival-malaysia-redundant.ngrok-free.dev/create-checkout-session/starter">Choose Starter</a>
+          <a class="btn" href="{{ url_for('create_checkout_session', plan='starter') }}">Choose Starter</a>
         </div>
       </div>
 
@@ -329,7 +329,7 @@
         </div>
 
         <div class="cta">
-          <a class="btn" href="https://insectival-malaysia-redundant.ngrok-free.dev/create-checkout-session/pro">Unlock Pro</a>
+          <a class="btn" href="{{ url_for('create_checkout_session', plan='pro') }}">Unlock Pro</a>
         </div>
       </div>
 
@@ -356,7 +356,7 @@
         </div>
 
         <div class="cta">
-          <a class="btn" href="https://insectival-malaysia-redundant.ngrok-free.dev/create-checkout-session/industry">Go Industry</a>
+          <a class="btn" href="{{ url_for('create_checkout_session', plan='industry') }}">Go Industry</a>
         </div>
       </div>
     </main>

@@ -41,9 +41,6 @@ def normalize_next_target(raw_next):
 
 def build_post_login_redirect(raw_next=None):
     next_target = normalize_next_target(raw_next)
-    backend_url = (current_app.config.get("BACKEND_URL") or "").strip().rstrip("/")
-    if backend_url:
-        return redirect(f"{backend_url}{next_target}")
     frontend_url = (current_app.config.get("FRONTEND_URL") or "").strip().rstrip("/")
     if frontend_url:
         return redirect(f"{frontend_url}{next_target}")

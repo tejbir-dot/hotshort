@@ -989,7 +989,7 @@
     }
   </style>
 </head>
-<body data-user-auth="0" data-backend-url="https://insectival-malaysia-redundant.ngrok-free.dev">
+<body data-user-auth="{{ '1' if current_user.is_authenticated else '0' }}" data-backend-url="{{ FRONTEND_URL|default('', true) }}">
   <!-- Navigation -->
   <nav>
     <div class="container">
@@ -1001,9 +1001,9 @@
       </a>
       <ul class="nav-links">
         <li><a href="#features" class="active">Features</a></li>
-        <li><a href="https://insectival-malaysia-redundant.ngrok-free.dev/pricing">Pricing</a></li>
+        <li><a href="/pricing">Pricing</a></li>
         <li><a href="https://github.com" target="_blank">GitHub</a></li>
-        <li><a href="https://insectival-malaysia-redundant.ngrok-free.dev/login">Login</a></li>
+        <li><a href="{{ url_for('auth.login') }}">Login</a></li>
       </ul>
     </div>
   </nav>
@@ -1028,7 +1028,7 @@
 
       <!-- CTA Form -->
       <div class="cta-section">
-        <form action="https://insectival-malaysia-redundant.ngrok-free.dev/analyze" method="post" class="form-group" id="homeAnalyzeForm">
+        <form action="{{ url_for('analyze_video') }}" method="post" class="form-group" id="homeAnalyzeForm">
           <input
             type="url"
             name="youtube_url"
@@ -1178,7 +1178,7 @@
         <ul>
           <li><a href="/">Home</a></li>
           <li><a href="#features">Features</a></li>
-          <li><a href="https://insectival-malaysia-redundant.ngrok-free.dev/dashboard">Dashboard</a></li>
+          <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
         </ul>
       </div>
 
@@ -1203,7 +1203,7 @@
       <div class="footer-section">
         <h4>Get Started</h4>
         <p>Transform your videos into viral moments. Join creators making bank.</p>
-        <form action="https://insectival-malaysia-redundant.ngrok-free.dev/analyze" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
+        <form action="{{ url_for('analyze_video') }}" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
           <input
             type="url"
             name="youtube_url"
@@ -1296,7 +1296,7 @@
 
     async function checkSession() {
       try {
-        const res = await fetch('https://insectival-malaysia-redundant.ngrok-free.dev/auth/session', {
+        const res = await fetch('{{ url_for("auth.session_status") }}', {
           method: 'GET',
           credentials: 'include'
         });
@@ -1305,7 +1305,7 @@
 
         const data = await res.json().catch(() => null);
         if (data && data.logged_in && window.location.pathname === '/') {
-          window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/dashboard';
+          window.location.href = '{{ url_for("dashboard") }}';
         }
       } catch (err) {
         console.log('Session check failed');
@@ -1361,7 +1361,7 @@
           // If not logged in, send to login (preserve next param)
           if(!USER_AUTH){
             const next = '/dashboard';
-            window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent(next);
+            window.location.href = '{{ url_for("auth.login") }}?next=' + encodeURIComponent(next);
             return;
           }
 
@@ -1384,7 +1384,7 @@
               return;
             }
 
-            const res = await fetch('https://insectival-malaysia-redundant.ngrok-free.dev/analyze', {
+            const res = await fetch('{{ url_for("analyze_video") }}', {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
               credentials: 'include',
@@ -1393,19 +1393,19 @@
 
             // If we get a redirect (login page) or an auth failure, follow it.
             if (res.redirected || res.status === 401 || res.status === 403) {
-              window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent('/dashboard');
+              window.location.href = '{{ url_for("auth.login") }}?next=' + encodeURIComponent('/dashboard');
               return;
             }
 
             const data = await res.json().catch(() => null);
             // If response is HTML (login page), it'll fail to parse as JSON; redirect.
             if (!data) {
-              window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent('/dashboard');
+              window.location.href = '{{ url_for("auth.login") }}?next=' + encodeURIComponent('/dashboard');
               return;
             }
 
             if (data.ok && data.redirect) {
-              window.location.href = data.redirect.startsWith('http') ? data.redirect : 'https://insectival-malaysia-redundant.ngrok-free.dev' + data.redirect;
+              window.location.href = data.redirect;
               return;
             }
 
