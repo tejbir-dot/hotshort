@@ -166,8 +166,8 @@
         <div class="feat">✓ Unlimited clips</div>
         <div class="feat">✓ Cancel anytime</div>
         <div class="cta">
-          <a class="btn primary" href="https://insectival-malaysia-redundant.ngrok-free.dev/checkout?plan=pro{% if clip_id %}&clip_id={{ clip_id }}{% endif %}">Unlock Pro</a>
-          <a class="btn" href="https://insectival-malaysia-redundant.ngrok-free.dev/dashboard">Back</a>
+          <a class="btn primary" href="{{ url_for('checkout') }}?plan=pro{% if clip_id %}&clip_id={{ clip_id }}{% endif %}">Unlock Pro</a>
+          <a class="btn" href="{{ url_for('dashboard') }}">Back</a>
         </div>
       </div>
 
@@ -180,8 +180,8 @@
         <div class="feat">✓ Priority processing</div>
         <div class="feat">✓ High-volume workflows</div>
         <div class="cta">
-          <a class="btn primary" href="https://insectival-malaysia-redundant.ngrok-free.dev/checkout?plan=creator">Go Creator</a>
-          <a class="btn" href="https://insectival-malaysia-redundant.ngrok-free.dev/subscription">More details</a>
+          <a class="btn primary" href="{{ url_for('checkout') }}?plan=creator">Go Creator</a>
+          <a class="btn" href="{{ url_for('subscription') }}">More details</a>
         </div>
       </div>
 
@@ -194,8 +194,8 @@
         <div class="feat">✓ Best Pick boost</div>
         <div class="feat">✓ Early model access</div>
         <div class="cta">
-          <a class="btn primary" href="https://insectival-malaysia-redundant.ngrok-free.dev/checkout?plan=creator">Go Creator</a>
-          <a class="btn" href="https://insectival-malaysia-redundant.ngrok-free.dev/subscription">More details</a>
+          <a class="btn primary" href="{{ url_for('checkout') }}?plan=creator">Go Creator</a>
+          <a class="btn" href="{{ url_for('subscription') }}">More details</a>
         </div>
       </div>
     </div>

@@ -5,23 +5,25 @@
 {% block content %}
 <script>
   async function requireAuth() {
+    const sessionUrl = "{{ url_for('auth.session_status') }}";
+    const loginUrl = "{{ url_for('auth.login') }}?next=" + encodeURIComponent('/dashboard');
     try {
-      const res = await fetch('https://insectival-malaysia-redundant.ngrok-free.dev/auth/session', {
+      const res = await fetch(sessionUrl, {
         method: 'GET',
         credentials: 'include'
       });
 
       if (!res.ok) {
-        window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent('/dashboard');
+        window.location.href = loginUrl;
         return;
       }
 
       const data = await res.json().catch(() => null);
       if (!data || !data.logged_in) {
-        window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent('/dashboard');
+        window.location.href = loginUrl;
       }
     } catch (err) {
-      window.location.href = 'https://insectival-malaysia-redundant.ngrok-free.dev/login?next=' + encodeURIComponent('/dashboard');
+      window.location.href = loginUrl;
     }
   }
 
