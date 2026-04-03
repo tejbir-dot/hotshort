@@ -1466,7 +1466,7 @@ def worker_alive():
     """
     local_worker_url = (LOCAL_WORKER_URL or os.getenv("LOCAL_WORKER_URL", "")).strip()
     if local_worker_url:
-        return _local_worker_is_alive(local_worker_url, timeout=2)
+        return bool(_local_worker_status(local_worker_url, timeout=2).get("alive"))
 
     log.warning("[WAKE] LOCAL_WORKER_URL is not configured; treating worker as offline")
     return False
