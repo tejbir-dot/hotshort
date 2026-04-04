@@ -24,6 +24,9 @@ downloads/
 output/
 temp_*
 data/*.db
+instance/
+static/cache/
+static/outputs/
 
 # OS
 .DS_Store
