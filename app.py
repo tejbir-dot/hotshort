@@ -2760,7 +2760,9 @@ def analyze_video():
         return redirect(url_for("dashboard"))
 
     def analyze_success(job_id_value: str, clips_count: int):
-        redirect_url = url_for("results", job_id=job_id_value)
+        redirect_path = url_for("results", job_id=job_id_value)
+        backend_base = (app.config.get("BACKEND_URL") or app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+        redirect_url = f"{backend_base}{redirect_path}" if backend_base else redirect_path
         if wants_json_response():
             return jsonify({
                 "ok": True,

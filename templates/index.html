@@ -989,7 +989,7 @@
     }
   </style>
 </head>
-<body data-user-auth="{{ '1' if current_user.is_authenticated else '0' }}" data-backend-url="{{ FRONTEND_URL|default('', true) }}">
+<body data-user-auth="{{ '1' if current_user.is_authenticated else '0' }}">
   <!-- Navigation -->
   <nav>
     <div class="container">
@@ -1003,7 +1003,7 @@
         <li><a href="#features" class="active">Features</a></li>
         <li><a href="/pricing">Pricing</a></li>
         <li><a href="https://github.com" target="_blank">GitHub</a></li>
-        <li><a href="{{ url_for('auth.login') }}">Login</a></li>
+        <li><a href="#" data-backend-link="/login">Login</a></li>
       </ul>
     </div>
   </nav>
@@ -1028,7 +1028,7 @@
 
       <!-- CTA Form -->
       <div class="cta-section">
-        <form action="/analyze" method="post" class="form-group" id="homeAnalyzeForm">
+        <form action="#" data-backend-action="/analyze" method="post" class="form-group" id="homeAnalyzeForm">
           <input
             type="url"
             name="youtube_url"
@@ -1178,7 +1178,7 @@
         <ul>
           <li><a href="/">Home</a></li>
           <li><a href="#features">Features</a></li>
-          <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+          <li><a href="#" data-backend-link="/dashboard">Dashboard</a></li>
         </ul>
       </div>
 
@@ -1203,7 +1203,7 @@
       <div class="footer-section">
         <h4>Get Started</h4>
         <p>Transform your videos into viral moments. Join creators making bank.</p>
-        <form action="/analyze" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
+        <form action="#" data-backend-action="/analyze" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
           <input
             type="url"
             name="youtube_url"
@@ -1226,6 +1226,18 @@
   <div id="golden-light" aria-hidden="true"></div>
 
   <script>
+    const BACKEND = "https://insectival-malaysia-redundant.ngrok-free.dev";
+
+    document.querySelectorAll("[data-backend-link]").forEach((el) => {
+      const path = el.getAttribute("data-backend-link") || "";
+      el.href = BACKEND + path;
+    });
+
+    document.querySelectorAll("[data-backend-action]").forEach((el) => {
+      const path = el.getAttribute("data-backend-action") || "";
+      el.action = BACKEND + path;
+    });
+
     (function(){
       const light = document.getElementById('golden-light');
       // Style via JS to ensure it's present even if CSS caches differ
@@ -1296,7 +1308,7 @@
 
     async function checkSession() {
       try {
-        const res = await fetch('{{ url_for("auth.session_status") }}', {
+        const res = await fetch(`${BACKEND}/auth/session`, {
           method: 'GET',
           credentials: 'include'
         });
@@ -1305,7 +1317,7 @@
 
         const data = await res.json().catch(() => null);
         if (data && data.logged_in && window.location.pathname === '/') {
-          window.location.href = '{{ url_for("dashboard") }}';
+          window.location.href = `${BACKEND}/dashboard`;
         }
       } catch (err) {
         console.log('Session check failed');
@@ -1317,10 +1329,9 @@
     // Homepage analyze: smart, friendly, and robust
     (function(){
       const forms = Array.from(document.querySelectorAll('form')).filter((form) => {
-        const action = form.getAttribute('action') || '';
+        const action = form.getAttribute('action') || form.getAttribute('data-backend-action') || '';
         return action.includes('/analyze');
       });
-      const USER_AUTH = (document.body && document.body.dataset && document.body.dataset.userAuth === '1');
       const isLikelyMobile = !!(
         (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
         /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')
@@ -1359,12 +1370,6 @@
           if(!url){ showMessage(form, 'Please paste a valid YouTube link.'); return; }
 
           // If not logged in, send to login (preserve next param)
-          if(!USER_AUTH){
-            const next = '/dashboard';
-            window.location.href = '/auth/login?next=' + encodeURIComponent(next);
-            return;
-          }
-
           // Logged-in: send JSON-style POST and handle redirect gracefully
           try{
             if(btn){
@@ -1384,7 +1389,7 @@
               return;
             }
 
-            const res = await fetch('/analyze', {
+            const res = await fetch(`${BACKEND}/analyze`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
               credentials: 'include',
@@ -1393,19 +1398,20 @@
 
             // If we get a redirect (login page) or an auth failure, follow it.
             if (res.redirected || res.status === 401 || res.status === 403) {
-              window.location.href = '/auth/login?next=' + encodeURIComponent('/dashboard');
+              window.location.href = `${BACKEND}/login?next=` + encodeURIComponent('/dashboard');
               return;
             }
 
             const data = await res.json().catch(() => null);
             // If response is HTML (login page), it'll fail to parse as JSON; redirect.
             if (!data) {
-              window.location.href = '/auth/login?next=' + encodeURIComponent('/dashboard');
+              window.location.href = `${BACKEND}/login?next=` + encodeURIComponent('/dashboard');
               return;
             }
 
             if (data.ok && data.redirect) {
-              window.location.href = data.redirect;
+              const nextUrl = /^https?:\/\//i.test(data.redirect) ? data.redirect : `${BACKEND}${data.redirect}`;
+              window.location.href = nextUrl;
               return;
             }
 
