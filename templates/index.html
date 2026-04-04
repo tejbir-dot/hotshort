@@ -1028,7 +1028,7 @@
 
       <!-- CTA Form -->
       <div class="cta-section">
-        <form action="{{ url_for('analyze_video') }}" method="post" class="form-group" id="homeAnalyzeForm">
+        <form action="/analyze" method="post" class="form-group" id="homeAnalyzeForm">
           <input
             type="url"
             name="youtube_url"
@@ -1203,7 +1203,7 @@
       <div class="footer-section">
         <h4>Get Started</h4>
         <p>Transform your videos into viral moments. Join creators making bank.</p>
-        <form action="{{ url_for('analyze_video') }}" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
+        <form action="/analyze" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
           <input
             type="url"
             name="youtube_url"
@@ -1361,7 +1361,7 @@
           // If not logged in, send to login (preserve next param)
           if(!USER_AUTH){
             const next = '/dashboard';
-            window.location.href = '{{ url_for("auth.login") }}?next=' + encodeURIComponent(next);
+            window.location.href = '/auth/login?next=' + encodeURIComponent(next);
             return;
           }
 
@@ -1384,7 +1384,7 @@
               return;
             }
 
-            const res = await fetch('{{ url_for("analyze_video") }}', {
+            const res = await fetch('/analyze', {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
               credentials: 'include',
@@ -1393,14 +1393,14 @@
 
             // If we get a redirect (login page) or an auth failure, follow it.
             if (res.redirected || res.status === 401 || res.status === 403) {
-              window.location.href = '{{ url_for("auth.login") }}?next=' + encodeURIComponent('/dashboard');
+              window.location.href = '/auth/login?next=' + encodeURIComponent('/dashboard');
               return;
             }
 
             const data = await res.json().catch(() => null);
             // If response is HTML (login page), it'll fail to parse as JSON; redirect.
             if (!data) {
-              window.location.href = '{{ url_for("auth.login") }}?next=' + encodeURIComponent('/dashboard');
+              window.location.href = '/auth/login?next=' + encodeURIComponent('/dashboard');
               return;
             }
 
