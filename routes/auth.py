@@ -19,15 +19,15 @@ def normalize_next_target(raw_next):
     if value.startswith("/") and not value.startswith("//"):
         return value
 
-    frontend_url = (current_app.config.get("FRONTEND_URL") or "").strip().rstrip("/")
-    if not frontend_url:
+    backend_url = (current_app.config.get("BACKEND_URL") or current_app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+    if not backend_url:
         return default_target
 
     parsed_next = urlparse(value)
-    parsed_frontend = urlparse(frontend_url)
+    parsed_backend = urlparse(backend_url)
     if (
         parsed_next.scheme in ("http", "https")
-        and parsed_next.netloc == parsed_frontend.netloc
+        and parsed_next.netloc == parsed_backend.netloc
     ):
         normalized = parsed_next.path or default_target
         if parsed_next.query:
@@ -41,9 +41,9 @@ def normalize_next_target(raw_next):
 
 def build_post_login_redirect(raw_next=None):
     next_target = normalize_next_target(raw_next)
-    frontend_url = (current_app.config.get("FRONTEND_URL") or "").strip().rstrip("/")
-    if frontend_url:
-        return redirect(f"{frontend_url}{next_target}")
+    backend_url = (current_app.config.get("BACKEND_URL") or current_app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+    if backend_url:
+        return redirect(f"{backend_url}{next_target}")
     return redirect(next_target)
 
 
@@ -131,9 +131,9 @@ def logout():
     session.clear()
     logout_user()
     flash('You have been logged out safely.', 'info')
-    frontend_url = (current_app.config.get("FRONTEND_URL") or "").strip().rstrip("/")
-    if frontend_url:
-        return redirect(frontend_url)
+    backend_url = (current_app.config.get("BACKEND_URL") or current_app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+    if backend_url:
+        return redirect(f"{backend_url}/login")
     return redirect(url_for('auth.login'))
 
 
