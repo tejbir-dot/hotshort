@@ -78,3 +78,36 @@ def test_validation_rescues_strong_semantic_candidate_when_curve_is_missing():
     assert len(accepted) == 1
     assert accepted[0]["validation"]["accepted"] is True
     assert rejected == []
+
+
+def test_validation_rescues_dense_podcast_candidate_with_soft_payoff():
+    candidates = [
+        {
+            "start": 12.0,
+            "end": 24.0,
+            "text": "The core insight is that marketplaces unlock supply before demand looks obvious.",
+            "payoff_confidence": 0.18,
+            "alignment_score": 0.04,
+            "viral_density": 0.46,
+            "signals": {
+                "psychology": {"payoff_confidence": 0.18},
+                "semantic": {
+                    "impact": 0.61,
+                    "meaning": 0.79,
+                    "novelty": 0.59,
+                    "clarity": 0.74,
+                    "semantic_quality": 0.72,
+                },
+                "narrative": {
+                    "completion_score": 0.45,
+                    "trigger_score": 0.43,
+                },
+            },
+        }
+    ]
+
+    accepted, rejected = apply_post_enrichment_validation(candidates, curve=[(12.0, 0.05), (18.0, 0.1), (24.0, 0.09)])
+
+    assert len(accepted) == 1
+    assert accepted[0]["validation"]["accepted"] is True
+    assert rejected == []

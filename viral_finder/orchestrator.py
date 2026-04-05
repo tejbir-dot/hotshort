@@ -852,16 +852,33 @@ def _semantic_validation_rescue(candidate: Dict[str, Any], failure_reason: str) 
     alignment = max(0.0, min(1.0, float(candidate.get("alignment_score", 0.0) or 0.0)))
     payoff_conf = max(0.0, min(1.0, float(psychology.get("payoff_confidence", candidate.get("payoff_confidence", 0.0)) or 0.0)))
 
+    sarcasm_score = float(candidate.get("sarcasm_score", 0.0) or 0.0)
+    content_penalty = float(candidate.get("content_shape_penalty", 0.0) or 0.0)
+
     semantic_strength = max(semantic_quality, (0.5 * impact) + (0.3 * meaning) + (0.2 * clarity))
     narrative_strength = max(completion, trigger_score, viral_density)
+    explanation_strength = max(
+        semantic_strength,
+        (0.45 * meaning) + (0.35 * clarity) + (0.20 * impact),
+    )
+
+    if sarcasm_score >= 0.65 and failure_reason != "no_curve":
+        return False
+    if content_penalty >= 0.10 and semantic_strength < 0.72:
+        return False
 
     if failure_reason == "no_curiosity_drop":
         return semantic_strength >= 0.56 and narrative_strength >= 0.40
     if failure_reason in {"payoff_low", "no_curve", "too_short_window", "no_curiosity_peak"}:
         return (
-            semantic_strength >= 0.60
+            explanation_strength >= 0.60
             and narrative_strength >= 0.42
-            and (alignment >= 0.08 or payoff_conf >= 0.35 or impact >= 0.35)
+            and (
+                alignment >= 0.08
+                or payoff_conf >= 0.35
+                or impact >= 0.35
+                or (meaning >= 0.72 and clarity >= 0.68)
+            )
         )
     return False
 
@@ -925,12 +942,115 @@ class PipelineContext:
     brain: Any = None
     stage_stats: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     transcript_source: str = "unknown"
+    target_min: int = 0
 
 
 def _record_stage(ctx: PipelineContext, stage: str, **stats: Any) -> None:
     ctx.stage_stats[stage] = stats
     compact = " ".join([f"{k}={v}" for k, v in stats.items()])
     log.info("[ORCH][%s] %s", stage, compact)
+
+
+def _rank_score(candidate: Dict[str, Any], *keys: str) -> float:
+    for key in keys:
+        try:
+            value = candidate.get(key, None)
+        except Exception:
+            value = None
+        if value is not None:
+            try:
+                return float(value or 0.0)
+            except Exception:
+                continue
+    return 0.0
+
+
+def _candidate_origin(candidate: Dict[str, Any]) -> str:
+    if bool(candidate.get("backfill")):
+        return "backfill"
+    if bool(candidate.get("hook_seed")):
+        return "hook"
+    return str(candidate.get("select_pass", "strict") or "strict")
+
+
+def _semantic_explanation_strength(candidate: Dict[str, Any]) -> float:
+    semantic = (candidate.get("signals", {}) or {}).get("semantic", {}) or {}
+    impact = _clamp01(semantic.get("impact", candidate.get("impact", 0.0)))
+    meaning = _clamp01(semantic.get("meaning", candidate.get("meaning", 0.0)))
+    clarity = _clamp01(semantic.get("clarity", candidate.get("clarity", 0.0)))
+    semantic_quality = _clamp01(semantic.get("semantic_quality", candidate.get("semantic_quality", 0.0)))
+    return _clamp01(
+        max(
+            semantic_quality,
+            (0.35 * impact) + (0.40 * meaning) + (0.25 * clarity),
+        )
+    )
+
+
+def _should_backfill_candidates(ctx: "PipelineContext") -> bool:
+    return _env_bool("HS_SMART_BACKFILL_ENABLED", True)
+
+
+def _maybe_backfill_raw_candidates(ctx: "PipelineContext") -> None:
+    if not _should_backfill_candidates(ctx):
+        return
+    target_min = max(0, int(ctx.target_min or 0))
+    current = list(ctx.raw_candidates or [])
+    if target_min <= 0 or len(current) >= target_min:
+        return
+    added = _smart_backfill_candidates(
+        ctx.transcript or [],
+        current,
+        target_min=target_min,
+        top_k=max(1, int(ctx.top_k or 1)),
+        curiosity_candidates=ctx.curiosity_candidates or [],
+    )
+    if not added:
+        return
+    ctx.raw_candidates = current + list(added)
+    log.warning(
+        "[ORCH-UNDERFLOW] raw_candidates=%d target_min=%d added_backfill=%d origins=%s",
+        len(current),
+        target_min,
+        len(added),
+        dict(sorted(Counter(_candidate_origin(c) for c in added).items())),
+    )
+    _record_stage(
+        ctx,
+        "L6C_SMART_BACKFILL",
+        target_min=target_min,
+        before=len(current),
+        added=len(added),
+        after=len(ctx.raw_candidates),
+        origins=dict(sorted(Counter(_candidate_origin(c) for c in ctx.raw_candidates).items())),
+    )
+
+
+def _final_quality_rescue(candidate: Dict[str, Any]) -> bool:
+    semantic_strength = _semantic_explanation_strength(candidate)
+    hook_metric = _clamp01(candidate.get("hook_score", candidate.get("hook_strength", 0.0)))
+    payoff_metric = _clamp01(candidate.get("payoff_score", candidate.get("payoff_confidence", 0.0)))
+    open_loop_metric = _clamp01(candidate.get("open_loop_score", 0.0))
+    return semantic_strength >= 0.68 and (hook_metric >= 0.16 or open_loop_metric >= 0.14 or payoff_metric >= 0.22)
+
+
+def _final_quality_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
+    reasons: List[str] = []
+    motion = _clamp01(candidate.get("motion", (candidate.get("signals", {}) or {}).get("engagement", {}).get("motion", 0.0)))
+    hook_strength = _clamp01(candidate.get("hook_strength", candidate.get("hook_score", 0.0)))
+    payoff_score = _clamp01(candidate.get("payoff_score", candidate.get("payoff_confidence", 0.0)))
+    story_patterns = list(candidate.get("story_patterns") or [])
+    arc_complete = bool(candidate.get("arc_complete", False))
+    label = str(candidate.get("label", "") or "").lower()
+    duration = float(candidate.get("duration", 0.0) or 0.0)
+    hook_offset = float(candidate.get("hook_offset", 0.0) or 0.0)
+    if (not arc_complete) and hook_strength < 0.20 and motion <= 0.02 and payoff_score < 0.15 and not story_patterns:
+        reasons.append("flat_incomplete_arc")
+    if "context" in label and payoff_score < 0.18 and hook_strength < 0.18 and not story_patterns:
+        reasons.append("context_only_window")
+    if duration >= 18.0 and payoff_score < 0.12 and hook_strength < 0.16 and hook_offset > 4.0:
+        reasons.append("late_flat_hook")
+    return reasons
 
 
 def _pipeline_mode(explicit_mode: Optional[str]) -> str:
@@ -1214,6 +1334,7 @@ def _run_candidate_generation(ctx: PipelineContext) -> None:
         produced=len(candidates),
         strict=int(pass_counts.get("strict", 0)),
         relaxed=int(pass_counts.get("relaxed", 0)),
+        origins=dict(sorted(Counter(_candidate_origin(c) for c in candidates).items())),
         wall_s=round(time.time() - t0, 3),
     )
 
@@ -1631,6 +1752,7 @@ def _run_validation(ctx: PipelineContext) -> None:
         accepted=len(accepted),
         rejected=len(rejected),
         reject_reasons=dict(sorted(reject_counter.items())),
+        accepted_origins=dict(sorted(Counter(_candidate_origin(c) for c in accepted).items())),
         wall_s=round(time.time() - t0, 3),
     )
 
@@ -1653,6 +1775,12 @@ def _run_ranking(ctx: PipelineContext) -> None:
         trigger_type = str(nar.get("trigger_type", "") or "")
         narrative_score = _clamp01((0.55 * trigger_score) + (0.45 * trigger_density) + (0.2 if trigger_type == "belief_reversal" else 0.0))
         payoff_confidence = _clamp01(psych.get("payoff_confidence", cand.get("payoff_confidence", 0.0)))
+        explanation_strength = _semantic_explanation_strength(cand)
+        low_motion_talk = bool(
+            explanation_strength >= 0.62
+            and _clamp01(eng.get("motion", 0.0)) <= 0.08
+            and _clamp01(sem.get("meaning", 0.0)) >= 0.58
+        )
         base_viral_score = (
             0.40 * curiosity_peak +
             0.30 * semantic_score +
@@ -1660,16 +1788,27 @@ def _run_ranking(ctx: PipelineContext) -> None:
             0.10 * narrative_score
         )
         cand["base_viral_score"] = round(float(base_viral_score), 4)
-        viral_score = float(base_viral_score * payoff_confidence)
+        payoff_floor = max(0.12, 0.28 * explanation_strength)
+        payoff_gate = max(payoff_confidence, payoff_floor if low_motion_talk else 0.0)
+        blended_payoff = _clamp01((0.72 * payoff_confidence) + (0.28 * payoff_gate))
+        viral_score = float(base_viral_score * blended_payoff)
         if bool(cand.get("insight_candidate", False)):
             viral_score *= 1.08
         cand["viral_score"] = round(float(viral_score), 4)
+        cand["ranking_payoff_gate"] = round(float(blended_payoff), 4)
+        cand["low_motion_talk"] = low_motion_talk
 
     ranked = sorted(
         (ctx.enriched_candidates or []),
-        key=lambda x: float(
-            x.get("viral_score", x.get("score_enriched", x.get("score", 0.0)))
-            if use_viral_score else x.get("score_enriched", x.get("score", 0.0))
+        key=lambda x: (
+            _rank_score(
+                x,
+                "viral_score" if use_viral_score else "score_enriched",
+                "score_enriched",
+                "score",
+            ),
+            _rank_score(x, "score_enriched", "score"),
+            _rank_score(x, "score"),
         ),
         reverse=True,
     )
@@ -1725,6 +1864,7 @@ def _run_ranking(ctx: PipelineContext) -> None:
         ranked=len(ranked),
         returned=len(final),
         final_pass_provenance=dict(sorted(Counter(str(c.get("select_pass", "strict") or "strict") for c in final if not c.get("hook_seed")).items())),
+        final_origins=dict(sorted(Counter(_candidate_origin(c) for c in final).items())),
         avg_viral_score=round(sum(float(c.get("viral_score", 0.0) or 0.0) for c in final) / float(max(1, len(final))), 4),
         wall_s=round(time.time() - t0, 3),
     )
@@ -1936,7 +2076,15 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         c["provenance"] = {"stage": "L10_ARC_ASSEMBLER"}
         out.append(c)
 
-    out = sorted(out, key=lambda x: float(x.get("arc_score", x.get("viral_score", x.get("score_enriched", 0.0))) or 0.0), reverse=True)
+    out = sorted(
+        out,
+        key=lambda x: (
+            _rank_score(x, "arc_score", "viral_score", "score_enriched", "score"),
+            _rank_score(x, "viral_score", "score_enriched", "score"),
+            _rank_score(x, "score_enriched", "score"),
+        ),
+        reverse=True,
+    )
     # � SMART DEDUPLICATION: Uses overlap-ratio based detection instead of strict time tolerance
     # Fixes duplicate_arcs from overlapping hooks (e.g. hooks 56-59 on same payoff 63)
     out = dedupe_by_overlap(out, overlap_threshold=0.75)
@@ -1949,6 +2097,7 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         input=len(ranked),
         arcs=len(ctx.ranked_output),
         complete=complete_count,
+        origins=dict(sorted(Counter(_candidate_origin(c) for c in ctx.ranked_output).items())),
         avg_arc_duration=round(sum(float(c.get("duration", 0.0) or 0.0) for c in ctx.ranked_output) / float(max(1, len(ctx.ranked_output))), 3),
         wall_s=round(time.time() - t0, 3),
     )
@@ -1968,6 +2117,7 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
     ideal_len = 22.0
     max_silence_gap = 1.5
     out: List[Dict[str, Any]] = []
+    rejected_final: List[Dict[str, Any]] = []
 
     def _seg_bounds(seg: Dict[str, Any]) -> tuple[float, float]:
         ss = float(seg.get("start", 0.0) or 0.0)
@@ -2203,17 +2353,61 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
         )
         c["viral_score"] = round(float(final_score), 4)
         c["provenance"] = {"stage": "L12_EDITOR_REFINER"}
+        final_reject_reasons = _final_quality_reject_reasons(c)
+        c["final_quality"] = {
+            "accepted": not final_reject_reasons,
+            "reasons": list(final_reject_reasons),
+            "rescued": False,
+        }
+        if final_reject_reasons:
+            if _final_quality_rescue(c):
+                c["final_quality"] = {
+                    "accepted": True,
+                    "reasons": ["semantic_explanation_rescue"],
+                    "rescued": True,
+                }
+            else:
+                rejected_final.append(c)
+                log.info(
+                    "[FINAL-REJECT] %.2f-%.2f reasons=%s origin=%s final_score=%.3f",
+                    float(c.get("start", 0.0) or 0.0),
+                    float(c.get("end", 0.0) or 0.0),
+                    final_reject_reasons,
+                    _candidate_origin(c),
+                    float(c.get("final_score", 0.0) or 0.0),
+                )
+                continue
         out.append(c)
 
-    out = sorted(out, key=lambda x: float(x.get("final_score", x.get("arc_score", x.get("viral_score", 0.0))) or 0.0), reverse=True)
+    out = sorted(
+        out,
+        key=lambda x: (
+            _rank_score(x, "final_score", "arc_score", "viral_score", "score_enriched", "score"),
+            _rank_score(x, "arc_score", "viral_score", "score_enriched", "score"),
+            _rank_score(x, "viral_score", "score_enriched", "score"),
+        ),
+        reverse=True,
+    )
     out = dedupe_by_overlap(out, overlap_threshold=0.75)
     ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
     ctx.ranked_output = list(ctx.final_candidates)
+    if ctx.target_min and len(ctx.ranked_output) < int(ctx.target_min):
+        log.warning(
+            "[ORCH-UNDERFLOW] final=%d target_min=%d raw=%d accepted=%d ranked=%d",
+            len(ctx.ranked_output),
+            int(ctx.target_min),
+            len(ctx.raw_candidates or []),
+            len(ctx.validated_candidates or []),
+            len(clips),
+        )
     _record_stage(
         ctx,
         "L12_EDITOR_REFINER",
         input=len(clips),
         output=len(ctx.ranked_output),
+        rejected_final=len(rejected_final),
+        rejected_reasons=dict(sorted(Counter(reason for c in rejected_final for reason in ((c.get("final_quality", {}) or {}).get("reasons", []) or [])).items())),
+        origins=dict(sorted(Counter(_candidate_origin(c) for c in ctx.ranked_output).items())),
         avg_duration=round(sum(float(c.get("duration", 0.0) or 0.0) for c in ctx.ranked_output) / float(max(1, len(ctx.ranked_output))), 3),
         wall_s=round(time.time() - t0, 3),
     )
@@ -2250,6 +2444,15 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
             trace.error("L2_TRANSCRIPTION", "empty_transcript")
             trace.render()
         return []
+    total_dur = float(ctx.transcript[-1].get("end", ctx.transcript[-1].get("start", 0.0)) or 0.0)
+    ctx.target_min = _resolve_min_target(total_dur, ctx.top_k)
+    _record_stage(
+        ctx,
+        "TARGETS",
+        duration_s=round(total_dur, 2),
+        top_k=int(ctx.top_k),
+        target_min=int(ctx.target_min),
+    )
 
     if trace:
         trace.enter("L3_AUDIO_VISUAL")
@@ -2316,6 +2519,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         trace.enter("L6B_GLOBAL_HOOK_HUNTER")
     _run_global_hook_hunter(ctx)
     print("STAGE OK: global hook hunter")
+    _maybe_backfill_raw_candidates(ctx)
     if trace:
         trace.exit("L6B_GLOBAL_HOOK_HUNTER", {"candidates": len(ctx.raw_candidates or []), "injected": int((ctx.stage_stats.get("L6B_GLOBAL_HOOK_HUNTER", {}) or {}).get("injected", 0) or 0)})
 
