@@ -2772,9 +2772,6 @@ def analyze_video():
             }), 200
         return redirect(redirect_url)
 
-    if not ensure_worker_ready():
-        return analyze_error("Worker is offline and did not come online after wake attempt.", 503)
-
     # Resolve current plan + limits once for this request.
     plan_type = get_user_plan_type(current_user)
     plan_limits = get_plan_limits(plan_type)
@@ -2800,6 +2797,8 @@ def analyze_video():
     # instead enqueue a job and return immediately.  This keeps the web process
     # light and lets the worker pick it up.
     if os.environ.get("HS_WORKER_MODE"):
+        if not ensure_worker_ready():
+            return analyze_error("Worker is offline and did not come online after wake attempt.", 503)
         # build request payload from form fields
         job_id_val = str(uuid.uuid4())
         req = {
@@ -5086,7 +5085,24 @@ def _local_worker_status(local_worker_url: str, timeout: int = 5) -> dict:
     try:
         resp = requests.get(health_url, timeout=min(timeout, 5))
         if resp.status_code == 200:
-            data = resp.json() if resp.content else {}
+            content_type = (resp.headers.get("Content-Type") or "").lower()
+            try:
+                data = resp.json() if resp.content else {}
+            except ValueError:
+                snippet = (resp.text or "").strip()[:120]
+                log.warning(
+                    "[HYBRID] Local worker healthcheck at %s returned non-JSON content-type=%s body=%r",
+                    health_url,
+                    content_type,
+                    snippet,
+                )
+                return {
+                    "alive": False,
+                    "can_accept": False,
+                    "reason": "invalid_health_response",
+                    "status_code": resp.status_code,
+                    "content_type": content_type,
+                }
             can_accept = bool(data.get("can_accept", True))
             inflight = int(data.get("inflight", 0) or 0)
             queue_depth = int(data.get("queue_depth", 0) or 0)
