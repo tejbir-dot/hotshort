@@ -10,9 +10,16 @@ def rank_and_diversify(
     top_k: int,
     min_start_gap: float = 3.0,
 ) -> List[Dict[str, Any]]:
+    def _rank_key(candidate: Dict[str, Any]) -> tuple[float, float, float]:
+        return (
+            float(candidate.get("viral_score", candidate.get("score_enriched", candidate.get("score", 0.0))) or 0.0),
+            float(candidate.get("score_enriched", candidate.get("score", 0.0)) or 0.0),
+            float(candidate.get("score", 0.0) or 0.0),
+        )
+
     ranked = sorted(
         candidates or [],
-        key=lambda x: float(x.get("score_enriched", x.get("score", 0.0)) or 0.0),
+        key=_rank_key,
         reverse=True,
     )
     out: List[Dict[str, Any]] = []

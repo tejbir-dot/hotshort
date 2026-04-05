@@ -32,6 +32,10 @@ def _semantic_validation_rescue(candidate: Dict[str, Any], failure_reason: str) 
 
     semantic_strength = max(semantic_quality, (0.5 * impact) + (0.3 * meaning) + (0.2 * clarity))
     narrative_strength = max(completion, trigger_score, viral_density)
+    explanation_strength = max(
+        semantic_strength,
+        (0.45 * meaning) + (0.35 * clarity) + (0.20 * impact),
+    )
     if sarcasm_score >= 0.65 and failure_reason != "no_curve":
         return False
     if content_penalty >= 0.10 and semantic_strength < 0.72:
@@ -41,9 +45,14 @@ def _semantic_validation_rescue(candidate: Dict[str, Any], failure_reason: str) 
         return semantic_strength >= 0.56 and narrative_strength >= 0.40
     if failure_reason in {"payoff_low", "no_curve", "too_short_window", "no_curiosity_peak"}:
         return (
-            semantic_strength >= 0.60
+            explanation_strength >= 0.60
             and narrative_strength >= 0.42
-            and (alignment >= 0.08 or payoff_conf >= 0.35 or impact >= 0.35)
+            and (
+                alignment >= 0.08
+                or payoff_conf >= 0.35
+                or impact >= 0.35
+                or (meaning >= 0.72 and clarity >= 0.68)
+            )
         )
     return False
 

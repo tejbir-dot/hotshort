@@ -162,3 +162,88 @@ def test_validation_stage_records_reject_reasons(monkeypatch):
     stats = ctx.stage_stats["L8_VALIDATION_GATES"]
     assert stats["rejected"] == 1
     assert "payoff_low" in stats["reject_reasons"]
+
+
+def test_staged_pipeline_backfills_longform_underflow(monkeypatch):
+    transcript = []
+    start = 0.0
+    for idx in range(220):
+        transcript.append({"start": start, "end": start + 4.0, "text": f"segment {idx}"})
+        start += 4.0
+
+    monkeypatch.setattr(orchestrator, "_load_cached_transcript", lambda _p: transcript)
+    monkeypatch.setattr(orchestrator, "_save_cached_transcript", lambda _p, _s: None)
+    monkeypatch.setattr(orchestrator, "analyze_audio", lambda _p: [{"time": 10.0, "energy": 0.15}])
+    monkeypatch.setattr(orchestrator, "analyze_visual", lambda _p: [{"time": 10.0, "motion": 0.0}])
+    monkeypatch.setattr(orchestrator, "_ensure_brain_runtime_loaded", lambda: None)
+    monkeypatch.setattr(orchestrator, "_brain_import_ok", False)
+    monkeypatch.setattr(
+        orchestrator,
+        "run_curiosity_stage",
+        lambda transcript, aud, vis, brain: {
+            "features": [],
+            "curve": [(0.0, 0.1), (20.0, 0.3), (40.0, 0.12)],
+            "candidates": [{"peak_time": 40.0}, {"peak_time": 240.0}, {"peak_time": 520.0}],
+        },
+    )
+    monkeypatch.setattr(orchestrator, "build_idea_graph", lambda *args, **kwargs: [object()] * 4)
+    monkeypatch.setattr(
+        orchestrator,
+        "select_candidate_clips",
+        lambda *args, **kwargs: [
+            {
+                "start": 10.0,
+                "end": 26.0,
+                "text": "strict seed",
+                "score": 0.52,
+                "select_pass": "strict",
+                "semantic_quality": 0.64,
+                "curiosity": 0.42,
+                "punch_confidence": 0.38,
+                "payoff_confidence": 0.42,
+            }
+        ],
+    )
+
+    out = orchestrator.orchestrate("dummy.mp4", top_k=5, pipeline_mode="staged", allow_fallback=False)
+
+    assert len(out) >= 3
+    assert any(bool(c.get("backfill")) for c in out)
+
+
+def test_editor_refiner_rejects_flat_incomplete_arc():
+    ctx = orchestrator.PipelineContext(path="dummy.mp4", top_k=2, allow_fallback=False, target_min=1)
+    ctx.transcript = [
+        {"start": 0.0, "end": 5.0, "text": "plain setup"},
+        {"start": 5.0, "end": 10.0, "text": "still context"},
+        {"start": 10.0, "end": 15.0, "text": "nothing resolves"},
+    ]
+    ctx.ranked_output = [
+        {
+            "start": 0.0,
+            "end": 15.0,
+            "duration": 15.0,
+            "text": "plain setup still context nothing resolves",
+            "label": "Context Builder",
+            "arc_complete": False,
+            "arc_score": 0.16,
+            "viral_score": 0.16,
+            "signals": {
+                "narrative": {"hook_score": 0.05, "open_loop_score": 0.0, "payoff_resolution_score": 0.08},
+                "engagement": {"motion": 0.0, "energy": 0.04},
+                "psychology": {"tension_gradient": 0.0},
+                "semantic": {"impact": 0.44, "meaning": 0.52, "clarity": 0.49},
+            },
+            "motion": 0.0,
+            "classic": 0.04,
+            "hook_offset": 6.0,
+            "hook_strength": 0.05,
+            "story_patterns": [],
+            "payoff_segment": {"start": 14.0, "end": 15.0, "text": "nothing resolves"},
+            "hook_segment": {"start": 6.0, "end": 7.0, "text": "still context"},
+        }
+    ]
+
+    orchestrator._run_editor_refiner(ctx)
+
+    assert ctx.ranked_output == []
