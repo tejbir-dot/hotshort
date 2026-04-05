@@ -1320,7 +1320,7 @@ def _run_candidate_generation(ctx: PipelineContext) -> None:
                 transcript=ctx.transcript,
                 ensure_sentence_complete=True,
                 allow_multi_angle=True,
-                min_target=max(0, int(ctx.top_k)),
+                min_target=max(1, int(ctx.target_min or ctx.top_k or 1)),
                 diversity_mode="balanced",
             ) or []
         except Exception as exc:

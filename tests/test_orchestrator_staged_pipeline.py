@@ -211,6 +211,54 @@ def test_staged_pipeline_backfills_longform_underflow(monkeypatch):
     assert any(bool(c.get("backfill")) for c in out)
 
 
+def test_staged_pipeline_uses_duration_based_target_min_for_candidate_selection(monkeypatch):
+    transcript = []
+    start = 0.0
+    for idx in range(220):
+        transcript.append({"start": start, "end": start + 4.0, "text": f"segment {idx}"})
+        start += 4.0
+
+    captured = {}
+
+    def fake_select_candidate_clips(*args, **kwargs):
+        captured['min_target'] = kwargs.get('min_target')
+        return [
+            {
+                "start": 10.0,
+                "end": 22.0,
+                "text": "sample clip",
+                "score": 0.52,
+                "select_pass": "strict",
+                "semantic_quality": 0.64,
+                "curiosity": 0.42,
+                "punch_confidence": 0.38,
+                "payoff_confidence": 0.42,
+            }
+        ]
+
+    monkeypatch.setattr(orchestrator, "_load_cached_transcript", lambda _p: transcript)
+    monkeypatch.setattr(orchestrator, "_save_cached_transcript", lambda _p, _s: None)
+    monkeypatch.setattr(orchestrator, "analyze_audio", lambda _p: [{"time": 10.0, "energy": 0.15}])
+    monkeypatch.setattr(orchestrator, "analyze_visual", lambda _p: [{"time": 10.0, "motion": 0.0}])
+    monkeypatch.setattr(orchestrator, "_ensure_brain_runtime_loaded", lambda: None)
+    monkeypatch.setattr(orchestrator, "_brain_import_ok", False)
+    monkeypatch.setattr(
+        orchestrator,
+        "run_curiosity_stage",
+        lambda transcript, aud, vis, brain: {
+            "features": [],
+            "curve": [(0.0, 0.1), (20.0, 0.3), (40.0, 0.12)],
+            "candidates": [{"peak_time": 40.0}],
+        },
+    )
+    monkeypatch.setattr(orchestrator, "build_idea_graph", lambda *args, **kwargs: [object()])
+    monkeypatch.setattr(orchestrator, "select_candidate_clips", fake_select_candidate_clips)
+
+    orchestrator.orchestrate("dummy.mp4", top_k=7, pipeline_mode="staged", allow_fallback=False)
+
+    assert captured.get('min_target') == 5
+
+
 def test_editor_refiner_rejects_flat_incomplete_arc():
     ctx = orchestrator.PipelineContext(path="dummy.mp4", top_k=2, allow_fallback=False, target_min=1)
     ctx.transcript = [
