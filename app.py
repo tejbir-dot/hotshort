@@ -1408,6 +1408,10 @@ def wake_hotshort_server():
     Fallback path:
     - send a local Wake-on-LAN packet when a MAC is configured
     """
+    if not _wake_enabled():
+        log.info("[WAKE] Wake automation disabled; skipping wake workflow and WOL")
+        return False
+
     repo = os.getenv("HOTSHORT_WAKE_GITHUB_REPO", "").strip()
     workflow = os.getenv("HOTSHORT_WAKE_GITHUB_WORKFLOW", "wake.yml").strip() or "wake.yml"
     ref = os.getenv("HOTSHORT_WAKE_GITHUB_REF", "main").strip() or "main"
@@ -1473,10 +1477,16 @@ def worker_alive():
 
 
 def _wake_wait_seconds() -> int:
+    if not _wake_enabled():
+        return 0
     try:
         return max(0, int(os.getenv("HOTSHORT_WAKE_WAIT_SECONDS", "35") or 35))
     except Exception:
         return 35
+
+
+def _wake_enabled() -> bool:
+    return (os.getenv("HOTSHORT_WAKE_ENABLED", "0") or "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 def ensure_worker_ready(timeout_seconds: int | None = None, retry_interval_seconds: int = 5) -> bool:
@@ -1488,6 +1498,10 @@ def ensure_worker_ready(timeout_seconds: int | None = None, retry_interval_secon
     """
     if worker_alive():
         return True
+
+    if not _wake_enabled():
+        log.info("[WAKE] Wake automation disabled; skipping wake wait loop")
+        return False
 
     wake_sent = wake_hotshort_server()
     if not wake_sent:
