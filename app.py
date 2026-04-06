@@ -1332,8 +1332,11 @@ def load_user(user_id):
 app.register_blueprint(auth, url_prefix="/auth")
 
 # compatibility alias: templates and redirects still point at /login.
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login_alias():
+    if request.method == "POST":
+        return auth.login()
+
     # preserve any query args such as next
     return redirect(url_for("auth.login", **request.args))
 
