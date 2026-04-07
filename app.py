@@ -1909,7 +1909,7 @@ def stripe_webhook():
                 log.exception("[STRIPE] Failed to mark user %s subscription_status=Active", user.id)
 
     return jsonify({"received": True}), 200
-@app.route('/dashboard')
+@app.route('/dashboard', methods=['GET', 'POST'])
 @login_required
 def dashboard():
     from flask import make_response
@@ -1917,6 +1917,18 @@ def dashboard():
     # Dashboard shows upload form (no clips)
     # Results moved to /results/<job_id> (see route below)
     
+    # Handle POST submissions (form uploads)  
+    if request.method == 'POST':
+        youtube_url = request.form.get('youtube_url', '').strip()
+        if youtube_url:
+            # Redirect to /analyze endpoint for processing
+            # (JavaScript clients POST directly to /analyze, but form submissions come here)
+            return redirect(url_for('analyze_video'))
+        else:
+            flash('Please provide a YouTube URL', 'error')
+            return redirect(url_for('dashboard'))
+    
+    # Handle GET requests - render the dashboard form
     response = make_response(render_template('dashboard.html'))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'

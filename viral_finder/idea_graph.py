@@ -10,6 +10,18 @@ import logging
 import subprocess
 log = logging.getLogger("idea_graph")
 
+# 🚀 OPTIMIZED DUAL PASS SYSTEM
+try:
+    from .optimized_passes import OptimizedPassSelector
+    OPTIMIZED_PASSES_AVAILABLE = True
+    log.info("[OPTIMIZED-PASSES] Optimized dual pass system loaded")
+except ImportError:
+    OPTIMIZED_PASSES_AVAILABLE = False
+    log.warning("[OPTIMIZED-PASSES] Optimized system not available, using original")
+
+# Feature flag for optimized passes (can be controlled via environment)
+USE_OPTIMIZED_PASSES = os.getenv("HS_USE_OPTIMIZED_PASSES", "1").strip().lower() in ("1", "true", "yes", "on")
+
 # If you already have numpy in your project, it's fine to use; otherwise we avoid heavy deps here.
 try:
     import numpy as np
@@ -2611,6 +2623,58 @@ def _select_candidate_clips_v2(
     curio_cutoff: Optional[float] = None,
     punch_cutoff: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
+    """
+    🚀 OPTIMIZED DUAL PASS SYSTEM INTEGRATION
+
+    Uses optimized parallel processing when available and enabled.
+    Falls back to original sequential processing if optimization unavailable.
+    """
+    if not nodes:
+        return []
+
+    # 🚀 USE OPTIMIZED SYSTEM IF AVAILABLE AND ENABLED
+    if OPTIMIZED_PASSES_AVAILABLE and USE_OPTIMIZED_PASSES:
+        try:
+            log.info("[OPTIMIZED-PASSES] Using optimized dual pass system")
+
+            # Prepare content analysis for adaptive thresholds
+            content_analysis = _analyze_content_for_adaptive_thresholds(nodes, transcript)
+
+            # Use optimized selector
+            selector = OptimizedPassSelector({
+                'parallel': True,
+                'early_termination': True,
+                'adaptive_relaxation': True,
+                'quality_gate': 0.42
+            })
+
+            candidates, metrics = selector.select_candidates_optimized(
+                nodes,
+                top_k,
+                content_analysis,
+            )
+
+            # Apply final filtering (overlap, sentence completion, etc.)
+            final_candidates = _apply_final_filtering(
+                candidates, top_k, transcript, ensure_sentence_complete,
+                allow_multi_angle, max_overlap_ratio
+            )
+
+            log.info(
+                "[OPTIMIZED-PASSES] completed: %d final clips, %.2fs total, speedup=%.2fx",
+                len(final_candidates),
+                metrics.get('total_time', 0),
+                metrics.get('speedup', 1.0)
+            )
+
+            return final_candidates
+
+        except Exception as e:
+            log.warning("[OPTIMIZED-PASSES] Optimization failed, falling back to original: %s", e)
+            # Fall through to original implementation
+
+    # 🐌 ORIGINAL SEQUENTIAL IMPLEMENTATION (fallback)
+    log.info("[SELECT] Using original sequential dual pass system")
     if not nodes:
         return []
 
@@ -2963,6 +3027,124 @@ def _select_candidate_clips_v2(
         )
 
     return final
+
+
+def _analyze_content_for_adaptive_thresholds(nodes: List[IdeaNode], transcript: Optional[List[Dict]] = None) -> Dict[str, Any]:
+    """Analyze content characteristics for adaptive threshold optimization"""
+
+    if not nodes:
+        return {'density': 1.0, 'avg_quality': 0.5, 'content_type': 'unknown'}
+
+    # Calculate content density
+    transcript_items = transcript or []
+    total_words = sum(len(str(item.get("text", "")).split()) for item in transcript_items)
+    total_duration = 0.0
+    if transcript_items:
+        total_duration = max(0.0, transcript_items[-1].get("end", 0) - transcript_items[0].get("start", 0))
+
+    density = (total_words / max(1, total_duration)) / 2.8 if total_duration > 0 else 1.0
+
+    # Calculate average quality metrics
+    avg_semantic = sum(getattr(n, 'semantic_quality', 0.0) for n in nodes) / len(nodes)
+    avg_punch = sum(getattr(n, 'punch_confidence', 0.0) for n in nodes) / len(nodes)
+    avg_curiosity = sum(getattr(n, 'curiosity_score', 0.0) for n in nodes) / len(nodes)
+
+    avg_quality = (avg_semantic + avg_punch + avg_curiosity) / 3.0
+
+    # Determine content type
+    content_type = "balanced"
+    if density > 1.2:
+        content_type = "dense_talk"
+    elif density < 0.6:
+        content_type = "visual_sparse"
+    elif avg_quality > 0.75:
+        content_type = "high_quality"
+
+    return {
+        'density': density,
+        'avg_quality': avg_quality,
+        'avg_semantic': avg_semantic,
+        'avg_punch': avg_punch,
+        'avg_curiosity': avg_curiosity,
+        'content_type': content_type,
+        'node_count': len(nodes),
+        'transcript_words': total_words,
+        'duration': total_duration
+    }
+
+
+def _apply_final_filtering(
+    candidates: List[Dict[str, Any]],
+    top_k: int,
+    transcript: Optional[List[Dict]] = None,
+    ensure_sentence_complete: bool = False,
+    allow_multi_angle: bool = False,
+    max_overlap_ratio: float = 0.35
+) -> List[Dict[str, Any]]:
+    """Apply final filtering logic (overlap detection, sentence completion)"""
+
+    if not candidates:
+        return []
+
+    # Sort by score
+    candidates.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+
+    final = []
+    used_ranges = []
+
+    for c in candidates:
+        s = float(c.get("start", 0.0))
+        e = float(c.get("end", 0.0))
+        drop = False
+
+        # Check for overlaps
+        for (us, ue, existing_label) in used_ranges:
+            ranges_overlap = not (e <= us or s >= ue)
+            if not ranges_overlap:
+                continue
+
+            ratio = _overlap_ratio(s, e, us, ue)
+            if not allow_multi_angle:
+                drop = True
+                break
+
+            same_label = (c.get("label") == existing_label)
+            if same_label and ratio > max_overlap_ratio:
+                drop = True
+                break
+            if (not same_label) and ratio > max_overlap_ratio:
+                drop = True
+                break
+
+        if drop:
+            continue
+
+        final.append(c)
+        used_ranges.append((s, e, c.get("label")))
+        if len(final) >= top_k:
+            break
+
+    # Apply sentence completion if requested
+    if ensure_sentence_complete and transcript:
+        transcript_items = transcript or []
+        for cand in final:
+            try:
+                cand["end"] = float(sentence_complete_extend(
+                    cand["start"], cand["end"], transcript_items
+                ))
+            except Exception:
+                pass
+
+    return final
+
+
+def _overlap_ratio(a_s: float, a_e: float, b_s: float, b_e: float) -> float:
+    """Calculate overlap ratio between two time ranges"""
+    inter = max(0.0, min(a_e, b_e) - max(a_s, b_s))
+    if inter <= 0.0:
+        return 0.0
+    shorter = max(1e-6, min((a_e - a_s), (b_e - b_s)))
+    return float(inter / shorter)
 
 
 def select_candidate_clips(
