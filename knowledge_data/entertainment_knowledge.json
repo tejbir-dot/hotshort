@@ -1,0 +1,64 @@
+[
+  {
+    "topic": "storytelling techniques",
+    "content": "Effective storytelling involves three-act structure: Setup, Confrontation, and Resolution. The hero's journey includes departure, initiation, and return. Key elements include compelling characters, rising tension, emotional stakes, and satisfying payoffs.",
+    "expertise_level": "intermediate",
+    "quality_score": 0.9,
+    "source": "narrative_arts",
+    "metadata": {
+      "category": "storytelling",
+      "genre": "general",
+      "elements": ["character_arc", "plot_structure", "emotional_stakes", "pacing"],
+      "application": "film_tv_books"
+    }
+  },
+  {
+    "topic": "comedy timing",
+    "content": "Comedy timing relies on setup, anticipation, and punchline delivery. Rule of three builds expectation. Misdirection creates surprise. Pause after setup builds tension. Delivery speed affects laugh intensity. Physical comedy requires precise timing with audience reaction.",
+    "expertise_level": "advanced",
+    "quality_score": 0.85,
+    "source": "comedy_craft",
+    "metadata": {
+      "category": "comedy",
+      "techniques": ["rule_of_three", "misdirection", "pausing", "delivery_speed"],
+      "masters": ["chaplin", "carlin", "rock"],
+      "application": "standup_tv_film"
+    }
+  },
+  {
+    "topic": "character development",
+    "content": "Compelling characters have clear goals, motivations, and flaws. Character arcs show growth or change. Backstory informs present actions. Relationships create conflict and depth. Physical appearance and mannerisms reveal personality. Dialogue reveals character through subtext and word choice.",
+    "expertise_level": "intermediate",
+    "quality_score": 0.9,
+    "source": "character_design",
+    "metadata": {
+      "category": "character_development",
+      "elements": ["goals", "motivations", "flaws", "arc", "backstory", "relationships"],
+      "importance": "audience_engagement"
+    }
+  },
+  {
+    "topic": "visual storytelling",
+    "content": "Visual storytelling uses composition, lighting, color, and camera movement to convey emotion and narrative. Rule of thirds guides viewer attention. Color psychology affects mood. Camera angles create power dynamics. Editing rhythm controls pacing. Symbolism adds depth.",
+    "expertise_level": "advanced",
+    "quality_score": 0.9,
+    "source": "cinematography",
+    "metadata": {
+      "category": "visual_arts",
+      "techniques": ["composition", "lighting", "color_theory", "camera_angles", "editing"],
+      "application": "film_television"
+    }
+  },
+  {
+    "topic": "emotional engagement",
+    "content": "Emotional engagement requires authentic characters, relatable stakes, and genuine emotion. Empathy creates connection. Vulnerability builds trust. Universal themes resonate. Pacing allows emotional processing. Payoffs must feel earned. Catharsis provides satisfaction.",
+    "expertise_level": "intermediate",
+    "quality_score": 0.85,
+    "source": "audience_psychology",
+    "metadata": {
+      "category": "emotional_design",
+      "principles": ["authenticity", "empathy", "vulnerability", "universal_themes"],
+      "goal": "audience_connection"
+    }
+  }
+]

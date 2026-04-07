@@ -1,0 +1,134 @@
+[
+  {
+    "video": "ai_tutorial",
+    "before": {
+      "number_of_clips": 4,
+      "average_score": 0.4728,
+      "semantic_strength": 0.68,
+      "arc_completion_rate": 0.0,
+      "relaxed_pass_usage": 0.75,
+      "explanation_clips": 4,
+      "clarity_ranking": 0.5,
+      "motion_dependence": 0.5
+    },
+    "after": {
+      "number_of_clips": 4,
+      "average_score": 0.5151525,
+      "semantic_strength": 0.77,
+      "arc_completion_rate": 0.0,
+      "relaxed_pass_usage": 0.75,
+      "explanation_clips": 4,
+      "clarity_ranking": 0.5,
+      "motion_dependence": 0.5
+    },
+    "diff": {
+      "clips_change": 0,
+      "ave_score_change": 0.042352500000000015,
+      "semantic_change": 0.08999999999999997,
+      "arc_change": 0.0,
+      "relaxed_change": 0.0,
+      "explanation_change": 0,
+      "clarity_change": 0.0,
+      "motion_change": 0.0
+    }
+  },
+  {
+    "video": "podcast",
+    "before": {
+      "number_of_clips": 1,
+      "average_score": 0.542,
+      "semantic_strength": 0.53,
+      "arc_completion_rate": 0.0,
+      "relaxed_pass_usage": 0.0,
+      "explanation_clips": 1,
+      "clarity_ranking": 0.5,
+      "motion_dependence": 0.5
+    },
+    "after": {
+      "number_of_clips": 2,
+      "average_score": 0.50847,
+      "semantic_strength": 0.52,
+      "arc_completion_rate": 0.0,
+      "relaxed_pass_usage": 0.5,
+      "explanation_clips": 1,
+      "clarity_ranking": 0.5,
+      "motion_dependence": 0.5
+    },
+    "diff": {
+      "clips_change": 1,
+      "ave_score_change": -0.03353000000000006,
+      "semantic_change": -0.010000000000000009,
+      "arc_change": 0.0,
+      "relaxed_change": 0.5,
+      "explanation_change": 0,
+      "clarity_change": 0.0,
+      "motion_change": 0.0
+    }
+  },
+  {
+    "video": "debate_clip",
+    "before": {
+      "number_of_clips": 4,
+      "average_score": 0.5469,
+      "semantic_strength": 0.59,
+      "arc_completion_rate": 0.0,
+      "relaxed_pass_usage": 0.0,
+      "explanation_clips": 0,
+      "clarity_ranking": 0.5,
+      "motion_dependence": 0.5
+    },
+    "after": {
+      "number_of_clips": 4,
+      "average_score": 0.5884999999999999,
+      "semantic_strength": 0.65,
+      "arc_completion_rate": 0.0,
+      "relaxed_pass_usage": 0.0,
+      "explanation_clips": 0,
+      "clarity_ranking": 0.5,
+      "motion_dependence": 0.5
+    },
+    "diff": {
+      "clips_change": 0,
+      "ave_score_change": 0.04159999999999986,
+      "semantic_change": 0.06000000000000005,
+      "arc_change": 0.0,
+      "relaxed_change": 0.0,
+      "explanation_change": 0,
+      "clarity_change": 0.0,
+      "motion_change": 0.0
+    }
+  },
+  {
+    "video": "storytelling",
+    "before": {
+      "number_of_clips": 4,
+      "average_score": 0.4386,
+      "semantic_strength": 0.59,
+      "arc_completion_rate": 0.0,
+      "relaxed_pass_usage": 1.0,
+      "explanation_clips": 0,
+      "clarity_ranking": 0.5,
+      "motion_dependence": 0.5
+    },
+    "after": {
+      "number_of_clips": 4,
+      "average_score": 0.45628,
+      "semantic_strength": 0.6299999999999999,
+      "arc_completion_rate": 0.0,
+      "relaxed_pass_usage": 1.0,
+      "explanation_clips": 0,
+      "clarity_ranking": 0.5,
+      "motion_dependence": 0.5
+    },
+    "diff": {
+      "clips_change": 0,
+      "ave_score_change": 0.01768000000000003,
+      "semantic_change": 0.039999999999999925,
+      "arc_change": 0.0,
+      "relaxed_change": 0.0,
+      "explanation_change": 0,
+      "clarity_change": 0.0,
+      "motion_change": 0.0
+    }
+  }
+]

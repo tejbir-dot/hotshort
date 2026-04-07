@@ -1,0 +1,67 @@
+[
+  {
+    "topic": "logical reasoning",
+    "content": "Logical reasoning requires valid premises leading to sound conclusions. Deductive reasoning guarantees truth if premises are true. Inductive reasoning provides probability-based conclusions. Abductive reasoning finds best explanation. Critical thinking questions assumptions and evaluates evidence quality.",
+    "expertise_level": "intermediate",
+    "quality_score": 0.95,
+    "source": "philosophy_logic",
+    "metadata": {
+      "category": "logic",
+      "types": ["deductive", "inductive", "abductive"],
+      "skills": ["critical_thinking", "evidence_evaluation", "assumption_questioning"],
+      "application": "debate_philosophy_science"
+    }
+  },
+  {
+    "topic": "argument structure",
+    "content": "Strong arguments have clear claims, relevant evidence, sound reasoning, and address counterarguments. Toulmin model includes claim, grounds, warrant, backing, qualifier, and rebuttal. Arguments must be falsifiable and testable. Burden of proof lies with claimant. Correlation does not prove causation.",
+    "expertise_level": "intermediate",
+    "quality_score": 0.9,
+    "source": "debate_methodology",
+    "metadata": {
+      "category": "argumentation",
+      "models": ["toulmin_model"],
+      "requirements": ["clear_claim", "sound_reasoning", "counterargument_address"],
+      "fallacies_to_avoid": ["false_dichotomy", "ad_hominem", "appeal_to_emotion"]
+    }
+  },
+  {
+    "topic": "evidence evaluation",
+    "content": "Quality evidence is recent, relevant, reliable, and representative. Primary sources provide direct evidence. Peer-reviewed research carries authority. Statistical significance matters. Sample size affects generalizability. Conflict of interest undermines credibility. Replication strengthens validity.",
+    "expertise_level": "advanced",
+    "quality_score": 0.95,
+    "source": "research_methodology",
+    "metadata": {
+      "category": "evidence_assessment",
+      "criteria": ["relevance", "reliability", "recency", "representativeness"],
+      "source_types": ["primary", "secondary", "peer_reviewed"],
+      "statistical_concepts": ["significance", "sample_size", "generalizability"]
+    }
+  },
+  {
+    "topic": "rhetorical techniques",
+    "content": "Effective rhetoric uses ethos (credibility), pathos (emotion), and logos (logic). Rhetorical questions engage audience. Repetition emphasizes points. Analogy makes complex ideas accessible. Framing shapes perception. Timing controls emphasis. Delivery affects persuasion power.",
+    "expertise_level": "intermediate",
+    "quality_score": 0.85,
+    "source": "communication_studies",
+    "metadata": {
+      "category": "rhetoric",
+      "appeals": ["ethos", "pathos", "logos"],
+      "techniques": ["repetition", "analogy", "framing", "rhetorical_questions"],
+      "application": "persuasive_communication"
+    }
+  },
+  {
+    "topic": "debate ethics",
+    "content": "Ethical debate respects opponents, acknowledges good arguments, avoids personal attacks, and seeks truth over victory. Steel manning strengthens opponent arguments. Good faith engagement builds credibility. Intellectual honesty requires admitting errors. Civility maintains constructive dialogue.",
+    "expertise_level": "intermediate",
+    "quality_score": 0.9,
+    "source": "ethics_philosophy",
+    "metadata": {
+      "category": "debate_ethics",
+      "principles": ["respect", "good_faith", "intellectual_honesty", "civility"],
+      "practices": ["steel_manning", "error_admission", "constructive_criticism"],
+      "goal": "truth_seeking_over_victory"
+    }
+  }
+]
