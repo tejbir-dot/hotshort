@@ -2752,7 +2752,7 @@ def get_free_status(user) -> dict:
         "plan_type": plan_type,
     }
 
-@app.route("/analyze", methods=["POST"])
+@app.route("/analyze", methods=["POST", "GET"])
 @login_required
 def analyze_video():
     """
@@ -2760,6 +2760,10 @@ def analyze_video():
     - JSON for AJAX/fetch clients
     - Redirect + flash for plain form submits
     """
+    # Handle GET requests by redirecting to dashboard
+    if request.method == "GET":
+        return redirect(url_for("dashboard"))
+    
     def wants_json_response() -> bool:
         accept = (request.headers.get("Accept") or "").lower()
         if "application/json" in accept:
