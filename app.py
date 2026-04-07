@@ -2600,6 +2600,7 @@ from viral_finder.ingestion_guard import (
 )
 
 FREE_CLIP_LIMIT = 3
+FREE_ANALYZE_LIMIT = 2
 
 VALID_PLAN_TYPES = {"trial", "starter", "pro", "industry"}
 
@@ -2734,6 +2735,8 @@ def get_free_status(user) -> dict:
             "free_clips_used": 0,
             "free_downloads_used": 0,
             "free_clips_left": FREE_CLIP_LIMIT,
+            "free_analyzes_used": 0,
+            "free_analyzes_left": FREE_ANALYZE_LIMIT,
             "claimed_clip_ids": [],
             "plan_type": plan_type,
         }
@@ -2748,6 +2751,8 @@ def get_free_status(user) -> dict:
         "free_clips_used": used,
         "free_downloads_used": used,
         "free_clips_left": left,
+        "free_analyzes_used": int(getattr(user, "trial_analyze_count", 0) or 0),
+        "free_analyzes_left": max(0, FREE_ANALYZE_LIMIT - int(getattr(user, "trial_analyze_count", 0) or 0)),
         "claimed_clip_ids": [],
         "plan_type": plan_type,
     }
@@ -2815,7 +2820,7 @@ def analyze_video():
             used = int(getattr(current_user, "trial_analyze_count", 0) or 0)
         except Exception:
             used = 0
-        if used >= 1:
+        if used >= FREE_ANALYZE_LIMIT:
             if wants_json_response():
                 return jsonify(
                     {
@@ -6307,7 +6312,39 @@ def download_by_path():
 
     return redirect(url_for("download_clip", clip_id=clip.id))
 
+@app.route("/static/outputs/<path:filename>")
+@login_required
+def serve_protected_static_output(filename):
+    safe_name = filename.replace("\\", "/")
+    if safe_name.startswith("../") or "/../" in safe_name:
+        return "Invalid path", 400
+
+    rel_path = os.path.normpath(os.path.join("static", "outputs", safe_name)).replace("\\", "/")
+    if rel_path.startswith("../") or "/../" in rel_path:
+        return "Invalid path", 400
+
+    clip = (
+        Clip.query.filter_by(user_id=current_user.id, file_path=rel_path)
+        .order_by(Clip.id.desc())
+        .first()
+    )
+    if not clip:
+        clip = (
+            Clip.query.filter_by(user_id=current_user.id, file_path="/" + rel_path)
+            .order_by(Clip.id.desc())
+            .first()
+        )
+    if not clip:
+        return "Clip not found", 404
+
+    out_file = os.path.join(app.root_path, rel_path)
+    if not os.path.exists(out_file) or os.path.isdir(out_file):
+        return "File not found", 404
+
+    return send_file(out_file, mimetype="video/mp4", as_attachment=False)
+
 @app.route("/output/<path:filename>")
+@login_required
 def serve_output(filename):
     out_file = os.path.join(OUTPUT_DIR, filename)
     if not os.path.exists(out_file):
