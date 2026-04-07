@@ -2,7 +2,7 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY requirements_worker.txt .
 
 RUN apt-get update && apt-get install -y \
     ffmpeg \
@@ -14,8 +14,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements_worker.txt
 
 COPY . .
+
+CMD ["python", "runpodworker.py"]
 
 CMD ["python", "runpodworker.py"]

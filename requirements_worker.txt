@@ -1,0 +1,9 @@
+runpod
+faster-whisper
+numpy
+ffmpeg-python
+yt-dlp
+soundfile
+
+# Optional but useful:
+ctranslate2
