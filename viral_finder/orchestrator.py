@@ -1827,6 +1827,26 @@ def _run_ranking(ctx: PipelineContext) -> None:
             used.append(s)
             if len(final) >= int(ctx.top_k):
                 break
+
+    if ctx.target_min and len(final) < int(ctx.target_min):
+        recovered = list(final)
+        existing_ids = set(id(c) for c in recovered)
+        for c in ranked:
+            if id(c) in existing_ids:
+                continue
+            recovered.append(c)
+            existing_ids.add(id(c))
+            if len(recovered) >= int(ctx.target_min):
+                break
+        if len(recovered) > len(final):
+            log.warning(
+                "[ORCH-UNDERFLOW-RECOVERY] initial=%d target_min=%d recovered=%d",
+                len(final),
+                int(ctx.target_min),
+                len(recovered),
+            )
+            final = recovered
+
     for c in final:
         s = float(c.get("start", 0.0) or 0.0)
         e = float(c.get("end", 0.0) or 0.0)
