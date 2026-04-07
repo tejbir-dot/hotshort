@@ -1411,6 +1411,15 @@
               return;
             }
 
+            if (data && data.action === 'show_pricing_modal') {
+              if (typeof window.showPricingModal === 'function') {
+                window.showPricingModal();
+              } else {
+                showMessage(form, 'Upgrade required to continue.');
+              }
+              return;
+            }
+
             if (data.error) {
               showMessage(form, 'Error: ' + data.error);
             } else {
@@ -1464,5 +1473,7 @@
       });
     })();
   </script>
+
+  {% include "pricing_modal.html" %}
 </body>
 </html>

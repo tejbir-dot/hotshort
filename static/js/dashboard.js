@@ -838,6 +838,16 @@
 
       const data = await readJsonResponse(resp);
 
+      if (data && data.action === "show_pricing_modal") {
+        hideLoader();
+        if (typeof window.showPricingModal === "function") {
+          window.showPricingModal();
+        } else {
+          toast("Upgrade required to analyze again.");
+        }
+        return;
+      }
+
       hideLoader();
       
       if (data && data.redirect) {
@@ -852,56 +862,13 @@
         return;
       }
 
+      if (data && data.error) {
+        toast(`Error: ${data.error}`);
+        return;
+      }
 
-      // ✅ OLD CODE REMOVED: Frontend no longer renders clips here
-      // Clips are rendered on the /results/<job_id> page instead
-      // This keeps concerns separated (analyze API vs results page)
-
-
-      // render cards
-      clips.forEach((c, i) => {
-        try {
-          const card = renderClipCard(c, i, bestIndex, plan, remaining);
-          carousel.appendChild(card);
-        } catch (err) {
-          console.error("Error rendering card:", err);
-        }
-      });
-
-      // mind chips and filtering
-      renderMindChips(carousel.parentNode || carousel);
-      filterByMind();
-
-      // Auto-center BEST clip smoothly (elite version)
-      const bestEl = carousel.querySelector(
-     `.clip-card:nth-child(${bestIndex + 1})`
-      );
-
-    if (bestEl) {
-      requestAnimationFrame(() => {
-        const carouselRect = carousel.getBoundingClientRect();
-        const cardRect = bestEl.getBoundingClientRect();
-
-        const offset =
-          cardRect.left -
-          carouselRect.left -
-          (carouselRect.width / 2 - cardRect.width / 2);
-
-        carousel.scrollBy({
-           left: offset,
-           behavior: "smooth",
-           });
-
-    // subtle "focus" animation
-        bestEl.animate(
-          [
-        { transform: "scale(0.98)", boxShadow: "0 0 0 rgba(0,0,0,0)" },
-        { transform: "scale(1)", boxShadow: "0 0 32px rgba(246,216,158,0.35)" }
-      ],
-      { duration: 420, easing: "ease-out" }
-    );
-  });
-}
+      // If we get here without a redirect or an explicit error, stop safely.
+      return;
 
     } catch (err) {
       hideLoader();
