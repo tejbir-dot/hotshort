@@ -1028,12 +1028,13 @@
 
       <!-- CTA Form -->
       <div class="cta-section">
-        <form action="#" data-backend-action="/analyze" method="post" class="form-group" id="homeAnalyzeForm">
+        <form action="/analyze" data-backend-action="/analyze" method="post" class="form-group" id="homeAnalyzeForm">
           <input
             type="url"
             name="youtube_url"
             placeholder="Paste YouTube link (fast import) or upload video"
             class="form-input"
+            autocomplete="off"
             required
           />
           <button type="submit" class="btn-primary" id="homeAnalyzeBtn">Analyze Now 🚀</button>
@@ -1203,13 +1204,14 @@
       <div class="footer-section">
         <h4>Get Started</h4>
         <p>Transform your videos into viral moments. Join creators making bank.</p>
-        <form action="#" data-backend-action="/analyze" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
+        <form action="/analyze" data-backend-action="/analyze" method="post" style="margin-top: 15px; display: flex; gap: 8px;">
           <input
             type="url"
             name="youtube_url"
             placeholder="Paste YouTube link (fast import) or upload video"
             class="form-input"
             style="flex: 1; padding: 12px 16px; font-size: 14px;"
+            autocomplete="off"
             required
           />
           <button type="submit" class="btn-primary" style="padding: 12px 24px;">Try</button>
@@ -1382,12 +1384,6 @@
             await new Promise((resolve) => {
               requestAnimationFrame(() => setTimeout(resolve, 60));
             });
-
-            if (isLikelyMobile) {
-              form.dataset.nativeSubmitting = '1';
-              HTMLFormElement.prototype.submit.call(form);
-              return;
-            }
 
             const res = await fetch(`${BACKEND}/analyze`, {
               method: 'POST',
