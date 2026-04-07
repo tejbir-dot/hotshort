@@ -259,6 +259,20 @@ def test_staged_pipeline_uses_duration_based_target_min_for_candidate_selection(
     assert captured.get('min_target') == 5
 
 
+def test_ranking_recovers_target_minimum_underflow():
+    ctx = orchestrator.PipelineContext(path="dummy.mp4", top_k=6, allow_fallback=False)
+    ctx.target_min = 6
+    ctx.enriched_candidates = [
+        {"start": float(i), "end": float(i + 7), "score_enriched": 0.5 + (0.01 * i), "viral_score": 0.5 + (0.01 * i)}
+        for i in range(6)
+    ]
+
+    orchestrator._run_ranking(ctx)
+
+    assert len(ctx.ranked_output) == 6
+    assert ctx.ranked_output[0]["start"] == 5.0
+
+
 def test_editor_refiner_rejects_flat_incomplete_arc():
     ctx = orchestrator.PipelineContext(path="dummy.mp4", top_k=2, allow_fallback=False, target_min=1)
     ctx.transcript = [
