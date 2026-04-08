@@ -1330,6 +1330,34 @@ login_manager.init_app(app)
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+
+def _request_wants_json_auth_response() -> bool:
+    accept = (request.headers.get("Accept") or "").lower()
+    if "application/json" in accept:
+        return True
+    xrw = (request.headers.get("X-Requested-With") or "").lower()
+    if xrw == "xmlhttprequest":
+        return True
+    sfm = (request.headers.get("Sec-Fetch-Mode") or "").lower()
+    sfd = (request.headers.get("Sec-Fetch-Dest") or "").lower()
+    if sfm in ("cors", "same-origin") and sfd == "empty":
+        return True
+    return False
+
+
+@login_manager.unauthorized_handler
+def _handle_unauthorized():
+    if _request_wants_json_auth_response():
+        login_url = url_for("auth.login", next=request.path)
+        return jsonify({
+            "ok": False,
+            "authenticated": False,
+            "error": "Authentication required",
+            "login_url": login_url,
+            "redirect": login_url,
+        }), 401
+    return redirect(url_for("auth.login", next=request.path))
+
 # ✅ Register blueprints AFTER all routes are defined inside them
 app.register_blueprint(auth, url_prefix="/auth")
 
