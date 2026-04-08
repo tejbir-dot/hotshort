@@ -23,6 +23,7 @@ tests/payoff_failures.jsonl
 downloads/
 output/
 temp_*
+data/
 data/*.db
 instance/
 static/cache/
