@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HotShort Studio – AI Viral Clip Generator</title>
-  <link rel="icon" type="image/png" href="https://insectival-malaysia-redundant.ngrok-free.dev/static/branding/logo_icon.png">
-  <link rel="apple-touch-icon" href="https://insectival-malaysia-redundant.ngrok-free.dev/static/branding/logo_icon.png">
-  <link rel="stylesheet" href="https://insectival-malaysia-redundant.ngrok-free.dev/static/style.css">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='branding/logo_icon.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='branding/logo_icon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
 
 
@@ -989,12 +989,12 @@
     }
   </style>
 </head>
-<body>
+<body data-backend-url="{{ BACKEND_URL|default('', true) }}">
   <!-- Navigation -->
   <nav>
     <div class="container">
       <a class="brand-logo" href="/">
-        <img src="https://insectival-malaysia-redundant.ngrok-free.dev/static/branding/logo_icon.png"
+        <img src="{{ url_for('static', filename='branding/logo_icon.png') }}"
              alt="HotShort Logo"
              class="hotshort-logo">
         <span class="brand-text">HotShort</span>
@@ -1012,7 +1012,7 @@
   <section class="hero">
     <div class="hero-content">
       <div class="hero-brand-row">
-        <img src="https://insectival-malaysia-redundant.ngrok-free.dev/static/branding/logo_icon.png"
+        <img src="{{ url_for('static', filename='branding/logo_icon.png') }}"
              alt="HotShort"
              class="hero-logo">
         <div class="stats-badge hero-badge">
@@ -1228,16 +1228,25 @@
   <div id="golden-light" aria-hidden="true"></div>
 
   <script>
-    const BACKEND = "https://insectival-malaysia-redundant.ngrok-free.dev";
+    const BACKEND = (() => {
+      const fromBody = (document.body?.dataset?.backendUrl || '').trim().replace(/\/+$/, '');
+      return fromBody || window.location.origin || '';
+    })();
+
+    function backendUrl(path) {
+      const normalized = String(path || '');
+      if (!BACKEND) return normalized;
+      return `${BACKEND}${normalized.startsWith('/') ? normalized : `/${normalized}`}`;
+    }
 
     document.querySelectorAll("[data-backend-link]").forEach((el) => {
       const path = el.getAttribute("data-backend-link") || "";
-      el.href = BACKEND + path;
+      el.href = backendUrl(path);
     });
 
     document.querySelectorAll("[data-backend-action]").forEach((el) => {
       const path = el.getAttribute("data-backend-action") || "";
-      el.action = BACKEND + path;
+      el.action = backendUrl(path);
     });
 
     (function(){
@@ -1405,9 +1414,14 @@
               return;
             }
 
-            const nextRedirect = data && (data.redirect || data.redirect_url || data.results_url);
+            const nextRedirect = data && (
+              data.redirect ||
+              data.redirect_url ||
+              data.results_url ||
+              (data.job_id ? `/results/${encodeURIComponent(data.job_id)}` : '')
+            );
             if (data.ok && nextRedirect) {
-              const nextUrl = /^https?:\/\//i.test(nextRedirect) ? nextRedirect : `${BACKEND}${nextRedirect}`;
+              const nextUrl = /^https?:\/\//i.test(nextRedirect) ? nextRedirect : backendUrl(nextRedirect);
               window.location.href = nextUrl;
               return;
             }
