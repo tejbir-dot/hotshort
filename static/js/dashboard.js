@@ -850,13 +850,14 @@
 
       hideLoader();
       
-      if (data && data.redirect) {
+      const nextRedirect = data && (data.redirect || data.redirect_url || data.results_url);
+      if (nextRedirect) {
          // ✅ Truthful UI feedback
         toast(`Analysis complete! Clips: ${data.clips_count}`, "success");
 
   // ✅ Short pause so user sees feedback
         setTimeout(() => {
-          window.location.href = String(data.redirect || "").startsWith("http") ? data.redirect : backendUrl(data.redirect);
+          window.location.href = String(nextRedirect).startsWith("http") ? nextRedirect : backendUrl(nextRedirect);
         }, 600);
 
         return;

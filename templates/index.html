@@ -1405,8 +1405,9 @@
               return;
             }
 
-            if (data.ok && data.redirect) {
-              const nextUrl = /^https?:\/\//i.test(data.redirect) ? data.redirect : `${BACKEND}${data.redirect}`;
+            const nextRedirect = data && (data.redirect || data.redirect_url || data.results_url);
+            if (data.ok && nextRedirect) {
+              const nextUrl = /^https?:\/\//i.test(nextRedirect) ? nextRedirect : `${BACKEND}${nextRedirect}`;
               window.location.href = nextUrl;
               return;
             }

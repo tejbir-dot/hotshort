@@ -962,8 +962,10 @@ def _map_orchestrator_moment_for_clipgen(moment: dict, idx: int, log) -> tuple |
     try:
         log.info("[ROUTE-CONTRACT] incoming idx=%d keys=%s", idx, list((moment or {}).keys()))
         m = dict(moment or {})
-        start = m.get("start")
-        end = m.get("end")
+        # Support both the canonical route contract (`start`/`end`) and the
+        # orchestrator payload shape currently seen in logs (`start_time`/`end_time`).
+        start = m.get("start", m.get("start_time"))
+        end = m.get("end", m.get("end_time"))
 
         if start is None or end is None:
             log.warning("[ROUTE-CONTRACT] idx=%d missing_start_or_end", idx)
@@ -2804,9 +2806,13 @@ def analyze_video():
         if wants_json_response():
             return jsonify({
                 "ok": True,
+                "success": True,
                 "job_id": job_id_value,
                 "clips_count": clips_count,
-                "redirect": redirect_url
+                # Keep both keys for compatibility with older frontend code.
+                "redirect": redirect_url,
+                "redirect_url": redirect_url,
+                "results_url": redirect_url,
             }), 200
         return redirect(redirect_url)
 
