@@ -10,7 +10,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 import hashlib
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from typing import TYPE_CHECKING, List, Dict
 from dotenv import load_dotenv
 
@@ -2801,20 +2801,21 @@ def analyze_video():
 
     def analyze_success(job_id_value: str, clips_count: int):
         redirect_path = url_for("results", job_id=job_id_value)
-        backend_base = (app.config.get("BACKEND_URL") or app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
-        redirect_url = f"{backend_base}{redirect_path}" if backend_base else redirect_path
+        absolute_redirect_url = urljoin(request.host_url, redirect_path.lstrip("/"))
         if wants_json_response():
             return jsonify({
                 "ok": True,
                 "success": True,
                 "job_id": job_id_value,
                 "clips_count": clips_count,
-                # Keep both keys for compatibility with older frontend code.
-                "redirect": redirect_url,
-                "redirect_url": redirect_url,
-                "results_url": redirect_url,
+                # Return relative paths so temporary public hosts/tunnels do not break navigation.
+                "redirect": redirect_path,
+                "redirect_url": redirect_path,
+                "results_url": redirect_path,
+                # Absolute URL kept as a debug/fallback hint for any external client.
+                "absolute_results_url": absolute_redirect_url,
             }), 200
-        return redirect(redirect_url)
+        return redirect(redirect_path)
 
     # Resolve current plan + limits once for this request.
     plan_type = get_user_plan_type(current_user)
@@ -3553,7 +3554,6 @@ def analyze_video():
     # --------------------------------------------------
     try:
         # persist ingestion context for frontend/debug tooling
-        import json
         analysis_blob = {}
         if 'metadata' in locals():
             analysis_blob['metadata'] = metadata

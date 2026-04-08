@@ -850,7 +850,12 @@
 
       hideLoader();
       
-      const nextRedirect = data && (data.redirect || data.redirect_url || data.results_url);
+      const nextRedirect = data && (
+        data.redirect ||
+        data.redirect_url ||
+        data.results_url ||
+        (data.job_id ? `/results/${encodeURIComponent(data.job_id)}` : "")
+      );
       if (nextRedirect) {
          // ✅ Truthful UI feedback
         toast(`Analysis complete! Clips: ${data.clips_count}`, "success");
