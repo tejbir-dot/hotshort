@@ -172,8 +172,9 @@ def _should_log_request_resource(path: str) -> bool:
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 import os
+import flask
 from flask import Flask
-from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g
+from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app
 from flask_login import LoginManager, current_user, login_required, login_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models.user import db, User, Clip, Job, FreeClipClaim
@@ -181,6 +182,8 @@ from flask_migrate import Migrate
 from video_pipeline import generate_clip_for_job
 from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.consumer import oauth_authorized, oauth_before_login, oauth_error
+from oauthlib.oauth2.rfc6749.errors import MissingCodeError, MismatchingStateError
 # from viral_finder.viral_finder_engine_v30 import find_viral_moments as backup_find
 from utils.narrative_intelligence import (
     estimate_semantic_quality,
@@ -404,7 +407,6 @@ def _load_world_editor():
     return ClipEditor, ClipEditConfig
 
 from flask import make_response
-import browser_cookie3
 from utils.clipper import cut_clip_segment
 
 # heavy editor stack lazy-loaded so the web service can start with minimal RAM.
@@ -1140,6 +1142,12 @@ backend_url = (app.config.get("BACKEND_URL") or app.config.get("EXTERNAL_BASE_UR
 app.config["BACKEND_URL"] = backend_url
 frontend_url = (app.config.get("FRONTEND_URL") or "").strip().rstrip("/")
 app.config["FRONTEND_URL"] = frontend_url
+public_base_url = (
+    frontend_url
+    or external_base_url
+    or backend_url
+).strip().rstrip("/")
+app.config["PUBLIC_BASE_URL"] = public_base_url
 
 
 def _origin_tuple(url_value):
@@ -1156,6 +1164,11 @@ if cross_site_frontend:
     app.config["SESSION_COOKIE_SAMESITE"] = "None"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["REMEMBER_COOKIE_SAMESITE"] = "None"
+    app.config["REMEMBER_COOKIE_SECURE"] = True
+
+public_origin = _origin_tuple(public_base_url)
+if public_origin[0] == "https":
+    app.config["SESSION_COOKIE_SECURE"] = True
     app.config["REMEMBER_COOKIE_SECURE"] = True
 
 
@@ -1285,10 +1298,18 @@ app.logger.info(
     "[OAUTH-DEBUG] EXTERNAL_BASE_URL=%r",
     app.config.get("EXTERNAL_BASE_URL"),
 )
-if app.config.get("EXTERNAL_BASE_URL"):
+app.logger.info(
+    "[OAUTH-DEBUG] FRONTEND_URL=%r",
+    app.config.get("FRONTEND_URL"),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] PUBLIC_BASE_URL=%r",
+    app.config.get("PUBLIC_BASE_URL"),
+)
+if app.config.get("PUBLIC_BASE_URL"):
     app.logger.info(
         "[OAUTH-DEBUG] FORCED_CALLBACK_URI=%s/login/google/authorized",
-        app.config.get("EXTERNAL_BASE_URL"),
+        app.config.get("PUBLIC_BASE_URL"),
     )
 else:
     app.logger.info(
@@ -1299,6 +1320,10 @@ else:
 from flask_dance.contrib.google import make_google_blueprint, google
 
 with app.app_context():
+    google_redirect_url = None
+    if app.config.get("PUBLIC_BASE_URL"):
+        google_redirect_url = f"{app.config['PUBLIC_BASE_URL']}/login/google/authorized"
+
     google_bp = make_google_blueprint(
         client_id=app.config["GOOGLE_OAUTH_CLIENT_ID"],
         client_secret=app.config["GOOGLE_OAUTH_CLIENT_SECRET"],
@@ -1307,17 +1332,127 @@ with app.app_context():
             "https://www.googleapis.com/auth/userinfo.email",
             "https://www.googleapis.com/auth/userinfo.profile"
         ],
+        redirect_url=google_redirect_url,
         redirect_to="google_login"
     )
     app.register_blueprint(google_bp, url_prefix="/login")
+
+
+def _google_authorized_absolute_url() -> str:
+    public_base_url = (app.config.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    authorized_path = url_for("google.authorized", _external=False)
+    if public_base_url:
+        return f"{public_base_url}{authorized_path}"
+    return url_for("google.authorized", _external=True)
+
+
+def _google_login_override():
+    redirect_uri = _google_authorized_absolute_url()
+    app.logger.info("[OAUTH-DEBUG] GOOGLE_LOGIN_OVERRIDE redirect_uri=%s", redirect_uri)
+    google_bp.session.redirect_uri = redirect_uri
+    url, state = google_bp.session.authorization_url(
+        google_bp.authorization_url,
+        state=google_bp.state,
+        **google_bp.authorization_url_params,
+    )
+    flask.session[f"{google_bp.name}_oauth_state"] = state
+    oauth_before_login.send(google_bp, url=url)
+    return redirect(url)
+
+
+def _google_authorized_override():
+    if google_bp.redirect_url:
+        next_url = google_bp.redirect_url
+    elif google_bp.redirect_to:
+        next_url = url_for(google_bp.redirect_to)
+    else:
+        next_url = "/"
+
+    error = request.args.get("error")
+    if error:
+        oauth_error.send(
+            google_bp,
+            error=error,
+            error_description=request.args.get("error_description"),
+            error_uri=request.args.get("error_uri"),
+        )
+        return redirect(next_url)
+
+    state_key = f"{google_bp.name}_oauth_state"
+    if state_key not in flask.session:
+        app.logger.warning("[OAUTH-DEBUG] state missing during callback; restarting google login")
+        return redirect(url_for("google.login"))
+
+    google_bp.session._state = flask.session.pop(state_key)
+    google_bp.session.redirect_uri = _google_authorized_absolute_url()
+    app.logger.info("[OAUTH-DEBUG] GOOGLE_AUTHORIZED_OVERRIDE redirect_uri=%s", google_bp.session.redirect_uri)
+    authorization_response = google_bp.session.redirect_uri
+    query_string = request.query_string.decode("utf-8", errors="ignore")
+    if query_string:
+        authorization_response = f"{authorization_response}?{query_string}"
+
+    try:
+        token = google_bp.session.fetch_token(
+            google_bp.token_url,
+            authorization_response=authorization_response,
+            client_secret=google_bp.client_secret,
+            **google_bp.token_url_params,
+        )
+    except MismatchingStateError:
+        app.logger.warning("[OAUTH-DEBUG] MismatchingStateError: State mismatch (double-click/stale session). Restarting flow.")
+        return redirect(url_for("google.login"))
+    except MissingCodeError as e:
+        e.args = (
+            e.args[0],
+            "The redirect request did not contain the expected parameters. Instead I got: {}".format(
+                json.dumps(request.args)
+            ),
+        )
+        raise
+
+    results = oauth_authorized.send(google_bp, token=token) or []
+    set_token = True
+    for _, ret in results:
+        if isinstance(ret, (Response, current_app.response_class)):
+            return ret
+        if ret is False:
+            set_token = False
+
+    if set_token:
+        try:
+            google_bp.token = token
+        except ValueError as error:
+            app.logger.warning("OAuth 2 authorization error: %s", str(error))
+            oauth_error.send(google_bp, error=error)
+
+    return redirect(next_url)
+
+
+app.view_functions["google.login"] = _google_login_override
+app.view_functions["google.authorized"] = _google_authorized_override
 
 # ==========================
 # ⚙️ DATABASE + LOGIN
 # ==========================
 db.init_app(app)
-with app.app_context():
-    # Ensure tables exist (safe to call on every startup)
-    db.create_all()
+
+
+def _should_auto_create_tables() -> bool:
+    explicit = (os.getenv("HS_AUTO_CREATE_TABLES") or "").strip().lower()
+    if explicit in ("1", "true", "yes", "on"):
+        return True
+    if explicit in ("0", "false", "no", "off"):
+        return False
+    # Avoid extra schema work during Vercel function cold starts unless requested.
+    return (os.getenv("VERCEL") or "").strip().lower() not in ("1", "true")
+
+
+if _should_auto_create_tables():
+    with app.app_context():
+        # Keep local/dev startup ergonomic while avoiding serverless import work.
+        db.create_all()
+else:
+    log.info("[DB-INIT] Skipping db.create_all() during import.")
 
 migrate = Migrate(app, db)
 login_manager = LoginManager()
@@ -4458,7 +4593,6 @@ import yt_dlp
 import os
 import re
 import shutil
-import browser_cookie3
 
 
 def fetch_youtube_metadata(url):

@@ -1,0 +1,116 @@
+[RUNTIME-PROFILE] mismatches=6
+[RUNTIME-PROFILE] HS_IDEA_MAX_NODE_SECONDS current='' expected='28'
+[RUNTIME-PROFILE] HS_IDEA_COALESCE_TIME_TOL current='0.25' expected='0.35'
+[RUNTIME-PROFILE] HS_IDEA_COALESCE_SEM_THR current='0.50' expected='0.45'
+[RUNTIME-PROFILE] HS_SELECTOR_RELAX_CURIO_DELTA current='0.08' expected='0.04'
+[RUNTIME-PROFILE] HS_SELECTOR_RELAX_PUNCH_DELTA current='0.08' expected='0.04'
+[RUNTIME-PROFILE] HS_SELECTOR_RELAX_SEM_FLOOR current='0.45' expected='0.50'
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://192.168.1.5:10000
+Press CTRL+C to quit
+127.0.0.1 - - [12/Apr/2026 10:32:38] "GET /login/google HTTP/1.1" 302 -
+127.0.0.1 - - [12/Apr/2026 10:32:48] "GET /login/google HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:36:01] "GET /auth/session HTTP/1.1" 200 -
+34.239.178.240 - - [12/Apr/2026 10:36:12] "POST /analyze HTTP/1.1" 401 -
+34.239.178.240 - - [12/Apr/2026 10:36:13] "GET /auth/login?next=/dashboard HTTP/1.1" 200 -
+34.239.178.240 - - [12/Apr/2026 10:36:15] "GET /auth/google_login?next=/dashboard HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:36:16] "GET /login/google HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:36:21] "GET /login/google/authorized?state=pY0Izh6cN6iIp5DI7AJXEL8IIkt6FS&iss=https://accounts.google.com&code=4/0Aci98E_mNZacDRy9RylsC9rv6qZLhHIh-rQ0xCftSh5rKR9NSEdvej3kYrYC7nak23ka6g&scope=email+profile+https://www.googleapis.com/auth/userinfo.profile+https://www.googleapis.com/auth/userinfo.email+openid&authuser=1&prompt=none HTTP/1.1" 302 -
+[2026-04-12 10:36:22,604] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+34.239.178.240 - - [12/Apr/2026 10:36:22] "GET /login/google/authorized HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:36:23] "GET /login/google HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:36:28] "GET /login/google/authorized?state=UDfHcf3VwLnaUtEEExJf0lOJpQfPUt&iss=https://accounts.google.com&code=4/0Aci98E_btvxGKKvUNF3kAyzonjzdJVuPM3cJph1yh-C8ZoQYjGSFSKueJLCT2QbsAyjurw&scope=email+profile+https://www.googleapis.com/auth/userinfo.email+https://www.googleapis.com/auth/userinfo.profile+openid&authuser=1&prompt=none HTTP/1.1" 302 -
+[2026-04-12 10:36:29,390] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+34.239.178.240 - - [12/Apr/2026 10:36:29] "GET /login/google/authorized HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:36:30] "GET /login/google HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:36:35] "GET /login/google/authorized?state=cC5DR8bgUBmRIE8omhOiV0wbf1aT2B&iss=https://accounts.google.com&code=4/0Aci98E8XtvQQ-5dE1itjYd6qjl_nQ0vPRYcc_S7njoZXrfWDSem1YDw6yF7e_R2V0GbdFA&scope=email+profile+https://www.googleapis.com/auth/userinfo.email+openid+https://www.googleapis.com/auth/userinfo.profile&authuser=1&prompt=none HTTP/1.1" 302 -
+[2026-04-12 10:36:36,840] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+34.239.178.240 - - [12/Apr/2026 10:36:36] "GET /login/google/authorized HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:36:37] "GET /login/google HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:37:19] "GET /login/google/authorized?state=5eaRyhzZ7LfNE34i6TGNVRVpvTZQjU&iss=https://accounts.google.com&code=4/0Aci98E8XFksUg-dlxEe0SgkLLSNN-tAbfdzaBvfAocpOKTsU-DKYOQMoqWI2tqsN2r7Opg&scope=email+profile+https://www.googleapis.com/auth/userinfo.profile+openid+https://www.googleapis.com/auth/userinfo.email&authuser=1&prompt=none HTTP/1.1" 302 -
+[2026-04-12 10:37:20,151] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+34.239.178.240 - - [12/Apr/2026 10:37:20] "GET /login/google/authorized HTTP/1.1" 302 -
+34.239.178.240 - - [12/Apr/2026 10:37:21] "GET /login/google HTTP/1.1" 302 -
+[2026-04-12 10:37:59,659] ERROR in app: Exception on /login/google/authorized [GET]
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\flask\app.py", line 1473, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\flask\app.py", line 882, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\flask\app.py", line 880, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\flask\app.py", line 865, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\app.py", line 1395, in _google_authorized_override
+    token = google_bp.session.fetch_token(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\requests_oauthlib\oauth2_session.py", line 271, in fetch_token
+    self._client.parse_request_uri_response(
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\oauthlib\oauth2\rfc6749\clients\web_application.py", line 220, in parse_request_uri_response
+    response = parse_authorization_code_response(uri, state=state)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\oauthlib\oauth2\rfc6749\parameters.py", line 277, in parse_authorization_code_response
+    raise MismatchingStateError()
+oauthlib.oauth2.rfc6749.errors.MismatchingStateError: (mismatching_state) CSRF Warning! State not equal in request and response.
+34.239.178.240 - - [12/Apr/2026 10:37:59] "GET /login/google/authorized?state=cBa4U65hSjtaScIqcZEsjH6iOc193L&iss=https://accounts.google.com&code=4/0Aci98E-rWSa6xbj8tXL3r0-ppw1UY9lxDAn9ZV4MAxlYVMcd5MdYZ4detUqPHY0WwMdNFA&scope=email+profile+https://www.googleapis.com/auth/userinfo.profile+openid+https://www.googleapis.com/auth/userinfo.email&authuser=3&prompt=none HTTP/1.1" 500 -
+34.239.178.240 - - [12/Apr/2026 10:38:00] "GET /favicon.ico HTTP/1.1" 404 -
+34.239.178.240 - - [12/Apr/2026 10:38:03] "GET /auth/session HTTP/1.1" 200 -
+C:\Users\n\Documents\hotshort\app.py:1463: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  return User.query.get(int(user_id))
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:19] "GET /dashboard HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:19] "GET /static/js/dashboard.js?v=20260401a HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:19] "GET /static/css/style.css HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:19] "GET /static/media/hotshort-thinking.gif HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:19] "GET /static/branding/logo_icon.png HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:19] "GET /auth/session HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:19] "GET /dashboard HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /static/css/style.css HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /static/js/dashboard.js?v=20260401a HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /static/branding/logo_icon.png HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /static/media/hotshort-thinking.gif HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /auth/session HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /dashboard HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /static/css/style.css HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /static/branding/logo_icon.png HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /static/js/dashboard.js?v=20260401a HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /static/media/hotshort-thinking.gif HTTP/1.1" 200 -
+2404:7c80:7c:94ec:a495:9147:4e57:21bd - - [12/Apr/2026 10:38:20] "GET /auth/session HTTP/1.1" 200 -
+18.207.196.253 - - [12/Apr/2026 11:50:55] "POST /analyze HTTP/1.1" 401 -
+18.207.196.253 - - [12/Apr/2026 11:50:59] "GET /auth/login?next=/dashboard HTTP/1.1" 200 -
+18.207.196.253 - - [12/Apr/2026 11:51:00] "GET /favicon.ico HTTP/1.1" 404 -
+18.207.196.253 - - [12/Apr/2026 11:51:01] "GET /auth/google_login?next=/dashboard HTTP/1.1" 302 -
+18.207.196.253 - - [12/Apr/2026 11:51:02] "GET /login/google HTTP/1.1" 302 -
+18.207.196.253 - - [12/Apr/2026 11:51:14] "GET /login/google/authorized?state=wxoutZiiAZIhyVOEW2zSTAeNJVLqor&iss=https://accounts.google.com&code=4/0Aci98E-Wtcnz3KI5DQP90KC0CF1KgcKWO9ihqnk6J0Tv73wmHGwnhS2oywGhYcEjIHaEog&scope=email+profile+https://www.googleapis.com/auth/userinfo.email+https://www.googleapis.com/auth/userinfo.profile+openid&authuser=0&prompt=none HTTP/1.1" 302 -
+[2026-04-12 11:51:14,957] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+18.207.196.253 - - [12/Apr/2026 11:51:14] "GET /login/google/authorized HTTP/1.1" 302 -
+18.207.196.253 - - [12/Apr/2026 11:51:15] "GET /login/google HTTP/1.1" 302 -
+18.207.196.253 - - [12/Apr/2026 11:51:21] "GET /login/google/authorized?state=R6M2ypdVs61L5ngHwPZbIS7i4POzdY&iss=https://accounts.google.com&code=4/0Aci98E-PE87C7epmgDxjSJflCr2T-p9crTC-dPuVJNgaHK9fXS6vHeI97MXOmMZQxgqjTQ&scope=email+profile+https://www.googleapis.com/auth/userinfo.email+https://www.googleapis.com/auth/userinfo.profile+openid&authuser=0&prompt=none HTTP/1.1" 302 -
+[2026-04-12 11:51:21,944] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+18.207.196.253 - - [12/Apr/2026 11:51:21] "GET /login/google/authorized HTTP/1.1" 302 -
+18.207.196.253 - - [12/Apr/2026 11:51:22] "GET /login/google HTTP/1.1" 302 -
+2404:7c80:7c:94ec:19fc:d41b:a7ff:4a44 - - [12/Apr/2026 11:52:10] "GET /results/6c16de91-6f7e-4694-8f92-2a6e603b73e0 HTTP/1.1" 302 -
+2404:7c80:7c:94ec:19fc:d41b:a7ff:4a44 - - [12/Apr/2026 11:52:10] "GET /auth/login?next=/results/6c16de91-6f7e-4694-8f92-2a6e603b73e0 HTTP/1.1" 200 -
+2404:7c80:7c:94ec:19fc:d41b:a7ff:4a44 - - [12/Apr/2026 11:52:10] "GET /favicon.ico HTTP/1.1" 404 -
+35.173.132.90 - - [12/Apr/2026 13:00:22] "GET /auth/session HTTP/1.1" 200 -
+35.173.132.90 - - [12/Apr/2026 13:00:43] "POST /analyze HTTP/1.1" 401 -
+35.173.132.90 - - [12/Apr/2026 13:00:44] "GET /auth/login?next=/dashboard HTTP/1.1" 200 -
+35.173.132.90 - - [12/Apr/2026 13:00:46] "GET /auth/google_login?next=/dashboard HTTP/1.1" 302 -
+35.173.132.90 - - [12/Apr/2026 13:00:47] "GET /login/google HTTP/1.1" 302 -
+204.236.220.81 - - [12/Apr/2026 13:01:33] "GET /login/google/authorized?state=1JPkJ5h5ohhqXJguFeuDpP8ffxd63I&iss=https://accounts.google.com&code=4/0Aci98E-4U1jaFZeOk-uELWltfMEEdbi8MmKvela2q1f9ZF4PatGhd-YCtYl_OW9cRZNSww&scope=email+profile+https://www.googleapis.com/auth/userinfo.email+openid+https://www.googleapis.com/auth/userinfo.profile&authuser=3&prompt=none HTTP/1.1" 302 -
+[2026-04-12 13:01:34,814] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+204.236.220.81 - - [12/Apr/2026 13:01:34] "GET /login/google/authorized HTTP/1.1" 302 -
+204.236.220.81 - - [12/Apr/2026 13:01:35] "GET /login/google HTTP/1.1" 302 -
+204.236.220.81 - - [12/Apr/2026 13:01:40] "GET /login/google/authorized?state=5QsBSgGOHyhOfQUgV6ctp9OcqSAdo0&iss=https://accounts.google.com&code=4/0Aci98E8KvlFtUFpayab4xDnrF4oZLo1X3jqOr_6I2x77oUE0yfOyLXEQC2vSMFqbMwTVbg&scope=email+profile+https://www.googleapis.com/auth/userinfo.profile+openid+https://www.googleapis.com/auth/userinfo.email&authuser=3&prompt=none HTTP/1.1" 302 -
+[2026-04-12 13:01:41,504] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+204.236.220.81 - - [12/Apr/2026 13:01:41] "GET /login/google/authorized HTTP/1.1" 302 -
+204.236.220.81 - - [12/Apr/2026 13:01:42] "GET /login/google HTTP/1.1" 302 -
+23.20.195.208 - - [12/Apr/2026 13:19:10] "GET /login/google/authorized?state=qEvroZEMOA1C3GLJJrBRc8ogLR3jWs&iss=https://accounts.google.com&code=4/0Aci98E-yacwrxXBpDWYHmqXjD7ApQeWhAraZ0KxHx-FBLw1BmxKOK7aqeJOcqKY_PKhpHw&scope=email+profile+https://www.googleapis.com/auth/userinfo.profile+https://www.googleapis.com/auth/userinfo.email+openid&authuser=3&prompt=none HTTP/1.1" 302 -
+[2026-04-12 13:19:11,290] WARNING in app: [OAUTH-DEBUG] state missing during callback; restarting google login
+23.20.195.208 - - [12/Apr/2026 13:19:11] "GET /login/google/authorized HTTP/1.1" 302 -
+23.20.195.208 - - [12/Apr/2026 13:19:12] "GET /login/google HTTP/1.1" 302 -

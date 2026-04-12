@@ -1,5 +1,6 @@
 import os
 from urllib.parse import urlparse
+import re
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from flask_login import login_user, logout_user, login_required
@@ -41,9 +42,6 @@ def normalize_next_target(raw_next):
 
 def build_post_login_redirect(raw_next=None):
     next_target = normalize_next_target(raw_next)
-    backend_url = (current_app.config.get("BACKEND_URL") or current_app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
-    if backend_url:
-        return redirect(f"{backend_url}{next_target}")
     return redirect(next_target)
 
 
@@ -53,6 +51,9 @@ def build_post_login_redirect(raw_next=None):
 @auth.route('/google_login')
 def google_login():
     next_target = normalize_next_target(request.args.get("next"))
+    if "google" not in current_app.blueprints:
+        flash("Google login is not configured right now. Please use email login.", "info")
+        return redirect(url_for("auth.login", next=next_target))
     current_app.logger.info('[AUTH-DEBUG] CLIENT_ID=%r', os.getenv('GOOGLE_OAUTH_CLIENT_ID'))
     current_app.logger.info(
         '[AUTH-DEBUG] CLIENT_SECRET_SET=%s LEN=%d',
@@ -131,9 +132,6 @@ def logout():
     session.clear()
     logout_user()
     flash('You have been logged out safely.', 'info')
-    backend_url = (current_app.config.get("BACKEND_URL") or current_app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
-    if backend_url:
-        return redirect(f"{backend_url}/login")
     return redirect(url_for('auth.login'))
 
 
