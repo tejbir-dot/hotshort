@@ -25,3 +25,7 @@ SQLAlchemy==2.0.44
 typing_extensions==4.15.0
 urllib3>=1.26,<2
 Werkzeug==3.0.2
+yt-dlp
+stripe
+youtube-transcript-api
+flask-migrate
