@@ -29,3 +29,7 @@ yt-dlp
 stripe
 youtube-transcript-api
 flask-migrate
+scenedetect
+opencv-python-headless
+transformers
+Pillow
