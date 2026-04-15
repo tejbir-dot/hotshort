@@ -12,6 +12,15 @@ try:
 except ImportError:
     torch = None
 
+try:
+    from transformers import CLIPProcessor, CLIPModel
+    import cv2
+    from scenedetect import detect, ContentDetector
+    from PIL import Image
+    _VISUAL_AVAILABLE = True
+except ImportError:
+    _VISUAL_AVAILABLE = False
+
 load_dotenv()
 
 try:
@@ -73,7 +82,81 @@ def _load_whisper_model() -> WhisperModel:
 
 
 model = _load_whisper_model()
+_CLIP_MODEL = None
+_CLIP_PROCESSOR = None
 
+def _load_clip_model():
+    global _CLIP_MODEL, _CLIP_PROCESSOR
+    if not _VISUAL_AVAILABLE:
+        return
+    if _CLIP_MODEL is None:
+        device = "cuda" if _gpu_alive() else "cpu"
+        print(f"Loading CLIP model on {device}...")
+        _CLIP_PROCESSOR = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        _CLIP_MODEL = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
+
+if _VISUAL_AVAILABLE:
+    _load_clip_model()
+
+def _process_visual_scenes(video_path: str, labels: list = None) -> list:
+    if not _VISUAL_AVAILABLE or _CLIP_MODEL is None:
+        return []
+    
+    if not labels:
+        labels = [
+            "person talking", "podcast studio", "street interview", 
+            "gameplay", "screencast", "outdoor nature", "b-roll", "reaction face"
+        ]
+        
+    print(f"[VISUAL] Detecting scenes in {video_path}...")
+    scene_list = detect(video_path, ContentDetector(threshold=27.0))
+    
+    hero_frames = []
+    scene_timestamps = []
+    
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    
+    for scene in scene_list:
+        start_frame = scene[0].get_frames()
+        end_frame = scene[1].get_frames()
+        middle_frame = start_frame + ((end_frame - start_frame) // 2)
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame)
+        ret, frame = cap.read()
+        if ret:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            hero_frames.append(Image.fromarray(frame_rgb))
+            scene_timestamps.append({
+                "start": round(start_frame / fps, 2),
+                "end": round(end_frame / fps, 2)
+            })
+    cap.release()
+    
+    if not hero_frames:
+        return []
+        
+    print(f"[VISUAL] Running batch CLIP inference on {len(hero_frames)} scenes...")
+    device = "cuda" if _gpu_alive() else "cpu"
+    inputs = _CLIP_PROCESSOR(text=labels, images=hero_frames, return_tensors="pt", padding=True).to(device)
+    
+    with torch.no_grad():
+        outputs = _CLIP_MODEL(**inputs)
+        probs = outputs.logits_per_image.softmax(dim=1)
+        
+    visual_scenes = []
+    probs_cpu = probs.cpu().numpy()
+    
+    for i, ts in enumerate(scene_timestamps):
+        best_idx = probs_cpu[i].argmax()
+        visual_scenes.append({
+            "start": ts["start"],
+            "end": ts["end"],
+            "visual_label": labels[best_idx],
+            "visual_confidence": round(float(probs_cpu[i][best_idx]), 3)
+        })
+        
+    return visual_scenes
 
 def _upload_to_s3(local_path: str) -> str | None:
     bucket = os.environ.get("AWS_S3_BUCKET") or os.environ.get("S3_BUCKET")
@@ -94,6 +177,50 @@ def _upload_to_s3(local_path: str) -> str | None:
     except (BotoCoreError, ClientError, Exception) as e:
         print("S3 upload failed:", e)
         return None
+
+
+def _process_transcription(audio_path: str) -> list:
+    """
+    Elite streaming transcription with smart buffering.
+    Merges segments with < 1s gaps to massively speed up downstream NLP.
+    """
+    vad_params = dict(min_silence_duration_ms=400, threshold=0.5)
+    segments_stream, _ = model.transcribe(
+        audio_path,
+        beam_size=1,
+        vad_filter=True,
+        vad_parameters=vad_params,
+        word_timestamps=False,
+        task="translate",
+        condition_on_previous_text=False
+    )
+
+    out_segments = []
+    buffer = []
+    last_segment_end = 0.0
+
+    for segment in segments_stream:
+        text = segment.text.strip()
+        if not text:
+            continue
+        # > 1s gap means a different thought, flush the buffer
+        if buffer and (segment.start - last_segment_end) > 1.0:
+            out_segments.append({
+                "start": round(buffer[0].start, 2),
+                "end": round(buffer[-1].end, 2),
+                "text": " ".join(s.text.strip() for s in buffer)
+            })
+            buffer = []
+        buffer.append(segment)
+        last_segment_end = segment.end
+
+    if buffer:
+        out_segments.append({
+            "start": round(buffer[0].start, 2),
+            "end": round(buffer[-1].end, 2),
+            "text": " ".join(s.text.strip() for s in buffer)
+        })
+    return out_segments
 
 
 def handler(event):
@@ -142,14 +269,16 @@ def handler(event):
             audio_path = os.path.join(temp_dir, "audio.wav")
 
             ydl_opts = {
-                "format": "best",
+                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+                "merge_output_format": "mp4",
                 "outtmpl": video_path,
                 "quiet": True,
                 "no_warnings": True,
                 "geo_bypass": True,
                 "nocheckcertificate": True,
-                "socket_timeout": 30,
+                "socket_timeout": 15,
                 "retries": 3,
+                "concurrent_fragment_downloads": 10,
                 "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "http_headers": {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -173,21 +302,31 @@ def handler(event):
 
             if task == "transcribe_youtube":
                 subprocess.run(
-                    ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path],
+                    ["ffmpeg", "-y", "-threads", "0", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path],
                     check=True,
                     capture_output=True,
                 )
-                segments, _ = model.transcribe(audio_path)
-                return {
-                    "status": "ok",
-                    "segments": [{"start": s.start, "end": s.end, "text": s.text} for s in segments],
-                }
+                out_segments = _process_transcription(audio_path)
+            
+                result = {
+                        "status": "ok",
+                        "segments": out_segments,
+                    }
+                
+                if input_data.get("include_visual") and _VISUAL_AVAILABLE:
+                    result["visual_scenes"] = _process_visual_scenes(video_path, input_data.get("visual_labels"))
+                    
+                return result
 
             if task == "orchestrate":
                 try:
                     from viral_finder.orchestrator import orchestrate
                 except Exception as e:
                     return {"error": f"Failed to import orchestrator: {e}"}
+
+                visual_data = []
+                if input_data.get("include_visual") and _VISUAL_AVAILABLE:
+                    visual_data = _process_visual_scenes(video_path, input_data.get("visual_labels"))
 
                 clips = orchestrate(
                     video_path,
@@ -197,15 +336,18 @@ def handler(event):
                     allow_fallback=False,
                     pipeline_mode=os.environ.get("HS_ORCH_PIPELINE_MODE", None),
                 )
-                return {"status": "ok", "clips": clips}
+                result = {"status": "ok", "clips": clips}
+                if visual_data:
+                    result["visual_scenes"] = visual_data
+                return result
 
             subprocess.run(
-                ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path],
+                ["ffmpeg", "-y", "-threads", "0", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path],
                 check=True,
                 capture_output=True,
             )
-            segments, _ = model.transcribe(audio_path)
-            return {"segments": [{"start": s.start, "end": s.end, "text": s.text} for s in segments]}
+            out_segments = _process_transcription(audio_path)
+            return {"segments": out_segments}
     except Exception as e:
         return {"error": str(e)}
 

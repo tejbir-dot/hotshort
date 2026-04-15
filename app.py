@@ -178,7 +178,6 @@ from flask import Flask, render_template, request, redirect, url_for, Response, 
 from flask_login import LoginManager, current_user, login_required, login_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models.user import db, User, Clip, Job, FreeClipClaim
-from flask_migrate import Migrate
 from video_pipeline import generate_clip_for_job
 from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -286,6 +285,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         'task': 'transcribe_youtube',
         'youtube_url': youtube_url,
         'model': os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+        'include_visual': True,
         'cloud_provider': {
             'provider': 'cloudinary',
             'cloud_name': os.environ.get('CLOUDINARY_CLOUD_NAME'),
@@ -668,8 +668,8 @@ def _generate_clip_ffmpeg_safe(video_path: str, start: float, end: float, output
         return False, (time.time() - t0), "copy_failed"
 
     try:
-        reencode_preset = os.environ.get("HS_CLIP_REENCODE_PRESET", "ultrafast").strip() or "ultrafast"
-        reencode_crf = int(os.environ.get("HS_CLIP_REENCODE_CRF", "23") or 23)
+        reencode_preset = os.environ.get("HS_CLIP_REENCODE_PRESET", "fast").strip() or "fast"
+        reencode_crf = int(os.environ.get("HS_CLIP_REENCODE_CRF", "18") or 18)
         import subprocess
         cmd = [
             "ffmpeg",
@@ -1449,12 +1449,19 @@ def _should_auto_create_tables() -> bool:
 
 if _should_auto_create_tables():
     with app.app_context():
+        db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+        if db_uri.startswith("sqlite:///"):
+            db_path = db_uri.replace("sqlite:///", "")
+            if db_uri.startswith("sqlite:////"):
+                db_path = "/" + db_path.lstrip("/")
+            db_dir = os.path.dirname(os.path.abspath(db_path))
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
         # Keep local/dev startup ergonomic while avoiding serverless import work.
         db.create_all()
 else:
     log.info("[DB-INIT] Skipping db.create_all() during import.")
 
-migrate = Migrate(app, db)
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"  # ensure redirects go to the auth blueprint's login endpoint
 login_manager.login_message = "Please log in to analyze videos."
@@ -1518,6 +1525,14 @@ def init_app():
     """
 
     with app.app_context():
+        db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+        if db_uri.startswith("sqlite:///"):
+            db_path = db_uri.replace("sqlite:///", "")
+            if db_uri.startswith("sqlite:////"):
+                db_path = "/" + db_path.lstrip("/")
+            db_dir = os.path.dirname(os.path.abspath(db_path))
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
         # Ensure required database tables exist (safe to call repeatedly).
         db.create_all()
 
@@ -5126,6 +5141,7 @@ def _download_via_runpod(
             "url": youtube_url,
             "youtube_url": youtube_url,
             "job_id": job_id,
+            "include_visual": True,
             "cloud_provider": {
                 "provider": "cloudinary",
                 "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME"),
@@ -5983,9 +5999,9 @@ def download_clip(clip_id):
                             "-c:v",
                             "libx264",
                             "-preset",
-                            "veryfast",
+                            "fast",
                             "-crf",
-                            "21",
+                            "18",
                             "-pix_fmt",
                             "yuv420p",
                             "-c:a",
@@ -6017,9 +6033,9 @@ def download_clip(clip_id):
                             "-c:v",
                             "libx264",
                             "-preset",
-                            "veryfast",
+                            "fast",
                             "-crf",
-                            "21",
+                            "18",
                             "-pix_fmt",
                             "yuv420p",
                             "-c:a",
@@ -6562,5 +6578,11 @@ def generate_clip_for_job(video_path, start, end):
 if __name__ == "__main__":
     # When running via `python app.py`, use PORT if provided (defaults to 10000).
     # When running under Gunicorn, this block is skipped.
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)

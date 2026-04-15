@@ -65,6 +65,12 @@
       "gal eh aa",
       "samajh lo",
       "is karke"
+    ],
+    "hindi_native": [
+      "सच तो यह है",
+      "लोग सोचते हैं",
+      "कोई नहीं बताता",
+      "आपको क्या लगता है"
     ]
   },
   "combo_rules": [
@@ -103,6 +109,7 @@
     "authority_trust": 0.14,
     "pain_agitation": 0.1,
     "outcome_promise": 0.09,
-    "hinglish_punjabi_roman": 0.08
+    "hinglish_punjabi_roman": 0.08,
+    "hindi_native": 0.08
   }
 }
