@@ -18,6 +18,20 @@ from dotenv import load_dotenv
 # 🌟 APP CONFIGURATION
 # =====================================================
 app = Flask(__name__)
+
+from flask_cors import CORS
+
+# Allowed Origins Setup
+origins = [
+    "https://hotshort.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173"
+]
+
+CORS(app, resources={r"/*": {"origins": origins}}, supports_credentials=True)
+
 # instrumentation helpers
 import logging
 try:
