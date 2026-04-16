@@ -14,6 +14,17 @@ from urllib.parse import urlparse, urljoin
 from typing import TYPE_CHECKING, List, Dict
 from dotenv import load_dotenv
 
+
+# 🌟 APP CONFIGURATION
+# =====================================================
+app = Flask(__name__)
+from flask_cors import CORS
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[
+        "https://hotshort.vercel.app"
+    ])
 # instrumentation helpers
 import logging
 try:
@@ -701,11 +712,6 @@ def _generate_clip_ffmpeg_safe(video_path: str, start: float, end: float, output
         return False, (time.time() - t0), "reencode_failed"
 
 # add_header moved below after app initialization to avoid referencing `app` before it's defined.
-
-# =====================================================
-# ⚡ PARALLEL PROCESSING HELPER
-# =====================================================
-
 def _process_moment_parallel(args):
     """
     DEPRECATED (route-layer intelligence path).
@@ -1112,9 +1118,6 @@ def _map_orchestrator_moment_for_clipgen(moment: dict, idx: int, log) -> tuple |
         log.warning("[ROUTE-CONTRACT] skip idx=%d reason=exception err=%s", idx, e)
         return None
 
-# =====================================================
-# 🌟 APP CONFIGURATION
-# =====================================================
 app = Flask(__name__)
 app.config.from_object('settings.Config')
 app.secret_key = app.config["SECRET_KEY"]
