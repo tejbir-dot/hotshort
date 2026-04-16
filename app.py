@@ -19,19 +19,6 @@ from dotenv import load_dotenv
 # =====================================================
 app = Flask(__name__)
 
-from flask_cors import CORS
-
-# Allowed Origins Setup
-origins = [
-    "https://hotshort.vercel.app",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173"
-]
-
-CORS(app, resources={r"/*": {"origins": origins}}, supports_credentials=True)
-
 # instrumentation helpers
 import logging
 try:
@@ -1126,7 +1113,21 @@ def _map_orchestrator_moment_for_clipgen(moment: dict, idx: int, log) -> tuple |
         return None
 
 app = Flask(__name__)
+
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
+
+from flask_cors import CORS
+
+CORS(
+    app,
+    supports_credentials=True,
+    resources={r"/*": {"origins": "*"}},
+)
+
 app.config.from_object('settings.Config')
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
 app.secret_key = app.config["SECRET_KEY"]
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 validate_runtime_profile(logging.getLogger(__name__))
