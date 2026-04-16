@@ -1719,7 +1719,7 @@ def ensure_worker_ready(timeout_seconds: int | None = None, retry_interval_secon
 
 
 @app.route("/api/worker/status", methods=["GET"])
-@login_required
+# @login_required
 def api_worker_status():
     return jsonify({
         "ok": True,
