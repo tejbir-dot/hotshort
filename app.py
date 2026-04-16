@@ -18,13 +18,6 @@ from dotenv import load_dotenv
 # 🌟 APP CONFIGURATION
 # =====================================================
 app = Flask(__name__)
-from flask_cors import CORS
-CORS(
-    app,
-    supports_credentials=True,
-    origins=[
-        "https://hotshort.vercel.app"
-    ])
 # instrumentation helpers
 import logging
 try:
@@ -1152,6 +1145,16 @@ public_base_url = (
 ).strip().rstrip("/")
 app.config["PUBLIC_BASE_URL"] = public_base_url
 
+from flask_cors import CORS
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[
+        frontend_url, # Use the dynamically configured frontend URL
+        "https://hotshort.vercel.app" # Keep the hardcoded one if it's always allowed
+    ]
+)
+
 
 def _origin_tuple(url_value):
     parsed = urlparse((url_value or "").strip())
@@ -1219,13 +1222,6 @@ def add_header(response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    allowed_origin = _allowed_cors_origin()
-    if allowed_origin:
-        response.headers["Access-Control-Allow-Origin"] = allowed_origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        response.headers["Vary"] = "Origin"
     if RESOURCE_LOG_ENABLED and RESOURCE_LOG_REQUESTS and _should_log_request_resource(request.path):
         try:
             start_t = getattr(g, "_res_req_t0", None)
