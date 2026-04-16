@@ -1502,15 +1502,22 @@ def _request_wants_json_auth_response() -> bool:
 
 @login_manager.unauthorized_handler
 def _handle_unauthorized():
-    if _request_wants_json_auth_response():
+    is_api = request.path.startswith('/api/') or request.path.startswith('/v2/') or request.path == '/analyze'
+    if is_api or _request_wants_json_auth_response():
         login_url = url_for("auth.login", next=request.path)
-        return jsonify({
+        resp = jsonify({
             "ok": False,
             "authenticated": False,
             "error": "Authentication required",
             "login_url": login_url,
             "redirect": login_url,
-        }), 401
+        })
+        # Force CORS headers so the browser doesn't block the 401 exception reading
+        origin = request.headers.get("Origin")
+        if origin:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Credentials"] = "true"
+        return resp, 401
     return redirect(url_for("auth.login", next=request.path))
 
 # ✅ Register blueprints AFTER all routes are defined inside them
