@@ -178,6 +178,7 @@ from flask_login import LoginManager, current_user, login_required, login_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models.user import db, User, Clip, Job, FreeClipClaim
 from flask_migrate import Migrate
+from flask_cors import CORS
 from video_pipeline import generate_clip_for_job
 from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -1117,6 +1118,7 @@ app = Flask(__name__)
 app.config.from_object('settings.Config')
 app.secret_key = app.config["SECRET_KEY"]
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+CORS(app, origins=["*"])
 validate_runtime_profile(logging.getLogger(__name__))
 
 external_base_url = (app.config.get("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
