@@ -2,7 +2,7 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY requirements_worker.txt .
+COPY requirements.txt .
 
 RUN apt-get update && apt-get install -y \
     ffmpeg \
@@ -14,10 +14,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir -r requirements_worker.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "runpodworker.py"]
-
-CMD ["python", "runpodworker.py"]
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "1", "--timeout", "600", "--max-requests", "200", "--max-requests-jitter", "50"]
