@@ -5,6 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 RUN apt-get update && apt-get install -y \
+    build-essential \
     ffmpeg \
     git \
     curl \
