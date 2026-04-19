@@ -304,7 +304,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         'Content-Type': 'application/json'
     }
 
-    log.info("[RUNPOD] Sending transcription request with YouTube URL to GPU endpoint...")
+    log.info("[RUNPOD] Sending transcription request")
     response = requests.post(url, json=data, headers=headers, timeout=600)  # Increased timeout for download
 
     if response.status_code != 200:
@@ -1117,13 +1117,6 @@ app = Flask(__name__)
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
 app.config["SESSION_COOKIE_SECURE"] = True
 
-from flask_cors import CORS
-
-CORS(
-    app,
-    supports_credentials=True,
-    resources={r"/*": {"origins": "*"}},
-)
 
 app.config.from_object('settings.Config')
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
@@ -1849,10 +1842,12 @@ def api_runpod_download():
         return jsonify({"error": "Missing url"}), 400
 
     pod_started = False
+    runpod_start_time = None
     try:
         if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Starting GPU pod for download api...")
+                runpod_start_time = time.time()
                 start_pod()
                 pod_started = True
                 if wait_until_ready(timeout=120):
@@ -1881,8 +1876,21 @@ def api_runpod_download():
     finally:
         if RUNPOD_MODE == "pod" and pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
-                log.info("[RUNPOD] Stopping GPU pod after api_runpod_download...")
-                stop_pod()
+                if runpod_start_time:
+                    duration = time.time() - runpod_start_time
+                    cost = duration * (0.44 / 3600)
+                    log.info(f"[RUNPOD_RUNTIME] {duration:.2f}s")
+                    log.info(f"[GPU_COST] user={getattr(current_user, 'id', 'anonymous')} time={duration:.2f}s cost=${cost:.5f}")
+                    MAX_GPU_RUNTIME = 300
+                    if duration > MAX_GPU_RUNTIME:
+                        log.warning("[WATCHDOG] GPU runtime exceeded safe window")
+                        stop_pod(force=True)
+                    else:
+                        log.info("[RUNPOD] Stopping GPU pod after api_runpod_download...")
+                        stop_pod()
+                else:
+                    log.info("[RUNPOD] Stopping GPU pod after api_runpod_download...")
+                    stop_pod()
             except Exception as e:
                 log.warning("[RUNPOD] Failed to stop pod in finalizer: %s", e)
 
@@ -3499,19 +3507,22 @@ def analyze_video():
             log.warning("[INGEST] audio integrity telemetry skipped: %s", e)
 
         pod_started = False
+        runpod_start_time = None
+        moments = []
 
         def _ensure_runpod_ready() -> bool:
-            nonlocal pod_started
+            nonlocal pod_started, runpod_start_time
             if not (RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID")):
                 return False
             if pod_started:
                 return True
             try:
-                log.info("[RUNPOD] Starting GPU pod for fallback...")
+                log.info("[RUNPOD] Starting pod...")
+                runpod_start_time = time.time()
                 start_pod()
                 pod_started = True
                 if wait_until_ready(timeout=120):
-                    log.info("[RUNPOD] Pod ready for fallback work")
+                    log.info("[RUNPOD] Worker ready")
                 else:
                     log.warning("[RUNPOD] Pod did not become ready within timeout, continuing anyway...")
                 return True
@@ -3519,185 +3530,186 @@ def analyze_video():
                 log.warning("[RUNPOD] Failed to start pod for fallback: %s", e)
                 return False
 
-        # Precompute transcript on clean wav and seed cache for orchestrator
-        stage_t0 = time.time()
         try:
-            transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
-            transcript_tiny_above_s = float(os.environ.get("HS_TRANSCRIPT_TINY_ABOVE_SECONDS", "1200") or 1200.0)
-            if source_video_duration_s >= transcript_tiny_above_s:
-                transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
-            log.info(
-                "[TRANSCRIPT] model=%s duration=%.2fs tiny_above=%.2fs",
-                transcript_model_name,
-                source_video_duration_s,
-                transcript_tiny_above_s,
-            )
-            use_vad_override = None
-            vad_profile_override = None
-
-            def _run_local_transcription():
-                from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
-                return _extract_transcript(
-                    wav_path,
-                    model_name=transcript_model_name,
-                    prefer_gpu=True,
-                    prefer_trust=False,
-                    use_vad_override=use_vad_override,
-                    vad_profile_override=vad_profile_override,
-                )
-
-            # Prefer local transcription first; only fall back to RunPod if local work fails.
-            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
-            runpod_api_key = os.getenv("RUNPOD_API_KEY")
-
+            # Precompute transcript on clean wav and seed cache for orchestrator
+            stage_t0 = time.time()
             try:
-                log.info("[TRANSCRIPT] Using local GPU-first transcription")
-                transcript_segments = _run_local_transcription()
-            except Exception as local_transcript_err:
-                if runpod_endpoint and runpod_api_key:
-                    try:
-                        _ensure_runpod_ready()
+                transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+                transcript_tiny_above_s = float(os.environ.get("HS_TRANSCRIPT_TINY_ABOVE_SECONDS", "1200") or 1200.0)
+                if source_video_duration_s >= transcript_tiny_above_s:
+                    transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
+                log.info(
+                    "[TRANSCRIPT] model=%s duration=%.2fs tiny_above=%.2fs",
+                    transcript_model_name,
+                    source_video_duration_s,
+                    transcript_tiny_above_s,
+                )
+                use_vad_override = None
+                vad_profile_override = None
+    
+                def _run_local_transcription():
+                    from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
+                    return _extract_transcript(
+                        wav_path,
+                        model_name=transcript_model_name,
+                        prefer_gpu=True,
+                        prefer_trust=False,
+                        use_vad_override=use_vad_override,
+                        vad_profile_override=vad_profile_override,
+                    )
+    
+                # Prefer local transcription first; only fall back to RunPod if local work fails.
+                runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+                runpod_api_key = os.getenv("RUNPOD_API_KEY")
+    
+                try:
+                    log.info("[TRANSCRIPT] Using local GPU-first transcription")
+                    transcript_segments = _run_local_transcription()
+                except Exception as local_transcript_err:
+                    if runpod_endpoint and runpod_api_key:
+                        try:
+                            _ensure_runpod_ready()
+                            log.warning(
+                                "[TRANSCRIPT] Local transcription failed; falling back to RunPod. error=%s",
+                                local_transcript_err,
+                            )
+                            transcript_segments = send_transcription_request(youtube_url)
+                        except Exception as runpod_transcript_err:
+                            log.warning(
+                                "[TRANSCRIPT] RunPod fallback unavailable after local failure; retrying local path. local_error=%s runpod_error=%s",
+                                local_transcript_err,
+                                runpod_transcript_err,
+                            )
+                            transcript_segments = _run_local_transcription()
+                    else:
                         log.warning(
-                            "[TRANSCRIPT] Local transcription failed; falling back to RunPod. error=%s",
+                            "[TRANSCRIPT] Local transcription failed and RunPod not configured; retrying local path. error=%s",
                             local_transcript_err,
-                        )
-                        transcript_segments = send_transcription_request(youtube_url)
-                    except Exception as runpod_transcript_err:
-                        log.warning(
-                            "[TRANSCRIPT] RunPod fallback unavailable after local failure; retrying local path. local_error=%s runpod_error=%s",
-                            local_transcript_err,
-                            runpod_transcript_err,
                         )
                         transcript_segments = _run_local_transcription()
-                else:
-                    log.warning(
-                        "[TRANSCRIPT] Local transcription failed and RunPod not configured; retrying local path. error=%s",
-                        local_transcript_err,
-                    )
-                    transcript_segments = _run_local_transcription()
-
-            seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
-            # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
-            try:
-                vad_removed_ratio = compute_vad_removed_ratio(seg_dur, transcript_segments or [])
-                transcript_integrity = analyze_transcript_integrity(transcript_segments or [], expected_duration=seg_dur)
+    
+                seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
+                # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
+                try:
+                    vad_removed_ratio = compute_vad_removed_ratio(seg_dur, transcript_segments or [])
+                    transcript_integrity = analyze_transcript_integrity(transcript_segments or [], expected_duration=seg_dur)
+                except Exception as e:
+                    log.warning("[INGEST] transcript integrity telemetry skipped: %s", e)
+                log_mem("after transcript")
+                log.info(
+                    "[TRANSCRIPT] segments=%d integrity=%.3f vad_removed=%.3f",
+                    len(transcript_segments or []),
+                    float(transcript_integrity.get("transcript_integrity_score", 0.0) or 0.0),
+                    float(vad_removed_ratio),
+                )
+    
+                # Save transcript cache for orchestrator
+                from viral_finder.orchestrator import _save_cached_transcript
+                _save_cached_transcript(video_path, transcript_segments or [])
             except Exception as e:
-                log.warning("[INGEST] transcript integrity telemetry skipped: %s", e)
-            log_mem("after transcript")
-            log.info(
-                "[TRANSCRIPT] segments=%d integrity=%.3f vad_removed=%.3f",
-                len(transcript_segments or []),
-                float(transcript_integrity.get("transcript_integrity_score", 0.0) or 0.0),
-                float(vad_removed_ratio),
-            )
-
-            # Save transcript cache for orchestrator
-            from viral_finder.orchestrator import _save_cached_transcript
-            _save_cached_transcript(video_path, transcript_segments or [])
-        except Exception as e:
-            log.error("[TRANSCRIPT] Prefill failed: %s", e)
-            # Stop pod before returning error (pod mode only)
-            if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
-                try:
-                    log.info("[RUNPOD] Stopping GPU pod due to error...")
-                    stop_pod()
-                except Exception as pod_err:
-                    log.warning("[RUNPOD] Failed to stop pod: %s", pod_err)
-            return analyze_error("Transcription failed. Try another video.", 500)
-        log.info("[TIMING] stage=transcript wall=%.2fs", (time.time() - stage_t0))
-
-        # --------------------------------------------------
-        # 2) Find viral moments
-        # --------------------------------------------------
-        stage_t0 = time.time()
-        try:
-            from viral_finder.orchestrator import orchestrate
-            top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
-            top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
-            min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
-
-            if source_video_duration_s >= 1200:
-                top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
-            elif source_video_duration_s >= fast_longform_threshold_s:
-                top_k = max(top_k_longform, min_longform_k)
-            else:
-                top_k = top_k_default
-
-            top_k = max(3, min(20, int(top_k)))
-
-            def _run_local_analysis():
-                log.info("[ANALYSIS] Using local GPU-first viral moment detection")
-                os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
-                clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
-                print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
-                return clips
-
-            # Prefer local analysis first; only fall back to RunPod if local work fails.
-            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
-            runpod_api_key = os.getenv("RUNPOD_API_KEY")
-
+                log.error("[TRANSCRIPT] Prefill failed: %s", e)
+    
+                return analyze_error("Transcription failed. Try another video.", 500)
+            log.info("[TIMING] stage=transcript wall=%.2fs", (time.time() - stage_t0))
+    
+            # --------------------------------------------------
+            # 2) Find viral moments
+            # --------------------------------------------------
+            stage_t0 = time.time()
             try:
-                moments = _run_local_analysis()
-            except Exception as local_analysis_err:
-                if runpod_endpoint and runpod_api_key:
-                    _ensure_runpod_ready()
-                    log.warning(
-                        "[ANALYSIS] Local analysis failed; falling back to RunPod. error=%s",
-                        local_analysis_err,
-                    )
-                    analysis_result = send_analysis_request(transcript_segments, video_path)
-                    moments = analysis_result.get('moments', [])
-                    log.info("[RUNPOD] Analysis found %d viral moments", len(moments))
+                from viral_finder.orchestrator import orchestrate
+                top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
+                top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
+                min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
+    
+                if source_video_duration_s >= 1200:
+                    top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
+                elif source_video_duration_s >= fast_longform_threshold_s:
+                    top_k = max(top_k_longform, min_longform_k)
                 else:
-                    raise
-
-            log.info(
-                "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d) pipeline_mode=staged (FORCED) allow_fallback=False",
-                top_k,
-                source_video_duration_s,
-                top_k_default,
-                top_k_longform,
-                min_longform_k,
-            )
-        except Exception as e:
-            recovered_analysis = False
-            log.exception("[ANALYZE] Orchestrator failed: %s", e)
-            if os.environ.get("RUNPOD_ENDPOINT_ID") and os.environ.get("RUNPOD_API_KEY"):
+                    top_k = top_k_default
+    
+                top_k = max(3, min(20, int(top_k)))
+    
+                def _run_local_analysis():
+                    log.info("[ANALYSIS] Using local GPU-first viral moment detection")
+                    os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
+                    clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
+                    print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
+                    return clips
+    
+                # Prefer local analysis first; only fall back to RunPod if local work fails.
+                runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+                runpod_api_key = os.getenv("RUNPOD_API_KEY")
+    
                 try:
-                    log.warning("[ANALYSIS] Local analysis path failed; retrying via RunPod fallback")
-                    _ensure_runpod_ready()
-                    analysis_result = send_analysis_request(transcript_segments, video_path)
-                    moments = analysis_result.get('moments', [])
-                    log.info(
-                        "[FAST-LANE] RunPod fallback succeeded top_k=%d duration=%.1fs moments=%d",
-                        top_k,
-                        source_video_duration_s,
-                        len(moments or []),
-                    )
-                    recovered_analysis = True
-                except Exception as runpod_retry_err:
-                    log.exception("[ANALYSIS] RunPod fallback after local analysis failure also failed: %s", runpod_retry_err)
-            if recovered_analysis:
-                log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
-            # Stop pod before returning error
-                if pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+                    moments = _run_local_analysis()
+                except Exception as local_analysis_err:
+                    if runpod_endpoint and runpod_api_key:
+                        _ensure_runpod_ready()
+                        log.warning(
+                            "[ANALYSIS] Local analysis failed; falling back to RunPod. error=%s",
+                            local_analysis_err,
+                        )
+                        analysis_result = send_analysis_request(transcript_segments, video_path)
+                        moments = analysis_result.get('moments', [])
+                        log.info("[RUNPOD] Analysis found %d viral moments", len(moments))
+                    else:
+                        raise
+    
+                log.info(
+                    "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d) pipeline_mode=staged (FORCED) allow_fallback=False",
+                    top_k,
+                    source_video_duration_s,
+                    top_k_default,
+                    top_k_longform,
+                    min_longform_k,
+                )
+            except Exception as e:
+                recovered_analysis = False
+                log.exception("[ANALYZE] Orchestrator failed: %s", e)
+                if os.environ.get("RUNPOD_ENDPOINT_ID") and os.environ.get("RUNPOD_API_KEY"):
                     try:
-                        log.info("[RUNPOD] Stopping GPU pod due to error...")
+                        log.warning("[ANALYSIS] Local analysis path failed; retrying via RunPod fallback")
+                        _ensure_runpod_ready()
+                        analysis_result = send_analysis_request(transcript_segments, video_path)
+                        moments = analysis_result.get('moments', [])
+                        log.info(
+                            "[FAST-LANE] RunPod fallback succeeded top_k=%d duration=%.1fs moments=%d",
+                            top_k,
+                            source_video_duration_s,
+                            len(moments or []),
+                        )
+                        recovered_analysis = True
+                    except Exception as runpod_retry_err:
+                        log.exception("[ANALYSIS] RunPod fallback after local analysis failure also failed: %s", runpod_retry_err)
+                if recovered_analysis:
+                    log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+    
+                    return analyze_error("Analysis failed. Please try another video.", 500)
+            log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+        finally:
+            if pod_started and RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+                try:
+                    if runpod_start_time:
+                        duration = time.time() - runpod_start_time
+                        cost = duration * (0.44 / 3600)
+                        log.info(f"[RUNPOD_RUNTIME] {duration:.2f}s")
+                        log.info(f"[GPU_COST] user={getattr(current_user, 'id', 'anonymous')} time={duration:.2f}s cost=${cost:.5f}")
+                        MAX_GPU_RUNTIME = 300
+                        if duration > MAX_GPU_RUNTIME:
+                            log.warning("[WATCHDOG] GPU runtime exceeded safe window")
+                            stop_pod(force=True)
+                        else:
+                            log.info("[RUNPOD] Stopping pod...")
+                            stop_pod()
+                    else:
+                        log.info("[RUNPOD] Stopping pod...")
                         stop_pod()
-                    except Exception as pod_err:
-                        log.warning("[RUNPOD] Failed to stop pod: %s", pod_err)
-                return analyze_error("Analysis failed. Please try another video.", 500)
-        log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+                except Exception as e:
+                    log.warning("[RUNPOD] Failed to stop pod: %s", e)
 
-        # --------------------------------------------------
-        # Stop GPU pod after GPU work is complete (pod mode only)
-        # --------------------------------------------------
-        if pod_started and RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
-            try:
-                log.info("[RUNPOD] Stopping GPU pod after analysis complete...")
-                stop_pod()
-            except Exception as e:
-                log.warning("[RUNPOD] Failed to stop pod: %s", e)
+
 
     transcript_status = "missing"
     if transcript_segments:
