@@ -509,6 +509,7 @@
                 const response = await fetch("/analyze", {
                     method: "POST",
                     headers: { "Accept": "application/json" },
+                    credentials: "include",
                     body: formData
                 });
 

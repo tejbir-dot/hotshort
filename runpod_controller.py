@@ -20,8 +20,11 @@ def start_pod():
                   headers={"Authorization": API_KEY})
 
 
-def stop_pod():
-    """Stop the RunPod GPU pod."""
+def stop_pod(force=False):
+    """Stop the RunPod GPU pod. (force parameter included for API compatibility / watchdog)"""
+    if force:
+        print("[WATCHDOG] Force stopping pod...")
+    
     query = """
     mutation {
       podStop(input: {podId: "%s"}) { id }

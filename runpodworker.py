@@ -172,7 +172,7 @@ def handler(event):
             audio_path = os.path.join(temp_dir, "audio.wav")
 
             ydl_opts = {
-                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+                "format": "best",
                 "merge_output_format": "mp4",
                 "outtmpl": video_path,
                 "quiet": True,
