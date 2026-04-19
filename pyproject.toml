@@ -2,7 +2,7 @@
 name = "hotshort-vercel-proxy"
 version = "0.1.0"
 description = "Lightweight Vercel proxy frontend for HotShort"
-requires-python = "~=3.12.0"
+requires-python = ">=3.11"
 dependencies = [
     "Flask==3.0.3",
     "python-dotenv==1.0.1",
