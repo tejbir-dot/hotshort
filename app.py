@@ -14,6 +14,14 @@ from urllib.parse import urlparse, urljoin
 from typing import TYPE_CHECKING, List, Dict
 from dotenv import load_dotenv
 
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
+
+import flask
+from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app
+from flask_login import LoginManager, current_user, login_required, login_user
+from werkzeug.middleware.proxy_fix import ProxyFix
+from models.user import db, User, Clip, Job, FreeClipClaim
 
 # 🌟 APP CONFIGURATION
 # =====================================================
@@ -174,15 +182,6 @@ def _should_log_request_resource(path: str) -> bool:
         return True
     p = str(path or "")
     return any(p.startswith(prefix) for prefix in RESOURCE_HEAVY_PATHS)
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
-import os
-import flask
-from flask import Flask
-from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app
-from flask_login import LoginManager, current_user, login_required, login_user
-from werkzeug.middleware.proxy_fix import ProxyFix
-from models.user import db, User, Clip, Job, FreeClipClaim
 from video_pipeline import generate_clip_for_job
 from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -221,11 +220,8 @@ LOCAL_WORKER_URL = os.getenv("LOCAL_WORKER_URL", "").strip()
 
 # Helper to build the correct RunPod endpoint URL per mode
 def _runpod_task_url(endpoint: str) -> str:
-    if RUNPOD_MODE == "pod":
-        return f"https://api.runpod.ai/v2/{endpoint}/runsync"
-    # Hybrid uses local worker first but RunPod uses serverless endpoint URL
-    if RUNPOD_MODE == "hybrid":
-        return f"https://api.runpod.ai/v2/{endpoint}/run"
+    # Always use the asynchronous /run endpoint. The app architecture polls for completion.
+    # /runsync can cause 404 errors if the pod is still booting and no workers are registered.
     return f"https://api.runpod.ai/v2/{endpoint}/run"
 
 # RunPod GPU integration functions
