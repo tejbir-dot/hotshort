@@ -1248,7 +1248,7 @@ def extract_transcript(path: str,
 
     except Exception as e:
         _log("ERROR", f"Transcription failed: {e}")
-        return []
+        raise e
 
 # -----------------------
 # CLI Test
