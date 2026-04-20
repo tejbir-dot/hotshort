@@ -5192,11 +5192,27 @@ def _download_via_runpod(
         "Content-Type": "application/json",
     }
 
+    pod_started_here = False
+    if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_POD_ID"):
+        try:
+            log.info("[RUNPOD] Starting GPU pod for download...")
+            from runpod_controller import start_pod, wait_until_ready
+            start_pod()
+            pod_started_here = True
+            if wait_until_ready(timeout=120):
+                log.info("[RUNPOD] Pod ready for download")
+            else:
+                log.warning("[RUNPOD] Pod did not become ready within timeout; continuing anyway")
+        except Exception as e:
+            log.warning("[RUNPOD] Failed to start pod for download: %s", e)
+
     log.info("[RUNPOD] request download task for %s", youtube_url)
     resp = requests.post(url, json=payload, headers=headers, timeout=600)
     log.info("[RUNPOD] RESPONSE (text): %s", resp.text)
 
     if resp.status_code != 200:
+        if resp.status_code == 404 and RUNPOD_MODE == "pod":
+            raise RuntimeError(f"RunPod Pod '{endpoint}' is OFFLINE (Proxy returned 404). Check your RunPod balance and ensure the Pod is running.")
         raise RuntimeError(f"RunPod download failed: {resp.status_code} - {resp.text}")
 
     data = resp.json()
