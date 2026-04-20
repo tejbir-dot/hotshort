@@ -222,7 +222,14 @@ LOCAL_WORKER_URL = os.getenv("LOCAL_WORKER_URL", "").strip()
 def _runpod_task_url(endpoint: str) -> str:
     # Always use the asynchronous /run endpoint. The app architecture polls for completion.
     # /runsync can cause 404 errors if the pod is still booting and no workers are registered.
+    if RUNPOD_MODE == "pod":
+        return f"https://{endpoint}-8000.proxy.runpod.net/run"
     return f"https://api.runpod.ai/v2/{endpoint}/run"
+
+def _runpod_status_url(endpoint: str, run_id: str) -> str:
+    if RUNPOD_MODE == "pod":
+        return f"https://{endpoint}-8000.proxy.runpod.net/status/{run_id}"
+    return f"https://api.runpod.ai/v2/{endpoint}/status/{run_id}"
 
 # RunPod GPU integration functions
 def _wait_for_runpod_completion(
@@ -255,7 +262,7 @@ def _wait_for_runpod_completion(
         time.sleep(poll_interval_s)
 
         if run_id:
-            status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+            status_url = _runpod_status_url(endpoint, run_id)
             resp = requests.get(status_url, headers=headers, timeout=60)
         else:
             resp = requests.post(request_url, json=request_payload, headers=headers, timeout=timeout)
@@ -5211,7 +5218,7 @@ def _download_via_runpod(
         time.sleep(2)
 
         if run_id:
-            status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+            status_url = _runpod_status_url(endpoint, run_id)
             resp = requests.get(status_url, headers=headers, timeout=60)
         else:
             # Fallback: re-post the original request (/run) to refresh status.
@@ -5561,7 +5568,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
             time.sleep(2)
 
             if run_id:
-                status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+                status_url = _runpod_status_url(endpoint, run_id)
                 resp = requests.get(status_url, headers=headers, timeout=60)
             else:
                 resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
