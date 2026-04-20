@@ -165,9 +165,9 @@ tiktoken==0.12.0
 tokenizers==0.22.1
 tomli==2.4.0
 tomlkit==0.14.0
-torch==2.5.1+cu121
-torchaudio==2.5.1+cu121
-torchvision==0.20.1+cu121
+torch==2.5.1
+torchaudio==2.5.1
+torchvision==0.20.1
 tqdm==4.67.1
 tqdm-loggable==0.4.1
 transformers==4.57.3
