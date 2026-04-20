@@ -132,7 +132,6 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 python-multipart==0.0.22
 pytube==15.0.0
-pywin32==311
 PyYAML==6.0.3
 questionary==2.1.1
 regex==2025.9.18
@@ -187,7 +186,6 @@ webrtcvad==2.0.10
 websockets==16.0
 Werkzeug==3.0.2
 whisper==1.1.10
-WMI==1.5.1
 yarl==1.23.0
 youtube-transcript-api==0.6.2
 yt-dlp==2026.3.3
