@@ -194,9 +194,6 @@ from utils.narrative_intelligence import (
 from worker import contracts as worker_contracts
 import json
 
-# YouTube cookie manager for professional download handling
-from youtube_cookie_manager import get_cookie_manager, log_cookie_status
-
 # RunPod controller for on-demand GPU pod management
 try:
     from runpod_controller import start_pod, stop_pod, wait_until_ready
@@ -404,8 +401,6 @@ def _load_world_editor():
     return ClipEditor, ClipEditConfig
 
 from flask import make_response
-import browser_cookie3
-from utils.clipper import cut_clip_segment
 
 # heavy editor stack lazy-loaded so the web service can start with minimal RAM.
 # the original top-level import pulled in torch/weights/ML pipelines and blew
@@ -1195,9 +1190,6 @@ else:
 # Logger for use throughout the app (used by the analyze route)
 log = app.logger
 _start_resource_monitor_thread()
-
-# Initialize YouTube cookie manager and log status
-log_cookie_status()
 
 @app.after_request
 def add_header(response):
@@ -4427,13 +4419,6 @@ def analyze_video():
 #     print("=" * 60)
 #     return jsonify(all_clips)
 
-import yt_dlp
-import os
-import re
-import shutil
-import browser_cookie3
-
-
 def fetch_youtube_metadata(url):
     """Fetch only metadata for a YouTube URL without invoking yt-dlp.
 
@@ -4711,6 +4696,7 @@ def download_youtube_segment(url, start, end, output_dir="downloads", job_id=Non
     Uses ``yt_dlp`` ``download_ranges`` hook so that only the requested
     portion is fetched.  This is the core of the "segment-only" pipeline.
     """
+    import yt_dlp
     os.makedirs(output_dir, exist_ok=True)
 
     try:
