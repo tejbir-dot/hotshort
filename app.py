@@ -179,7 +179,6 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from models.user import db, User, Clip, Job, FreeClipClaim
 from flask_migrate import Migrate
 from flask_cors import CORS
-from video_pipeline import generate_clip_for_job
 from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
 # from viral_finder.viral_finder_engine_v30 import find_viral_moments as backup_find
