@@ -82,7 +82,7 @@ platformdirs==4.4.0
 pluggy==1.6.0
 pooch==1.8.2
 prettytable==3.17.0
-proglog==0.112
+proglog==0.1.12
 prompt_toolkit==3.0.52
 propcache==0.4.1
 protobuf==6.33.0
