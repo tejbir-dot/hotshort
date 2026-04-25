@@ -1,8 +1,14 @@
 FROM python:3.10-slim
 
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_DEFAULT_TIMEOUT=100 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ffmpeg \
     git \
@@ -10,12 +16,15 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
     libsndfile1 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-RUN pip install --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip/setuptools once
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Install Python requirements (layered for caching)
+RUN pip install -r requirements.txt
 
 COPY . .
 
