@@ -506,9 +506,10 @@
                 formData.append("ratio", selectedRatio);
                 formData.append("padding_color", paddingColor);
                 
-                const response = await fetch("https://insectival-malaysia-redundant.ngrok-free.dev/analyze", {
+                const response = await fetch("/analyze", {
                     method: "POST",
                     headers: { "Accept": "application/json" },
+                    credentials: "include",
                     body: formData
                 });
 

@@ -93,7 +93,22 @@ def _load_whisper_model() -> WhisperModel:
     return WhisperModel(model_name, device=device, compute_type=compute_type)
 
 
-model = _load_whisper_model()
+# Lazy-load: do NOT load at module level.
+# Module-level loading would crash workers silently at startup —
+# RunPod would show them as 'ready' but they'd be unable to process any job.
+_model = None
+_model_lock = threading.Lock()
+
+
+def _get_model() -> WhisperModel:
+    global _model
+    if _model is None:
+        with _model_lock:
+            if _model is None:
+                _model = _load_whisper_model()
+    return _model
+
+
 _ACTIVE_REQUESTS = 0
 _ACTIVE_REQUESTS_LOCK = threading.Lock()
 
@@ -173,6 +188,7 @@ def handler(event):
 
             ydl_opts = {
                 "format": "best",
+                "merge_output_format": "mp4",
                 "outtmpl": video_path,
                 "quiet": True,
                 "no_warnings": True,
@@ -214,7 +230,7 @@ def handler(event):
                     capture_output=True,
                 )
 
-                segments, _ = model.transcribe(audio_path)
+                segments, _ = _get_model().transcribe(audio_path)
                 transcript = []
                 for s in segments:
                     transcript.append({
@@ -248,7 +264,7 @@ def handler(event):
                 capture_output=True,
             )
 
-            segments, _ = model.transcribe(audio_path)
+            segments, _ = _get_model().transcribe(audio_path)
             transcript = []
             for s in segments:
                 transcript.append({

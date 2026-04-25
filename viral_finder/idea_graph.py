@@ -1992,6 +1992,7 @@ def build_idea_graph(
     transcript: List[Dict],
     aud: Optional[List[Dict]] = None,
     vis: Optional[List[Dict]] = None,
+    visual_scenes: Optional[List[Dict]] = None,
     curiosity_candidates: Optional[List[Any]] = None,
     narrative_triggers: Optional[List[Dict[str, Any]]] = None,
     brain: Optional[Any] = None,
@@ -2102,6 +2103,24 @@ def build_idea_graph(
             metrics["motion_mean"] = float(statistics.mean(m_vals)) if m_vals else 0.0
         else:
             metrics["motion_mean"] = 0.0
+
+        # 🎬 visual context overlay mapping
+        active_visual = "unknown"
+        visual_conf = 0.0
+        if visual_scenes:
+            for v in visual_scenes:
+                if float(v.get("start", 0.0)) <= e_time and float(v.get("end", 1000.0)) >= s_time:
+                    active_visual = v.get("visual_label", "unknown")
+                    visual_conf = float(v.get("visual_confidence", 0.0))
+                    break
+        
+        metrics["visual_label"] = active_visual
+        metrics["visual_confidence"] = round(visual_conf, 3)
+        
+        # 🚀 Boost semantic quality & punch if it's a high-action or context-rich visual scene!
+        if active_visual in ["gameplay", "reaction face", "outdoor nature", "street interview"] and visual_conf > 0.4:
+            semantic_quality = min(1.0, semantic_quality + 0.15)
+            punch = min(1.0, punch + 0.10)
 
         # state heuristics
         state = OPEN

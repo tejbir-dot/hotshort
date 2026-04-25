@@ -14,6 +14,19 @@ from urllib.parse import urlparse, urljoin
 from typing import TYPE_CHECKING, List, Dict
 from dotenv import load_dotenv
 
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
+
+import flask
+from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app
+from flask_login import LoginManager, current_user, login_required, login_user
+from werkzeug.middleware.proxy_fix import ProxyFix
+from models.user import db, User, Clip, Job, FreeClipClaim
+
+# 🌟 APP CONFIGURATION
+# =====================================================
+app = Flask(__name__)
+
 # instrumentation helpers
 import logging
 try:
@@ -169,18 +182,11 @@ def _should_log_request_resource(path: str) -> bool:
         return True
     p = str(path or "")
     return any(p.startswith(prefix) for prefix in RESOURCE_HEAVY_PATHS)
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
-import os
-from flask import Flask
-from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g
-from flask_login import LoginManager, current_user, login_required, login_user
-from werkzeug.middleware.proxy_fix import ProxyFix
-from models.user import db, User, Clip, Job, FreeClipClaim
-from flask_migrate import Migrate
-from flask_cors import CORS
+from video_pipeline import generate_clip_for_job
 from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.consumer import oauth_authorized, oauth_before_login, oauth_error
+from oauthlib.oauth2.rfc6749.errors import MissingCodeError, MismatchingStateError
 # from viral_finder.viral_finder_engine_v30 import find_viral_moments as backup_find
 from utils.narrative_intelligence import (
     estimate_semantic_quality,
@@ -211,12 +217,16 @@ LOCAL_WORKER_URL = os.getenv("LOCAL_WORKER_URL", "").strip()
 
 # Helper to build the correct RunPod endpoint URL per mode
 def _runpod_task_url(endpoint: str) -> str:
+    # Always use the asynchronous /run endpoint. The app architecture polls for completion.
+    # /runsync can cause 404 errors if the pod is still booting and no workers are registered.
     if RUNPOD_MODE == "pod":
-        return f"https://api.runpod.ai/v2/{endpoint}/runsync"
-    # Hybrid uses local worker first but RunPod uses serverless endpoint URL
-    if RUNPOD_MODE == "hybrid":
-        return f"https://api.runpod.ai/v2/{endpoint}/run"
+        return f"https://{endpoint}-8000.proxy.runpod.net/run"
     return f"https://api.runpod.ai/v2/{endpoint}/run"
+
+def _runpod_status_url(endpoint: str, run_id: str) -> str:
+    if RUNPOD_MODE == "pod":
+        return f"https://{endpoint}-8000.proxy.runpod.net/status/{run_id}"
+    return f"https://api.runpod.ai/v2/{endpoint}/status/{run_id}"
 
 # RunPod GPU integration functions
 def _wait_for_runpod_completion(
@@ -249,7 +259,7 @@ def _wait_for_runpod_completion(
         time.sleep(poll_interval_s)
 
         if run_id:
-            status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+            status_url = _runpod_status_url(endpoint, run_id)
             resp = requests.get(status_url, headers=headers, timeout=60)
         else:
             resp = requests.post(request_url, json=request_payload, headers=headers, timeout=timeout)
@@ -280,6 +290,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         'task': 'transcribe_youtube',
         'youtube_url': youtube_url,
         'model': os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+        'include_visual': True,
         'cloud_provider': {
             'provider': 'cloudinary',
             'cloud_name': os.environ.get('CLOUDINARY_CLOUD_NAME'),
@@ -293,7 +304,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         'Content-Type': 'application/json'
     }
 
-    log.info("[RUNPOD] Sending transcription request with YouTube URL to GPU endpoint...")
+    log.info("[RUNPOD] Sending transcription request")
     response = requests.post(url, json=data, headers=headers, timeout=600)  # Increased timeout for download
 
     if response.status_code != 200:
@@ -401,6 +412,7 @@ def _load_world_editor():
     return ClipEditor, ClipEditConfig
 
 from flask import make_response
+from utils.clipper import cut_clip_segment
 
 # heavy editor stack lazy-loaded so the web service can start with minimal RAM.
 # the original top-level import pulled in torch/weights/ML pipelines and blew
@@ -661,8 +673,8 @@ def _generate_clip_ffmpeg_safe(video_path: str, start: float, end: float, output
         return False, (time.time() - t0), "copy_failed"
 
     try:
-        reencode_preset = os.environ.get("HS_CLIP_REENCODE_PRESET", "ultrafast").strip() or "ultrafast"
-        reencode_crf = int(os.environ.get("HS_CLIP_REENCODE_CRF", "23") or 23)
+        reencode_preset = os.environ.get("HS_CLIP_REENCODE_PRESET", "fast").strip() or "fast"
+        reencode_crf = int(os.environ.get("HS_CLIP_REENCODE_CRF", "18") or 18)
         import subprocess
         cmd = [
             "ffmpeg",
@@ -694,11 +706,6 @@ def _generate_clip_ffmpeg_safe(video_path: str, start: float, end: float, output
         return False, (time.time() - t0), "reencode_failed"
 
 # add_header moved below after app initialization to avoid referencing `app` before it's defined.
-
-# =====================================================
-# ⚡ PARALLEL PROCESSING HELPER
-# =====================================================
-
 def _process_moment_parallel(args):
     """
     DEPRECATED (route-layer intelligence path).
@@ -1105,11 +1112,15 @@ def _map_orchestrator_moment_for_clipgen(moment: dict, idx: int, log) -> tuple |
         log.warning("[ROUTE-CONTRACT] skip idx=%d reason=exception err=%s", idx, e)
         return None
 
-# =====================================================
-# 🌟 APP CONFIGURATION
-# =====================================================
 app = Flask(__name__)
+
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
+
+
 app.config.from_object('settings.Config')
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
 app.secret_key = app.config["SECRET_KEY"]
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 CORS(app, origins=["*"])
@@ -1136,6 +1147,22 @@ backend_url = (app.config.get("BACKEND_URL") or app.config.get("EXTERNAL_BASE_UR
 app.config["BACKEND_URL"] = backend_url
 frontend_url = (app.config.get("FRONTEND_URL") or "").strip().rstrip("/")
 app.config["FRONTEND_URL"] = frontend_url
+public_base_url = (
+    frontend_url
+    or external_base_url
+    or backend_url
+).strip().rstrip("/")
+app.config["PUBLIC_BASE_URL"] = public_base_url
+
+from flask_cors import CORS
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[
+        frontend_url, # Use the dynamically configured frontend URL
+        "https://hotshort.vercel.app" # Keep the hardcoded one if it's always allowed
+    ]
+)
 
 
 def _origin_tuple(url_value):
@@ -1152,6 +1179,11 @@ if cross_site_frontend:
     app.config["SESSION_COOKIE_SAMESITE"] = "None"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["REMEMBER_COOKIE_SAMESITE"] = "None"
+    app.config["REMEMBER_COOKIE_SECURE"] = True
+
+public_origin = _origin_tuple(public_base_url)
+if public_origin[0] == "https":
+    app.config["SESSION_COOKIE_SECURE"] = True
     app.config["REMEMBER_COOKIE_SECURE"] = True
 
 
@@ -1196,13 +1228,6 @@ def add_header(response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    allowed_origin = _allowed_cors_origin()
-    if allowed_origin:
-        response.headers["Access-Control-Allow-Origin"] = allowed_origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        response.headers["Vary"] = "Origin"
     if RESOURCE_LOG_ENABLED and RESOURCE_LOG_REQUESTS and _should_log_request_resource(request.path):
         try:
             start_t = getattr(g, "_res_req_t0", None)
@@ -1278,10 +1303,18 @@ app.logger.info(
     "[OAUTH-DEBUG] EXTERNAL_BASE_URL=%r",
     app.config.get("EXTERNAL_BASE_URL"),
 )
-if app.config.get("EXTERNAL_BASE_URL"):
+app.logger.info(
+    "[OAUTH-DEBUG] FRONTEND_URL=%r",
+    app.config.get("FRONTEND_URL"),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] PUBLIC_BASE_URL=%r",
+    app.config.get("PUBLIC_BASE_URL"),
+)
+if app.config.get("PUBLIC_BASE_URL"):
     app.logger.info(
         "[OAUTH-DEBUG] FORCED_CALLBACK_URI=%s/login/google/authorized",
-        app.config.get("EXTERNAL_BASE_URL"),
+        app.config.get("PUBLIC_BASE_URL"),
     )
 else:
     app.logger.info(
@@ -1292,6 +1325,10 @@ else:
 from flask_dance.contrib.google import make_google_blueprint, google
 
 with app.app_context():
+    google_redirect_url = None
+    if app.config.get("PUBLIC_BASE_URL"):
+        google_redirect_url = f"{app.config['PUBLIC_BASE_URL']}/login/google/authorized"
+
     google_bp = make_google_blueprint(
         client_id=app.config["GOOGLE_OAUTH_CLIENT_ID"],
         client_secret=app.config["GOOGLE_OAUTH_CLIENT_SECRET"],
@@ -1300,19 +1337,136 @@ with app.app_context():
             "https://www.googleapis.com/auth/userinfo.email",
             "https://www.googleapis.com/auth/userinfo.profile"
         ],
+        redirect_url=google_redirect_url,
         redirect_to="google_login"
     )
     app.register_blueprint(google_bp, url_prefix="/login")
+
+
+def _google_authorized_absolute_url() -> str:
+    public_base_url = (app.config.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    authorized_path = url_for("google.authorized", _external=False)
+    if public_base_url:
+        return f"{public_base_url}{authorized_path}"
+    return url_for("google.authorized", _external=True)
+
+
+def _google_login_override():
+    redirect_uri = _google_authorized_absolute_url()
+    app.logger.info("[OAUTH-DEBUG] GOOGLE_LOGIN_OVERRIDE redirect_uri=%s", redirect_uri)
+    google_bp.session.redirect_uri = redirect_uri
+    url, state = google_bp.session.authorization_url(
+        google_bp.authorization_url,
+        state=google_bp.state,
+        **google_bp.authorization_url_params,
+    )
+    flask.session[f"{google_bp.name}_oauth_state"] = state
+    oauth_before_login.send(google_bp, url=url)
+    return redirect(url)
+
+
+def _google_authorized_override():
+    if google_bp.redirect_url:
+        next_url = google_bp.redirect_url
+    elif google_bp.redirect_to:
+        next_url = url_for(google_bp.redirect_to)
+    else:
+        next_url = "/"
+
+    error = request.args.get("error")
+    if error:
+        oauth_error.send(
+            google_bp,
+            error=error,
+            error_description=request.args.get("error_description"),
+            error_uri=request.args.get("error_uri"),
+        )
+        return redirect(next_url)
+
+    state_key = f"{google_bp.name}_oauth_state"
+    if state_key not in flask.session:
+        app.logger.warning("[OAUTH-DEBUG] state missing during callback; restarting google login")
+        return redirect(url_for("google.login"))
+
+    google_bp.session._state = flask.session.pop(state_key)
+    google_bp.session.redirect_uri = _google_authorized_absolute_url()
+    app.logger.info("[OAUTH-DEBUG] GOOGLE_AUTHORIZED_OVERRIDE redirect_uri=%s", google_bp.session.redirect_uri)
+    authorization_response = google_bp.session.redirect_uri
+    query_string = request.query_string.decode("utf-8", errors="ignore")
+    if query_string:
+        authorization_response = f"{authorization_response}?{query_string}"
+
+    try:
+        token = google_bp.session.fetch_token(
+            google_bp.token_url,
+            authorization_response=authorization_response,
+            client_secret=google_bp.client_secret,
+            **google_bp.token_url_params,
+        )
+    except MismatchingStateError:
+        app.logger.warning("[OAUTH-DEBUG] MismatchingStateError: State mismatch (double-click/stale session). Restarting flow.")
+        return redirect(url_for("google.login"))
+    except MissingCodeError as e:
+        e.args = (
+            e.args[0],
+            "The redirect request did not contain the expected parameters. Instead I got: {}".format(
+                json.dumps(request.args)
+            ),
+        )
+        raise
+
+    results = oauth_authorized.send(google_bp, token=token) or []
+    set_token = True
+    for _, ret in results:
+        if isinstance(ret, (Response, current_app.response_class)):
+            return ret
+        if ret is False:
+            set_token = False
+
+    if set_token:
+        try:
+            google_bp.token = token
+        except ValueError as error:
+            app.logger.warning("OAuth 2 authorization error: %s", str(error))
+            oauth_error.send(google_bp, error=error)
+
+    return redirect(next_url)
+
+
+app.view_functions["google.login"] = _google_login_override
+app.view_functions["google.authorized"] = _google_authorized_override
 
 # ==========================
 # ⚙️ DATABASE + LOGIN
 # ==========================
 db.init_app(app)
-with app.app_context():
-    # Ensure tables exist (safe to call on every startup)
-    db.create_all()
 
-migrate = Migrate(app, db)
+
+def _should_auto_create_tables() -> bool:
+    explicit = (os.getenv("HS_AUTO_CREATE_TABLES") or "").strip().lower()
+    if explicit in ("1", "true", "yes", "on"):
+        return True
+    if explicit in ("0", "false", "no", "off"):
+        return False
+    # Avoid extra schema work during Vercel function cold starts unless requested.
+    return (os.getenv("VERCEL") or "").strip().lower() not in ("1", "true")
+
+
+if _should_auto_create_tables():
+    with app.app_context():
+        db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+        if db_uri.startswith("sqlite:///"):
+            db_path = db_uri.replace("sqlite:///", "")
+            if db_uri.startswith("sqlite:////"):
+                db_path = "/" + db_path.lstrip("/")
+            db_dir = os.path.dirname(os.path.abspath(db_path))
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
+        # Keep local/dev startup ergonomic while avoiding serverless import work.
+        db.create_all()
+else:
+    log.info("[DB-INIT] Skipping db.create_all() during import.")
+
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"  # ensure redirects go to the auth blueprint's login endpoint
 login_manager.login_message = "Please log in to analyze videos."
@@ -1322,6 +1476,41 @@ login_manager.init_app(app)
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+def _request_wants_json_auth_response() -> bool:
+    accept = (request.headers.get("Accept") or "").lower()
+    if "application/json" in accept:
+        return True
+    xrw = (request.headers.get("X-Requested-With") or "").lower()
+    if xrw == "xmlhttprequest":
+        return True
+    sfm = (request.headers.get("Sec-Fetch-Mode") or "").lower()
+    sfd = (request.headers.get("Sec-Fetch-Dest") or "").lower()
+    if sfm in ("cors", "same-origin") and sfd == "empty":
+        return True
+    return False
+
+
+@login_manager.unauthorized_handler
+def _handle_unauthorized():
+    is_api = request.path.startswith('/api/') or request.path.startswith('/v2/') or request.path == '/analyze'
+    if is_api or _request_wants_json_auth_response():
+        login_url = url_for("auth.login", next=request.path)
+        resp = jsonify({
+            "ok": False,
+            "authenticated": False,
+            "error": "Authentication required",
+            "login_url": login_url,
+            "redirect": login_url,
+        })
+        # Force CORS headers so the browser doesn't block the 401 exception reading
+        origin = request.headers.get("Origin")
+        if origin:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Credentials"] = "true"
+        return resp, 401
+    return redirect(url_for("auth.login", next=request.path))
 
 # ✅ Register blueprints AFTER all routes are defined inside them
 app.register_blueprint(auth, url_prefix="/auth")
@@ -1348,6 +1537,14 @@ def init_app():
     """
 
     with app.app_context():
+        db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+        if db_uri.startswith("sqlite:///"):
+            db_path = db_uri.replace("sqlite:///", "")
+            if db_uri.startswith("sqlite:////"):
+                db_path = "/" + db_path.lstrip("/")
+            db_dir = os.path.dirname(os.path.abspath(db_path))
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
         # Ensure required database tables exist (safe to call repeatedly).
         db.create_all()
 
@@ -1521,7 +1718,7 @@ def ensure_worker_ready(timeout_seconds: int | None = None, retry_interval_secon
 
 
 @app.route("/api/worker/status", methods=["GET"])
-@login_required
+# @login_required
 def api_worker_status():
     return jsonify({
         "ok": True,
@@ -1643,10 +1840,12 @@ def api_runpod_download():
         return jsonify({"error": "Missing url"}), 400
 
     pod_started = False
+    runpod_start_time = None
     try:
         if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
                 log.info("[RUNPOD] Starting GPU pod for download api...")
+                runpod_start_time = time.time()
                 start_pod()
                 pod_started = True
                 if wait_until_ready(timeout=120):
@@ -1675,8 +1874,21 @@ def api_runpod_download():
     finally:
         if RUNPOD_MODE == "pod" and pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
             try:
-                log.info("[RUNPOD] Stopping GPU pod after api_runpod_download...")
-                stop_pod()
+                if runpod_start_time:
+                    duration = time.time() - runpod_start_time
+                    cost = duration * (0.44 / 3600)
+                    log.info(f"[RUNPOD_RUNTIME] {duration:.2f}s")
+                    log.info(f"[GPU_COST] user={getattr(current_user, 'id', 'anonymous')} time={duration:.2f}s cost=${cost:.5f}")
+                    MAX_GPU_RUNTIME = 300
+                    if duration > MAX_GPU_RUNTIME:
+                        log.warning("[WATCHDOG] GPU runtime exceeded safe window")
+                        stop_pod(force=True)
+                    else:
+                        log.info("[RUNPOD] Stopping GPU pod after api_runpod_download...")
+                        stop_pod()
+                else:
+                    log.info("[RUNPOD] Stopping GPU pod after api_runpod_download...")
+                    stop_pod()
             except Exception as e:
                 log.warning("[RUNPOD] Failed to stop pod in finalizer: %s", e)
 
@@ -3293,19 +3505,22 @@ def analyze_video():
             log.warning("[INGEST] audio integrity telemetry skipped: %s", e)
 
         pod_started = False
+        runpod_start_time = None
+        moments = []
 
         def _ensure_runpod_ready() -> bool:
-            nonlocal pod_started
+            nonlocal pod_started, runpod_start_time
             if not (RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID")):
                 return False
             if pod_started:
                 return True
             try:
-                log.info("[RUNPOD] Starting GPU pod for fallback...")
+                log.info("[RUNPOD] Starting pod...")
+                runpod_start_time = time.time()
                 start_pod()
                 pod_started = True
                 if wait_until_ready(timeout=120):
-                    log.info("[RUNPOD] Pod ready for fallback work")
+                    log.info("[RUNPOD] Worker ready")
                 else:
                     log.warning("[RUNPOD] Pod did not become ready within timeout, continuing anyway...")
                 return True
@@ -3313,185 +3528,186 @@ def analyze_video():
                 log.warning("[RUNPOD] Failed to start pod for fallback: %s", e)
                 return False
 
-        # Precompute transcript on clean wav and seed cache for orchestrator
-        stage_t0 = time.time()
         try:
-            transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
-            transcript_tiny_above_s = float(os.environ.get("HS_TRANSCRIPT_TINY_ABOVE_SECONDS", "1200") or 1200.0)
-            if source_video_duration_s >= transcript_tiny_above_s:
-                transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
-            log.info(
-                "[TRANSCRIPT] model=%s duration=%.2fs tiny_above=%.2fs",
-                transcript_model_name,
-                source_video_duration_s,
-                transcript_tiny_above_s,
-            )
-            use_vad_override = None
-            vad_profile_override = None
-
-            def _run_local_transcription():
-                from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
-                return _extract_transcript(
-                    wav_path,
-                    model_name=transcript_model_name,
-                    prefer_gpu=True,
-                    prefer_trust=False,
-                    use_vad_override=use_vad_override,
-                    vad_profile_override=vad_profile_override,
-                )
-
-            # Prefer local transcription first; only fall back to RunPod if local work fails.
-            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
-            runpod_api_key = os.getenv("RUNPOD_API_KEY")
-
+            # Precompute transcript on clean wav and seed cache for orchestrator
+            stage_t0 = time.time()
             try:
-                log.info("[TRANSCRIPT] Using local GPU-first transcription")
-                transcript_segments = _run_local_transcription()
-            except Exception as local_transcript_err:
-                if runpod_endpoint and runpod_api_key:
-                    try:
-                        _ensure_runpod_ready()
+                transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+                transcript_tiny_above_s = float(os.environ.get("HS_TRANSCRIPT_TINY_ABOVE_SECONDS", "1200") or 1200.0)
+                if source_video_duration_s >= transcript_tiny_above_s:
+                    transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
+                log.info(
+                    "[TRANSCRIPT] model=%s duration=%.2fs tiny_above=%.2fs",
+                    transcript_model_name,
+                    source_video_duration_s,
+                    transcript_tiny_above_s,
+                )
+                use_vad_override = None
+                vad_profile_override = None
+    
+                def _run_local_transcription():
+                    from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
+                    return _extract_transcript(
+                        wav_path,
+                        model_name=transcript_model_name,
+                        prefer_gpu=True,
+                        prefer_trust=False,
+                        use_vad_override=use_vad_override,
+                        vad_profile_override=vad_profile_override,
+                    )
+    
+                # Prefer local transcription first; only fall back to RunPod if local work fails.
+                runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+                runpod_api_key = os.getenv("RUNPOD_API_KEY")
+    
+                try:
+                    log.info("[TRANSCRIPT] Using local GPU-first transcription")
+                    transcript_segments = _run_local_transcription()
+                except Exception as local_transcript_err:
+                    if runpod_endpoint and runpod_api_key:
+                        try:
+                            _ensure_runpod_ready()
+                            log.warning(
+                                "[TRANSCRIPT] Local transcription failed; falling back to RunPod. error=%s",
+                                local_transcript_err,
+                            )
+                            transcript_segments = send_transcription_request(youtube_url)
+                        except Exception as runpod_transcript_err:
+                            log.warning(
+                                "[TRANSCRIPT] RunPod fallback unavailable after local failure; retrying local path. local_error=%s runpod_error=%s",
+                                local_transcript_err,
+                                runpod_transcript_err,
+                            )
+                            transcript_segments = _run_local_transcription()
+                    else:
                         log.warning(
-                            "[TRANSCRIPT] Local transcription failed; falling back to RunPod. error=%s",
+                            "[TRANSCRIPT] Local transcription failed and RunPod not configured; retrying local path. error=%s",
                             local_transcript_err,
-                        )
-                        transcript_segments = send_transcription_request(youtube_url)
-                    except Exception as runpod_transcript_err:
-                        log.warning(
-                            "[TRANSCRIPT] RunPod fallback unavailable after local failure; retrying local path. local_error=%s runpod_error=%s",
-                            local_transcript_err,
-                            runpod_transcript_err,
                         )
                         transcript_segments = _run_local_transcription()
-                else:
-                    log.warning(
-                        "[TRANSCRIPT] Local transcription failed and RunPod not configured; retrying local path. error=%s",
-                        local_transcript_err,
-                    )
-                    transcript_segments = _run_local_transcription()
-
-            seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
-            # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
-            try:
-                vad_removed_ratio = compute_vad_removed_ratio(seg_dur, transcript_segments or [])
-                transcript_integrity = analyze_transcript_integrity(transcript_segments or [], expected_duration=seg_dur)
+    
+                seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
+                # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
+                try:
+                    vad_removed_ratio = compute_vad_removed_ratio(seg_dur, transcript_segments or [])
+                    transcript_integrity = analyze_transcript_integrity(transcript_segments or [], expected_duration=seg_dur)
+                except Exception as e:
+                    log.warning("[INGEST] transcript integrity telemetry skipped: %s", e)
+                log_mem("after transcript")
+                log.info(
+                    "[TRANSCRIPT] segments=%d integrity=%.3f vad_removed=%.3f",
+                    len(transcript_segments or []),
+                    float(transcript_integrity.get("transcript_integrity_score", 0.0) or 0.0),
+                    float(vad_removed_ratio),
+                )
+    
+                # Save transcript cache for orchestrator
+                from viral_finder.orchestrator import _save_cached_transcript
+                _save_cached_transcript(video_path, transcript_segments or [])
             except Exception as e:
-                log.warning("[INGEST] transcript integrity telemetry skipped: %s", e)
-            log_mem("after transcript")
-            log.info(
-                "[TRANSCRIPT] segments=%d integrity=%.3f vad_removed=%.3f",
-                len(transcript_segments or []),
-                float(transcript_integrity.get("transcript_integrity_score", 0.0) or 0.0),
-                float(vad_removed_ratio),
-            )
-
-            # Save transcript cache for orchestrator
-            from viral_finder.orchestrator import _save_cached_transcript
-            _save_cached_transcript(video_path, transcript_segments or [])
-        except Exception as e:
-            log.error("[TRANSCRIPT] Prefill failed: %s", e)
-            # Stop pod before returning error (pod mode only)
-            if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
-                try:
-                    log.info("[RUNPOD] Stopping GPU pod due to error...")
-                    stop_pod()
-                except Exception as pod_err:
-                    log.warning("[RUNPOD] Failed to stop pod: %s", pod_err)
-            return analyze_error("Transcription failed. Try another video.", 500)
-        log.info("[TIMING] stage=transcript wall=%.2fs", (time.time() - stage_t0))
-
-        # --------------------------------------------------
-        # 2) Find viral moments
-        # --------------------------------------------------
-        stage_t0 = time.time()
-        try:
-            from viral_finder.orchestrator import orchestrate
-            top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
-            top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
-            min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
-
-            if source_video_duration_s >= 1200:
-                top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
-            elif source_video_duration_s >= fast_longform_threshold_s:
-                top_k = max(top_k_longform, min_longform_k)
-            else:
-                top_k = top_k_default
-
-            top_k = max(3, min(20, int(top_k)))
-
-            def _run_local_analysis():
-                log.info("[ANALYSIS] Using local GPU-first viral moment detection")
-                os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
-                clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
-                print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
-                return clips
-
-            # Prefer local analysis first; only fall back to RunPod if local work fails.
-            runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
-            runpod_api_key = os.getenv("RUNPOD_API_KEY")
-
+                log.error("[TRANSCRIPT] Prefill failed: %s", e)
+    
+                return analyze_error("Transcription failed. Try another video.", 500)
+            log.info("[TIMING] stage=transcript wall=%.2fs", (time.time() - stage_t0))
+    
+            # --------------------------------------------------
+            # 2) Find viral moments
+            # --------------------------------------------------
+            stage_t0 = time.time()
             try:
-                moments = _run_local_analysis()
-            except Exception as local_analysis_err:
-                if runpod_endpoint and runpod_api_key:
-                    _ensure_runpod_ready()
-                    log.warning(
-                        "[ANALYSIS] Local analysis failed; falling back to RunPod. error=%s",
-                        local_analysis_err,
-                    )
-                    analysis_result = send_analysis_request(transcript_segments, video_path)
-                    moments = analysis_result.get('moments', [])
-                    log.info("[RUNPOD] Analysis found %d viral moments", len(moments))
+                from viral_finder.orchestrator import orchestrate
+                top_k_default = int(os.environ.get("HS_TOP_K_DEFAULT", "6") or 6)
+                top_k_longform = int(os.environ.get("HS_TOP_K_LONGFORM", "9") or 9)
+                min_longform_k = int(os.environ.get("HS_MIN_LONGFORM_TOP_K", "9") or 9)
+    
+                if source_video_duration_s >= 1200:
+                    top_k = int(os.environ.get("HS_TOP_K_30MIN", "12") or 12)
+                elif source_video_duration_s >= fast_longform_threshold_s:
+                    top_k = max(top_k_longform, min_longform_k)
                 else:
-                    raise
-
-            log.info(
-                "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d) pipeline_mode=staged (FORCED) allow_fallback=False",
-                top_k,
-                source_video_duration_s,
-                top_k_default,
-                top_k_longform,
-                min_longform_k,
-            )
-        except Exception as e:
-            recovered_analysis = False
-            log.exception("[ANALYZE] Orchestrator failed: %s", e)
-            if os.environ.get("RUNPOD_ENDPOINT_ID") and os.environ.get("RUNPOD_API_KEY"):
+                    top_k = top_k_default
+    
+                top_k = max(3, min(20, int(top_k)))
+    
+                def _run_local_analysis():
+                    log.info("[ANALYSIS] Using local GPU-first viral moment detection")
+                    os.environ["HS_ORCH_PIPELINE_MODE"] = "staged"
+                    clips = orchestrate(video_path, top_k=top_k, allow_fallback=False, pipeline_mode="staged")
+                    print("DEBUG clips returned:", type(clips), len(clips) if clips else 0)
+                    return clips
+    
+                # Prefer local analysis first; only fall back to RunPod if local work fails.
+                runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
+                runpod_api_key = os.getenv("RUNPOD_API_KEY")
+    
                 try:
-                    log.warning("[ANALYSIS] Local analysis path failed; retrying via RunPod fallback")
-                    _ensure_runpod_ready()
-                    analysis_result = send_analysis_request(transcript_segments, video_path)
-                    moments = analysis_result.get('moments', [])
-                    log.info(
-                        "[FAST-LANE] RunPod fallback succeeded top_k=%d duration=%.1fs moments=%d",
-                        top_k,
-                        source_video_duration_s,
-                        len(moments or []),
-                    )
-                    recovered_analysis = True
-                except Exception as runpod_retry_err:
-                    log.exception("[ANALYSIS] RunPod fallback after local analysis failure also failed: %s", runpod_retry_err)
-            if recovered_analysis:
-                log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
-            # Stop pod before returning error
-                if pod_started and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+                    moments = _run_local_analysis()
+                except Exception as local_analysis_err:
+                    if runpod_endpoint and runpod_api_key:
+                        _ensure_runpod_ready()
+                        log.warning(
+                            "[ANALYSIS] Local analysis failed; falling back to RunPod. error=%s",
+                            local_analysis_err,
+                        )
+                        analysis_result = send_analysis_request(transcript_segments, video_path)
+                        moments = analysis_result.get('moments', [])
+                        log.info("[RUNPOD] Analysis found %d viral moments", len(moments))
+                    else:
+                        raise
+    
+                log.info(
+                    "[FAST-LANE] orchestrate top_k=%d duration=%.1fs cfg(default=%d,longform=%d,min_longform=%d) pipeline_mode=staged (FORCED) allow_fallback=False",
+                    top_k,
+                    source_video_duration_s,
+                    top_k_default,
+                    top_k_longform,
+                    min_longform_k,
+                )
+            except Exception as e:
+                recovered_analysis = False
+                log.exception("[ANALYZE] Orchestrator failed: %s", e)
+                if os.environ.get("RUNPOD_ENDPOINT_ID") and os.environ.get("RUNPOD_API_KEY"):
                     try:
-                        log.info("[RUNPOD] Stopping GPU pod due to error...")
+                        log.warning("[ANALYSIS] Local analysis path failed; retrying via RunPod fallback")
+                        _ensure_runpod_ready()
+                        analysis_result = send_analysis_request(transcript_segments, video_path)
+                        moments = analysis_result.get('moments', [])
+                        log.info(
+                            "[FAST-LANE] RunPod fallback succeeded top_k=%d duration=%.1fs moments=%d",
+                            top_k,
+                            source_video_duration_s,
+                            len(moments or []),
+                        )
+                        recovered_analysis = True
+                    except Exception as runpod_retry_err:
+                        log.exception("[ANALYSIS] RunPod fallback after local analysis failure also failed: %s", runpod_retry_err)
+                if recovered_analysis:
+                    log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+    
+                    return analyze_error("Analysis failed. Please try another video.", 500)
+            log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+        finally:
+            if pod_started and RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
+                try:
+                    if runpod_start_time:
+                        duration = time.time() - runpod_start_time
+                        cost = duration * (0.44 / 3600)
+                        log.info(f"[RUNPOD_RUNTIME] {duration:.2f}s")
+                        log.info(f"[GPU_COST] user={getattr(current_user, 'id', 'anonymous')} time={duration:.2f}s cost=${cost:.5f}")
+                        MAX_GPU_RUNTIME = 300
+                        if duration > MAX_GPU_RUNTIME:
+                            log.warning("[WATCHDOG] GPU runtime exceeded safe window")
+                            stop_pod(force=True)
+                        else:
+                            log.info("[RUNPOD] Stopping pod...")
+                            stop_pod()
+                    else:
+                        log.info("[RUNPOD] Stopping pod...")
                         stop_pod()
-                    except Exception as pod_err:
-                        log.warning("[RUNPOD] Failed to stop pod: %s", pod_err)
-                return analyze_error("Analysis failed. Please try another video.", 500)
-        log.info("[TIMING] stage=orchestrate wall=%.2fs moments=%d", (time.time() - stage_t0), len(moments or []))
+                except Exception as e:
+                    log.warning("[RUNPOD] Failed to stop pod: %s", e)
 
-        # --------------------------------------------------
-        # Stop GPU pod after GPU work is complete (pod mode only)
-        # --------------------------------------------------
-        if pod_started and RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_POD_ID"):
-            try:
-                log.info("[RUNPOD] Stopping GPU pod after analysis complete...")
-                stop_pod()
-            except Exception as e:
-                log.warning("[RUNPOD] Failed to stop pod: %s", e)
+
 
     transcript_status = "missing"
     if transcript_segments:
@@ -4419,6 +4635,15 @@ def analyze_video():
 #     print("=" * 60)
 #     return jsonify(all_clips)
 
+<<<<<<< HEAD
+=======
+import yt_dlp
+import os
+import re
+import shutil
+
+
+>>>>>>> codex/auth-analyze-vercel-ignore
 def fetch_youtube_metadata(url):
     """Fetch only metadata for a YouTube URL without invoking yt-dlp.
 
@@ -4951,6 +5176,7 @@ def _download_via_runpod(
             "url": youtube_url,
             "youtube_url": youtube_url,
             "job_id": job_id,
+            "include_visual": True,
             "cloud_provider": {
                 "provider": "cloudinary",
                 "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME"),
@@ -4965,11 +5191,27 @@ def _download_via_runpod(
         "Content-Type": "application/json",
     }
 
+    pod_started_here = False
+    if RUNPOD_MODE == "pod" and RUNPOD_AVAILABLE and os.environ.get("RUNPOD_POD_ID"):
+        try:
+            log.info("[RUNPOD] Starting GPU pod for download...")
+            from runpod_controller import start_pod, wait_until_ready
+            start_pod()
+            pod_started_here = True
+            if wait_until_ready(timeout=120):
+                log.info("[RUNPOD] Pod ready for download")
+            else:
+                log.warning("[RUNPOD] Pod did not become ready within timeout; continuing anyway")
+        except Exception as e:
+            log.warning("[RUNPOD] Failed to start pod for download: %s", e)
+
     log.info("[RUNPOD] request download task for %s", youtube_url)
     resp = requests.post(url, json=payload, headers=headers, timeout=600)
     log.info("[RUNPOD] RESPONSE (text): %s", resp.text)
 
     if resp.status_code != 200:
+        if resp.status_code == 404 and RUNPOD_MODE == "pod":
+            raise RuntimeError(f"RunPod Pod '{endpoint}' is OFFLINE (Proxy returned 404). Check your RunPod balance and ensure the Pod is running.")
         raise RuntimeError(f"RunPod download failed: {resp.status_code} - {resp.text}")
 
     data = resp.json()
@@ -4991,7 +5233,7 @@ def _download_via_runpod(
         time.sleep(2)
 
         if run_id:
-            status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+            status_url = _runpod_status_url(endpoint, run_id)
             resp = requests.get(status_url, headers=headers, timeout=60)
         else:
             # Fallback: re-post the original request (/run) to refresh status.
@@ -5341,7 +5583,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
             time.sleep(2)
 
             if run_id:
-                status_url = f"https://api.runpod.ai/v2/{endpoint}/runs/{run_id}"
+                status_url = _runpod_status_url(endpoint, run_id)
                 resp = requests.get(status_url, headers=headers, timeout=60)
             else:
                 resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
@@ -5808,9 +6050,9 @@ def download_clip(clip_id):
                             "-c:v",
                             "libx264",
                             "-preset",
-                            "veryfast",
+                            "fast",
                             "-crf",
-                            "21",
+                            "18",
                             "-pix_fmt",
                             "yuv420p",
                             "-c:a",
@@ -5842,9 +6084,9 @@ def download_clip(clip_id):
                             "-c:v",
                             "libx264",
                             "-preset",
-                            "veryfast",
+                            "fast",
                             "-crf",
-                            "21",
+                            "18",
                             "-pix_fmt",
                             "yuv420p",
                             "-c:a",
@@ -6387,5 +6629,11 @@ def generate_clip_for_job(video_path, start, end):
 if __name__ == "__main__":
     # When running via `python app.py`, use PORT if provided (defaults to 10000).
     # When running under Gunicorn, this block is skipped.
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)

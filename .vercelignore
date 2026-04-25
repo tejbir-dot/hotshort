@@ -1,4 +1,5 @@
 .venv
+hotshort_env
 downloads
 data
 *.db
@@ -8,6 +9,8 @@ __pycache__
 node_modules
 .git
 .cache
+static/cache
+static/outputs
 static/media
 *.mp4
 *.wav
