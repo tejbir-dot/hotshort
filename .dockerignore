@@ -1,0 +1,48 @@
+# Local environment files
+.venv/
+venv/
+env/
+bin/
+obj/
+*.pyc
+__pycache__/
+
+# Version control
+.git/
+.github/
+.gitignore
+
+# Local data and logs
+*.mp4
+*.mp3
+*.wav
+*.json
+*.log
+temp_*/
+downloads/
+output/
+cache/
+.hotshort_ingestion_cache/
+.hotshort_transcripts_cache/
+.pytest_cache/
+.vercel/
+instance/
+
+# Documentation and meta
+*.md
+LICENSE
+Procfile
+runtime.txt
+vercel.json
+deploy_worker.bat
+startup_hotshort.bat
+setup_youtube_cookies.py
+init_db.py
+reset_db.py
+check_migration_status.py
+apply_watchdog.py
+
+# Docker-specific
+Dockerfile
+Dockerfile.worker
+.dockerignore
