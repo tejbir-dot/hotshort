@@ -44,7 +44,17 @@
     try {
       const body = document.body;
       const raw = body && body.dataset ? String(body.dataset.backendUrl || "").trim() : "";
-      return raw.replace(/\/+$/, "");
+      const normalized = raw.replace(/\/+$/, "");
+      if (!normalized) return "";
+      try {
+        const candidate = new URL(normalized, window.location.origin);
+        if (candidate.origin !== window.location.origin) {
+          return "";
+        }
+      } catch (e) {
+        return "";
+      }
+      return normalized;
     } catch (e) {
       return "";
     }

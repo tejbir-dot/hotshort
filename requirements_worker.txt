@@ -4,6 +4,9 @@ numpy
 ffmpeg-python
 yt-dlp
 soundfile
+cloudinary
+boto3
+python-dotenv
 
 # Optional but useful:
-ctranslate2
+ctranslate2

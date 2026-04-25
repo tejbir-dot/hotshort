@@ -989,8 +989,8 @@
     }
   </style>
 </head>
-<!-- <body data-backend-url="{{ BACKEND_URL|default('', true) }}">
---><body data-backend-url="https://web-production-cdd0e.up.railway.app"></body>
+<!-- <body data-backend-url="{{ BACKEND_URL|default('', true) }}"> -->
+<body data-backend-url="https://web-production-cdd0e.up.railway.app">
 
   <!-- Navigation -->
   <nav>
@@ -1005,7 +1005,7 @@
         <li><a href="#features" class="active">Features</a></li>
         <li><a href="/pricing">Pricing</a></li>
         <li><a href="https://github.com" target="_blank">GitHub</a></li>
-        <li><a href="#" data-backend-link="/auth/login">Login</a></li>
+        <li><a href="https://web-production-cdd0e.up.railway.app/auth/login">Login</a></li>
       </ul>
     </div>
   </nav>
@@ -1181,7 +1181,7 @@
         <ul>
           <li><a href="/">Home</a></li>
           <li><a href="#features">Features</a></li>
-          <li><a href="#" data-backend-link="/dashboard">Dashboard</a></li>
+          <li><a href="https://web-production-cdd0e.up.railway.app/dashboard">Dashboard</a></li>
         </ul>
       </div>
 
@@ -1230,18 +1230,7 @@
   <div id="golden-light" aria-hidden="true"></div>
 
   <script>
-    const BACKEND = (() => {
-      const fromBody = (document.body?.dataset?.backendUrl || '').trim().replace(/\/+$/, '');
-      if (fromBody) {
-        try {
-          const candidate = new URL(fromBody, window.location.origin);
-          if (candidate.origin === window.location.origin) {
-            return candidate.origin;
-          }
-        } catch (e) {}
-      }
-      return window.location.origin || '';
-    })();
+    const BACKEND = (document.body.dataset.backendUrl || '').trim().replace(/\/+$/, '');
 
     function backendUrl(path) {
       const normalized = String(path || '');

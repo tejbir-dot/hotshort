@@ -79,7 +79,7 @@ def generate_clip_for_job(yt_url, job_id, progress=None):
         cmd_fallback = [
             "ffmpeg", "-ss", str(start_time), "-to", str(end_time),
             "-i", temp_file,
-            "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-c:a", "aac",
             output_file, "-y", "-loglevel", "error"
         ]
         subprocess.run(cmd_fallback, check=True)
