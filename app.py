@@ -4635,15 +4635,7 @@ def analyze_video():
 #     print("=" * 60)
 #     return jsonify(all_clips)
 
-<<<<<<< HEAD
-=======
-import yt_dlp
-import os
-import re
-import shutil
 
-
->>>>>>> codex/auth-analyze-vercel-ignore
 def fetch_youtube_metadata(url):
     """Fetch only metadata for a YouTube URL without invoking yt-dlp.
 
