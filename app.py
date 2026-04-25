@@ -182,7 +182,6 @@ def _should_log_request_resource(path: str) -> bool:
         return True
     p = str(path or "")
     return any(p.startswith(prefix) for prefix in RESOURCE_HEAVY_PATHS)
-from video_pipeline import generate_clip_for_job
 from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_dance.consumer import oauth_authorized, oauth_before_login, oauth_error
