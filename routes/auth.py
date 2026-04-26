@@ -12,6 +12,14 @@ from models.user import User, db
 auth = Blueprint('auth', __name__)
 
 
+def _cookie_secure() -> bool:
+    return bool(current_app.config.get("SESSION_COOKIE_SECURE"))
+
+
+def _cookie_samesite() -> str:
+    return str(current_app.config.get("SESSION_COOKIE_SAMESITE") or "Lax")
+
+
 def normalize_next_target(raw_next):
     default_target = "/dashboard"
     value = (raw_next or "").strip()
@@ -64,7 +72,17 @@ def google_login():
     session.pop('google_oauth_token', None)
     session.pop('google_oauth_state', None)
     session['post_login_next'] = next_target
-    return redirect(url_for('google.login'))
+    response = redirect(url_for('google.login'))
+    response.set_cookie(
+        "hs_post_login_next",
+        next_target,
+        max_age=600,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite=_cookie_samesite(),
+        path="/",
+    )
+    return response
 
 
 # ===============================

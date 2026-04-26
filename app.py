@@ -1374,7 +1374,17 @@ def _google_login_override():
     )
     flask.session[f"{google_bp.name}_oauth_state"] = state
     oauth_before_login.send(google_bp, url=url)
-    return redirect(url)
+    response = redirect(url)
+    response.set_cookie(
+        "hs_google_oauth_state",
+        state,
+        max_age=600,
+        httponly=True,
+        secure=bool(app.config.get("SESSION_COOKIE_SECURE")),
+        samesite=str(app.config.get("SESSION_COOKIE_SAMESITE") or "Lax"),
+        path="/",
+    )
+    return response
 
 
 def _google_authorized_override():
@@ -1396,11 +1406,18 @@ def _google_authorized_override():
         return redirect(next_url)
 
     state_key = f"{google_bp.name}_oauth_state"
-    if state_key not in flask.session:
+    cookie_state = request.cookies.get("hs_google_oauth_state")
+    session_state = flask.session.pop(state_key, None)
+    if not session_state and cookie_state:
+        app.logger.warning("[OAUTH-DEBUG] state missing in session; recovering from cookie fallback")
+        session_state = cookie_state
+    if not session_state:
         app.logger.warning("[OAUTH-DEBUG] state missing during callback; restarting google login")
-        return redirect(url_for("google.login"))
+        retry = redirect(url_for("google.login"))
+        retry.delete_cookie("hs_google_oauth_state", path="/")
+        return retry
 
-    google_bp.session._state = flask.session.pop(state_key)
+    google_bp.session._state = session_state
     google_bp.session.redirect_uri = _google_authorized_absolute_url()
     app.logger.info("[OAUTH-DEBUG] GOOGLE_AUTHORIZED_OVERRIDE redirect_uri=%s", google_bp.session.redirect_uri)
     authorization_response = google_bp.session.redirect_uri
@@ -1442,7 +1459,9 @@ def _google_authorized_override():
             app.logger.warning("OAuth 2 authorization error: %s", str(error))
             oauth_error.send(google_bp, error=error)
 
-    return redirect(next_url)
+    response = redirect(next_url)
+    response.delete_cookie("hs_google_oauth_state", path="/")
+    return response
 
 
 app.view_functions["google.login"] = _google_login_override
@@ -2722,7 +2741,10 @@ def google_login():
         db.session.commit()
 
     login_user(user)
-    return build_post_login_redirect(session.pop("post_login_next", None))
+    next_target = session.pop("post_login_next", None) or request.cookies.get("hs_post_login_next")
+    response = build_post_login_redirect(next_target)
+    response.delete_cookie("hs_post_login_next", path="/")
+    return response
 
 # ==========================
 # 🚀 REST OF YOUR CLIP SYSTEM
