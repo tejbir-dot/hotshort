@@ -3,29 +3,22 @@ FROM python:3.10-slim
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_DEFAULT_TIMEOUT=100 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# Install system dependencies
+# Install only runtime system dependencies needed by the Railway web app.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     ffmpeg \
-    git \
-    curl \
-    libgl1 \
-    libglib2.0-0 \
-    libsndfile1 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.railway.txt .
 
-# Upgrade pip/setuptools once
-RUN python -m pip install --upgrade pip setuptools wheel
-
-# Install Python requirements (layered for caching)
-RUN pip install -r requirements.txt
+# Install only the web dependencies needed for Railway.
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    python -m pip install --prefer-binary --progress-bar off -r requirements.railway.txt
 
 COPY . .
 
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:${PORT:-8080}", "--workers", "2", "--threads", "2", "--timeout", "120"]
+CMD ["sh", "-c", "gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --threads 2 --timeout 120"]
