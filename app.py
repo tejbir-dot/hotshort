@@ -1154,6 +1154,13 @@ public_base_url = (
     or backend_url
 ).strip().rstrip("/")
 app.config["PUBLIC_BASE_URL"] = public_base_url
+oauth_public_base_url = (
+    (app.config.get("OAUTH_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    or external_base_url
+    or backend_url
+    or frontend_url
+)
+app.config["OAUTH_PUBLIC_BASE_URL"] = oauth_public_base_url
 
 from flask_cors import CORS
 CORS(
@@ -1312,10 +1319,14 @@ app.logger.info(
     "[OAUTH-DEBUG] PUBLIC_BASE_URL=%r",
     app.config.get("PUBLIC_BASE_URL"),
 )
-if app.config.get("PUBLIC_BASE_URL"):
+app.logger.info(
+    "[OAUTH-DEBUG] OAUTH_PUBLIC_BASE_URL=%r",
+    app.config.get("OAUTH_PUBLIC_BASE_URL"),
+)
+if app.config.get("OAUTH_PUBLIC_BASE_URL"):
     app.logger.info(
         "[OAUTH-DEBUG] FORCED_CALLBACK_URI=%s/login/google/authorized",
-        app.config.get("PUBLIC_BASE_URL"),
+        app.config.get("OAUTH_PUBLIC_BASE_URL"),
     )
 else:
     app.logger.info(
@@ -1327,8 +1338,8 @@ from flask_dance.contrib.google import make_google_blueprint, google
 
 with app.app_context():
     google_redirect_url = None
-    if app.config.get("PUBLIC_BASE_URL"):
-        google_redirect_url = f"{app.config['PUBLIC_BASE_URL']}/login/google/authorized"
+    if app.config.get("OAUTH_PUBLIC_BASE_URL"):
+        google_redirect_url = f"{app.config['OAUTH_PUBLIC_BASE_URL']}/login/google/authorized"
 
     google_bp = make_google_blueprint(
         client_id=app.config["GOOGLE_OAUTH_CLIENT_ID"],
@@ -1345,7 +1356,7 @@ with app.app_context():
 
 
 def _google_authorized_absolute_url() -> str:
-    public_base_url = (app.config.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    public_base_url = (app.config.get("OAUTH_PUBLIC_BASE_URL") or "").strip().rstrip("/")
     authorized_path = url_for("google.authorized", _external=False)
     if public_base_url:
         return f"{public_base_url}{authorized_path}"

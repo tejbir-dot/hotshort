@@ -23,6 +23,7 @@ class Config:
     FRONTEND_URL = (os.getenv("FRONTEND_URL") or "").strip().rstrip("/")
     BACKEND_URL = (os.getenv("BACKEND_URL") or os.getenv("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
     EXTERNAL_BASE_URL = (os.getenv("EXTERNAL_BASE_URL") or os.getenv("BACKEND_URL") or "").strip().rstrip("/")
+    OAUTH_PUBLIC_BASE_URL = (os.getenv("OAUTH_PUBLIC_BASE_URL") or "").strip().rstrip("/")
     SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
     SESSION_COOKIE_SECURE = (os.getenv("SESSION_COOKIE_SECURE", "0").strip().lower() in ("1", "true", "yes", "on"))
     REMEMBER_COOKIE_SAMESITE = os.getenv("REMEMBER_COOKIE_SAMESITE", SESSION_COOKIE_SAMESITE)

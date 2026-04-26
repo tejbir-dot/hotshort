@@ -989,8 +989,8 @@
     }
   </style>
 </head>
-<!-- <body data-backend-url="{{ BACKEND_URL|default('', true) }}">
---><body data-backend-url="https://web-production-cdd0e.up.railway.app"></body>
+<!-- <body data-backend-url="{{ BACKEND_URL|default('', true) }}"> -->
+<body data-backend-url="{{ BACKEND_URL|default('', true) }}">
 
   <!-- Navigation -->
   <nav>
@@ -1413,14 +1413,14 @@
 
             // If we get a redirect (login page) or an auth failure, follow it.
             if (res.redirected || res.status === 401 || res.status === 403) {
-              window.location.href = `https://web-production-cdd0e.up.railway.app/auth/login?next=` + encodeURIComponent('/dashboard');
+              window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent('/dashboard'));
               return;
             }
 
             const data = await res.json().catch(() => null);
             // If response is HTML (login page), it'll fail to parse as JSON; redirect.
             if (!data) {
-              window.location.href = `https://web-production-cdd0e.up.railway.app/auth/login?next=` + encodeURIComponent('/dashboard');
+              window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent('/dashboard'));
               return;
             }
 
