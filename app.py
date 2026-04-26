@@ -20,6 +20,7 @@ load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 import flask
 from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app
 from flask_login import LoginManager, current_user, login_required, login_user
+from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models.user import db, User, Clip, Job, FreeClipClaim
 
