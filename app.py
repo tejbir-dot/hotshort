@@ -1352,6 +1352,10 @@ def _google_authorized_absolute_url() -> str:
 
 def _google_login_override():
     redirect_uri = _google_authorized_absolute_url()
+    if redirect_uri.startswith("http://"):
+        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+    else:
+        os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
     app.logger.info("[OAUTH-DEBUG] GOOGLE_LOGIN_OVERRIDE redirect_uri=%s", redirect_uri)
     google_bp.session.redirect_uri = redirect_uri
     url, state = google_bp.session.authorization_url(
@@ -1410,6 +1414,10 @@ def _google_authorized_override():
 
     google_bp.session._state = session_state
     google_bp.session.redirect_uri = _google_authorized_absolute_url()
+    if google_bp.session.redirect_uri.startswith("http://"):
+        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+    else:
+        os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
     app.logger.info("[OAUTH-DEBUG] GOOGLE_AUTHORIZED_OVERRIDE redirect_uri=%s", google_bp.session.redirect_uri)
     authorization_response = google_bp.session.redirect_uri
     query_string = request.query_string.decode("utf-8", errors="ignore")
