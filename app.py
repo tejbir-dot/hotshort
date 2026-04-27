@@ -1115,13 +1115,7 @@ def _map_orchestrator_moment_for_clipgen(moment: dict, idx: int, log) -> tuple |
 
 app = Flask(__name__)
 
-app.config["SESSION_COOKIE_SAMESITE"] = "None"
-app.config["SESSION_COOKIE_SECURE"] = True
-
-
 app.config.from_object('settings.Config')
-app.config["SESSION_COOKIE_SAMESITE"] = "None"
-app.config["SESSION_COOKIE_SECURE"] = True
 app.secret_key = app.config["SECRET_KEY"]
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 CORS(app, origins=["*"])
@@ -1154,12 +1148,11 @@ public_base_url = (
     or backend_url
 ).strip().rstrip("/")
 app.config["PUBLIC_BASE_URL"] = public_base_url
-oauth_public_base_url = (
-    (app.config.get("OAUTH_PUBLIC_BASE_URL") or "").strip().rstrip("/")
-    or external_base_url
-    or backend_url
-    or frontend_url
-)
+# IMPORTANT:
+# Only force OAuth callback base URL when explicitly provided via env/config.
+# Falling back to EXTERNAL_BASE_URL/BACKEND_URL/FRONTEND_URL breaks local dev when those
+# are set to production domains in `.env`.
+oauth_public_base_url = (app.config.get("OAUTH_PUBLIC_BASE_URL") or "").strip().rstrip("/")
 app.config["OAUTH_PUBLIC_BASE_URL"] = oauth_public_base_url
 
 from flask_cors import CORS
@@ -1336,23 +1329,17 @@ else:
 
 from flask_dance.contrib.google import make_google_blueprint, google
 
-with app.app_context():
-    google_redirect_url = None
-    if app.config.get("OAUTH_PUBLIC_BASE_URL"):
-        google_redirect_url = f"{app.config['OAUTH_PUBLIC_BASE_URL']}/login/google/authorized"
-
-    google_bp = make_google_blueprint(
-        client_id=app.config["GOOGLE_OAUTH_CLIENT_ID"],
-        client_secret=app.config["GOOGLE_OAUTH_CLIENT_SECRET"],
-        scope=[
-            "openid",
-            "https://www.googleapis.com/auth/userinfo.email",
-            "https://www.googleapis.com/auth/userinfo.profile"
-        ],
-        redirect_url=google_redirect_url,
-        redirect_to="google_login"
-    )
-    app.register_blueprint(google_bp, url_prefix="/login")
+google_bp = make_google_blueprint(
+    client_id=app.config["GOOGLE_OAUTH_CLIENT_ID"],
+    client_secret=app.config["GOOGLE_OAUTH_CLIENT_SECRET"],
+    scope=[
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+    ],
+    redirect_to="google_login",
+)
+app.register_blueprint(google_bp, url_prefix="/login")
 
 
 def _google_authorized_absolute_url() -> str:
@@ -1407,10 +1394,14 @@ def _google_authorized_override():
 
     state_key = f"{google_bp.name}_oauth_state"
     cookie_state = request.cookies.get("hs_google_oauth_state")
+    request_state = request.args.get("state")
     session_state = flask.session.pop(state_key, None)
     if not session_state and cookie_state:
         app.logger.warning("[OAUTH-DEBUG] state missing in session; recovering from cookie fallback")
         session_state = cookie_state
+    if not session_state and request_state:
+        app.logger.warning("[OAUTH-DEBUG] state missing in session/cookie; recovering from callback query")
+        session_state = request_state
     if not session_state:
         app.logger.warning("[OAUTH-DEBUG] state missing during callback; restarting google login")
         retry = redirect(url_for("google.login"))
