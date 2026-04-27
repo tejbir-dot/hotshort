@@ -1471,6 +1471,30 @@ app.view_functions["google.authorized"] = _google_authorized_override
 # ==========================
 db.init_app(app)
 
+def _db_create_all_safe() -> None:
+    """
+    Create tables if missing, but tolerate multi-worker races (common on SQLite).
+
+    Gunicorn can import the app in multiple worker processes at the same time.
+    SQLite DDL isn't race-proof across processes; in that case one worker can
+    observe "table already exists" even with SQLAlchemy's checkfirst logic.
+    """
+    try:
+        db.create_all()
+    except Exception as e:
+        msg = str(e).lower()
+        if "already exists" in msg and "table" in msg:
+            try:
+                app.logger.warning("[DB-INIT] create_all race ignored: %s", e)
+            except Exception:
+                pass
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return
+        raise
+
 
 def _should_auto_create_tables() -> bool:
     explicit = (os.getenv("HS_AUTO_CREATE_TABLES") or "").strip().lower()
@@ -1493,7 +1517,7 @@ if _should_auto_create_tables():
             if db_dir:
                 os.makedirs(db_dir, exist_ok=True)
         # Keep local/dev startup ergonomic while avoiding serverless import work.
-        db.create_all()
+        _db_create_all_safe()
 else:
     log.info("[DB-INIT] Skipping db.create_all() during import.")
 
@@ -1525,8 +1549,12 @@ def _request_wants_json_auth_response() -> bool:
 @login_manager.unauthorized_handler
 def _handle_unauthorized():
     is_api = request.path.startswith('/api/') or request.path.startswith('/v2/') or request.path == '/analyze'
+    template_id = (request.args.get("template_id") or "").strip()
+    next_value = (request.full_path or request.path or "/").strip()
+    if next_value.endswith("?"):
+        next_value = request.path
     if is_api or _request_wants_json_auth_response():
-        login_url = url_for("auth.login", next=request.path)
+        login_url = url_for("auth.login", next=next_value, template_id=(template_id or None))
         resp = jsonify({
             "ok": False,
             "authenticated": False,
@@ -1540,7 +1568,7 @@ def _handle_unauthorized():
             resp.headers["Access-Control-Allow-Origin"] = origin
             resp.headers["Access-Control-Allow-Credentials"] = "true"
         return resp, 401
-    return redirect(url_for("auth.login", next=request.path))
+    return redirect(url_for("auth.login", next=next_value, template_id=(template_id or None)))
 
 # ✅ Register blueprints AFTER all routes are defined inside them
 app.register_blueprint(auth, url_prefix="/auth")
@@ -1567,6 +1595,9 @@ def init_app():
     """
 
     with app.app_context():
+        if not _should_auto_create_tables():
+            log.info("[DB-INIT] Skipping db.create_all() during init_app().")
+            return
         db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
         if db_uri.startswith("sqlite:///"):
             db_path = db_uri.replace("sqlite:///", "")
@@ -1576,11 +1607,11 @@ def init_app():
             if db_dir:
                 os.makedirs(db_dir, exist_ok=True)
         # Ensure required database tables exist (safe to call repeatedly).
-        db.create_all()
+        _db_create_all_safe()
 
 
-# Ensure initialization runs for Gunicorn/WSGI imports.
-init_app()
+# NOTE: We already run DB init above during import. Keep init_app() callable,
+# but don't call it unconditionally to avoid multi-worker duplicate DDL.
 
 # Optional warmup: disabled by default in constrained environments (e.g. Render free tier).
 if os.environ.get("HS_WARMUP_ON_STARTUP", "0").strip().lower() in ("1", "true", "yes", "on"):
@@ -2150,6 +2181,7 @@ def stripe_webhook():
 @login_required
 def dashboard():
     from flask import make_response
+    template_id = session.get("template_id")
     
     # Dashboard shows upload form (no clips)
     # Results moved to /results/<job_id> (see route below)
@@ -2166,7 +2198,7 @@ def dashboard():
             return redirect(url_for('dashboard'))
     
     # Handle GET requests - render the dashboard form
-    response = make_response(render_template('dashboard.html'))
+    response = make_response(render_template('dashboard.html', template_id=template_id))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
@@ -2740,9 +2772,14 @@ def google_login():
         db.session.commit()
 
     login_user(user)
+    session["user_id"] = user.id
+    template_id = session.get("template_id") or request.cookies.get("hs_template_id")
+    if template_id:
+        session["template_id"] = template_id
     next_target = session.pop("post_login_next", None) or request.cookies.get("hs_post_login_next")
     response = build_post_login_redirect(next_target)
     response.delete_cookie("hs_post_login_next", path="/")
+    response.delete_cookie("hs_template_id", path="/")
     return response
 
 # ==========================

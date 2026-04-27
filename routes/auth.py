@@ -19,6 +19,16 @@ def _cookie_secure() -> bool:
 def _cookie_samesite() -> str:
     return str(current_app.config.get("SESSION_COOKIE_SAMESITE") or "Lax")
 
+def normalize_template_id(raw_value):
+    value = (raw_value or "").strip()
+    if not value:
+        return ""
+    if len(value) > 80:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
+        return ""
+    return value
+
 
 def normalize_next_target(raw_next):
     default_target = "/dashboard"
@@ -59,6 +69,7 @@ def build_post_login_redirect(raw_next=None):
 @auth.route('/google_login')
 def google_login():
     next_target = normalize_next_target(request.args.get("next"))
+    template_id = normalize_template_id(request.args.get("template_id") or request.cookies.get("hs_template_id"))
     if "google" not in current_app.blueprints:
         flash("Google login is not configured right now. Please use email login.", "info")
         return redirect(url_for("auth.login", next=next_target))
@@ -72,6 +83,8 @@ def google_login():
     session.pop('google_oauth_token', None)
     session.pop('google_oauth_state', None)
     session['post_login_next'] = next_target
+    if template_id:
+        session["template_id"] = template_id
     response = redirect(url_for('google.login'))
     response.set_cookie(
         "hs_post_login_next",
@@ -82,6 +95,16 @@ def google_login():
         samesite=_cookie_samesite(),
         path="/",
     )
+    if template_id:
+        response.set_cookie(
+            "hs_template_id",
+            template_id,
+            max_age=600,
+            httponly=True,
+            secure=_cookie_secure(),
+            samesite=_cookie_samesite(),
+            path="/",
+        )
     return response
 
 
@@ -91,6 +114,9 @@ def google_login():
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
     next_target = normalize_next_target(request.values.get('next'))
+    template_id = normalize_template_id(request.values.get("template_id") or session.get("template_id") or request.cookies.get("hs_template_id"))
+    if template_id:
+        session["template_id"] = template_id
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
@@ -99,15 +125,19 @@ def login():
 
         if not user or not check_password_hash(user.password, password):
             flash('Invalid email or password.', 'error')
-            return render_template('login.html', next_target=next_target)
+            return render_template('login.html', next_target=next_target, template_id=template_id)
 
-        # Clear old session to avoid cached clips
+        # Clear old session to avoid cached clips, but keep login intent context.
+        preserved_template_id = template_id
         session.clear()
         login_user(user)
+        session["user_id"] = user.id
+        if preserved_template_id:
+            session["template_id"] = preserved_template_id
         flash('Welcome back, HotCreator!', 'success')
         return build_post_login_redirect(next_target)
 
-    return render_template('login.html', next_target=next_target)
+    return render_template('login.html', next_target=next_target, template_id=template_id)
 
 
 # ===============================
@@ -116,6 +146,9 @@ def login():
 @auth.route('/signup', methods=['GET', 'POST'])
 def signup():
     next_target = normalize_next_target(request.values.get('next'))
+    template_id = normalize_template_id(request.values.get("template_id") or session.get("template_id") or request.cookies.get("hs_template_id"))
+    if template_id:
+        session["template_id"] = template_id
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
@@ -123,11 +156,11 @@ def signup():
         # Validation
         if not email or not password:
             flash('Please fill all fields.', 'error')
-            return render_template('signup.html', next_target=next_target)
+            return render_template('signup.html', next_target=next_target, template_id=template_id)
 
         if User.query.filter_by(email=email).first():
             flash('This email is already registered.', 'error')
-            return render_template('signup.html', next_target=next_target)
+            return render_template('signup.html', next_target=next_target, template_id=template_id)
 
         hashed = generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
         new_user = User(email=email, password=hashed)
@@ -135,9 +168,9 @@ def signup():
         db.session.commit()
 
         flash('Account created successfully! Please log in.', 'success')
-        return redirect(url_for('auth.login', next=next_target))
+        return redirect(url_for('auth.login', next=next_target, template_id=template_id or None))
 
-    return render_template('signup.html', next_target=next_target)
+    return render_template('signup.html', next_target=next_target, template_id=template_id)
 
 
 # ===============================

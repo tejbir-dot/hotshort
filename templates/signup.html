@@ -189,7 +189,7 @@
     <h1>✨ Join HotShort Studio</h1>
     <p>Turn your ideas into viral clips.</p>
     <div class="google-btn">
-      <a href="{{ url_for('auth.google_login', next=next_target|default('/dashboard')) }}">
+      <a href="{{ url_for('auth.google_login', next=next_target|default('/dashboard'), template_id=template_id or None) }}">
         <svg viewBox="0 0 533.5 544.3" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
           <path fill="#4285F4" d="M533.5 278.4c0-17.7-1.6-35-4.7-51.7H272v98h147.3c-6.4 34.5-25.5 63.7-54.3 83.3v68h87.7c51.4-47.4 80.8-116.9 80.8-197.6z"/>
           <path fill="#34A853" d="M272 544.3c73.7 0 135.6-24.4 180.8-66.4l-87.7-68c-24.4 16.5-55.5 26.4-93.1 26.4-71.6 0-132.4-48.3-154.1-113.2H29.4v71.1C74.8 482.5 168.4 544.3 272 544.3z"/>
@@ -201,11 +201,12 @@
     </div>
     <form method="POST">
       <input type="hidden" name="next" value="{{ next_target|default('/dashboard') }}" />
+      <input type="hidden" name="template_id" value="{{ template_id|default('') }}" />
       <input type="email" name="email" placeholder="Email" required />
       <input type="password" name="password" placeholder="Password" required />
       <button type="submit">Sign Up</button>
     </form>
-    <p>Already have an account? <a href="{{ url_for('auth.login', next=next_target|default('/dashboard')) }}">Login</a></p>
+    <p>Already have an account? <a href="{{ url_for('auth.login', next=next_target|default('/dashboard'), template_id=template_id or None) }}">Login</a></p>
   </div>
 </body>
 </html>

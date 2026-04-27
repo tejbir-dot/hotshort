@@ -502,7 +502,12 @@
 <div class="glossy-bg"></div>
 
 <section class="hero">
-  <div id="dashboardContext" data-user-id="{{ current_user.id }}" hidden></div>
+  <div
+    id="dashboardContext"
+    data-user-id="{{ current_user.id }}"
+    data-template-id="{{ template_id|default('') }}"
+    hidden
+  ></div>
   <h1>🎬 AI That Turns Videos Into Viral Moments ⚡</h1>
   <p>Paste a YouTube link (fast import) or upload video. We analyze and generate viral clips automatically.</p>
 

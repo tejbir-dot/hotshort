@@ -77,6 +77,16 @@
     }
   }
 
+  function getDashboardTemplateId() {
+    try {
+      const ctx = document.getElementById("dashboardContext");
+      const v = (ctx && ctx.dataset && ctx.dataset.templateId) ? String(ctx.dataset.templateId).trim() : "";
+      return v || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
   function getScopedLastUrlKey() {
     return `${GLOBAL_LAST_URL_KEY}:u:${getDashboardUserId()}`;
   }
@@ -825,6 +835,8 @@
       const fd = new FormData();
       fd.append("youtube_url", ytUrl);
       fd.append("mode", "final");
+      const templateId = getDashboardTemplateId();
+      if (templateId) fd.append("template_id", templateId);
 
       const resp = await fetch(backendUrl("/analyze"), {
         method: "POST",
@@ -911,6 +923,11 @@
 
     // restore last url (scoped by logged-in user id)
     try {
+      const templateId = getDashboardTemplateId();
+      if (templateId) {
+        localStorage.setItem(`hs_template_id:u:${getDashboardUserId()}`, templateId);
+        window.__HS_TEMPLATE_ID__ = templateId;
+      }
       const yt = document.querySelector(SEL.yt);
       if (yt) yt.value = "";
       const scoped = localStorage.getItem(getScopedLastUrlKey());
