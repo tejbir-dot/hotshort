@@ -5010,17 +5010,14 @@ def download_youtube_segment(url, start, end, output_dir="downloads", job_id=Non
         safe_job = None
 
     ydl_opts = {
-        "format": "bv*+ba/b",
+        # Keep this permissive: some YouTube videos (esp. under certain clients)
+        # may not expose separate A/V streams that match stricter selectors.
+        "format": "bestvideo+bestaudio/best",
         "merge_output_format": "mp4",
         "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android"],
-            }
-        },
         "download_ranges": (lambda info, ydl: [{"start_time": start, "end_time": end}]),
     }
 
@@ -5103,18 +5100,13 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
             "name": "normal",
             "desc": "Basic yt-dlp with browser headers",
             "opts": {
-                "format": "bv*+ba/b",
+                "format": "bestvideo+bestaudio/best",
                 "quiet": True,
                 "no_warnings": True,
                 "geo_bypass": True,
                 "nocheckcertificate": True,
                 "socket_timeout": 30,
                 "retries": 3,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["android"],
-                    }
-                },
                 "user_agent": spoof_headers['User-Agent'],
                 "http_headers": spoof_headers,
             }
@@ -5123,7 +5115,7 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
             "name": "cookies",
             "desc": "yt-dlp with cookies and headers",
             "opts": {
-                "format": "bv*+ba/b",
+                "format": "bestvideo+bestaudio/best",
                 "quiet": True,
                 "no_warnings": True,
                 "geo_bypass": True,
@@ -5139,7 +5131,9 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
             "name": "android",
             "desc": "Android client spoof with headers",
             "opts": {
-                "format": "bv*+ba/b",
+                # Android client helps when JS runtime isn't available, but it can
+                # expose a different set of formats; keep selector permissive.
+                "format": "bestvideo+bestaudio/best",
                 "quiet": True,
                 "no_warnings": True,
                 "geo_bypass": True,
