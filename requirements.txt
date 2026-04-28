@@ -53,6 +53,8 @@ ffmpeg==1.4
 
 # AI / Transcription (RunPod)
 runpod==1.7.9
+faster-whisper
+ctranslate2
 
 # Utilities
 psutil==6.1.0
