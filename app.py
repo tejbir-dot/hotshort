@@ -56,6 +56,21 @@ try:
 except Exception:
     RESOURCE_MONITOR_INTERVAL_SECONDS = 0.0
 
+try:
+    HS_RUNPOD_POLL_INTERVAL_SECONDS = int(os.getenv("HS_RUNPOD_POLL_INTERVAL_SECONDS", "2") or 2)
+except Exception:
+    HS_RUNPOD_POLL_INTERVAL_SECONDS = 2
+
+try:
+    HS_RUNPOD_DOWNLOAD_POLL_TIMEOUT_SECONDS = int(os.getenv("HS_RUNPOD_DOWNLOAD_POLL_TIMEOUT_SECONDS", "300") or 300)
+except Exception:
+    HS_RUNPOD_DOWNLOAD_POLL_TIMEOUT_SECONDS = 300
+
+try:
+    HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS = int(os.getenv("HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS", "600") or 600)
+except Exception:
+    HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS = 600
+
 _RESOURCE_MONITOR_STARTED = False
 _RESOURCE_MONITOR_LOCK = threading.Lock()
 
@@ -239,8 +254,8 @@ def _wait_for_runpod_completion(
     request_payload: dict,
     timeout: int,
     task_label: str,
-    poll_attempts: int = 30,
-    poll_interval_s: int = 2,
+    poll_timeout_s: int,
+    poll_interval_s: int = HS_RUNPOD_POLL_INTERVAL_SECONDS,
 ):
     """Poll RunPod until the async job reaches a terminal state."""
     import requests
@@ -250,7 +265,8 @@ def _wait_for_runpod_completion(
     run_id = data.get("id") or data.get("run_id")
     log.info("[RUNPOD] %s STATUS: %s (run_id=%s)", task_label, status, run_id)
 
-    for _ in range(poll_attempts):
+    start_polling_time = time.time()
+    while time.time() - start_polling_time < poll_timeout_s:
         if status == "COMPLETED":
             return data
         if status == "FAILED":
@@ -321,6 +337,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         request_payload=data,
         timeout=600,
         task_label="transcription",
+        poll_timeout_s=HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS,
     )
 
     # Extract transcript segments from response
@@ -377,6 +394,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
         request_payload=data,
         timeout=300,
         task_label="analysis",
+        poll_timeout_s=HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS,
     )
 
     log.info("[RUNPOD] Analysis completed")
@@ -4992,12 +5010,17 @@ def download_youtube_segment(url, start, end, output_dir="downloads", job_id=Non
         safe_job = None
 
     ydl_opts = {
-        "format": "bestvideo+bestaudio/best",
+        "format": "bv*+ba/b",
         "merge_output_format": "mp4",
         "outtmpl": os.path.join(output_dir, f"{safe_job or '%(id)s'}.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android"],
+            }
+        },
         "download_ranges": (lambda info, ydl: [{"start_time": start, "end_time": end}]),
     }
 
@@ -5080,13 +5103,18 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
             "name": "normal",
             "desc": "Basic yt-dlp with browser headers",
             "opts": {
-                "format": "best",
+                "format": "bv*+ba/b",
                 "quiet": True,
                 "no_warnings": True,
                 "geo_bypass": True,
                 "nocheckcertificate": True,
                 "socket_timeout": 30,
                 "retries": 3,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android"],
+                    }
+                },
                 "user_agent": spoof_headers['User-Agent'],
                 "http_headers": spoof_headers,
             }
@@ -5095,7 +5123,7 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
             "name": "cookies",
             "desc": "yt-dlp with cookies and headers",
             "opts": {
-                "format": "best",
+                "format": "bv*+ba/b",
                 "quiet": True,
                 "no_warnings": True,
                 "geo_bypass": True,
@@ -5111,7 +5139,7 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
             "name": "android",
             "desc": "Android client spoof with headers",
             "opts": {
-                "format": "best",
+                "format": "bv*+ba/b",
                 "quiet": True,
                 "no_warnings": True,
                 "geo_bypass": True,
@@ -5216,7 +5244,8 @@ def _download_via_runpod(
     output_dir: str | None,
     job_id: str | None = None,
     return_url_only: bool = False,
-) -> str:
+    poll_timeout: int = HS_RUNPOD_DOWNLOAD_POLL_TIMEOUT_SECONDS,
+):
     """Ask RunPod to download the YouTube video.
 
     By default this streams the downloaded file from RunPod to a local path.
@@ -5285,14 +5314,15 @@ def _download_via_runpod(
 
     # Poll until the worker finishes (RunPod may return IN_QUEUE / IN_PROGRESS).
     # Prefer the dedicated status endpoint if we have a run id.
-    for attempt in range(30):
+    start_polling_time = time.time()
+    while time.time() - start_polling_time < poll_timeout:
         if status == "COMPLETED":
             break
         if status == "FAILED":
             raise RuntimeError("RunPod download failed: FAILED")
 
         log.info("[RUNPOD] waiting for job to finish... (status=%s)", status)
-        time.sleep(2)
+        time.sleep(HS_RUNPOD_POLL_INTERVAL_SECONDS)
 
         if run_id:
             status_url = _runpod_status_url(endpoint, run_id)
@@ -5577,7 +5607,8 @@ def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: i
 def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 900) -> dict:
     """Ask RunPod to run the full orchestrator pipeline and return the result."""
     import requests
-
+    
+    poll_timeout_s = HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS
     endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
     api_key = os.getenv("RUNPOD_API_KEY")
     if not endpoint or not api_key:
@@ -5635,14 +5666,15 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
         run_id = data.get("id") or data.get("run_id")
         log.info("[RUNPOD] STATUS: %s (run_id=%s)", status, run_id)
 
-        for attempt in range(30):
+        start_polling_time = time.time()
+        while time.time() - start_polling_time < poll_timeout_s:
             if status == "COMPLETED":
                 break
             if status == "FAILED":
                 raise RuntimeError("RunPod orchestrate failed: FAILED")
 
             log.info("[RUNPOD] waiting for job to finish... (status=%s)", status)
-            time.sleep(2)
+            time.sleep(HS_RUNPOD_POLL_INTERVAL_SECONDS)
 
             if run_id:
                 status_url = _runpod_status_url(endpoint, run_id)

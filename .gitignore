@@ -18,6 +18,7 @@ tests/payoff_failures.jsonl
 
 # Media / outputs
 *.mp4
+*.webm
 *.part
 *.bat
 downloads/
