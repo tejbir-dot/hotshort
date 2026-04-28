@@ -8,6 +8,7 @@ hotshort_env/
 
 # Environment
 .env
+cookies.txt
 
 # Cache / temp
 cache/

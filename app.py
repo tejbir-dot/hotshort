@@ -5020,6 +5020,12 @@ def download_youtube_segment(url, start, end, output_dir="downloads", job_id=Non
         "noplaylist": True,
         "download_ranges": (lambda info, ydl: [{"start_time": start, "end_time": end}]),
     }
+    # Optional cookies support (do not commit cookies.txt; provide it at deploy-time)
+    cookies_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+    if os.path.exists(cookies_path):
+        ydl_opts["cookiefile"] = cookies_path
+    # Client rotation can bypass some bot-check variants without needing JS runtime.
+    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android", "ios", "web"]}}
 
     log.info("[ANALYZE] segment download job_id=%s url=%s range=%.2f-%.2f", safe_job, url, start, end)
     try:
@@ -5082,6 +5088,7 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
 
     # Ensure we resolve the cookie file path relative to the app (not cwd)
     cookies_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+    cookies_available = os.path.exists(cookies_path)
 
     # Common anti-bot spoofing options
     spoof_headers = {
@@ -5107,6 +5114,11 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
                 "nocheckcertificate": True,
                 "socket_timeout": 30,
                 "retries": 3,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android", "ios", "web"],
+                    }
+                },
                 "user_agent": spoof_headers['User-Agent'],
                 "http_headers": spoof_headers,
             }
@@ -5123,6 +5135,11 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
                 "socket_timeout": 30,
                 "retries": 3,
                 "cookiefile": "cookies.txt",
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android", "ios", "web"],
+                    }
+                },
                 "user_agent": spoof_headers['User-Agent'],
                 "http_headers": spoof_headers,
             }
@@ -5142,7 +5159,7 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
                 "retries": 3,
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android"],
+                        "player_client": ["android", "ios", "web"],
                     }
                 },
                 "user_agent": 'com.google.android.youtube/19.09.36 (Linux; U; Android 11; SM-G973F) gzip',
@@ -5178,12 +5195,15 @@ def download_with_fallback(url, output_dir="downloads", job_id=None):
                 log.debug("[DOWNLOAD] Using proxy for yt-dlp: %s", proxy)
 
             # Skip cookies layer if no cookies file exists
-            if strategy_name == "cookies" and not os.path.exists(cookies_path):
+            if strategy_name == "cookies" and not cookies_available:
                 log.debug("[DOWNLOAD] Skipping cookies strategy (no cookies file found at %s)", cookies_path)
                 continue
 
             # Ensure cookies layer uses an absolute path
             if strategy_name == "cookies":
+                ydl_opts["cookiefile"] = cookies_path
+            # If cookies exist, also try them for other layers (helps with bot-check gated videos).
+            if cookies_available and "cookiefile" not in ydl_opts:
                 ydl_opts["cookiefile"] = cookies_path
 
             log.info(
