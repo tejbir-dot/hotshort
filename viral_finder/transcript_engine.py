@@ -53,7 +53,7 @@ except ImportError:
 # -----------------------
 # Config knobs (Preserved)
 # -----------------------
-DEFAULT_MODEL = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+DEFAULT_MODEL = os.environ.get("HS_TRANSCRIPT_MODEL", "base")
 DEFAULT_PRETEND_GPU = True
 CACHE_DIR = os.environ.get("HS_TRANSCRIPT_CACHE", ".hotshort_transcripts_cache")
 LOG_LEVEL = os.environ.get("HS_LOG_LEVEL", "INFO").upper()

@@ -72,7 +72,7 @@ except Exception:
 # -----------------------
 # Config knobs (tweakable)
 # -----------------------
-DEFAULT_MODEL = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+DEFAULT_MODEL = os.environ.get("HS_TRANSCRIPT_MODEL", "base")
 DEFAULT_PRETEND_GPU = True
 CHUNK_PADDING_S = 0.22
 VAD_AGGRESSIVENESS = 1

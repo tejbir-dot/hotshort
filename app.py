@@ -306,7 +306,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
     data = {
         'task': 'transcribe_youtube',
         'youtube_url': youtube_url,
-        'model': os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+        'model': os.environ.get("HS_TRANSCRIPT_MODEL", "base"),
         'include_visual': True,
         'cloud_provider': {
             'provider': 'cloudinary',
@@ -945,7 +945,7 @@ def _polish_top_longform_moments(
 
             refined_segments = _extract_transcript(
                 tmp_wav,
-                model_name=os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+                model_name=os.environ.get("HS_TRANSCRIPT_MODEL", "base"),
                 prefer_gpu=True,
                 force_recompute=True,
                 prefer_trust=True,
@@ -3620,7 +3620,7 @@ def analyze_video():
             # Precompute transcript on clean wav and seed cache for orchestrator
             stage_t0 = time.time()
             try:
-                transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+                transcript_model_name = os.environ.get("HS_TRANSCRIPT_MODEL", "base")
                 transcript_tiny_above_s = float(os.environ.get("HS_TRANSCRIPT_TINY_ABOVE_SECONDS", "1200") or 1200.0)
                 if source_video_duration_s >= transcript_tiny_above_s:
                     transcript_model_name = os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny")
@@ -3825,7 +3825,7 @@ def analyze_video():
             "metadata": metadata or {},
             "source_transcript_segments": transcript_segments or [],
             "transcript_engine": {
-                "model": os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+                "model": os.environ.get("HS_TRANSCRIPT_MODEL", "base"),
                 "longform_model": os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny"),
                 "use_vad_override": use_vad_override if "use_vad_override" in locals() else None,
                 "vad_profile_override": vad_profile_override if "vad_profile_override" in locals() else None,
@@ -4800,7 +4800,7 @@ def _ingestion_signature() -> str:
     # Any change here invalidates ingestion cache reuse automatically.
     fields = {
         "ytdlp_format": os.environ.get("HS_YTDLP_FORMAT", ""),
-        "transcript_model": os.environ.get("HS_TRANSCRIPT_MODEL", "small"),
+        "transcript_model": os.environ.get("HS_TRANSCRIPT_MODEL", "base"),
         "transcript_long_model": os.environ.get("HS_TRANSCRIPT_LONGFORM_MODEL", "tiny"),
         "vad_profile": os.environ.get("HS_VAD_PROFILE", "quality"),
         "vad_pregate": os.environ.get("HS_VAD_PREGATE", "0"),

@@ -57,7 +57,7 @@ except ImportError:
 # -----------------------
 # Config knobs (tweakable)
 # -----------------------
-DEFAULT_MODEL = os.environ.get("HS_TRANSCRIPT_MODEL", "small")
+DEFAULT_MODEL = os.environ.get("HS_TRANSCRIPT_MODEL", "base")
 DEFAULT_PRETEND_GPU = True
 CACHE_DIR = os.environ.get("HS_TRANSCRIPT_CACHE", ".hotshort_transcripts_cache")
 LOG_LEVEL = os.environ.get("HS_LOG_LEVEL", "INFO").upper()
@@ -1208,8 +1208,8 @@ def extract_transcript(path: str,
         _log("INFO", f"[VAD-POLICY] duration={duration:.2f}s use_vad={use_vad} profile={effective_vad_profile} policy={vad_policy}")
         
         if (not prefer_trust) or is_long:
-            # Use Turbo (Faster-Whisper + VAD)
-            if FasterWhisperModel:
+            # Use Turbo (Faster-Whisper + VAD) when all deps are present.
+            if FasterWhisperModel and (np is not None):
                 segs = transcribe_turbo(
                     path,
                     model_name,
@@ -1217,6 +1217,9 @@ def extract_transcript(path: str,
                     use_vad=use_vad,
                     vad_profile=effective_vad_profile,
                 )
+            elif FasterWhisperModel:
+                _log("WARN", "numpy not available; using Trust mode (no VAD) with faster-whisper.")
+                segs = transcribe_trust(path, model_name, device)
             else:
                 _log("WARN", "Faster-Whisper not found, falling back to Trust mode.")
                 segs = transcribe_trust(path, model_name, device)

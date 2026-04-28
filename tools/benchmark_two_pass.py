@@ -72,7 +72,7 @@ def _run_once(gte, path: str, model: str, prefer_gpu: bool, baseline: bool, two_
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--file", required=True, help="Local media path (video/audio).")
-    p.add_argument("--model", default=os.environ.get("HS_TRANSCRIPT_MODEL", "small"))
+    p.add_argument("--model", default=os.environ.get("HS_TRANSCRIPT_MODEL", "base"))
     p.add_argument("--cpu", action="store_true", help="Force CPU.")
     p.add_argument("--skip-warmup", action="store_true", help="Skip model warmup.")
     p.add_argument(
@@ -141,4 +141,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
