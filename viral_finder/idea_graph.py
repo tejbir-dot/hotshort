@@ -2550,7 +2550,17 @@ def coalesce_nodes(
             for k in set(prev.metrics.keys()) | set(n.metrics.keys()):
                 a = prev.metrics.get(k, 0.0)
                 b = n.metrics.get(k, 0.0)
-                metrics[k] = round((a + b) / 2.0, 4)
+                # Skip non-numeric values during averaging (e.g., "visual_label" is a string)
+                if isinstance(a, str) or isinstance(b, str):
+                    # For string values, prefer non-default or first value
+                    metrics[k] = a if a != 0.0 else b
+                else:
+                    # For numeric values, average them safely
+                    try:
+                        metrics[k] = round((float(a) + float(b)) / 2.0, 4)
+                    except (ValueError, TypeError):
+                        # Fallback if conversion fails
+                        metrics[k] = prev.metrics.get(k, n.metrics.get(k, 0.0))
             # choose state: RESOLUTION > TENSION > DEVELOPMENT > OPEN
             state_priority = {RESOLUTION: 3, TENSION: 2, DEVELOPMENT: 1, OPEN: 0}
             state = prev.state if state_priority.get(prev.state,0) >= state_priority.get(n.state,0) else n.state

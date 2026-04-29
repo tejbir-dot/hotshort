@@ -24,7 +24,7 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed # Keep for other uses if any
 from typing import List, Dict, Any, Optional
 try:
     import psutil
@@ -80,6 +80,18 @@ except Exception:
     run_curiosity_stage = None
 
 try:
+    from viral_finder.transcription_router import (
+        choose_transcription_engine,
+        get_transcription_config,
+        log_routing_decision,
+        apply_transcription_routing,
+    )
+    TRANSCRIPTION_ROUTER_AVAILABLE = True
+except Exception:
+    TRANSCRIPTION_ROUTER_AVAILABLE = False
+    log.warning("[ROUTER] Transcription router not available, using legacy mode")
+
+try:
     from viral_finder.validation_gates import apply_post_enrichment_validation
 except Exception:
     apply_post_enrichment_validation = None
@@ -120,6 +132,7 @@ except ImportError:
     select_dominant_arcs = None
     SelectorConfig = None
 
+from viral_finder.pipeline_context import PipelineContext
 try:
     from .ultron_finder_v33 import find_viral_moments as ultron_engine
 except ImportError:
@@ -914,36 +927,6 @@ def validate_candidate_by_curiosity(curve, start_t, end_t, payoff_conf, candidat
     return True, 'ok'
 
 
-@dataclass
-class PipelineContext:
-    path: str
-    top_k: int
-    allow_fallback: bool
-    prefer_gpu: bool = True
-    use_cache: bool = True
-    transcript: List[Dict[str, Any]] = field(default_factory=list)
-    audio_features: List[Dict[str, Any]] = field(default_factory=list)
-    visual_features: List[Dict[str, Any]] = field(default_factory=list)
-    av_features: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
-    curiosity_curve: List[Any] = field(default_factory=list)
-    curiosity_candidates: List[Any] = field(default_factory=list)
-    curiosity: Dict[str, Any] = field(default_factory=dict)
-    narrative: Dict[str, Any] = field(default_factory=dict)
-    narrative_triggers: List[Dict[str, Any]] = field(default_factory=list)
-    idea_nodes: List[Any] = field(default_factory=list)
-    raw_candidates: List[Dict[str, Any]] = field(default_factory=list)
-    enriched_candidates: List[Dict[str, Any]] = field(default_factory=list)
-    validated_candidates: List[Dict[str, Any]] = field(default_factory=list)
-    rejected_candidates: List[Dict[str, Any]] = field(default_factory=list)
-    final_candidates: List[Dict[str, Any]] = field(default_factory=list)
-    ranked_output: List[Dict[str, Any]] = field(default_factory=list)
-    narrative_score_cache: Dict[str, Dict[str, float]] = field(default_factory=dict)
-    candidate_feature_cache: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    brain: Any = None
-    stage_stats: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    transcript_source: str = "unknown"
-    target_min: int = 0
-
 
 def _record_stage(ctx: PipelineContext, stage: str, **stats: Any) -> None:
     ctx.stage_stats[stage] = stats
@@ -1067,29 +1050,60 @@ def _run_transcription(ctx: PipelineContext) -> None:
     t0 = time.time()
     transcript = []
     source = "none"
+    transcription_engine = "unknown"
+    
     if ctx.use_cache:
         transcript = _load_cached_transcript(ctx.path) or []
         if transcript:
             source = "cache"
+    
     if not transcript:
+        # Apply intelligent routing (if available)
+        if TRANSCRIPTION_ROUTER_AVAILABLE:
+            try:
+                apply_transcription_routing(ctx)
+                transcription_engine = getattr(ctx, "transcription_engine", "unknown")
+                log.info("[TRANSCRIPTION] Routing decision: engine=%s", transcription_engine)
+            except Exception as e:
+                log.warning("[TRANSCRIPTION] Router failed, using legacy mode: %s", e)
+        
+        # Execute transcription with fallback chain
         if gemini_transcribe:
-            transcript = gemini_transcribe(ctx.path) or []
-            source = "gemini"
-        elif extract_transcript:
-            transcript = extract_transcript(ctx.path, prefer_gpu=ctx.prefer_gpu) or []
-            source = "legacy_extract"
-        elif legacy_transcribe:
-            transcript = legacy_transcribe(ctx.path) or []
-            source = "legacy_transcribe"
+            try:
+                transcript = gemini_transcribe(ctx.path) or []
+                source = "gemini"
+                log.info("[TRANSCRIPTION] Completed via gemini (segments=%d)", len(transcript))
+            except Exception as e:
+                log.warning("[TRANSCRIPTION] Gemini failed: %s, trying fallback", e)
+        
+        if not transcript and extract_transcript:
+            try:
+                transcript = extract_transcript(ctx.path, prefer_gpu=ctx.prefer_gpu) or []
+                source = "legacy_extract"
+                log.info("[TRANSCRIPTION] Completed via extract_transcript (segments=%d)", len(transcript))
+            except Exception as e:
+                log.warning("[TRANSCRIPTION] extract_transcript failed: %s, trying fallback", e)
+        
+        if not transcript and legacy_transcribe:
+            try:
+                transcript = legacy_transcribe(ctx.path) or []
+                source = "legacy_transcribe"
+                log.info("[TRANSCRIPTION] Completed via legacy_transcribe (segments=%d)", len(transcript))
+            except Exception as e:
+                log.error("[TRANSCRIPTION] All engines failed: %s", e)
+    
     if transcript and ctx.use_cache:
         _save_cached_transcript(ctx.path, transcript)
+    
     ctx.transcript = transcript or []
     ctx.transcript_source = source
+    
     _record_stage(
         ctx,
         "L1_TRANSCRIPTION",
         transcript_segments=len(ctx.transcript),
         source=source,
+        engine=transcription_engine,
         reuse_cache=1 if source == "cache" else 0,
         wall_s=round(time.time() - t0, 3),
     )
