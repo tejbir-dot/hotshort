@@ -2,7 +2,7 @@
    Cleaned, consolidated, and hardened version.
    - Single init() wiring (no cloneNode/double listeners)
    - Single-flight analyze (prevents double requests)
-   - Friendly loader text stages + accessible loader text
+   - Premium Aurora loader with multi-stage progress
    - Robust response parsing and defensive DOM checks
    - Small utilities & preview modal included
 */
@@ -16,8 +16,8 @@
   const SEL = {
     yt: "#yt",
     analyzeBtn: "#analyzeBtn",
-    loader: "#loader",
-    loaderText: "#loaderText",
+    loader: "#hs-analyze-overlay",
+    loaderText: "#hs-loading-message",
     carousel: "#carousel",
     header: "header",
     hero: ".hero",
@@ -27,10 +27,11 @@
      LOADER TEXT STAGES
      ===================== */
   const LOADING_STAGES = [
-    "Extracting narrative structure...",
-    "Finding high-retention hooks...",
-    "Scoring viral potential...",
-    "Building clips...",
+    { key: "upload", message: "Preparing your video for analysis...", percent: 18, time: "1 min 40 sec" },
+    { key: "transcribe", message: "Converting speech into searchable text...", percent: 36, time: "1 min 12 sec" },
+    { key: "analyze", message: "Understanding your content and story flow...", percent: 68, time: "1 min 24 sec" },
+    { key: "score", message: "Ranking the strongest viral moments...", percent: 84, time: "54 sec" },
+    { key: "clips", message: "Extracting the best short-form moments...", percent: 96, time: "12 sec" }
   ];
   let loaderInterval = null;
 
@@ -119,6 +120,10 @@
 
   function toast(msg, ms = 2200) {
     try {
+      if (window.showToast) {
+        window.showToast(msg, 'info', ms);
+        return;
+      }
       let t = document.getElementById("hs-toast");
       if (!t) {
         t = el("div", { attrs: { id: "hs-toast" }, cls: "hs-toast" });
@@ -166,39 +171,61 @@
   }
 
   /* =====================
-     LOADER UI (text + active class)
+     LOADER UI (AURORA)
      ===================== */
   function showLoader() {
-    const loader = $id(SEL.loader.replace("#", "")) || elCreateLoader();
-    const loaderText = $id(SEL.loaderText.replace("#", "")) || null;
+    const loader = $id(SEL.loader.replace("#", ""));
     const analyzeBtn = document.querySelector(SEL.analyzeBtn);
     if (!loader) return;
-    let stage = 0;
-    loader.classList.add("active");
-    loader.classList.add("thinking");
-    loader.setAttribute("aria-hidden", "false");
+
+    loader.hidden = false;
     document.body.classList.add("dashboard-aurora");
     if (analyzeBtn) {
       analyzeBtn.classList.add("thinking");
       analyzeBtn.disabled = true;
     }
-    if (loaderText) loaderText.textContent = LOADING_STAGES[stage];
 
-    // rotate text stages
+    let stageIdx = 0;
+    const updateUI = (idx) => {
+      const stage = LOADING_STAGES[idx];
+      const stageMap = ["upload", "transcribe", "analyze", "score", "clips"];
+
+      stageMap.forEach((key, i) => {
+        const el = $id(`hs-stage-${key}`);
+        if (!el) return;
+        el.classList.remove("is-done", "is-active");
+        if (i < idx) el.classList.add("is-done");
+        if (i === idx) el.classList.add("is-active");
+      });
+
+      const msg = $id("hs-loading-message");
+      const pct = $id("hs-loading-percent");
+      const fill = $id("hs-loading-fill");
+      const time = $id("hs-loading-time");
+      const foot = $id("hs-progress-foot");
+
+      if (msg) msg.textContent = stage.message;
+      if (pct) pct.textContent = `${stage.percent}%`;
+      if (fill) fill.style.width = `${stage.percent}%`;
+      if (time) time.textContent = stage.time;
+      if (foot) foot.textContent = stage.message;
+    };
+
+    updateUI(0);
+
     if (loaderInterval) clearInterval(loaderInterval);
     loaderInterval = setInterval(() => {
-      stage = (stage + 1) % LOADING_STAGES.length;
-      if (loaderText) loaderText.textContent = LOADING_STAGES[stage];
-    }, 1400);
+      stageIdx = Math.min(stageIdx + 1, LOADING_STAGES.length - 1);
+      updateUI(stageIdx);
+    }, 2200);
   }
 
   function hideLoader() {
-    const loader = $id(SEL.loader.replace("#", "")) || null;
+    const loader = $id(SEL.loader.replace("#", ""));
     const analyzeBtn = document.querySelector(SEL.analyzeBtn);
     if (!loader) return;
-    loader.classList.remove("active");
-    loader.classList.remove("thinking");
-    loader.setAttribute("aria-hidden", "true");
+    
+    loader.hidden = true;
     document.body.classList.remove("dashboard-aurora");
     if (analyzeBtn) {
       analyzeBtn.classList.remove("thinking");
@@ -227,39 +254,8 @@
     persistLastUrl(value);
   }
 
-  function elCreateLoader() {
-    // creates a loader fallback if the dashboard template is missing it
-    const loader = el("div", { attrs: { id: "loader" }, cls: "loader" });
-    loader.setAttribute("aria-hidden", "true");
-    loader.style.display = "none";
-    loader.style.margin = "30px auto";
-    loader.style.textAlign = "center";
-    const caption = el("p", { cls: "loader-caption", html: "HotShort Intelligence" });
-    const visual = el("div", { cls: "loader-visual" });
-    const img = el("img", {
-      cls: "loader-animation",
-      attrs: {
-        src: "/static/media/hotshort-thinking.gif",
-        alt: "HotShort AI analyzing video structure",
-      },
-    });
-    const wave = el("div", { cls: "wave" });
-    const text = el("p", { attrs: { id: "loaderText" }, cls: "loader-text", html: "Preparing analysis..." });
-    const subtext = el("p", {
-      cls: "loader-subtext",
-      html: "Signal emerging from noise. Hooks, insights, and structure are being assembled.",
-    });
-    visual.appendChild(img);
-    loader.appendChild(caption);
-    loader.appendChild(visual);
-    loader.appendChild(wave);
-    loader.appendChild(text);
-    loader.appendChild(subtext);
-    return loader;
-  }
-
   /* =====================
-     INSIGHT LOGIC (frontend heuristic)
+     INSIGHT LOGIC
      ===================== */
   function generateInsight(c) {
     const score = Number(c.score || 0);
@@ -339,110 +335,58 @@
     modal.appendChild(container);
     document.body.appendChild(modal);
   }
+
   function generateIntelligence(c, insight) {
-  const intel = [];
-
-  // CURIOUSITY
-  if (insight.label.includes("Viral Hook") || c.hook > 0.15) {
-    intel.push({
-      icon: "🧠",
-      title: "Curiosity Gap",
-      text: "Viewer must stay to resolve missing information."
-    });
+    const intel = [];
+    if (insight.label.includes("Viral Hook") || c.hook > 0.15) {
+      intel.push({ icon: "🧠", title: "Curiosity Gap", text: "Viewer must stay to resolve missing information." });
+    }
+    if (c.authority > 0.25 || insight.label.includes("Authority")) {
+      intel.push({ icon: "🎓", title: "Authority Signal", text: "Speaker is perceived as knowledgeable or experienced." });
+    }
+    if (c.contradiction > 0.2 || insight.label.includes("Experimental")) {
+      intel.push({ icon: "⚡", title: "Pattern Break", text: "Unexpected idea interrupts scrolling behavior." });
+    }
+    if (c.emotion > 0.3) {
+      intel.push({ icon: "❤️", title: "Emotional Pull", text: "Emotion anchors memory and boosts shares." });
+    }
+    if (c.continuity > 0.4) {
+      intel.push({ icon: "🔁", title: "Retention Loop", text: "Story structure encourages continued watching." });
+    }
+    if (intel.length === 0) {
+      intel.push({ icon: "🧪", title: "Test Clip", text: "Worth testing for niche audience response." });
+    }
+    return intel.slice(0, 3);
   }
 
-  // AUTHORITY
-  if (c.authority > 0.25 || insight.label.includes("Authority")) {
-    intel.push({
-      icon: "🎓",
-      title: "Authority Signal",
-      text: "Speaker is perceived as knowledgeable or experienced."
-    });
-  }
-
-  // CONTRADICTION / SHOCK
-  if (c.contradiction > 0.2 || insight.label.includes("Experimental")) {
-    intel.push({
-      icon: "⚡",
-      title: "Pattern Break",
-      text: "Unexpected idea interrupts scrolling behavior."
-    });
-  }
-
-  // EMOTION
-  if (c.emotion > 0.3) {
-    intel.push({
-      icon: "❤️",
-      title: "Emotional Pull",
-      text: "Emotion anchors memory and boosts shares."
-    });
-  }
-
-  // RETENTION
-  if (c.continuity > 0.4) {
-    intel.push({
-      icon: "🔁",
-      title: "Retention Loop",
-      text: "Story structure encourages continued watching."
-    });
-  }
-
-  // FALLBACK (never empty)
-  if (intel.length === 0) {
-    intel.push({
-      icon: "🧪",
-      title: "Test Clip",
-      text: "Worth testing for niche audience response."
-    });
-  }
-
-  return intel.slice(0, 3); // MAX 3 → SMALL & CLEAN
-}
   function reduceTranscript(text, maxChars = 260) {
-  if (!text) return "";
-  return text.length > maxChars
-    ? text.slice(0, maxChars).trim() + "…"
-    : text;
-}
+    if (!text) return "";
+    return text.length > maxChars ? text.slice(0, maxChars).trim() + "…" : text;
+  }
+
   function renderConfidenceBar(pct = 0) {
-  const value = Math.max(0, Math.min(100, Number(pct) || 0));
-
-  let color =
-    value >= 80 ? "linear-gradient(90deg,#3cff8f,#00c853)" :
-    value >= 55 ? "linear-gradient(90deg,#ffd54f,#ffb300)" :
-                  "linear-gradient(90deg,#ff8a80,#d50000)";
-
-  return `
-    <div class="confidence-wrap">
-      <div class="confidence-track">
-        <div class="confidence-fill" style="width:${value}%;background:${color}"></div>
+    const value = Math.max(0, Math.min(100, Number(pct) || 0));
+    let color = value >= 80 ? "linear-gradient(90deg,#3cff8f,#00c853)" :
+                value >= 55 ? "linear-gradient(90deg,#ffd54f,#ffb300)" :
+                              "linear-gradient(90deg,#ff8a80,#d50000)";
+    return `
+      <div class="confidence-wrap">
+        <div class="confidence-track">
+          <div class="confidence-fill" style="width:${value}%;background:${color}"></div>
+        </div>
+        <span class="confidence-text">${value}% confidence</span>
       </div>
-      <span class="confidence-text">${value}% confidence</span>
-    </div>
-  `;
-}
+    `;
+  }
 
   function generateMicroSummary(c = {}, insight = {}) {
-  if (insight.label?.includes("Viral Hook"))
-    return "Opens with a hook that forces viewers to stay.";
+    if (insight.label?.includes("Viral Hook")) return "Opens with a hook that forces viewers to stay.";
+    if (insight.label?.includes("High-Retention")) return "Strong flow keeps attention through the middle.";
+    if (insight.label?.includes("Story Builder")) return "Narrative momentum builds curiosity step by step.";
+    if (insight.label?.includes("Experimental")) return "Unusual idea that interrupts scrolling behavior.";
+    return "Clear idea with potential for short-form growth.";
+  }
 
-  if (insight.label?.includes("High-Retention"))
-    return "Strong flow keeps attention through the middle.";
-
-  if (insight.label?.includes("Story Builder"))
-    return "Narrative momentum builds curiosity step by step.";
-
-  if (insight.label?.includes("Experimental"))
-    return "Unusual idea that interrupts scrolling behavior.";
-
-  return "Clear idea with potential for short-form growth.";
-}
-
-  /* =====================
-     RENDER: SINGLE CLIP CARD
-  /* ===================== 
-  
-  /* lightweight helper functions used above */
   function generateHookLine(c, insight) {
     if (!insight || !insight.label) return "Here’s something most people miss.";
     if (insight.label.includes("Viral Hook")) return "Most people get this wrong. --- here's why";
@@ -463,302 +407,135 @@
     return out.slice(0, maxChars).trim();
   }
 
-  /* =====================
-     MIND FILTER CHIPS
-     ===================== */
-  const MIND_KEYS = ["all", "curiosity", "contradiction", "authority", "emotion", "specificity"];
-  let activeMind = "all";
-
-  function renderMindChips(container) {
-    if (!container) return;
-    if (document.querySelector(".mind-chips")) return;
-    const wrap = el("div", { cls: "mind-chips" });
-    Object.assign(wrap.style, { display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" });
-    MIND_KEYS.forEach((k) => {
-      const chip = el("button", { cls: "mind-chip", html: k.charAt(0).toUpperCase() + k.slice(1) });
-      Object.assign(chip.style, {
-        padding: "8px 12px",
-        borderRadius: "999px",
-        background: k === "all" ? "#4b2f1f" : "rgba(0,0,0,0.25)",
-        color: "#f6d89e",
-        border: "none",
-        cursor: "pointer",
-      });
-      chip.addEventListener("click", () => {
-        activeMind = k;
-        document.querySelectorAll(".mind-chip").forEach((b) => (b.style.background = "rgba(0,0,0,0.25)"));
-        chip.style.background = "#4b2f1f";
-        filterByMind();
-      });
-      wrap.appendChild(chip);
-    });
-    // best location: before carousel in DOM
-    const parent = container.parentNode || container;
-    parent.insertBefore(wrap, container);
-  }
-
-  function clipMatchesActiveMind(cardNode) {
-    if (!cardNode) return false;
-    if (activeMind === "all") return true;
-    const ms = cardNode._mind_scores || {};
-    const key = Object.keys(ms).find((k) => k.toLowerCase().includes(activeMind));
-    if (key) return (ms[key] || 0) > 0.2;
-    const text = (cardNode.textContent || "").toLowerCase();
-    return text.includes(activeMind);
-  }
-
-  function filterByMind() {
-    const carousel = $id(SEL.carousel.replace("#", "")) || null;
-    if (!carousel) return;
-    Array.from(carousel.children).forEach((card) => {
-      card.style.display = clipMatchesActiveMind(card) ? "" : "none";
-    });
-  }
-  function buildClipHeader(c, insight, safeName) {
-  return `
-    <h3 class="clip-title">${esc(c.title || "Viral Moment")}</h3>
-
-    <div class="clip-meta">
-      <span class="clip-label">${esc(insight.label || "")}</span>
-      <span class="clip-confidence">${insight.confidencePct || 0}%</span>
-      <span class="clip-duration">
-        ${((c.end || 0) - (c.start || 0)).toFixed(1)}s
-      </span>
-
-      <div class="download-group">
-        <a class="download-main"
-           href="${esc(c.clip_url)}"
-           download="${safeName}.mp4">
-          Download
-        </a>
-
-        <button class="download-menu-btn">▾</button>
-        <div class="download-menu">
-          <button data-format="original">Original</button>
-          <button data-format="reels">Reels</button>
-          <button data-format="tiktok">TikTok</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
   function extractSmartTranscriptHook(text, maxChars = 180) {
-  if (!text) return "";
-
-  // clean text
-  const clean = text
-    .replace(/\s+/g, " ")
-    .replace(/\n+/g, " ")
-    .trim();
-
-  if (!clean) return "";
-
-  // split into sentences
-  const sentences = clean.split(/(?<=[.!?])\s+/);
-
-  // priority scoring
-  function scoreSentence(s) {
-    let score = 0;
-    const lower = s.toLowerCase();
-
-    // questions hook attention
-    if (s.includes("?")) score += 3;
-
-    // contradiction / shock words
-    if (
-      lower.includes("but") ||
-      lower.includes("most people") ||
-      lower.includes("nobody") ||
-      lower.includes("wrong") ||
-      lower.includes("stop") ||
-      lower.includes("fail")
-    ) score += 3;
-
-    // strong opener words
-    if (
-      lower.startsWith("this") ||
-      lower.startsWith("here") ||
-      lower.startsWith("why") ||
-      lower.startsWith("what if")
-    ) score += 2;
-
-    // short & punchy
-    if (s.length < 140) score += 2;
-
-    return score;
-  }
-
-  // find best sentence
-  let best = sentences[0];
-  let bestScore = 0;
-
-  for (const s of sentences.slice(0, 6)) {
-    const score = scoreSentence(s);
-    if (score > bestScore) {
-      bestScore = score;
-      best = s;
+    if (!text) return "";
+    const clean = text.replace(/\s+/g, " ").replace(/\n+/g, " ").trim();
+    if (!clean) return "";
+    const sentences = clean.split(/(?<=[.!?])\s+/);
+    function scoreSentence(s) {
+      let score = 0;
+      const lower = s.toLowerCase();
+      if (s.includes("?")) score += 3;
+      if (lower.includes("but") || lower.includes("most people") || lower.includes("nobody") || lower.includes("wrong") || lower.includes("stop") || lower.includes("fail")) score += 3;
+      if (lower.startsWith("this") || lower.startsWith("here") || lower.startsWith("why") || lower.startsWith("what if")) score += 2;
+      if (s.length < 140) score += 2;
+      return score;
     }
+    let best = sentences[0];
+    let bestScore = 0;
+    for (const s of sentences.slice(0, 6)) {
+      const score = scoreSentence(s);
+      if (score > bestScore) {
+        bestScore = score;
+        best = s;
+      }
+    }
+    return best.length > maxChars ? best.slice(0, maxChars).trim() + "…" : best;
   }
 
-  // fallback safety
-  const output = best.length > maxChars
-    ? best.slice(0, maxChars).trim() + "…"
-    : best;
-
-  return output;
-}
-
-  function buildClipIntelligence(c, insight) {
-  if (typeof generateIntelligence !== "function") return "";
-
-  const intel = generateIntelligence(c, insight);
-  if (!Array.isArray(intel) || !intel.length) return "";
-
-  return `
-    <div class="intel-stack">
-      ${intel.map(i => `
-        <div class="intel-row">
-          <span class="intel-icon">${esc(i.icon)}</span>
-          <div>
-            <div class="intel-title">${esc(i.title)}</div>
-            <div class="intel-text">${esc(i.text)}</div>
+  function buildClipHeader(c, insight, safeName) {
+    return `
+      <h3 class="clip-title">${esc(c.title || "Viral Moment")}</h3>
+      <div class="clip-meta">
+        <span class="clip-label">${esc(insight.label || "")}</span>
+        <span class="clip-confidence">${insight.confidencePct || 0}%</span>
+        <span class="clip-duration">${((c.end || 0) - (c.start || 0)).toFixed(1)}s</span>
+        <div class="download-group">
+          <a class="download-main" href="${esc(c.clip_url)}" download="${safeName}.mp4">Download</a>
+          <button class="download-menu-btn">▾</button>
+          <div class="download-menu">
+            <button data-format="original">Original</button>
+            <button data-format="reels">Reels</button>
+            <button data-format="tiktok">TikTok</button>
           </div>
         </div>
-      `).join("")}
-    </div>
-  `;
-}
+      </div>
+    `;
+  }
+
+  function buildClipIntelligence(c, insight) {
+    const intel = generateIntelligence(c, insight);
+    if (!Array.isArray(intel) || !intel.length) return "";
+    return `
+      <div class="intel-stack">
+        ${intel.map(i => `
+          <div class="intel-row">
+            <span class="intel-icon">${esc(i.icon)}</span>
+            <div>
+              <div class="intel-title">${esc(i.title)}</div>
+              <div class="intel-text">${esc(i.text)}</div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
   function bindClipInteractions(card) {
-  // WHY toggle
-  const whyBtn = card.querySelector(".why-toggle");
-  const whyPanel = card.querySelector(".why-panel");
-
-  if (whyBtn && whyPanel) {
-    whyBtn.addEventListener("click", () => {
-      const open = whyPanel.style.display === "block";
-      whyPanel.style.display = open ? "none" : "block";
-      whyBtn.textContent = open
-        ? "Why this clip works ▾"
-        : "Why this clip works ▴";
-    });
-  }
-
-  // Transcript toggle
-  const tBtn = card.querySelector(".transcript-toggle");
-  const tPanel = card.querySelector(".transcript-panel");
-
-  if (tBtn && tPanel) {
-    tBtn.addEventListener("click", () => {
-      const open = tPanel.classList.toggle("open");
-      tPanel.style.maxHeight = open ? "220px" : "0";
-      tBtn.textContent = open
-        ? "Hide transcript ▴"
-        : "View transcript ▾";
-    });
-  }
-
-  // Download menu
-  const menuBtn = card.querySelector(".download-menu-btn");
-  const menu = card.querySelector(".download-menu");
-
-  if (menuBtn && menu) {
-    menuBtn.addEventListener("click", e => {
-      e.stopPropagation();
-      menu.style.display = menu.style.display === "block" ? "none" : "block";
-    });
-
-    document.addEventListener("click", () => {
-      menu.style.display = "none";
-    });
-  }
-}
- function renderClipCard(c, index, bestIndex) {
-  const card = el("div", { cls: "clip-card" });
-  const body = el("div", { cls: "clip-body" });
-
-  // ---------- Insight (safe) ----------
-  const insight = typeof generateInsight === "function"
-    ? generateInsight(c)
-    : { label: "", confidencePct: 0 };
-
-  const confPct = Math.max(0, Math.min(100, insight.confidencePct || 0));
-
-  const safeName = (c.title || "clip")
-    .replace(/[^\w]+/g, "_")
-    .toLowerCase();
-
-  const transcript = (c.text || "").trim();
-  const smartTranscript = extractSmartTranscriptHook(c.text);
-
-
-  // ---------- HTML ----------
-  body.innerHTML = `
-    ${buildClipHeader(c, insight, safeName)}
-
-    <h3 class="clip-title">
-      ${esc(c.title || "Viral Moment")}
-    </h3>
-
-    <div class="clip-meta">
-      <span class="clip-label">${esc(insight.label || "")}</span>
-      <span class="clip-duration">
-        ${((c.end || 0) - (c.start || 0)).toFixed(1)}s
-      </span>
-    </div>
-
-    ${renderConfidenceBar(confPct)}
-
-    <div class="clip-hook">
-      ${esc(generateHookLine(c, insight))}
-    </div>
-
-    <div class="micro-summary">
-      ${esc(generateMicroSummary(c, insight))}
-    </div>
-
-    ${smartTranscript ? `
-  <button class="transcript-toggle">Why people stop here ▾</button>
-  <div class="transcript-panel">
-    ${esc(smartTranscript)}
-  </div>
-` : ""}
-
-
-    ${buildClipIntelligence(c, insight)}
-
-    ${
-      Array.isArray(c.why) && c.why.length
-        ? `
-        <button class="why-toggle">Why this clip works ▾</button>
-        <div class="why-panel">
-          <ul>
-            ${c.why.map(w => `<li>${esc(w)}</li>`).join("")}
-          </ul>
-        </div>
-      `
-        : ""
+    const whyBtn = card.querySelector(".why-toggle");
+    const whyPanel = card.querySelector(".why-panel");
+    if (whyBtn && whyPanel) {
+      whyBtn.addEventListener("click", () => {
+        const open = whyPanel.style.display === "block";
+        whyPanel.style.display = open ? "none" : "block";
+        whyBtn.textContent = open ? "Why this clip works ▾" : "Why this clip works ▴";
+      });
     }
-  `;
+    const tBtn = card.querySelector(".transcript-toggle");
+    const tPanel = card.querySelector(".transcript-panel");
+    if (tBtn && tPanel) {
+      tBtn.addEventListener("click", () => {
+        const open = tPanel.classList.toggle("open");
+        tPanel.style.maxHeight = open ? "220px" : "0";
+        tBtn.textContent = open ? "Hide transcript ▴" : "View transcript ▾";
+      });
+    }
+    const menuBtn = card.querySelector(".download-menu-btn");
+    const menu = card.querySelector(".download-menu");
+    if (menuBtn && menu) {
+      menuBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        menu.style.display = menu.style.display === "block" ? "none" : "block";
+      });
+      document.addEventListener("click", () => {
+        menu.style.display = "none";
+      });
+    }
+  }
 
-  card.appendChild(body);
-  bindClipInteractions(card);
+  function renderClipCard(c, index, bestIndex) {
+    const card = el("div", { cls: "clip-card" });
+    const body = el("div", { cls: "clip-body" });
+    const insight = generateInsight(c);
+    const confPct = Math.max(0, Math.min(100, insight.confidencePct || 0));
+    const safeName = (c.title || "clip").replace(/[^\w]+/g, "_").toLowerCase();
+    const smartTranscript = extractSmartTranscriptHook(c.text);
 
-  return card;
-}
+    body.innerHTML = `
+      ${buildClipHeader(c, insight, safeName)}
+      <h3 class="clip-title">${esc(c.title || "Viral Moment")}</h3>
+      <div class="clip-meta">
+        <span class="clip-label">${esc(insight.label || "")}</span>
+        <span class="clip-duration">${((c.end || 0) - (c.start || 0)).toFixed(1)}s</span>
+      </div>
+      ${renderConfidenceBar(confPct)}
+      <div class="clip-hook">${esc(generateHookLine(c, insight))}</div>
+      <div class="micro-summary">${esc(generateMicroSummary(c, insight))}</div>
+      ${smartTranscript ? `<button class="transcript-toggle">Why people stop here ▾</button><div class="transcript-panel">${esc(smartTranscript)}</div>` : ""}
+      ${buildClipIntelligence(c, insight)}
+      ${Array.isArray(c.why) && c.why.length ? `<button class="why-toggle">Why this clip works ▾</button><div class="why-panel"><ul>${c.why.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
+    `;
+    card.appendChild(body);
+    bindClipInteractions(card);
+    return card;
+  }
 
-
-
-  /* =====================
-     TIER UI (badge + remaining)
-     ===================== */
   function showTierUI(plan, remaining, upgrade_hint) {
     const header = document.querySelector(SEL.header) || document.querySelector(SEL.hero) || document.body;
     const existing = document.getElementById("hs-tier-ui");
     if (existing) existing.remove();
-
     const container = el("div", { attrs: { id: "hs-tier-ui" }, cls: "hs-tier-ui" });
     Object.assign(container.style, { position: "absolute", right: "22px", top: "18px", zIndex: 999, display: "flex", gap: "10px", alignItems: "center" });
-
     const badge = el("div", { cls: "hs-badge", html: esc(String(plan || "free").toUpperCase()) });
     Object.assign(badge.style, {
       background: plan === "free" ? "rgba(0,0,0,0.45)" : "linear-gradient(90deg,#ffd89b,#f6d89e)",
@@ -767,10 +544,8 @@
       borderRadius: "999px",
       fontWeight: 700,
     });
-
     const rem = el("div", { cls: "hs-remaining", html: `Remaining: ${remaining === Infinity ? "∞" : remaining}` });
     Object.assign(rem.style, { background: "rgba(0,0,0,0.45)", color: "#ffdca8", padding: "8px 12px", borderRadius: "10px" });
-
     if (Number.isFinite(remaining) && remaining <= 0) {
       const up = el("a", { attrs: { href: "/subscription" }, html: "Upgrade" });
       Object.assign(up.style, { background: "linear-gradient(90deg,#ffd89b,#f6d89e)", color: "#111", padding: "8px 12px", borderRadius: "10px", textDecoration: "none" });
@@ -780,217 +555,94 @@
       const analyzeBtn = document.querySelector(SEL.analyzeBtn);
       if (analyzeBtn) {
         analyzeBtn.disabled = true;
-        analyzeBtn.title = "Weekly clip limit reached — upgrade to generate more.";
         analyzeBtn.style.opacity = 0.7;
       }
     } else {
       const analyzeBtn = document.querySelector(SEL.analyzeBtn);
       if (analyzeBtn) {
         analyzeBtn.disabled = false;
-        analyzeBtn.title = "";
         analyzeBtn.style.opacity = 1;
       }
       container.appendChild(badge);
       container.appendChild(rem);
     }
-
     header.style.position = header.style.position || "relative";
     header.appendChild(container);
   }
 
   /* =====================
-     MAIN ANALYZE FLOW (single-flight, robust)
+     MAIN ANALYZE FLOW
      ===================== */
   async function handleAnalyzeClick(e) {
     e && e.preventDefault && e.preventDefault();
-    if (_isAnalyzing) {
-      toast("Analysis already running…");
-      return;
-    }
-
+    if (_isAnalyzing) return;
     const ytInput = document.querySelector(SEL.yt);
     const ytUrl = (ytInput && ytInput.value || "").trim();
     if (!ytUrl) {
       toast("Please paste a YouTube link.");
       return;
     }
-
-    if (ytInput) ytInput.value = ytUrl;
-
     _isAnalyzing = true;
     showLoader();
-
-    // prepare carousel container
-    let carousel = $id(SEL.carousel.replace("#", ""));
-    if (!carousel) {
-      carousel = el("div", { cls: "carousel", attrs: { id: SEL.carousel.replace("#", "") } });
-    }
-    carousel.innerHTML = "";
-
     try {
       persistLastUrl(ytUrl);
       analyticsPing("analyze_click", { youtube_url: ytUrl });
-
-      // build FormData
       const fd = new FormData();
       fd.append("youtube_url", ytUrl);
       fd.append("mode", "final");
       const templateId = getDashboardTemplateId();
       if (templateId) fd.append("template_id", templateId);
-
       const resp = await fetch(backendUrl("/analyze"), {
         method: "POST",
         headers: { "Accept": "application/json" },
         credentials: "include",
         body: fd
       });
-      
-      // Check if response is OK
-      if (!resp.ok && resp.status !== 302) {
-        const txt = await resp.text().catch(() => "");
-        throw new Error(`Server error (${resp.status}): ${txt.substring(0, 100)}`);
-      }
-      
-      // Handle redirect-style responses defensively.
       if (resp.redirected && resp.url) {
-        hideLoader();
         window.location.href = resp.url;
         return;
       }
-
       const data = await readJsonResponse(resp);
-
       if (data && data.action === "show_pricing_modal") {
         hideLoader();
-        if (typeof window.showPricingModal === "function") {
-          window.showPricingModal();
-        } else {
-          toast("Upgrade required to analyze again.");
-        }
+        if (typeof window.showPricingModal === "function") window.showPricingModal();
         return;
       }
-
-      hideLoader();
-      
-      const nextRedirect = data && (
-        data.redirect ||
-        data.redirect_url ||
-        data.results_url ||
-        (data.job_id ? `/results/${encodeURIComponent(data.job_id)}` : "")
-      );
+      const nextRedirect = data && (data.redirect || data.redirect_url || data.results_url || (data.job_id ? `/results/${encodeURIComponent(data.job_id)}` : ""));
       if (nextRedirect) {
-         // ✅ Truthful UI feedback
-        toast(`Analysis complete! Clips: ${data.clips_count}`, "success");
-
-  // ✅ Short pause so user sees feedback
+        toast("Analysis complete!", "success");
         setTimeout(() => {
           window.location.href = String(nextRedirect).startsWith("http") ? nextRedirect : backendUrl(nextRedirect);
         }, 600);
-
         return;
       }
-
-      if (data && data.error) {
-        toast(`Error: ${data.error}`);
-        return;
-      }
-
-      // If we get here without a redirect or an explicit error, stop safely.
-      return;
-
+      if (data && data.error) toast(`Error: ${data.error}`);
     } catch (err) {
       hideLoader();
-      console.error("Analyze error:", err);
-      toast("Error: " + (err && err.message ? err.message : String(err)));
-      analyticsPing("analyze_error", { message: (err && err.message) || String(err) });
+      toast("Error: " + (err.message || String(err)));
     } finally {
       _isAnalyzing = false;
     }
   }
 
   /* =====================
-     INIT (single place to wire everything)
+     INIT
      ===================== */
   function init() {
     const analyzeBtn = document.querySelector(SEL.analyzeBtn);
-    if (!analyzeBtn) {
-      console.warn("Analyze button not found:", SEL.analyzeBtn);
-      return;
-    }
-
-    // wire click once
+    if (!analyzeBtn) return;
     analyzeBtn.addEventListener("click", handleAnalyzeClick);
-
-    // restore last url (scoped by logged-in user id)
     try {
-      const templateId = getDashboardTemplateId();
-      if (templateId) {
-        localStorage.setItem(`hs_template_id:u:${getDashboardUserId()}`, templateId);
-        window.__HS_TEMPLATE_ID__ = templateId;
-      }
       const yt = document.querySelector(SEL.yt);
-      if (yt) yt.value = "";
-      const scoped = localStorage.getItem(getScopedLastUrlKey());
-      if (scoped && yt) yt.value = scoped;
       if (yt) {
+        const scoped = localStorage.getItem(getScopedLastUrlKey());
+        if (scoped) yt.value = scoped;
         yt.addEventListener("input", () => syncInputState(yt.value));
-        yt.addEventListener("change", () => syncInputState(yt.value));
-        yt.addEventListener("paste", () => {
-          requestAnimationFrame(() => {
-            if (document.querySelector(SEL.yt) === yt) syncInputState(yt.value);
-          });
-        });
-        yt.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            handleAnalyzeClick(e);
-          }
-        });
+        yt.addEventListener("keydown", (e) => { if (e.key === "Enter") handleAnalyzeClick(e); });
       }
-      // Clean old global key to avoid cross-account leakage on shared browsers.
-      localStorage.removeItem(GLOBAL_LAST_URL_KEY);
     } catch (e) {}
-
     ensurePreviewModal();
-
-    // video hover play/pause (delegated): only hovered clip plays
-    function pauseOtherClipVideos(except) {
-      document.querySelectorAll(".clip-card video").forEach((v) => {
-        if (except && v === except) return;
-        try {
-          v.pause();
-          v.currentTime = 0;
-        } catch (e) {}
-      });
-    }
-
-    document.addEventListener("mouseover", (e) => {
-      const card = e.target.closest(".clip-card");
-      if (!card) return;
-      if (e.relatedTarget && card.contains(e.relatedTarget)) return; // moving within the same card
-      const v = card.querySelector("video");
-      if (!v) return;
-      pauseOtherClipVideos(v);
-      v.play().catch(() => {});
-    });
-
-    document.addEventListener("mouseout", (e) => {
-      const card = e.target.closest(".clip-card");
-      if (!card) return;
-      if (e.relatedTarget && card.contains(e.relatedTarget)) return; // still inside card
-      const v = card.querySelector("video");
-      if (!v) return;
-      try {
-        v.pause();
-        v.currentTime = 0;
-      } catch (err) {}
-    });
-
-    console.info("[HotShort] Dashboard JS initialized (elite)");
   }
 
   document.addEventListener("DOMContentLoaded", init);
-
-  // expose small API for console/testing
-  window._hotshort = { analyze: handleAnalyzeClick, genInsight: generateInsight };
 })();

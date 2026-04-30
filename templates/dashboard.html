@@ -434,7 +434,359 @@
   }
 
   /* =====================================
-     RESPONSIVE (MOBILE)
+     HOTSHORT AURORA LOADER
+     ===================================== */
+  :root {
+    --hs-bg: #07070b;
+    --hs-card: rgba(18, 12, 26, 0.78);
+    --hs-card-border: rgba(255, 214, 102, 0.16);
+    --hs-gold: #f7c948;
+    --hs-gold-soft: rgba(247, 201, 72, 0.22);
+    --hs-purple: #b05cff;
+    --hs-purple-soft: rgba(176, 92, 255, 0.20);
+    --hs-text: #f7f3ea;
+    --hs-muted: rgba(247, 243, 234, 0.72);
+  }
+
+  .hs-analyze-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(176, 92, 255, 0.12), transparent 36%),
+      radial-gradient(circle at 50% 60%, rgba(247, 201, 72, 0.10), transparent 30%),
+      linear-gradient(180deg, rgba(5, 5, 8, 0.94), rgba(10, 8, 14, 0.98));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .hs-analyze-shell {
+    width: min(1120px, calc(100vw - 32px));
+    padding: 26px 24px 22px;
+    border-radius: 28px;
+    background: linear-gradient(180deg, rgba(18, 12, 26, 0.92), rgba(10, 8, 14, 0.88));
+    border: 1px solid var(--hs-card-border);
+    box-shadow:
+      0 18px 60px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .hs-analyze-orb {
+    position: relative;
+    width: min(560px, 100%);
+    aspect-ratio: 1 / 1;
+    margin: 0 auto 22px;
+    display: grid;
+    place-items: center;
+  }
+
+  .hs-orb-ring,
+  .hs-orb-halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .hs-ring-gold {
+    background:
+      conic-gradient(
+        from 0deg,
+        rgba(247, 201, 72, 0.00),
+        rgba(247, 201, 72, 0.12),
+        rgba(247, 201, 72, 0.98),
+        rgba(247, 201, 72, 0.22),
+        rgba(247, 201, 72, 0.00)
+      );
+    filter: blur(1px) drop-shadow(0 0 26px rgba(247, 201, 72, 0.45));
+    animation: hs-rotate 7s linear infinite;
+    opacity: 0.92;
+    -webkit-mask: radial-gradient(circle, transparent 55%, #000 57%);
+            mask: radial-gradient(circle, transparent 55%, #000 57%);
+  }
+
+  .hs-ring-purple {
+    inset: 10px;
+    background:
+      conic-gradient(
+        from 180deg,
+        rgba(176, 92, 255, 0.00),
+        rgba(176, 92, 255, 0.14),
+        rgba(176, 92, 255, 0.92),
+        rgba(176, 92, 255, 0.18),
+        rgba(176, 92, 255, 0.00)
+      );
+    filter: blur(2px) drop-shadow(0 0 28px rgba(176, 92, 255, 0.42));
+    animation: hs-rotate-reverse 9s linear infinite;
+    opacity: 0.90;
+    -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%);
+            mask: radial-gradient(circle, transparent 58%, #000 60%);
+  }
+
+  .hs-orb-halo {
+    inset: 26px;
+    background:
+      radial-gradient(circle at 50% 50%,
+        rgba(247, 201, 72, 0.05),
+        rgba(176, 92, 255, 0.06) 30%,
+        rgba(247, 201, 72, 0.02) 55%,
+        transparent 72%);
+    filter: blur(12px);
+    animation: hs-pulse 3.8s ease-in-out infinite;
+  }
+
+  .hs-orb-center {
+    position: relative;
+    z-index: 2;
+    width: 62%;
+    max-width: 340px;
+    padding: 18px 18px 16px;
+    text-align: center;
+    border-radius: 26px;
+    background: radial-gradient(circle at top, rgba(255,255,255,0.05), rgba(0,0,0,0.0) 58%);
+  }
+
+  .hs-orb-icon {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 10px;
+    display: grid;
+    place-items: center;
+    font-size: 22px;
+    color: var(--hs-gold);
+    text-shadow: 0 0 14px rgba(247, 201, 72, 0.55);
+    animation: hs-icon-breathe 2.2s ease-in-out infinite;
+  }
+
+  .hs-orb-title {
+    font-size: clamp(34px, 4.8vw, 58px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    margin-bottom: 10px;
+    background: linear-gradient(90deg, var(--hs-gold) 0%, #ffd98a 38%, var(--hs-purple) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 30px rgba(247, 201, 72, 0.10);
+  }
+
+  .hs-orb-copy {
+    color: var(--hs-muted);
+    font-size: 15px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+
+  .hs-orb-percent {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 88px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: var(--hs-gold);
+    background: rgba(247, 201, 72, 0.08);
+    border: 1px solid rgba(247, 201, 72, 0.16);
+    box-shadow: 0 0 0 1px rgba(176, 92, 255, 0.05) inset;
+  }
+
+  .hs-stage-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    margin: 18px auto 22px;
+    width: 100%;
+    align-items: start;
+  }
+
+  .hs-stage {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    text-align: center;
+    color: rgba(247, 243, 234, 0.55);
+  }
+
+  .hs-stage-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 0 0 0 rgba(176, 92, 255, 0.0);
+    position: relative;
+  }
+
+  .hs-stage-dot::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(176, 92, 255, 0.0), rgba(176, 92, 255, 0.0) 40%, rgba(176, 92, 255, 0.22) 70%, transparent 72%);
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  .hs-stage-label {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .hs-stage.is-done {
+    color: rgba(247, 243, 234, 0.88);
+  }
+
+  .hs-stage.is-done .hs-stage-dot {
+    background: linear-gradient(180deg, #ffd95d, #f7c948);
+    border-color: rgba(255, 217, 93, 0.3);
+    box-shadow: 0 0 24px rgba(247, 201, 72, 0.45);
+  }
+
+  .hs-stage.is-active {
+    color: var(--hs-text);
+  }
+
+  .hs-stage.is-active .hs-stage-dot {
+    background: linear-gradient(180deg, #ffd95d, #f7c948);
+    border-color: rgba(255, 217, 93, 0.4);
+    box-shadow:
+      0 0 20px rgba(247, 201, 72, 0.42),
+      0 0 38px rgba(176, 92, 255, 0.22);
+    animation: hs-dot-breathe 1.6s ease-in-out infinite;
+  }
+
+  .hs-stage.is-active .hs-stage-dot::after {
+    opacity: 1;
+    animation: hs-dot-ring 1.7s ease-out infinite;
+  }
+
+  .hs-progress-card {
+    padding: 18px 18px 16px;
+    border-radius: 22px;
+    background: var(--hs-card);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+
+  .hs-progress-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--hs-text);
+    margin-bottom: 12px;
+  }
+
+  .hs-progress-track {
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.35);
+  }
+
+  .hs-progress-fill {
+    width: 68%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--hs-gold) 0%, #ffd98a 45%, var(--hs-purple) 100%);
+    box-shadow: 0 0 18px rgba(247, 201, 72, 0.45);
+    animation: hs-progress-glow 2.3s ease-in-out infinite;
+  }
+
+  .hs-progress-foot {
+    margin-top: 12px;
+    color: var(--hs-muted);
+    font-size: 14px;
+  }
+
+  @keyframes hs-rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes hs-rotate-reverse {
+    from { transform: rotate(360deg); }
+    to { transform: rotate(0deg); }
+  }
+
+  @keyframes hs-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.78; }
+    50% { transform: scale(1.02); opacity: 1; }
+  }
+
+  @keyframes hs-dot-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+
+  @keyframes hs-dot-ring {
+    0% { transform: scale(0.75); opacity: 0.95; }
+    100% { transform: scale(1.65); opacity: 0; }
+  }
+
+  @keyframes hs-icon-breathe {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-1px) scale(1.03); }
+  }
+
+  @keyframes hs-progress-glow {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.08); }
+  }
+
+  @media (max-width: 900px) {
+    .hs-stage-row {
+      grid-template-columns: 1fr 1fr;
+    }
+    .hs-orb-center {
+      width: 76%;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .hs-analyze-shell {
+      padding: 18px 14px 14px;
+      border-radius: 22px;
+    }
+
+    .hs-stage-row {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .hs-orb-center {
+      width: 82%;
+    }
+
+    .hs-progress-head {
+      font-size: 14px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hs-ring-gold,
+    .hs-ring-purple,
+    .hs-orb-halo,
+    .hs-stage.is-active .hs-stage-dot,
+    .hs-stage.is-active .hs-stage-dot::after,
+    .hs-orb-icon,
+    .hs-progress-fill {
+      animation: none !important;
+    }
+  }
+
+  /* =====================================
+     RESPONSIVE (MOBILE) - ORIGINAL
      ===================================== */
   @media (max-width: 768px) {
     header {
@@ -471,11 +823,6 @@
     .input-bar button {
       width: 100%;
       justify-content: center;
-    }
-
-    .loader-visual,
-    .wave {
-      width: min(220px, 72vw);
     }
   }
 
@@ -516,42 +863,66 @@
     <button id="analyzeBtn">✨ Analyze</button>
   </div>
 
-  <div id="loader" class="loader" aria-hidden="true">
-    <p class="loader-caption">HotShort Intelligence</p>
-    <div class="loader-visual">
-      <img
-        class="loader-animation"
-        src="{{ url_for('static', filename='media/hotshort-thinking.gif') }}"
-        alt="HotShort AI analyzing video structure"
-      />
+  <!-- HOTSHORT ANALYZE LOADER (AURORA) -->
+  <div id="hs-analyze-overlay" class="hs-analyze-overlay" hidden>
+    <div class="hs-analyze-shell">
+      <div class="hs-analyze-orb">
+        <span class="hs-orb-ring hs-ring-gold"></span>
+        <span class="hs-orb-ring hs-ring-purple"></span>
+        <span class="hs-orb-halo"></span>
+
+        <div class="hs-orb-center">
+          <div class="hs-orb-icon">🔥</div>
+          <div class="hs-orb-title">Analyzing</div>
+          <div class="hs-orb-copy" id="hs-loading-message">
+            AI is finding the most viral moments in your video
+          </div>
+          <div class="hs-orb-percent" id="hs-loading-percent">0%</div>
+        </div>
+      </div>
+
+      <div class="hs-stage-row">
+        <div class="hs-stage" id="hs-stage-upload">
+          <span class="hs-stage-dot"></span>
+          <span class="hs-stage-label">Uploading</span>
+        </div>
+        <div class="hs-stage" id="hs-stage-transcribe">
+          <span class="hs-stage-dot"></span>
+          <span class="hs-stage-label">Transcribing</span>
+        </div>
+        <div class="hs-stage" id="hs-stage-analyze">
+          <span class="hs-stage-dot"></span>
+          <span class="hs-stage-label">Analyzing</span>
+        </div>
+        <div class="hs-stage" id="hs-stage-score">
+          <span class="hs-stage-dot"></span>
+          <span class="hs-stage-label">Scoring</span>
+        </div>
+        <div class="hs-stage" id="hs-stage-clips">
+          <span class="hs-stage-dot"></span>
+          <span class="hs-stage-label">Finding Clips</span>
+        </div>
+      </div>
+
+      <div class="hs-progress-card">
+        <div class="hs-progress-head">
+          <span>AI Processing</span>
+          <span id="hs-loading-time">--</span>
+        </div>
+
+        <div class="hs-progress-track">
+          <div class="hs-progress-fill" id="hs-loading-fill" style="width: 0%"></div>
+        </div>
+
+        <div class="hs-progress-foot" id="hs-progress-foot">
+          Initializing...
+        </div>
+      </div>
     </div>
-    <div class="wave"></div>
-    <p id="loaderText">Analyzing video… this may take 30-60 seconds</p>
-    <p class="loader-subtext">Signal emerging from noise. Hooks, insights, and structure are being assembled.</p>
   </div>
 </section>
 
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const btn = document.getElementById("analyzeBtn");
-    if (!btn) return;
 
-    btn.addEventListener("click", function () {
-      const urlInput = document.getElementById("yt");
-      const hasUrl = !!(urlInput && String(urlInput.value || "").trim());
-      if (!hasUrl) return;
-
-      document.body.classList.add("dashboard-aurora");
-      btn.classList.add("thinking");
-
-      const loader = document.getElementById("loader");
-      if (loader) {
-        loader.classList.add("active", "thinking");
-        loader.setAttribute("aria-hidden", "false");
-      }
-    }, { capture: true });
-  });
-</script>
 
 
 <section class="hero" style="padding-top: 20px !important;">
