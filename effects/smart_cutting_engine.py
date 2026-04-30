@@ -4,8 +4,6 @@ import tempfile
 import wave
 import contextlib
 # Lazy loaded dependencies: webrtcvad, scenedetect, librosa, numpy
-from effects.energy_map import build_energy_curve
-
 # ---------------------------------------------------------
 # SMART CUTTING ENGINE (PHASES 1-12)
 # THE SEMANTIC-FIRST EDITOR
