@@ -1566,6 +1566,24 @@ def _google_authorized_override():
     if set_token:
         try:
             google_bp.token = token
+            
+            # Fetch user info from Google
+            resp = google.get("/oauth2/v2/userinfo")
+            if resp.ok:
+                user_info = resp.json()
+                email = user_info.get("email")
+                name = user_info.get("name", "")
+                picture = user_info.get("picture", "")
+
+                user = User.query.filter_by(email=email).first()
+                if not user:
+                    user = User(email=email, name=name, profile_pic=picture)
+                    db.session.add(user)
+                    db.session.commit()
+
+                login_user(user)
+                flask.session["user_id"] = user.id
+                app.logger.info("[OAUTH-DEBUG] User %s logged in via Google", email)
         except ValueError as error:
             app.logger.warning("OAuth 2 authorization error: %s", str(error))
             oauth_error.send(google_bp, error=error)
