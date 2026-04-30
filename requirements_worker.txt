@@ -9,4 +9,9 @@ boto3
 python-dotenv
 
 # Optional but useful:
-ctranslate2
+ctranslate2
+
+# Smart Cutting Engine Dependencies
+scenedetect
+webrtcvad
+librosa
