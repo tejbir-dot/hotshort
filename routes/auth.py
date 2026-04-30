@@ -70,9 +70,7 @@ def build_post_login_redirect(raw_next=None):
 def google_login():
     next_target = normalize_next_target(request.args.get("next"))
     template_id = normalize_template_id(request.args.get("template_id") or request.cookies.get("hs_template_id"))
-    if "google" not in current_app.blueprints:
-        flash("Google login is not configured right now. Please use email login.", "info")
-        return redirect(url_for("auth.login", next=next_target))
+    current_app.logger.info('[AUTH-DEBUG] Attempting Google login redirect')
     current_app.logger.info('[AUTH-DEBUG] CLIENT_ID=%r', os.getenv('GOOGLE_OAUTH_CLIENT_ID'))
     current_app.logger.info(
         '[AUTH-DEBUG] CLIENT_SECRET_SET=%s LEN=%d',
