@@ -10,6 +10,8 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 import hashlib
+import zipfile
+import shutil
 from urllib.parse import urlparse, urljoin
 from typing import TYPE_CHECKING, List, Dict
 from dotenv import load_dotenv
@@ -2808,6 +2810,74 @@ def export_clip():
         
         return jsonify({"url": f"/static/exports/{filename}", "success": True})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/export_all", methods=["POST"])
+@login_required
+def export_all():
+    try:
+        data = request.json
+        job_id = data.get("job_id")
+        format_type = data.get("format", "tiktok")
+        
+        if not job_id:
+            return jsonify({"error": "Job ID required"}), 400
+            
+        job = Job.query.filter_by(id=job_id, user_id=current_user.id).first()
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
+            
+        # Get clips for this job
+        clips = Clip.query.filter_by(job_id=job_id).all()
+        if not clips:
+             return jsonify({"error": "No clips found"}), 404
+             
+        is_pro = getattr(current_user, "plan_type", "trial") != "trial"
+        
+        export_dir = os.path.join(BASE_DIR, "static", "exports")
+        os.makedirs(export_dir, exist_ok=True)
+        
+        batch_id = str(uuid.uuid4())[:8]
+        zip_filename = f"batch_{format_type}_{job_id}_{batch_id}.zip"
+        zip_path = os.path.join(export_dir, zip_filename)
+        
+        from effects.smart_cutting_engine import render_platform_clip
+        from models.user import UserExport, db
+        
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                for clip in clips:
+                    input_path = os.path.join(BASE_DIR, "output", f"hotshort_clip_{clip.id}.mp4")
+                    if not os.path.exists(input_path):
+                        continue
+                    
+                    # Clean filename for ZIP
+                    title_safe = re.sub(r'[^\w\-_\. ]', '_', clip.title or f"clip_{clip.id}")
+                    clip_filename = f"{title_safe}_{format_type}.mp4"
+                    output_path = os.path.join(tmp_dir, clip_filename)
+                    
+                    try:
+                        render_platform_clip(input_path, output_path, format_type, is_pro)
+                        zipf.write(output_path, clip_filename)
+                        
+                        # Save to history (optional for batch entries, but good for tracking)
+                        new_export = UserExport(
+                            user_id=current_user.id,
+                            clip_id=str(clip.id),
+                            clip_name=f"{clip.title or 'Clip'} (Batch)",
+                            platform_format=format_type,
+                            duration=0.0,
+                            file_path=f"/static/exports/{zip_filename}"
+                        )
+                        db.session.add(new_export)
+                    except Exception as e:
+                        app.logger.warning(f"Failed to render clip {clip.id} in batch: {e}")
+                
+                db.session.commit()
+                
+        return jsonify({"url": f"/static/exports/{zip_filename}", "success": True})
+    except Exception as e:
+        app.logger.exception("Batch export failed")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/exports", methods=["GET"])

@@ -1056,7 +1056,12 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
 
       <!-- Carousel -->
       <section class="carousel-container">
-        <div class="carousel-label">Your Top Clips</div>
+        <div class="carousel-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+          <span>Your Top Clips</span>
+          <button id="batchExportBtn" class="btn-primary" style="font-size: 0.8rem; padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255, 210, 120, 0.3);">
+            <span>📦 Batch Export All (TikTok)</span>
+          </button>
+        </div>
         <div class="carousel" id="carousel" data-job-id="{{ job_id }}">
           <!-- Populated by JS or server -->
         </div>
@@ -1410,6 +1415,51 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
     } else {
       renderCarousel();
       setTimeout(refreshFreeStatus, 500);
+
+      // Batch Export All Feature
+      document.getElementById('batchExportBtn')?.addEventListener('click', async () => {
+          const btn = document.getElementById('batchExportBtn');
+          const jobId = currentJobId();
+          if (!jobId || btn.disabled) return;
+          
+          btn.disabled = true;
+          const originalText = btn.innerHTML;
+          btn.innerHTML = '<span>⌛ Rendering & Zipping...</span>';
+          
+          try {
+              const response = await fetch('/api/export_all', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ job_id: jobId, format: 'tiktok' })
+              });
+              
+              if (response.ok) {
+                  const data = await response.json();
+                  if (data.url) {
+                      // Trigger download
+                      const a = document.createElement('a');
+                      a.href = data.url;
+                      a.download = `hotshort_batch_${jobId}.zip`;
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      if (typeof window.showToast === 'function') {
+                          window.showToast('Batch download started!', 'success');
+                      }
+                  } else {
+                      alert("Batch export failed: " + (data.error || "Unknown error"));
+                  }
+              } else {
+                  alert("Batch export failed. Server returned " + response.status);
+              }
+          } catch (e) {
+              console.error('[BATCH-EXPORT]', e);
+              alert("Batch export failed. Check console for details.");
+          } finally {
+              btn.disabled = false;
+              btn.innerHTML = originalText;
+          }
+      });
     }
 
     /* =====================================
@@ -1712,31 +1762,30 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
                 const formatType = formatSelect ? formatSelect.value : 'tiktok';
                 
                 try {
-                    const response = await fetch('/export_clip', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ clip_id: clipIdNum, format: formatType, is_pro: false })
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.url) {
-                            const a = document.createElement('a');
-                            a.href = data.url;
-                            a.download = `clip_${clipIdNum}_${formatType}.mp4`;
-                            document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                        } else {
-                            alert("Export failed: " + (data.error || "Unknown"));
-                        }
-                    } else { {
-                        alert("Export failed.");
+                  const response = await fetch('/export_clip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clip_id: clipIdNum, format: formatType, is_pro: false })
+                  });
+                  
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data.url) {
+                      const a = document.createElement('a');
+                      a.href = data.url;
+                      a.download = `clip_${clipIdNum}_${formatType}.mp4`;
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                    } else {
+                      alert("Export failed: " + (data.error || "Unknown"));
                     }
+                  } else {
+                    alert("Export failed.");
+                  }
                 } catch(e) {
-                    console.error(e);
+                  console.error(e);
                 }
-    
               } else {
                 analyticsPing('download_click', {
                   clip_id: null,
