@@ -1449,7 +1449,7 @@ google_bp = make_google_blueprint(
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",
     ],
-    redirect_to="google_login",
+    redirect_to="dashboard",
 )
 app.register_blueprint(google_bp, url_prefix="/login")
 
@@ -1494,7 +1494,7 @@ def _google_authorized_override():
     if google_bp.redirect_url:
         next_url = google_bp.redirect_url
     elif google_bp.redirect_to:
-        next_url = url_for(google_bp.redirect_to)
+        next_url = url_for("dashboard")
     else:
         next_url = "/"
 
