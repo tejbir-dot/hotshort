@@ -95,3 +95,16 @@ class Subscription(db.Model):
     
     def __repr__(self):
         return f"<Subscription user={self.user_id} plan={self.plan_id}>"
+
+
+class UserExport(db.Model):
+    __tablename__ = "user_export"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    clip_id = db.Column(db.String(50), nullable=False)
+    clip_name = db.Column(db.String(150), default="Untitled Clip")
+    platform_format = db.Column(db.String(50), nullable=False)
+    duration = db.Column(db.Float, nullable=True)
+    file_path = db.Column(db.String(300), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+

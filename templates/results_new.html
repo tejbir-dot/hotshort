@@ -1583,6 +1583,13 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
 
               <div class="clip-actions">
               <button class="btn" data-action="view">👁 View Reasons</button>
+              
+              <select id="exportFormat_${clipIdNum}" class="form-select bg-dark text-white border-secondary mb-2" style="max-width: 200px; display: inline-block;">
+                <option value="tiktok">TikTok (9:16 • 60s • 30fps)</option>
+                <option value="instagram">Instagram Reel (9:16 • 90s • 30fps)</option>
+                <option value="shorts">YouTube Shorts (9:16 • 60s • 60fps)</option>
+              </select>
+
               <a class="btn ${downloadClass}" data-action="download" ${downloadAttrs}>⬇ Download</a>
               ${qualityHtml}
               <div class="clip-feedback" style="display:inline-block;margin-left:10px">
@@ -1700,7 +1707,36 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
                   openPricingModal({ clip_id: clipIdNum, source: 'download_button', trigger: 'client_gate' });
                   return;
                 }
-                await requestClipDownload(clipIdNum);
+                
+                const formatSelect = document.getElementById('exportFormat_' + clipIdNum);
+                const formatType = formatSelect ? formatSelect.value : 'tiktok';
+                
+                try {
+                    const response = await fetch('/export_clip', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ clip_id: clipIdNum, format: formatType, is_pro: false })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.url) {
+                            const a = document.createElement('a');
+                            a.href = data.url;
+                            a.download = `clip_${clipIdNum}_${formatType}.mp4`;
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                        } else {
+                            alert("Export failed: " + (data.error || "Unknown"));
+                        }
+                    } else { {
+                        alert("Export failed.");
+                    }
+                } catch(e) {
+                    console.error(e);
+                }
+    
               } else {
                 analyticsPing('download_click', {
                   clip_id: null,
