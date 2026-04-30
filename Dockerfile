@@ -8,9 +8,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 WORKDIR /app
 
-# Install only runtime system dependencies needed by the Railway web app.
+# Install runtime system dependencies needed by the Railway web app.
+# nodejs is required by yt-dlp for JS-based YouTube extraction (fixes "JS runtime missing" warning).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.railway.txt .

@@ -245,6 +245,29 @@ def _runpod_status_url(endpoint: str, run_id: str) -> str:
     return f"https://api.runpod.ai/v2/{endpoint}/status/{run_id}"
 
 # RunPod GPU integration functions
+
+def _cancel_runpod_job(endpoint: str, run_id: str, headers: dict) -> bool:
+    """Attempt to cancel a queued RunPod serverless job. Returns True on success."""
+    try:
+        import requests as _req
+        cancel_url = f"https://api.runpod.ai/v2/{endpoint}/cancel/{run_id}"
+        resp = _req.post(cancel_url, headers=headers, timeout=15)
+        log.info("[RUNPOD] cancel %s -> %s %s", run_id, resp.status_code, resp.text[:120])
+        return resp.status_code in (200, 204)
+    except Exception as e:
+        log.warning("[RUNPOD] cancel request failed: %s", e)
+        return False
+
+
+# How long (seconds) a job may stay IN_QUEUE before we cancel and resubmit once.
+try:
+    _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S = int(
+        os.getenv("HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S", "180") or 180
+    )
+except Exception:
+    _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S = 180
+
+
 def _wait_for_runpod_completion(
     *,
     endpoint: str,
@@ -257,7 +280,13 @@ def _wait_for_runpod_completion(
     poll_timeout_s: int,
     poll_interval_s: int = HS_RUNPOD_POLL_INTERVAL_SECONDS,
 ):
-    """Poll RunPod until the async job reaches a terminal state."""
+    """Poll RunPod until the async job reaches a terminal state.
+
+    Cold-start handling: if the job stays IN_QUEUE past
+    HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S (default 180 s), cancel it and submit
+    a fresh request once.  This recovers from GPU cold-boot races without
+    entering an infinite resubmit loop.
+    """
     import requests
 
     data = initial_data or {}
@@ -266,14 +295,77 @@ def _wait_for_runpod_completion(
     log.info("[RUNPOD] %s STATUS: %s (run_id=%s)", task_label, status, run_id)
 
     start_polling_time = time.time()
+    _resubmitted = False            # guard: resubmit at most once
+    _in_queue_since: float | None = None    # wall-clock when we first saw IN_QUEUE
+
+    # Use exponential backoff (cap at 15 s) so we don't hammer the API
+    # every 2 s during multi-minute GPU cold starts.
+    _cur_poll_interval = max(2, int(poll_interval_s))
+    _MAX_POLL_INTERVAL = 15
+
     while time.time() - start_polling_time < poll_timeout_s:
         if status == "COMPLETED":
             return data
         if status == "FAILED":
             raise RuntimeError(f"RunPod {task_label} failed: FAILED")
 
-        log.info("[RUNPOD] %s waiting for job to finish... (status=%s)", task_label, status)
-        time.sleep(poll_interval_s)
+        # -- IN_QUEUE stuck-detection + cancel-and-resubmit --
+        if status == "IN_QUEUE":
+            if _in_queue_since is None:
+                _in_queue_since = time.time()
+            queue_wait_s = time.time() - _in_queue_since
+            log.info(
+                "[RUNPOD] %s waiting for job to finish... (status=%s, queue_wait=%.0fs)",
+                task_label, status, queue_wait_s,
+            )
+
+            if (
+                not _resubmitted
+                and queue_wait_s >= _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S
+                and RUNPOD_MODE != "pod"    # pod-mode has no serverless cancel API
+            ):
+                log.warning(
+                    "[RUNPOD] %s job %s stuck IN_QUEUE for %.0fs â cancelling and resubmitting",
+                    task_label, run_id, queue_wait_s,
+                )
+                if run_id:
+                    _cancel_runpod_job(endpoint, run_id, headers)
+                try:
+                    resubmit_resp = requests.post(
+                        request_url, json=request_payload, headers=headers, timeout=timeout
+                    )
+                    if resubmit_resp.status_code == 200:
+                        data = resubmit_resp.json()
+                        status = data.get("status")
+                        run_id = data.get("id") or data.get("run_id")
+                        _resubmitted = True
+                        _in_queue_since = time.time()   # reset queue timer for new job
+                        _cur_poll_interval = max(2, int(poll_interval_s))  # reset backoff
+                        log.info(
+                            "[RUNPOD] %s resubmitted â new run_id=%s status=%s",
+                            task_label, run_id, status,
+                        )
+                        continue
+                    else:
+                        log.warning(
+                            "[RUNPOD] %s resubmit failed: %s %s",
+                            task_label, resubmit_resp.status_code, resubmit_resp.text[:200],
+                        )
+                except Exception as resub_err:
+                    log.warning("[RUNPOD] %s resubmit error: %s", task_label, resub_err)
+        else:
+            # Job picked up by a worker -- reset the in-queue timer
+            if _in_queue_since is not None:
+                log.info(
+                    "[RUNPOD] %s job picked up by worker after %.0fs in queue",
+                    task_label, time.time() - _in_queue_since,
+                )
+                _in_queue_since = None
+            log.info("[RUNPOD] %s waiting for job to finish... (status=%s)", task_label, status)
+
+        time.sleep(_cur_poll_interval)
+        # Back off gradually -- cold starts can take minutes
+        _cur_poll_interval = min(_cur_poll_interval * 2, _MAX_POLL_INTERVAL)
 
         if run_id:
             status_url = _runpod_status_url(endpoint, run_id)
