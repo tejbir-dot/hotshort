@@ -1066,31 +1066,56 @@ def _run_transcription(ctx: PipelineContext) -> None:
                 log.info("[TRANSCRIPTION] Routing decision: engine=%s", transcription_engine)
             except Exception as e:
                 log.warning("[TRANSCRIPTION] Router failed, using legacy mode: %s", e)
-        
-        # Execute transcription with fallback chain
-        if gemini_transcribe:
+
+        force_runpod = os.getenv("HS_TRANSCRIPTION_FORCE_RUNPOD", "1").strip().lower() in ("1", "true", "yes", "on")
+        local_gpu_available = False
+        try:
+            import torch  # type: ignore
+            local_gpu_available = bool(torch.cuda.is_available())
+        except Exception:
+            local_gpu_available = False
+
+        runpod_required = force_runpod and not local_gpu_available
+
+        if runpod_required:
             try:
-                transcript = gemini_transcribe(ctx.path) or []
-                source = "gemini"
-                log.info("[TRANSCRIPTION] Completed via gemini (segments=%d)", len(transcript))
+                from viral_finder.runpod_transcription import transcribe_local_media_path
+
+                transcript = transcribe_local_media_path(ctx.path) or []
+                source = "runpod"
+                log.info("[TRANSCRIPTION] Completed via RunPod (segments=%d)", len(transcript))
             except Exception as e:
-                log.warning("[TRANSCRIPTION] Gemini failed: %s, trying fallback", e)
+                if ctx.allow_fallback:
+                    log.warning("[TRANSCRIPTION] RunPod failed: %s, trying local fallback", e)
+                else:
+                    raise
         
-        if not transcript and extract_transcript:
-            try:
-                transcript = extract_transcript(ctx.path, prefer_gpu=ctx.prefer_gpu) or []
-                source = "legacy_extract"
-                log.info("[TRANSCRIPTION] Completed via extract_transcript (segments=%d)", len(transcript))
-            except Exception as e:
-                log.warning("[TRANSCRIPTION] extract_transcript failed: %s, trying fallback", e)
-        
-        if not transcript and legacy_transcribe:
-            try:
-                transcript = legacy_transcribe(ctx.path) or []
-                source = "legacy_transcribe"
-                log.info("[TRANSCRIPTION] Completed via legacy_transcribe (segments=%d)", len(transcript))
-            except Exception as e:
-                log.error("[TRANSCRIPTION] All engines failed: %s", e)
+        allow_local_transcription = (not runpod_required) or bool(ctx.allow_fallback)
+        if allow_local_transcription:
+            # Execute transcription with fallback chain
+            if not transcript and gemini_transcribe:
+                try:
+                    transcript = gemini_transcribe(ctx.path) or []
+                    source = "gemini"
+                    log.info("[TRANSCRIPTION] Completed via gemini (segments=%d)", len(transcript))
+                except Exception as e:
+                    log.warning("[TRANSCRIPTION] Gemini failed: %s, trying fallback", e)
+
+            if not transcript and extract_transcript:
+                try:
+                    transcript = extract_transcript(ctx.path, prefer_gpu=ctx.prefer_gpu) or []
+                    source = "legacy_extract"
+                    log.info("[TRANSCRIPTION] Completed via extract_transcript (segments=%d)", len(transcript))
+                except Exception as e:
+                    log.warning("[TRANSCRIPTION] extract_transcript failed: %s, trying fallback", e)
+
+            if not transcript and legacy_transcribe:
+                try:
+                    transcript = legacy_transcribe(ctx.path) or []
+                    source = "legacy_transcribe"
+                    log.info("[TRANSCRIPTION] Completed via legacy_transcribe (segments=%d)", len(transcript))
+                except Exception as e:
+                    log.error("[TRANSCRIPTION] All engines failed: %s", e)
     
     if transcript and ctx.use_cache:
         _save_cached_transcript(ctx.path, transcript)

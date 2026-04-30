@@ -26,6 +26,7 @@ log = logging.getLogger("transcription_router")
 # Override via env vars if needed
 TRANSCRIPTION_ROUTER_ENABLED = os.getenv("HS_TRANSCRIPTION_ROUTER_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
 TRANSCRIPTION_ROUTER_DEBUG = os.getenv("HS_TRANSCRIPTION_ROUTER_DEBUG", "0").strip().lower() in ("1", "true", "yes", "on")
+FORCE_RUNPOD_TRANSCRIPTION = os.getenv("HS_TRANSCRIPTION_FORCE_RUNPOD", "1").strip().lower() in ("1", "true", "yes", "on")
 
 # Duration thresholds (seconds)
 DURATION_SHORT_MAX = float(os.getenv("HS_TRANSCRIPTION_SHORT_MAX", "180") or 180)      # 3 min
@@ -81,6 +82,12 @@ def choose_transcription_engine(
     """
     if not TRANSCRIPTION_ROUTER_ENABLED:
         return ENGINE_LEGACY
+
+    # The business decision is no longer optional: route transcription to RunPod GPU
+    # unless explicitly disabled for local development/testing.
+    if FORCE_RUNPOD_TRANSCRIPTION:
+        log.info("[ROUTER] -> GPU (forced RunPod transcription)")
+        return ENGINE_RUNPOD_GPU
     
     # Rule 1: Long videos → GPU (need speed)
     if duration > DURATION_LONG_MIN:
@@ -140,6 +147,13 @@ def get_transcription_config(engine: str) -> Dict[str, Any]:
         Dict with model, device, compute_type, num_workers, etc.
     """
     config = {
+        ENGINE_LEGACY: {
+            "model": MODEL_BASE,
+            "device": "cpu",
+            "compute_type": "int8",
+            "num_workers": 1,
+            "description": "Legacy mode (no routing)",
+        },
         ENGINE_CPU_TINY: {
             "model": MODEL_TINY,
             "device": "cpu",

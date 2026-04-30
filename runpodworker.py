@@ -139,6 +139,12 @@ def handler(event):
     input_data = event.get("input", {})
     task = input_data.get("task")
     youtube_url = input_data.get("youtube_url") or input_data.get("url")
+    media_url = (
+        input_data.get("media_url")
+        or input_data.get("video_url")
+        or input_data.get("audio_url")
+        or (input_data.get("url") if task == "transcribe_url" else None)
+    )
     transcript = input_data.get("transcript") or []
 
     cloud_provider = input_data.get("cloud_provider", {})
@@ -165,6 +171,9 @@ def handler(event):
     if task == "analyze" and not transcript:
         return {"error": "Invalid task 'analyze': missing transcript"}
 
+    if task == "transcribe_url" and not media_url:
+        return {"error": "Invalid task 'transcribe_url': missing media_url/video_url/audio_url/url"}
+
     try:
         if task == "analyze":
             try:
@@ -185,6 +194,42 @@ def handler(event):
         with tempfile.TemporaryDirectory() as temp_dir:
             video_path = os.path.join(temp_dir, "video.mp4")
             audio_path = os.path.join(temp_dir, "audio.wav")
+            media_path = os.path.join(temp_dir, "media.bin")
+
+            if task == "transcribe_url":
+                try:
+                    import requests
+                except Exception as e:
+                    return {"error": f"requests import failed: {e}"}
+
+                if not (str(media_url).startswith("http://") or str(media_url).startswith("https://")):
+                    return {"error": "Invalid media_url: must be http(s)"}
+
+                resp = requests.get(str(media_url), stream=True, timeout=120)
+                if resp.status_code != 200:
+                    return {"error": f"media download failed: {resp.status_code} {resp.text[:200]}"}
+
+                with open(media_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", media_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path],
+                    check=True,
+                    capture_output=True,
+                )
+
+                segments, _ = _get_model().transcribe(audio_path)
+                transcript = []
+                for s in segments:
+                    transcript.append({
+                        "start": s.start,
+                        "end": s.end,
+                        "text": s.text,
+                    })
+
+                return {"status": "ok", "segments": transcript}
 
             ydl_opts = {
                 "format": "best",

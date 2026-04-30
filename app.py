@@ -315,6 +315,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
             'api_secret': os.environ.get('CLOUDINARY_API_SECRET'),
         }
     }
+    payload = {"input": data}
 
     headers = {
         'Authorization': f"Bearer {os.environ.get('RUNPOD_API_KEY')}",
@@ -322,7 +323,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
     }
 
     log.info("[RUNPOD] Sending transcription request")
-    response = requests.post(url, json=data, headers=headers, timeout=600)  # Increased timeout for download
+    response = requests.post(url, json=payload, headers=headers, timeout=600)  # Increased timeout for download
 
     if response.status_code != 200:
         raise RuntimeError(f"RunPod transcription failed: {response.status_code} - {response.text}")
@@ -334,7 +335,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         headers=headers,
         initial_data=result,
         request_url=url,
-        request_payload=data,
+        request_payload=payload,
         timeout=600,
         task_label="transcription",
         poll_timeout_s=HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS,
@@ -372,6 +373,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
             'api_secret': os.environ.get('CLOUDINARY_API_SECRET'),
         }
     }
+    payload = {"input": data}
 
     headers = {
         'Authorization': f"Bearer {os.environ.get('RUNPOD_API_KEY')}",
@@ -379,7 +381,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
     }
 
     log.info("[RUNPOD] Sending analysis request to GPU endpoint...")
-    response = requests.post(url, json=data, headers=headers, timeout=300)
+    response = requests.post(url, json=payload, headers=headers, timeout=300)
 
     if response.status_code != 200:
         raise RuntimeError(f"RunPod analysis failed: {response.status_code} - {response.text}")
@@ -391,7 +393,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
         headers=headers,
         initial_data=result,
         request_url=url,
-        request_payload=data,
+        request_payload=payload,
         timeout=300,
         task_label="analysis",
         poll_timeout_s=HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS,
@@ -2856,7 +2858,8 @@ def _open_testing_mode_enabled() -> bool:
     """
     Global switch to temporarily open trial/free limits during internal testing.
     """
-    return str(os.getenv("HS_OPEN_TESTING_MODE", "1")).strip().lower() in ("1", "true", "yes", "on")
+    # Default OFF so production/free-tier always enforces watermark + limits unless explicitly overridden.
+    return str(os.getenv("HS_OPEN_TESTING_MODE", "0")).strip().lower() in ("1", "true", "yes", "on")
 
 def qa_event(event_name: str, **payload) -> None:
     if not _qa_mode_enabled():
@@ -3632,47 +3635,19 @@ def analyze_video():
                 )
                 use_vad_override = None
                 vad_profile_override = None
-    
-                def _run_local_transcription():
-                    from viral_finder.gemini_transcript_engine import extract_transcript as _extract_transcript
-                    return _extract_transcript(
-                        wav_path,
-                        model_name=transcript_model_name,
-                        prefer_gpu=True,
-                        prefer_trust=False,
-                        use_vad_override=use_vad_override,
-                        vad_profile_override=vad_profile_override,
-                    )
-    
-                # Prefer local transcription first; only fall back to RunPod if local work fails.
+
                 runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
                 runpod_api_key = os.getenv("RUNPOD_API_KEY")
-    
-                try:
-                    log.info("[TRANSCRIPT] Using local GPU-first transcription")
-                    transcript_segments = _run_local_transcription()
-                except Exception as local_transcript_err:
-                    if runpod_endpoint and runpod_api_key:
-                        try:
-                            _ensure_runpod_ready()
-                            log.warning(
-                                "[TRANSCRIPT] Local transcription failed; falling back to RunPod. error=%s",
-                                local_transcript_err,
-                            )
-                            transcript_segments = send_transcription_request(youtube_url)
-                        except Exception as runpod_transcript_err:
-                            log.warning(
-                                "[TRANSCRIPT] RunPod fallback unavailable after local failure; retrying local path. local_error=%s runpod_error=%s",
-                                local_transcript_err,
-                                runpod_transcript_err,
-                            )
-                            transcript_segments = _run_local_transcription()
-                    else:
-                        log.warning(
-                            "[TRANSCRIPT] Local transcription failed and RunPod not configured; retrying local path. error=%s",
-                            local_transcript_err,
-                        )
-                        transcript_segments = _run_local_transcription()
+                if not (runpod_endpoint and runpod_api_key):
+                    return analyze_error(
+                        "RunPod transcription is required but RunPod is not configured. "
+                        "Set RUNPOD_ENDPOINT_ID and RUNPOD_API_KEY.",
+                        500,
+                    )
+
+                _ensure_runpod_ready()
+                log.info("[TRANSCRIPT] Using RunPod GPU transcription (forced)")
+                transcript_segments = send_transcription_request(youtube_url)
     
                 seg_dur = float(media_probe.get("duration") or probe_media_duration(video_path) or 0.0)
                 # Phase 3: transcript integrity and VAD ratios are optional telemetry only.
