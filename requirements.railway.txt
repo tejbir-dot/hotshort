@@ -44,4 +44,6 @@ six==1.17.0
 # Smart Cutting Engine Dependencies
 scenedetect
 webrtcvad
+llvmlite==0.42.0
+numba==0.59.1
 librosa
