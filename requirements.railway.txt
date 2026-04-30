@@ -40,3 +40,8 @@ ctranslate2
 psutil==6.1.0
 python-dateutil==2.9.0.post0
 six==1.17.0
+
+# Smart Cutting Engine Dependencies
+scenedetect
+webrtcvad
+librosa
