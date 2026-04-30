@@ -2,7 +2,7 @@
    Cleaned, consolidated, and hardened version.
    - Single init() wiring (no cloneNode/double listeners)
    - Single-flight analyze (prevents double requests)
-   - Premium Aurora loader with multi-stage progress
+   - Friendly loader text stages + accessible loader text
    - Robust response parsing and defensive DOM checks
    - Small utilities & preview modal included
 */
@@ -16,8 +16,8 @@
   const SEL = {
     yt: "#yt",
     analyzeBtn: "#analyzeBtn",
-    loader: "#hs-analyze-overlay",
-    loaderText: "#hs-loading-message",
+    loader: "#loader",
+    loaderText: "#loaderText",
     carousel: "#carousel",
     header: "header",
     hero: ".hero",
@@ -27,11 +27,10 @@
      LOADER TEXT STAGES
      ===================== */
   const LOADING_STAGES = [
-    { key: "upload", message: "Preparing your video for analysis...", percent: 18, time: "1 min 40 sec" },
-    { key: "transcribe", message: "Converting speech into searchable text...", percent: 36, time: "1 min 12 sec" },
-    { key: "analyze", message: "Understanding your content and story flow...", percent: 68, time: "1 min 24 sec" },
-    { key: "score", message: "Ranking the strongest viral moments...", percent: 84, time: "54 sec" },
-    { key: "clips", message: "Extracting the best short-form moments...", percent: 96, time: "12 sec" }
+    "Extracting narrative structure...",
+    "Finding high-retention hooks...",
+    "Scoring viral potential...",
+    "Building clips...",
   ];
   let loaderInterval = null;
 
@@ -171,61 +170,39 @@
   }
 
   /* =====================
-     LOADER UI (AURORA)
+     LOADER UI (text + active class)
      ===================== */
   function showLoader() {
-    const loader = $id(SEL.loader.replace("#", ""));
+    const loader = $id(SEL.loader.replace("#", "")) || elCreateLoader();
+    const loaderText = $id(SEL.loaderText.replace("#", "")) || null;
     const analyzeBtn = document.querySelector(SEL.analyzeBtn);
     if (!loader) return;
-
-    loader.hidden = false;
+    let stage = 0;
+    loader.classList.add("active");
+    loader.classList.add("thinking");
+    loader.setAttribute("aria-hidden", "false");
     document.body.classList.add("dashboard-aurora");
     if (analyzeBtn) {
       analyzeBtn.classList.add("thinking");
       analyzeBtn.disabled = true;
     }
+    if (loaderText) loaderText.textContent = LOADING_STAGES[stage];
 
-    let stageIdx = 0;
-    const updateUI = (idx) => {
-      const stage = LOADING_STAGES[idx];
-      const stageMap = ["upload", "transcribe", "analyze", "score", "clips"];
-
-      stageMap.forEach((key, i) => {
-        const el = $id(`hs-stage-${key}`);
-        if (!el) return;
-        el.classList.remove("is-done", "is-active");
-        if (i < idx) el.classList.add("is-done");
-        if (i === idx) el.classList.add("is-active");
-      });
-
-      const msg = $id("hs-loading-message");
-      const pct = $id("hs-loading-percent");
-      const fill = $id("hs-loading-fill");
-      const time = $id("hs-loading-time");
-      const foot = $id("hs-progress-foot");
-
-      if (msg) msg.textContent = stage.message;
-      if (pct) pct.textContent = `${stage.percent}%`;
-      if (fill) fill.style.width = `${stage.percent}%`;
-      if (time) time.textContent = stage.time;
-      if (foot) foot.textContent = stage.message;
-    };
-
-    updateUI(0);
-
+    // rotate text stages
     if (loaderInterval) clearInterval(loaderInterval);
     loaderInterval = setInterval(() => {
-      stageIdx = Math.min(stageIdx + 1, LOADING_STAGES.length - 1);
-      updateUI(stageIdx);
-    }, 2200);
+      stage = (stage + 1) % LOADING_STAGES.length;
+      if (loaderText) loaderText.textContent = LOADING_STAGES[stage];
+    }, 1400);
   }
 
   function hideLoader() {
-    const loader = $id(SEL.loader.replace("#", ""));
+    const loader = $id(SEL.loader.replace("#", "")) || null;
     const analyzeBtn = document.querySelector(SEL.analyzeBtn);
     if (!loader) return;
-    
-    loader.hidden = true;
+    loader.classList.remove("active");
+    loader.classList.remove("thinking");
+    loader.setAttribute("aria-hidden", "true");
     document.body.classList.remove("dashboard-aurora");
     if (analyzeBtn) {
       analyzeBtn.classList.remove("thinking");
@@ -254,8 +231,39 @@
     persistLastUrl(value);
   }
 
+  function elCreateLoader() {
+    // creates a loader fallback if the dashboard template is missing it
+    const loader = el("div", { attrs: { id: "loader" }, cls: "loader" });
+    loader.setAttribute("aria-hidden", "true");
+    loader.style.display = "none";
+    loader.style.margin = "30px auto";
+    loader.style.textAlign = "center";
+    const caption = el("p", { cls: "loader-caption", html: "HotShort Intelligence" });
+    const visual = el("div", { cls: "loader-visual" });
+    const img = el("img", {
+      cls: "loader-animation",
+      attrs: {
+        src: "/static/media/hotshort-thinking.gif",
+        alt: "HotShort AI analyzing video structure",
+      },
+    });
+    const wave = el("div", { cls: "wave" });
+    const text = el("p", { attrs: { id: "loaderText" }, cls: "loader-text", html: "Preparing analysis..." });
+    const subtext = el("p", {
+      cls: "loader-subtext",
+      html: "Signal emerging from noise. Hooks, insights, and structure are being assembled.",
+    });
+    visual.appendChild(img);
+    loader.appendChild(caption);
+    loader.appendChild(visual);
+    loader.appendChild(wave);
+    loader.appendChild(text);
+    loader.appendChild(subtext);
+    return loader;
+  }
+
   /* =====================
-     INSIGHT LOGIC
+     INSIGHT LOGIC (frontend heuristic)
      ===================== */
   function generateInsight(c) {
     const score = Number(c.score || 0);

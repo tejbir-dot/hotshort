@@ -863,62 +863,18 @@
     <button id="analyzeBtn">✨ Analyze</button>
   </div>
 
-  <!-- HOTSHORT ANALYZE LOADER (AURORA) -->
-  <div id="hs-analyze-overlay" class="hs-analyze-overlay" hidden>
-    <div class="hs-analyze-shell">
-      <div class="hs-analyze-orb">
-        <span class="hs-orb-ring hs-ring-gold"></span>
-        <span class="hs-orb-ring hs-ring-purple"></span>
-        <span class="hs-orb-halo"></span>
-
-        <div class="hs-orb-center">
-          <div class="hs-orb-icon">🔥</div>
-          <div class="hs-orb-title">Analyzing</div>
-          <div class="hs-orb-copy" id="hs-loading-message">
-            AI is finding the most viral moments in your video
-          </div>
-          <div class="hs-orb-percent" id="hs-loading-percent">0%</div>
-        </div>
-      </div>
-
-      <div class="hs-stage-row">
-        <div class="hs-stage" id="hs-stage-upload">
-          <span class="hs-stage-dot"></span>
-          <span class="hs-stage-label">Uploading</span>
-        </div>
-        <div class="hs-stage" id="hs-stage-transcribe">
-          <span class="hs-stage-dot"></span>
-          <span class="hs-stage-label">Transcribing</span>
-        </div>
-        <div class="hs-stage" id="hs-stage-analyze">
-          <span class="hs-stage-dot"></span>
-          <span class="hs-stage-label">Analyzing</span>
-        </div>
-        <div class="hs-stage" id="hs-stage-score">
-          <span class="hs-stage-dot"></span>
-          <span class="hs-stage-label">Scoring</span>
-        </div>
-        <div class="hs-stage" id="hs-stage-clips">
-          <span class="hs-stage-dot"></span>
-          <span class="hs-stage-label">Finding Clips</span>
-        </div>
-      </div>
-
-      <div class="hs-progress-card">
-        <div class="hs-progress-head">
-          <span>AI Processing</span>
-          <span id="hs-loading-time">--</span>
-        </div>
-
-        <div class="hs-progress-track">
-          <div class="hs-progress-fill" id="hs-loading-fill" style="width: 0%"></div>
-        </div>
-
-        <div class="hs-progress-foot" id="hs-progress-foot">
-          Initializing...
-        </div>
-      </div>
+  <div id="loader" class="loader" aria-hidden="true">
+    <p class="loader-caption">HotShort Intelligence</p>
+    <div class="loader-visual">
+      <img
+        class="loader-animation"
+        src="{{ url_for('static', filename='media/hotshort-thinking.gif') }}"
+        alt="HotShort AI analyzing video structure"
+      />
     </div>
+    <div class="wave"></div>
+    <p id="loaderText">Analyzing video… this may take 30-60 seconds</p>
+    <p class="loader-subtext">Signal emerging from noise. Hooks, insights, and structure are being assembled.</p>
   </div>
 </section>
 
