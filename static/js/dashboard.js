@@ -440,15 +440,7 @@
         <span class="clip-label">${esc(insight.label || "")}</span>
         <span class="clip-confidence">${insight.confidencePct || 0}%</span>
         <span class="clip-duration">${((c.end || 0) - (c.start || 0)).toFixed(1)}s</span>
-        <div class="download-group">
-          <a class="download-main" href="${esc(c.clip_url)}" download="${safeName}.mp4">Download</a>
-          <button class="download-menu-btn">▾</button>
-          <div class="download-menu">
-            <button data-format="original">Original</button>
-            <button data-format="reels">Reels</button>
-            <button data-format="tiktok">TikTok</button>
-          </div>
-        </div>
+        <a class="download-btn" href="${esc(c.clip_url)}" download="${safeName}.mp4">Download</a>
       </div>
     `;
   }
@@ -488,17 +480,6 @@
         const open = tPanel.classList.toggle("open");
         tPanel.style.maxHeight = open ? "220px" : "0";
         tBtn.textContent = open ? "Hide transcript ▴" : "View transcript ▾";
-      });
-    }
-    const menuBtn = card.querySelector(".download-menu-btn");
-    const menu = card.querySelector(".download-menu");
-    if (menuBtn && menu) {
-      menuBtn.addEventListener("click", e => {
-        e.stopPropagation();
-        menu.style.display = menu.style.display === "block" ? "none" : "block";
-      });
-      document.addEventListener("click", () => {
-        menu.style.display = "none";
       });
     }
   }
