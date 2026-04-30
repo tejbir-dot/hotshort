@@ -3,15 +3,7 @@ import subprocess
 import tempfile
 import wave
 import contextlib
-import webrtcvad
-import numpy as np
-
-try:
-    from scenedetect import detect, ContentDetector
-except ImportError:
-    pass
-
-import librosa
+# Lazy loaded dependencies: webrtcvad, scenedetect, librosa, numpy
 from effects.energy_map import build_energy_curve
 
 # ---------------------------------------------------------
@@ -20,8 +12,13 @@ from effects.energy_map import build_energy_curve
 # ---------------------------------------------------------
 
 def detect_scenes(video_path: str) -> list[tuple[float, float]]:
-    scene_list = detect(video_path, ContentDetector())
-    segments = [(s[0].get_seconds(), s[1].get_seconds()) for s in scene_list]
+    try:
+        from scenedetect import detect, ContentDetector
+        scene_list = detect(video_path, ContentDetector())
+        segments = [(s[0].get_seconds(), s[1].get_seconds()) for s in scene_list]
+    except ImportError:
+        segments = []
+        
     if not segments:
         cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_path]
         try:
@@ -36,6 +33,7 @@ def extract_pcm(video_path: str, wav_path: str):
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 def detect_silence(video_path: str, aggressiveness: int = 3) -> list[tuple[float, float]]:
+    import webrtcvad
     fd, tmp_wav = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     try:
