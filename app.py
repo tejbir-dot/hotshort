@@ -1595,6 +1595,201 @@ def _google_authorized_override():
     return response
 
 
+bool(os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")),
+    len(os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or ""),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] CFG CLIENT_ID=%r",
+    app.config.get("GOOGLE_OAUTH_CLIENT_ID"),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] CFG CLIENT_SECRET_SET=%s LEN=%d",
+    bool(app.config.get("GOOGLE_OAUTH_CLIENT_SECRET")),
+    len(app.config.get("GOOGLE_OAUTH_CLIENT_SECRET") or ""),
+)
+app.logger.info("[OAUTH-DEBUG] CLIENT_ID_SOURCE=%s", client_id_source)
+app.logger.info("[OAUTH-DEBUG] CLIENT_SECRET_SOURCE=%s", client_secret_source)
+app.logger.info(
+    "[OAUTH-DEBUG] EXTERNAL_BASE_URL=%r",
+    app.config.get("EXTERNAL_BASE_URL"),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] FRONTEND_URL=%r",
+    app.config.get("FRONTEND_URL"),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] PUBLIC_BASE_URL=%r",
+    app.config.get("PUBLIC_BASE_URL"),
+)
+app.logger.info(
+    "[OAUTH-DEBUG] OAUTH_PUBLIC_BASE_URL=%r",
+    app.config.get("OAUTH_PUBLIC_BASE_URL"),
+)
+if app.config.get("OAUTH_PUBLIC_BASE_URL"):
+    app.logger.info(
+        "[OAUTH-DEBUG] FORCED_CALLBACK_URI=%s/login/google/authorized",
+        app.config.get("OAUTH_PUBLIC_BASE_URL"),
+    )
+else:
+    app.logger.info(
+        "[OAUTH-DEBUG] DEFAULT_LOCAL_CALLBACK_URI=http://127.0.0.1:%s/login/google/authorized",
+        os.getenv("PORT", "10000"),
+    )
+
+from flask_dance.contrib.google import make_google_blueprint, google
+
+google_bp = make_google_blueprint(
+    client_id=app.config["GOOGLE_OAUTH_CLIENT_ID"],
+    client_secret=app.config["GOOGLE_OAUTH_CLIENT_SECRET"],
+    scope=[
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+    ],
+    redirect_to="dashboard",
+)
+app.register_blueprint(google_bp, url_prefix="/login")
+
+
+def _google_authorized_absolute_url() -> str:
+    public_base_url = (app.config.get("OAUTH_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    authorized_path = url_for("google.authorized", _external=False)
+    if public_base_url:
+        return f"{public_base_url}{authorized_path}"
+    return url_for("google.authorized", _external=True)
+
+
+def _google_login_override():
+    redirect_uri = _google_authorized_absolute_url()
+    if redirect_uri.startswith("http://"):
+        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+    else:
+        os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
+    app.logger.info("[OAUTH-DEBUG] GOOGLE_LOGIN_OVERRIDE redirect_uri=%s", redirect_uri)
+    google_bp.session.redirect_uri = redirect_uri
+    url, state = google_bp.session.authorization_url(
+        google_bp.authorization_url,
+        state=google_bp.state,
+        **google_bp.authorization_url_params,
+    )
+    flask.session[f"{google_bp.name}_oauth_state"] = state
+    oauth_before_login.send(google_bp, url=url)
+    response = redirect(url)
+    response.set_cookie(
+        "hs_google_oauth_state",
+        state,
+        max_age=600,
+        httponly=True,
+        secure=bool(app.config.get("SESSION_COOKIE_SECURE")),
+        samesite=str(app.config.get("SESSION_COOKIE_SAMESITE") or "Lax"),
+        path="/",
+    )
+    return response
+
+
+def _google_authorized_override():
+    if google_bp.redirect_url:
+        next_url = google_bp.redirect_url
+    elif google_bp.redirect_to:
+        next_url = url_for("dashboard")
+    else:
+        next_url = "/"
+
+    error = request.args.get("error")
+    if error:
+        oauth_error.send(
+            google_bp,
+            error=error,
+            error_description=request.args.get("error_description"),
+            error_uri=request.args.get("error_uri"),
+        )
+        return redirect(next_url)
+
+    state_key = f"{google_bp.name}_oauth_state"
+    cookie_state = request.cookies.get("hs_google_oauth_state")
+    request_state = request.args.get("state")
+    session_state = flask.session.pop(state_key, None)
+    if not session_state and cookie_state:
+        app.logger.warning("[OAUTH-DEBUG] state missing in session; recovering from cookie fallback")
+        session_state = cookie_state
+    if not session_state and request_state:
+        app.logger.warning("[OAUTH-DEBUG] state missing in session/cookie; recovering from callback query")
+        session_state = request_state
+    if not session_state:
+        app.logger.warning("[OAUTH-DEBUG] state missing during callback; restarting google login")
+        retry = redirect(url_for("google.login"))
+        retry.delete_cookie("hs_google_oauth_state", path="/")
+        return retry
+
+    google_bp.session._state = session_state
+    google_bp.session.redirect_uri = _google_authorized_absolute_url()
+    if google_bp.session.redirect_uri.startswith("http://"):
+        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+    else:
+        os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
+    app.logger.info("[OAUTH-DEBUG] GOOGLE_AUTHORIZED_OVERRIDE redirect_uri=%s", google_bp.session.redirect_uri)
+    authorization_response = google_bp.session.redirect_uri
+    query_string = request.query_string.decode("utf-8", errors="ignore")
+    if query_string:
+        authorization_response = f"{authorization_response}?{query_string}"
+
+    try:
+        token = google_bp.session.fetch_token(
+            google_bp.token_url,
+            authorization_response=authorization_response,
+            client_secret=google_bp.client_secret,
+            **google_bp.token_url_params,
+        )
+    except MismatchingStateError:
+        app.logger.warning("[OAUTH-DEBUG] MismatchingStateError: State mismatch (double-click/stale session). Restarting flow.")
+        return redirect(url_for("google.login"))
+    except MissingCodeError as e:
+        e.args = (
+            e.args[0],
+            "The redirect request did not contain the expected parameters. Instead I got: {}".format(
+                json.dumps(request.args)
+            ),
+        )
+        raise
+
+    results = oauth_authorized.send(google_bp, token=token) or []
+    set_token = True
+    for _, ret in results:
+        if isinstance(ret, (Response, current_app.response_class)):
+            return ret
+        if ret is False:
+            set_token = False
+
+    if set_token:
+        try:
+            google_bp.token = token
+            
+            # Fetch user info from Google
+            resp = google.get("/oauth2/v2/userinfo")
+            if resp.ok:
+                user_info = resp.json()
+                email = user_info.get("email")
+                name = user_info.get("name", "")
+                picture = user_info.get("picture", "")
+
+                user = User.query.filter_by(email=email).first()
+                if not user:
+                    user = User(email=email, name=name, profile_pic=picture)
+                    db.session.add(user)
+                    db.session.commit()
+
+                login_user(user)
+                flask.session["user_id"] = user.id
+                app.logger.info("[OAUTH-DEBUG] User %s logged in via Google", email)
+        except ValueError as error:
+            app.logger.warning("OAuth 2 authorization error: %s", str(error))
+            oauth_error.send(google_bp, error=error)
+
+    response = redirect(next_url)
+    response.delete_cookie("hs_google_oauth_state", path="/")
+    return response
+
+
 app.view_functions["google.login"] = _google_login_override
 app.view_functions["google.authorized"] = _google_authorized_override
 
@@ -1606,26 +1801,28 @@ db.init_app(app)
 def _db_create_all_safe() -> None:
     """
     Create tables if missing, but tolerate multi-worker races (common on SQLite).
-
-    Gunicorn can import the app in multiple worker processes at the same time.
-    SQLite DDL isn't race-proof across processes; in that case one worker can
-    observe "table already exists" even with SQLAlchemy's checkfirst logic.
     """
-    try:
-        db.create_all()
-    except Exception as e:
-        msg = str(e).lower()
-        if "already exists" in msg and "table" in msg:
-            try:
-                app.logger.warning("[DB-INIT] create_all race ignored: %s", e)
-            except Exception:
-                pass
+    import time
+    for attempt in range(5):
+        try:
+            db.create_all()
+            return
+        except Exception as e:
+            msg = str(e).lower()
             try:
                 db.session.rollback()
             except Exception:
                 pass
-            return
-        raise
+            
+            if attempt < 4 and (("already exists" in msg and "table" in msg) or "database is locked" in msg or "operationalerror" in msg):
+                time.sleep(1.0)
+                continue
+            
+            try:
+                app.logger.warning("[DB-INIT] create_all failed: %s", e)
+            except Exception:
+                pass
+            raise
 
 
 def _should_auto_create_tables() -> bool:
@@ -2701,7 +2898,7 @@ def results(job_id):
                         "ending": int(getattr(clip, "scores", {}).clarity * 20) if hasattr(clip, "scores") else 0,
                         "duration": int(getattr(clip, "duration", 0) / 40 * 20) if getattr(clip, "duration", 0) <= 40 else 20,
                     },
-                    # 🔥 VIRAL POTENTIAL INDICATOR - NEW FIELDS\n                    "viral_potential_emoji": getattr(clip, "viral_potential_emoji", "✨"),
+                    # 🔥 VIRAL POTENTIAL INDICATOR - NEW FIELDS
                     "viral_potential_label": getattr(clip, "viral_potential_label", f"✨ {clip.confidence}%"),
                 }
             
@@ -2903,7 +3100,4 @@ def get_my_exports():
         return jsonify([])
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    
-    app.run()
+    app.run(port=5000, debug=True)
