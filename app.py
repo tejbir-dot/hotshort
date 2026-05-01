@@ -2880,20 +2880,29 @@ def export_all():
         app.logger.exception("Batch export failed")
         return jsonify({"error": str(e)}), 500
 
+from sqlalchemy.exc import OperationalError
+
 @app.route("/api/exports", methods=["GET"])
 @login_required
 def get_my_exports():
     from models.user import UserExport
-    exports = UserExport.query.filter_by(user_id=current_user.id).order_by(UserExport.created_at.desc()).all()
-    result = []
-    for e in exports:
-        result.append({
-            "id": e.id,
-            "clip_name": e.clip_name,
-            "platform_format": e.platform_format,
-            "duration": round(e.duration, 1) if e.duration else 0.0,
-            "file_path": e.file_path,
-            "created_at": e.created_at.strftime("%Y-%m-%d %H:%M:%S")
-        })
-    return jsonify(result)
+    try:
+        exports = UserExport.query.filter_by(user_id=current_user.id).order_by(UserExport.created_at.desc()).all()
+        result = []
+        for e in exports:
+            result.append({
+                "id": e.id,
+                "clip_name": e.clip_name,
+                "platform_format": e.platform_format,
+                "duration": round(e.duration, 1) if e.duration else 0.0,
+                "file_path": e.file_path,
+                "created_at": e.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        return jsonify(result)
+    except OperationalError:
+        return jsonify([])
+
+with app.app_context():
+    db.create_all()
+
 
