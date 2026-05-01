@@ -1613,20 +1613,6 @@ def _should_auto_create_tables() -> bool:
     return (os.getenv("VERCEL") or "").strip().lower() not in ("1", "true")
 
 
-if _should_auto_create_tables():
-    with app.app_context():
-        db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
-        if db_uri.startswith("sqlite:///"):
-            db_path = db_uri.replace("sqlite:///", "")
-            if db_uri.startswith("sqlite:////"):
-                db_path = "/" + db_path.lstrip("/")
-            db_dir = os.path.dirname(os.path.abspath(db_path))
-            if db_dir:
-                os.makedirs(db_dir, exist_ok=True)
-        # Keep local/dev startup ergonomic while avoiding serverless import work.
-        _db_create_all_safe()
-else:
-    log.info("[DB-INIT] Skipping db.create_all() during import.")
 
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"  # ensure redirects go to the auth blueprint's login endpoint
@@ -1694,27 +1680,7 @@ app.register_blueprint(feedback_bp, url_prefix="/api")
 from routes.admin import admin_bp
 app.register_blueprint(admin_bp, url_prefix="/admin")
 
-def init_app():
-    """Initialize app state that requires an application context.
 
-    This is called on import so Gunicorn/WSGI workers have DB tables ready
-    without relying on `if __name__ == "__main__"`.
-    """
-
-    with app.app_context():
-        if not _should_auto_create_tables():
-            log.info("[DB-INIT] Skipping db.create_all() during init_app().")
-            return
-        db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
-        if db_uri.startswith("sqlite:///"):
-            db_path = db_uri.replace("sqlite:///", "")
-            if db_uri.startswith("sqlite:////"):
-                db_path = "/" + db_path.lstrip("/")
-            db_dir = os.path.dirname(os.path.abspath(db_path))
-            if db_dir:
-                os.makedirs(db_dir, exist_ok=True)
-        # Ensure required database tables exist (safe to call repeatedly).
-        _db_create_all_safe()
 
 
 # NOTE: We already run DB init above during import. Keep init_app() callable,
@@ -2876,6 +2842,33 @@ def get_my_exports():
         return jsonify(result)
     except OperationalError:
         return jsonify([])
+
+def init_db():
+    """Production-safe database initializer."""
+    if not _should_auto_create_tables():
+        return
+
+    from sqlalchemy.exc import OperationalError
+    try:
+        with app.app_context():
+            # Ensure SQLite directory exists
+            db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+            if db_uri and db_uri.startswith("sqlite:///"):
+                db_path = db_uri.replace("sqlite:///", "")
+                if db_uri.startswith("sqlite:////"):
+                    db_path = "/" + db_path.lstrip("/")
+                db_dir = os.path.dirname(os.path.abspath(db_path))
+                if db_dir:
+                    os.makedirs(db_dir, exist_ok=True)
+
+            # Use the safe retry-logic wrapper
+            _db_create_all_safe()
+    except OperationalError:
+        pass
+
+@app.before_first_request
+def initialize_database():
+    init_db()
 
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
