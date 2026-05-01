@@ -2863,8 +2863,13 @@ def init_db():
 
             # Use the safe retry-logic wrapper
             _db_create_all_safe()
-    except OperationalError:
-        pass
+    except (OperationalError, Exception) as e:
+        # Ignore "table already exists" or "locked" errors during multi-worker boot
+        msg = str(e).lower()
+        if "already exists" in msg or "locked" in msg:
+            pass
+        else:
+            app.logger.warning(f"[DB-INIT] Suppression of init error: {e}")
 
 def initialize_database():
     init_db()
