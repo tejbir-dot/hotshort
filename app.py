@@ -2866,9 +2866,12 @@ def init_db():
     except OperationalError:
         pass
 
-@app.before_first_request
 def initialize_database():
     init_db()
+
+# Replace before_first_request with direct execution in app context
+with app.app_context():
+    initialize_database()
 
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
