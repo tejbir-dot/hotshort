@@ -2265,7 +2265,7 @@ def dashboard():
         if youtube_url:
             # Redirect to /analyze endpoint for processing
             # (JavaScript clients POST directly to /analyze, but form submissions come here)
-            return redirect(url_for('analyze_video'))
+            return redirect(url_for('analyze'))
         else:
             flash('Please provide a YouTube URL', 'error')
             return redirect(url_for('dashboard'))
@@ -2276,6 +2276,82 @@ def dashboard():
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+# ============================================
+# 🎬 ANALYZE ENDPOINT
+# ============================================
+@app.route('/analyze', methods=['POST'])
+@login_required
+def analyze():
+    """
+    Accept a YouTube URL from the frontend dashboard, create a Job record,
+    and return a job_id so the client can poll /results/<job_id>.
+
+    Accepts either:
+      - multipart/form-data  (dashboard.js sends FormData)
+      - application/json     (API / programmatic callers)
+
+    Response (202):
+      { "job_id": "<uuid>", "status": "processing",
+        "redirect": "/results/<uuid>", "results_url": "/results/<uuid>" }
+    """
+    # --- Parse input (FormData or JSON) ---
+    content_type = (request.content_type or "").lower()
+    if "application/json" in content_type:
+        data = request.get_json(silent=True) or {}
+        youtube_url = (data.get("youtube_url") or data.get("url") or "").strip()
+        mode = (data.get("mode") or "final").strip()
+        template_id = (data.get("template_id") or "").strip()
+    else:
+        youtube_url = (request.form.get("youtube_url") or request.form.get("url") or "").strip()
+        mode = (request.form.get("mode") or "final").strip()
+        template_id = (request.form.get("template_id") or "").strip()
+
+    if not youtube_url:
+        return jsonify({"error": "Missing youtube_url", "ok": False}), 400
+
+    # Basic URL sanity check
+    parsed = urlparse(youtube_url)
+    if parsed.scheme not in ("http", "https"):
+        return jsonify({"error": "Invalid URL — must start with http:// or https://", "ok": False}), 400
+
+    # --- Create Job record ---
+    job_id = str(uuid.uuid4())
+    import json as _json
+
+    request_payload = {
+        "job_id": job_id,
+        "source_url": youtube_url,
+        "profile": DEFAULT_WORKER_PROFILE,
+        "min_clips": 3,
+        "mode": mode,
+        "template_id": template_id or None,
+    }
+
+    try:
+        job = Job(
+            id=job_id,
+            user_id=current_user.id,
+            status="pending",
+            analysis_data=_json.dumps(request_payload),
+        )
+        db.session.add(job)
+        db.session.commit()
+        log.info("[ANALYZE] Created job %s for user %s url=%s", job_id, current_user.id, youtube_url)
+    except Exception as e:
+        log.error("[ANALYZE] Failed to create job: %s", e)
+        db.session.rollback()
+        return jsonify({"error": "Failed to queue analysis job", "ok": False}), 500
+
+    results_url = url_for("results", job_id=job_id)
+    return jsonify({
+        "ok": True,
+        "job_id": job_id,
+        "status": "processing",
+        "redirect": results_url,
+        "results_url": results_url,
+    }), 202
 
 
 # ============================================
