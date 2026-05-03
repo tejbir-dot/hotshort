@@ -79,8 +79,7 @@ try:
 except Exception:
     HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS = 600
 
-_RESOURCE_MONITOR_STARTED = False
-_RESOURCE_MONITOR_LOCK = threading.Lock()
+
 
 
 def _bytes_to_mb(num_bytes: int) -> float:
@@ -180,25 +179,7 @@ def log_mem(stage: str):
     )
 
 
-def _start_resource_monitor_thread():
-    global _RESOURCE_MONITOR_STARTED
-    if not RESOURCE_LOG_ENABLED or RESOURCE_MONITOR_INTERVAL_SECONDS <= 0:
-        return
-    with _RESOURCE_MONITOR_LOCK:
-        if _RESOURCE_MONITOR_STARTED:
-            return
-        _RESOURCE_MONITOR_STARTED = True
 
-    def _loop():
-        while True:
-            try:
-                log_mem("heartbeat")
-            except Exception:
-                pass
-            time.sleep(max(5.0, float(RESOURCE_MONITOR_INTERVAL_SECONDS)))
-
-    t = threading.Thread(target=_loop, name="resource-monitor", daemon=True)
-    t.start()
 
 
 def _should_log_request_resource(path: str) -> bool:
@@ -1498,7 +1479,7 @@ def _allowed_cors_origin():
 
 @app.before_request
 def handle_frontend_preflight():
-    _start_resource_monitor_thread()
+
     if request.method == "OPTIONS":
         allowed_origin = _allowed_cors_origin()
         if allowed_origin:
@@ -1878,18 +1859,7 @@ job_threads = {}
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-def schedule_cleanup(paths, delay=300):
-    """Remove temporary files after `delay` seconds."""
-    def _cleanup():
-        time.sleep(delay)
-        for p in paths:
-            try:
-                if os.path.exists(p):
-                    os.remove(p)
-            except Exception:
-                pass
-    t = threading.Thread(target=_cleanup, daemon=True)
-    t.start()
+
 
 # ==========================
 # 🌟 MAIN ROUTES
@@ -3261,9 +3231,8 @@ def init_db():
 def initialize_database():
     init_db()
 
-# Replace before_first_request with direct execution in app context
-with app.app_context():
-    initialize_database()
-
 if __name__ == "__main__":
+    # Replace before_first_request with direct execution in app context
+    with app.app_context():
+        initialize_database()
     app.run(port=5000, debug=True)
