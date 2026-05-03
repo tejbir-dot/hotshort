@@ -249,7 +249,7 @@ def export_elite_short(video_path: str, segments: list[dict], output_path: str, 
             cmd = [
                 "ffmpeg", "-y", "-ss", str(seg["start"]), "-to", str(seg["end"]),
                 "-i", video_path, "-vf", vf_string,
-                "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
                 "-c:a", "aac", "-b:a", "128k", "-avoid_negative_ts", "1",
                 chunk_out
             ]
@@ -266,7 +266,7 @@ def export_elite_short(video_path: str, segments: list[dict], output_path: str, 
         
         concat_cmd = [
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file,
-            "-vf", ass_filter, "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+            "-vf", ass_filter, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
             "-c:a", "aac", "-b:a", "128k", concat_out
         ]
         subprocess.run(concat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
@@ -314,7 +314,6 @@ def run_smart_cut_pipeline(video_path: str, output_path: str, target_duration: f
     return output_path
 
 def render_platform_clip(input_path: str, output_path: str, format_type: str, is_pro: bool = False):
-    print("EXPORT ENGINE ENTERED")
     """
     Phase 13: Export Platform Format logic.
     Applies resolution, fps, crf, trimming, and watermarks based on platform.
@@ -361,12 +360,10 @@ def render_platform_clip(input_path: str, output_path: str, format_type: str, is
         
     cmd.extend([
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "fast", "-crf", crf,
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", crf,
         "-c:a", "aac", "-b:a", b_a,
         output_path
     ])
     
-    print("FFMPEG ABOUT TO START")
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-    print("FFMPEG FINISHED")
     return output_path

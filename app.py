@@ -2096,7 +2096,6 @@ def get_free_status(user):
 # ============================================
 def process_video(job_id):
     """Standalone background worker logic for processing video."""
-    print("PIPELINE STEP 1 START")
     try:
         # Update job status
         job = Job.query.filter_by(id=job_id).first()
@@ -2107,16 +2106,11 @@ def process_video(job_id):
         job.status = "processing"
         db.session.commit()
         
-        print("PIPELINE STEP 2 DOWNLOAD DONE")
-        
         # Call orchestrator to process video
         log.info("[ANALYZE] Starting orchestration for job %s", job_id)
         
-        print("PIPELINE STEP 3 TRANSCRIPTION START")
-        
         # If RunPod is available, use it; otherwise use local processing
         try:
-            print("PIPELINE STEP 4 ANALYSIS START")
             # Send to RunPod if configured
             if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_ENDPOINT_ID"):
                 log.info("[ANALYZE] Using RunPod for job %s", job_id)
@@ -2129,7 +2123,6 @@ def process_video(job_id):
                 job.status = "completed"
                 job.analysis_data = json.dumps({"clips": [], "status": "ready"})
             
-            print("PIPELINE STEP 5 EXPORT START")
             job.completed_at = datetime.utcnow()
             db.session.commit()
             log.info("[ANALYZE] Job %s processing complete", job_id)
@@ -2202,9 +2195,13 @@ def analyze():
             db.session.rollback()
             return jsonify({"error": "Failed to create job"}), 500
         
-        # DIAGNOSTIC: Running analysis synchronously to isolate crash cause
-        # (This will hang the request but helps capture exact failure in logs)
-        run_process_video_safe(job_id)
+        # Start background processing in a non-daemon thread
+        # (Safer for production lifecycle management)
+        bg_thread = threading.Thread(
+            target=run_process_video_safe,
+            args=(job_id,)
+        )
+        bg_thread.start()
         
         # 5. Return response with job_id
         return jsonify({
@@ -3080,7 +3077,6 @@ def results(job_id):
 @app.route("/export_clip", methods=["POST"])
 @login_required
 def export_clip():
-    print("EXPORT ROUTE ENTERED")
     try:
         data = request.json
         format_type = data.get("format", "tiktok")
