@@ -358,9 +358,14 @@ def render_platform_clip(input_path: str, output_path: str, format_type: str, is
     if dur > max_duration:
         cmd.extend(["-t", str(max_duration)])
         
+    # Phase 13: Tiered Quality Engine (Smart Founder Move)
+    # Free users get "Fast Export" (ultrafast) for stability.
+    # Pro users get "HD Export" (fast) for better compression/quality.
+    preset = "fast" if is_pro else "ultrafast"
+    
     cmd.extend([
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", crf,
+        "-c:v", "libx264", "-preset", preset, "-crf", crf,
         "-c:a", "aac", "-b:a", b_a,
         output_path
     ])
