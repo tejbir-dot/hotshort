@@ -2136,8 +2136,11 @@ def process_video(job_id):
 
 def run_process_video_safe(job_id):
     """Wrapper to run process_video within the Flask application context."""
-    with app.app_context():
-        process_video(job_id)
+    try:
+        with app.app_context():
+            process_video(job_id)
+    except Exception as e:
+        app.logger.exception(f"[PROCESS_VIDEO_CRASH] job={job_id} error={e}")
 
 @app.route("/analyze", methods=["POST"])
 @login_required
@@ -2192,11 +2195,11 @@ def analyze():
             db.session.rollback()
             return jsonify({"error": "Failed to create job"}), 500
         
-        # Start background processing in a thread
+        # Start background processing in a non-daemon thread
+        # (Safer for production lifecycle management)
         bg_thread = threading.Thread(
             target=run_process_video_safe,
-            args=(job_id,),
-            daemon=True
+            args=(job_id,)
         )
         bg_thread.start()
         
