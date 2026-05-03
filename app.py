@@ -1630,7 +1630,11 @@ def _google_authorized_override():
     elif google_bp.redirect_to:
         next_url = url_for("dashboard")
     else:
-        next_url = "/"
+        next_url = "/dashboard"
+
+    # 🧪 ELITE DIAGNOSTIC: Bypass OAuth token logic to confirm stability
+    app.logger.warning("[TRACE] DIAGNOSTIC: Bypassing OAuth token logic")
+    return redirect("/dashboard")
 
     error = request.args.get("error")
     if error:
@@ -1734,6 +1738,10 @@ app.view_functions["google.authorized"] = _google_authorized_override
 # ==========================
 # ⚙️ DATABASE + LOGIN
 # ==========================
+app.config.update(
+    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SECURE=True,
+)
 db.init_app(app)
 
 def _db_create_all_safe() -> None:
