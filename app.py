@@ -6,6 +6,12 @@ import time
 import tempfile
 import queue
 import threading
+import sys
+ 
+def log_step(msg):
+    """Elite Debugger: Force-flushed logging for production isolation."""
+    print(f"[TRACE] {msg}", flush=True)
+    sys.stdout.flush()
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
@@ -420,7 +426,6 @@ def _cancel_runpod_job(endpoint: str, run_id: str, headers: dict) -> bool:
         log.warning("[RUNPOD] cancel request failed: %s", e)
         return False
 
-
 # How long (seconds) a job may stay IN_QUEUE before we cancel and resubmit once.
 try:
     _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S = int(
@@ -428,7 +433,6 @@ try:
     )
 except Exception:
     _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S = 180
-
 
 def _wait_for_runpod_completion(
     *,
@@ -442,108 +446,88 @@ def _wait_for_runpod_completion(
     poll_timeout_s: int,
     poll_interval_s: int = HS_RUNPOD_POLL_INTERVAL_SECONDS,
 ):
-    """Poll RunPod until the async job reaches a terminal state.
-
-    Cold-start handling: if the job stays IN_QUEUE past
-    HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S (default 180 s), cancel it and submit
-    a fresh request once.  This recovers from GPU cold-boot races without
-    entering an infinite resubmit loop.
-    """
+    """Poll RunPod until the async job reaches a terminal state with Elite Debugger tracing."""
     import requests
+    log_step(f"RUNPOD POLLING START: {task_label}")
 
     data = initial_data or {}
     status = data.get("status")
     run_id = data.get("id") or data.get("run_id")
-    log.info("[RUNPOD] %s STATUS: %s (run_id=%s)", task_label, status, run_id)
+    log_step(f"RUNPOD INITIAL STATUS: {status} (run_id={run_id})")
 
     start_polling_time = time.time()
-    _resubmitted = False            # guard: resubmit at most once
-    _in_queue_since: float | None = None    # wall-clock when we first saw IN_QUEUE
+    _resubmitted = False
+    _in_queue_since: float | None = None
 
-    # Use exponential backoff (cap at 15 s) so we don't hammer the API
-    # every 2 s during multi-minute GPU cold starts.
     _cur_poll_interval = max(2, int(poll_interval_s))
     _MAX_POLL_INTERVAL = 15
 
     while time.time() - start_polling_time < poll_timeout_s:
+        elapsed = time.time() - start_polling_time
+        
         if status == "COMPLETED":
+            log_step(f"RUNPOD SUCCESS: {task_label}")
             return data
         if status == "FAILED":
+            log_step(f"RUNPOD ERROR: {task_label} (status FAILED)")
             raise RuntimeError(f"RunPod {task_label} failed: FAILED")
 
-        # -- IN_QUEUE stuck-detection + cancel-and-resubmit --
         if status == "IN_QUEUE":
             if _in_queue_since is None:
                 _in_queue_since = time.time()
             queue_wait_s = time.time() - _in_queue_since
-            log.info(
-                "[RUNPOD] %s waiting for job to finish... (status=%s, queue_wait=%.0fs)",
-                task_label, status, queue_wait_s,
-            )
+            log_step(f"RUNPOD STATUS: {status} (queue_wait={queue_wait_s:.0f}s)")
 
             if (
                 not _resubmitted
                 and queue_wait_s >= _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S
-                and RUNPOD_MODE != "pod"    # pod-mode has no serverless cancel API
+                and RUNPOD_MODE != "pod"
             ):
-                log.warning(
-                    "[RUNPOD] %s job %s stuck IN_QUEUE for %.0fs â cancelling and resubmitting",
-                    task_label, run_id, queue_wait_s,
-                )
+                log_step(f"RUNPOD STUCK IN QUEUE: Resubmitting {run_id}...")
                 if run_id:
                     _cancel_runpod_job(endpoint, run_id, headers)
                 try:
                     resubmit_resp = requests.post(
                         request_url, json=request_payload, headers=headers, timeout=timeout
                     )
+                    log_step(f"RUNPOD RESUBMIT STATUS: {resubmit_resp.status_code}")
                     if resubmit_resp.status_code == 200:
                         data = resubmit_resp.json()
                         status = data.get("status")
                         run_id = data.get("id") or data.get("run_id")
                         _resubmitted = True
-                        _in_queue_since = time.time()   # reset queue timer for new job
-                        _cur_poll_interval = max(2, int(poll_interval_s))  # reset backoff
-                        log.info(
-                            "[RUNPOD] %s resubmitted â new run_id=%s status=%s",
-                            task_label, run_id, status,
-                        )
+                        _in_queue_since = time.time()
+                        _cur_poll_interval = max(2, int(poll_interval_s))
+                        log_step(f"RUNPOD RESUBMITTED: new run_id={run_id}")
                         continue
-                    else:
-                        log.warning(
-                            "[RUNPOD] %s resubmit failed: %s %s",
-                            task_label, resubmit_resp.status_code, resubmit_resp.text[:200],
-                        )
                 except Exception as resub_err:
-                    log.warning("[RUNPOD] %s resubmit error: %s", task_label, resub_err)
+                    log_step(f"RUNPOD RESUBMIT ERROR: {resub_err}")
         else:
-            # Job picked up by a worker -- reset the in-queue timer
             if _in_queue_since is not None:
-                log.info(
-                    "[RUNPOD] %s job picked up by worker after %.0fs in queue",
-                    task_label, time.time() - _in_queue_since,
-                )
+                log_step(f"RUNPOD PICKED UP: after {time.time() - _in_queue_since:.0f}s")
                 _in_queue_since = None
-            log.info("[RUNPOD] %s waiting for job to finish... (status=%s)", task_label, status)
+            log_step(f"RUNPOD STATUS: {status}")
 
         time.sleep(_cur_poll_interval)
-        # Back off gradually -- cold starts can take minutes
         _cur_poll_interval = min(_cur_poll_interval * 2, _MAX_POLL_INTERVAL)
 
         if run_id:
             status_url = _runpod_status_url(endpoint, run_id)
-            resp = requests.get(status_url, headers=headers, timeout=60)
+            log_step(f"RUNPOD POLL: {task_label} (elapsed {elapsed:.1f}s)")
+            resp = requests.get(status_url, headers=headers, timeout=10)
         else:
+            log_step(f"RUNPOD POST (RETRY): {task_label}")
             resp = requests.post(request_url, json=request_payload, headers=headers, timeout=timeout)
 
         if resp.status_code != 200:
-            raise RuntimeError(f"RunPod {task_label} failed: {resp.status_code} - {resp.text}")
+            log_step(f"RUNPOD API ERROR: {resp.status_code} - {resp.text[:200]}")
+            raise RuntimeError(f"RunPod {task_label} failed: {resp.status_code}")
 
         data = resp.json()
         status = data.get("status")
         run_id = run_id or data.get("id") or data.get("run_id")
-        log.info("[RUNPOD] %s STATUS: %s (run_id=%s)", task_label, status, run_id)
 
-    raise RuntimeError(f"RunPod {task_label} failed (non-completed status): {status}")
+    raise RuntimeError(f"RunPod {task_label} failed (timeout): {status}")
 
 
 def send_transcription_request(youtube_url: str) -> List[Dict]:
@@ -2096,43 +2080,43 @@ def get_free_status(user):
 # ============================================
 def process_video(job_id):
     """Standalone background worker logic for processing video."""
+    log_step("PIPELINE STEP 1 START")
     try:
         # Update job status
         job = Job.query.filter_by(id=job_id).first()
         if not job:
-            log.warning("[ANALYZE] Job %s not found during processing", job_id)
+            log_step("PIPELINE ERROR: Job not found")
             return
         
         job.status = "processing"
         db.session.commit()
         
-        # Call orchestrator to process video
-        log.info("[ANALYZE] Starting orchestration for job %s", job_id)
+        log_step("PIPELINE STEP 2 DB READY")
         
         # If RunPod is available, use it; otherwise use local processing
         try:
-            # Send to RunPod if configured
+            log_step("PIPELINE STEP 3 RUNPOD/LOCAL CHECK")
             if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_ENDPOINT_ID"):
-                log.info("[ANALYZE] Using RunPod for job %s", job_id)
-                # This would call process_video_hybrid or similar
-                # For now, mark as completed with placeholder
+                log_step("PIPELINE: Using RunPod flow")
                 job.status = "completed"
                 job.analysis_data = json.dumps({"clips": [], "status": "ready"})
             else:
-                log.info("[ANALYZE] RunPod not available, using local processing for job %s", job_id)
+                log_step("PIPELINE: Using local flow")
                 job.status = "completed"
                 job.analysis_data = json.dumps({"clips": [], "status": "ready"})
             
+            # 🧪 ELITE DIAGNOSTIC: Skip export to confirm if FFmpeg is the killer
+            log_step("PIPELINE STEP 4: SKIPPING EXPORT TEMP (DIAGNOSTIC)")
+            
             job.completed_at = datetime.utcnow()
             db.session.commit()
-            log.info("[ANALYZE] Job %s processing complete", job_id)
+            log_step("PIPELINE SUCCESS")
         except Exception as proc_err:
-            log.error("[ANALYZE] Processing error for job %s: %s", job_id, proc_err)
+            log_step(f"PIPELINE PROC ERROR: {proc_err}")
             job.status = "failed"
-            job.completed_at = datetime.utcnow()
             db.session.commit()
     except Exception as bg_err:
-        log.error("[ANALYZE] Background processing failed: %s", bg_err)
+        log_step(f"PIPELINE FATAL ERROR: {bg_err}")
 
 def run_process_video_safe(job_id):
     """Wrapper to run process_video within the Flask application context."""
