@@ -78,6 +78,7 @@ try:
     HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS = int(os.getenv("HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS", "600") or 600)
 except Exception:
     HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS = 600
+_db_initialized = False
 
 
 
@@ -1476,6 +1477,14 @@ def _allowed_cors_origin():
         return request_origin
     return ""
 
+
+@app.before_request
+def ensure_db_ready():
+    global _db_initialized
+    if not _db_initialized:
+        with app.app_context():
+            initialize_database()
+        _db_initialized = True
 
 @app.before_request
 def handle_frontend_preflight():
