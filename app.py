@@ -31,6 +31,11 @@ from models.user import db, User, Clip, Job, FreeClipClaim
 # =====================================================
 app = Flask(__name__)
 
+app.config.update(
+    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SECURE=True,
+)
+
 # instrumentation helpers
 import logging
 try:
