@@ -3080,6 +3080,7 @@ def results(job_id):
 @app.route("/export_clip", methods=["POST"])
 @login_required
 def export_clip():
+    print("EXPORT ROUTE ENTERED")
     try:
         data = request.json
         format_type = data.get("format", "tiktok")

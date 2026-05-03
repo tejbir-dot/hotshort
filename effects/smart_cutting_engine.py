@@ -314,6 +314,7 @@ def run_smart_cut_pipeline(video_path: str, output_path: str, target_duration: f
     return output_path
 
 def render_platform_clip(input_path: str, output_path: str, format_type: str, is_pro: bool = False):
+    print("EXPORT ENGINE ENTERED")
     """
     Phase 13: Export Platform Format logic.
     Applies resolution, fps, crf, trimming, and watermarks based on platform.
@@ -365,5 +366,7 @@ def render_platform_clip(input_path: str, output_path: str, format_type: str, is
         output_path
     ])
     
+    print("FFMPEG ABOUT TO START")
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    print("FFMPEG FINISHED")
     return output_path
