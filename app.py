@@ -2195,13 +2195,9 @@ def analyze():
             db.session.rollback()
             return jsonify({"error": "Failed to create job"}), 500
         
-        # Start background processing in a non-daemon thread
-        # (Safer for production lifecycle management)
-        bg_thread = threading.Thread(
-            target=run_process_video_safe,
-            args=(job_id,)
-        )
-        bg_thread.start()
+        # DIAGNOSTIC: Running analysis synchronously to isolate crash cause
+        # (This will hang the request but helps capture exact failure in logs)
+        run_process_video_safe(job_id)
         
         # 5. Return response with job_id
         return jsonify({
