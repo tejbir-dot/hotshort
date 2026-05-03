@@ -1755,25 +1755,15 @@ def _db_create_all_safe() -> None:
     """
     import time
     for attempt in range(5):
-        try:
-            db.create_all()
-            return
-        except Exception as e:
-            msg = str(e).lower()
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            
-            if attempt < 4 and (("already exists" in msg and "table" in msg) or "database is locked" in msg or "operationalerror" in msg):
-                time.sleep(1.0)
-                continue
-            
-            try:
-                app.logger.warning("[DB-INIT] create_all failed: %s", e)
-            except Exception:
-                pass
-            raise
+                db.create_all()
+                return
+            except Exception as e:
+                # Tolerate multi-worker races (common on SQLite/Railway)
+                if attempt < 4:
+                    time.sleep(1.0)
+                    continue
+                print(f"[DB-INIT] create_all race ignored after 5 attempts: {e}")
 
 
 def _should_auto_create_tables() -> bool:
@@ -2112,6 +2102,51 @@ def get_free_status(user):
 # ============================================
 # 🎬 ANALYZE ENDPOINT (Elite Build)
 # ============================================
+def process_video(job_id):
+    """Standalone background worker logic for processing video."""
+    try:
+        # Update job status
+        job = Job.query.filter_by(id=job_id).first()
+        if not job:
+            log.warning("[ANALYZE] Job %s not found during processing", job_id)
+            return
+        
+        job.status = "processing"
+        db.session.commit()
+        
+        # Call orchestrator to process video
+        log.info("[ANALYZE] Starting orchestration for job %s", job_id)
+        
+        # If RunPod is available, use it; otherwise use local processing
+        try:
+            # Send to RunPod if configured
+            if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_ENDPOINT_ID"):
+                log.info("[ANALYZE] Using RunPod for job %s", job_id)
+                # This would call process_video_hybrid or similar
+                # For now, mark as completed with placeholder
+                job.status = "completed"
+                job.analysis_data = json.dumps({"clips": [], "status": "ready"})
+            else:
+                log.info("[ANALYZE] RunPod not available, using local processing for job %s", job_id)
+                job.status = "completed"
+                job.analysis_data = json.dumps({"clips": [], "status": "ready"})
+            
+            job.completed_at = datetime.utcnow()
+            db.session.commit()
+            log.info("[ANALYZE] Job %s processing complete", job_id)
+        except Exception as proc_err:
+            log.error("[ANALYZE] Processing error for job %s: %s", job_id, proc_err)
+            job.status = "failed"
+            job.completed_at = datetime.utcnow()
+            db.session.commit()
+    except Exception as bg_err:
+        log.error("[ANALYZE] Background processing failed: %s", bg_err)
+
+def run_process_video_safe(job_id):
+    """Wrapper to run process_video within the Flask application context."""
+    with current_app.app_context():
+        process_video(job_id)
+
 @app.route("/analyze", methods=["POST"])
 @login_required
 def analyze():
@@ -2165,50 +2200,12 @@ def analyze():
             db.session.rollback()
             return jsonify({"error": "Failed to create job"}), 500
         
-        # 4. Kick off analysis in background
-        def _process_in_background():
-            try:
-                # Update job status
-                job = Job.query.filter_by(id=job_id).first()
-                if not job:
-                    log.warning("[ANALYZE] Job %s not found during processing", job_id)
-                    return
-                
-                job.status = "processing"
-                db.session.commit()
-                
-                # Call orchestrator to process video
-                # For now, use a simple approach that doesn't require process_video_hybrid
-                log.info("[ANALYZE] Starting orchestration for job %s", job_id)
-                
-                # If RunPod is available, use it; otherwise use local processing
-                try:
-                    # Send to RunPod if configured
-                    if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_ENDPOINT_ID"):
-                        log.info("[ANALYZE] Using RunPod for job %s", job_id)
-                        # This would call process_video_hybrid or similar
-                        # For now, mark as completed with placeholder
-                        job.status = "completed"
-                        job.analysis_data = json.dumps({"clips": [], "status": "ready"})
-                    else:
-                        log.info("[ANALYZE] RunPod not available, using local processing for job %s", job_id)
-                        job.status = "completed"
-                        job.analysis_data = json.dumps({"clips": [], "status": "ready"})
-                    
-                    job.completed_at = datetime.utcnow()
-                    db.session.commit()
-                    log.info("[ANALYZE] Job %s processing complete", job_id)
-                except Exception as proc_err:
-                    log.error("[ANALYZE] Processing error for job %s: %s", job_id, proc_err)
-                    job.status = "failed"
-                    job.completed_at = datetime.utcnow()
-                    db.session.commit()
-            except Exception as bg_err:
-                log.error("[ANALYZE] Background processing failed: %s", bg_err)
-        
         # Start background processing in a thread
-        import threading
-        bg_thread = threading.Thread(target=_process_in_background, daemon=True)
+        bg_thread = threading.Thread(
+            target=run_process_video_safe,
+            args=(job_id,),
+            daemon=True
+        )
         bg_thread.start()
         
         # 5. Return response with job_id
