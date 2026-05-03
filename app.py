@@ -2144,7 +2144,7 @@ def process_video(job_id):
 
 def run_process_video_safe(job_id):
     """Wrapper to run process_video within the Flask application context."""
-    with current_app.app_context():
+    with app.app_context():
         process_video(job_id)
 
 @app.route("/analyze", methods=["POST"])
