@@ -2096,6 +2096,7 @@ def get_free_status(user):
 # ============================================
 def process_video(job_id):
     """Standalone background worker logic for processing video."""
+    print("PIPELINE STEP 1 START")
     try:
         # Update job status
         job = Job.query.filter_by(id=job_id).first()
@@ -2106,11 +2107,16 @@ def process_video(job_id):
         job.status = "processing"
         db.session.commit()
         
+        print("PIPELINE STEP 2 DOWNLOAD DONE")
+        
         # Call orchestrator to process video
         log.info("[ANALYZE] Starting orchestration for job %s", job_id)
         
+        print("PIPELINE STEP 3 TRANSCRIPTION START")
+        
         # If RunPod is available, use it; otherwise use local processing
         try:
+            print("PIPELINE STEP 4 ANALYSIS START")
             # Send to RunPod if configured
             if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_ENDPOINT_ID"):
                 log.info("[ANALYZE] Using RunPod for job %s", job_id)
@@ -2123,6 +2129,7 @@ def process_video(job_id):
                 job.status = "completed"
                 job.analysis_data = json.dumps({"clips": [], "status": "ready"})
             
+            print("PIPELINE STEP 5 EXPORT START")
             job.completed_at = datetime.utcnow()
             db.session.commit()
             log.info("[ANALYZE] Job %s processing complete", job_id)
