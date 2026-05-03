@@ -1493,6 +1493,7 @@ def _allowed_cors_origin():
 
 @app.before_request
 def handle_frontend_preflight():
+    _start_resource_monitor_thread()
     if request.method == "OPTIONS":
         allowed_origin = _allowed_cors_origin()
         if allowed_origin:
@@ -1509,7 +1510,14 @@ else:
 
 # Logger for use throughout the app (used by the analyze route)
 log = app.logger
-_start_resource_monitor_thread()
+
+def qa_event(event_name: str, **kwargs):
+    """Log an analytics/QA event."""
+    try:
+        kwargs_str = " ".join(f"{k}={v}" for k, v in kwargs.items() if v is not None)
+        log.info(f"[QA_EVENT] {event_name} {kwargs_str}")
+    except Exception:
+        pass
 
 @app.after_request
 def add_header(response):
@@ -2400,6 +2408,8 @@ def api_runpod_download():
 
 import stripe
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
+
+VALID_PLAN_TYPES = {"free", "starter", "pro", "industry", "trial"}
 
 @app.route("/create-checkout-session/<plan>", methods=["GET"])
 @login_required
