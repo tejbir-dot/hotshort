@@ -1632,10 +1632,6 @@ def _google_authorized_override():
     else:
         next_url = "/dashboard"
 
-    # 🧪 ELITE DIAGNOSTIC: Bypass OAuth token logic to confirm stability
-    app.logger.warning("[TRACE] DIAGNOSTIC: Bypassing OAuth token logic")
-    return redirect("/dashboard")
-
     error = request.args.get("error")
     if error:
         oauth_error.send(
