@@ -198,7 +198,7 @@ from effects.video_pipeline import generate_clip_for_job
 from routes.auth import auth, build_post_login_redirect  # 👈 all auth routes now separated
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_dance.consumer import oauth_authorized, oauth_before_login, oauth_error
-from oauthlib.oauth2.rfc6749.errors import MissingCodeError, MismatchingStateError
+from oauthlib.oauth2.rfc6749.errors import MissingCodeError, MismatchingStateError, InvalidGrantError
 # from viral_finder.viral_finder_engine_v30 import find_viral_moments as backup_find
 from utils.narrative_intelligence import (
     estimate_semantic_quality,
@@ -1743,6 +1743,13 @@ def _google_authorized_override():
             client_secret=google_bp.client_secret,
             **google_bp.token_url_params,
         )
+    except InvalidGrantError:
+        # Common on double-callback / reused authorization code, or redirect_uri mismatch behind proxies.
+        # Restart the flow rather than surfacing a 500.
+        app.logger.warning("[OAUTH-DEBUG] InvalidGrantError during token exchange; restarting google login")
+        retry = redirect(url_for("google.login"))
+        retry.delete_cookie("hs_google_oauth_state", path="/")
+        return retry
     except MismatchingStateError:
         app.logger.warning("[OAUTH-DEBUG] MismatchingStateError: State mismatch (double-click/stale session). Restarting flow.")
         return redirect(url_for("google.login"))
