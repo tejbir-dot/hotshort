@@ -492,13 +492,7 @@ def _cancel_runpod_job(endpoint: str, run_id: str, headers: dict) -> bool:
         log.warning("[RUNPOD] cancel request failed: %s", e)
         return False
 
-# How long (seconds) a job may stay IN_QUEUE before we cancel and resubmit once.
-try:
-    _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S = int(
-        os.getenv("HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S", "180") or 180
-    )
-except Exception:
-    _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S = 180
+
 
 def _wait_for_runpod_completion(
     *,
@@ -522,7 +516,6 @@ def _wait_for_runpod_completion(
     log_step(f"RUNPOD INITIAL STATUS: {status} (run_id={run_id})")
 
     start_polling_time = time.time()
-    _resubmitted = False
     _in_queue_since: float | None = None
 
     _cur_poll_interval = max(2, int(poll_interval_s))
@@ -544,30 +537,7 @@ def _wait_for_runpod_completion(
             queue_wait_s = time.time() - _in_queue_since
             log_step(f"RUNPOD STATUS: {status} (queue_wait={queue_wait_s:.0f}s)")
 
-            if (
-                not _resubmitted
-                and queue_wait_s >= _HS_RUNPOD_QUEUE_STUCK_RESUBMIT_S
-                and RUNPOD_MODE != "pod"
-            ):
-                log_step(f"RUNPOD STUCK IN QUEUE: Resubmitting {run_id}...")
-                if run_id:
-                    _cancel_runpod_job(endpoint, run_id, headers)
-                try:
-                    resubmit_resp = requests.post(
-                        request_url, json=request_payload, headers=headers, timeout=timeout
-                    )
-                    log_step(f"RUNPOD RESUBMIT STATUS: {resubmit_resp.status_code}")
-                    if resubmit_resp.status_code == 200:
-                        data = resubmit_resp.json()
-                        status = data.get("status")
-                        run_id = data.get("id") or data.get("run_id")
-                        _resubmitted = True
-                        _in_queue_since = time.time()
-                        _cur_poll_interval = max(2, int(poll_interval_s))
-                        log_step(f"RUNPOD RESUBMITTED: new run_id={run_id}")
-                        continue
-                except Exception as resub_err:
-                    log_step(f"RUNPOD RESUBMIT ERROR: {resub_err}")
+            # Resubmission disabled: queue delays are normal; the UI should show "processing…"
         else:
             if _in_queue_since is not None:
                 log_step(f"RUNPOD PICKED UP: after {time.time() - _in_queue_since:.0f}s")
