@@ -234,41 +234,70 @@ def _local_worker_status(local_worker_url: str, timeout: float = 2.0) -> dict:
     This is used by the wake/ready loop to cheaply determine whether an
     optional ngrok-exposed worker is reachable.
     """
-    url = (local_worker_url or "").strip()
-    if not url:
+    raw_url = (local_worker_url or "").strip()
+    if not raw_url:
         return {"ok": False, "alive": False, "error": "missing_url"}
 
-    health_url = urljoin(url, "/health")
+    # The codebase uses two "worker" styles:
+    # 1) Local HTTP worker (runpodworker.py with LOCAL_HTTP_WORKER=1):
+    #    - GET / returns JSON status
+    #    - POST /run expects {"task": "...", ...}
+    # 2) RunPod serverless / proxy:
+    #    - POST /run expects {"input": {...}}
+    url = raw_url.rstrip("/")
+    base_url = url[:-4].rstrip("/") if url.lower().endswith("/run") else url
+    run_url = url if url.lower().endswith("/run") else f"{url}/run"
+
+    # Prefer the local HTTP worker health endpoint (GET /).
     try:
-        resp = requests.get(health_url, timeout=timeout)
+        resp = requests.get(base_url, timeout=timeout)
         if 200 <= resp.status_code < 300:
             return {
                 "ok": True,
                 "alive": True,
-                "method": "health",
-                "url": health_url,
+                "style": "local_http_worker",
+                "method": "get_root",
+                "url": base_url,
                 "status_code": int(resp.status_code),
             }
+        last_error = f"get_root_http_{resp.status_code}"
     except Exception as e:
         last_error = str(e)
-    else:
-        last_error = f"health_http_{resp.status_code}"
 
+    # Local HTTP worker healthcheck (POST /run with raw task payload).
     try:
-        resp = requests.post(url, json={"input": {"task": "healthcheck"}}, timeout=timeout)
+        resp = requests.post(run_url, json={"task": "healthcheck"}, timeout=timeout)
         if 200 <= resp.status_code < 300:
             return {
                 "ok": True,
                 "alive": True,
-                "method": "run_healthcheck",
-                "url": url,
+                "style": "local_http_worker",
+                "method": "post_run_healthcheck_raw",
+                "url": run_url,
+                "status_code": int(resp.status_code),
+            }
+        last_error = f"post_run_raw_http_{resp.status_code}"
+    except Exception as e:
+        last_error = str(e) or last_error
+
+    # RunPod-style healthcheck (POST /run with nested "input").
+    try:
+        resp = requests.post(run_url, json={"input": {"task": "healthcheck"}}, timeout=timeout)
+        if 200 <= resp.status_code < 300:
+            return {
+                "ok": True,
+                "alive": True,
+                "style": "runpod",
+                "method": "post_run_healthcheck_input",
+                "url": run_url,
                 "status_code": int(resp.status_code),
             }
         return {
             "ok": False,
             "alive": False,
-            "method": "run_healthcheck",
-            "url": url,
+            "style": "unknown",
+            "method": "post_run_healthcheck_input",
+            "url": run_url,
             "status_code": int(resp.status_code),
             "error": (resp.text or "")[:200],
         }
@@ -276,8 +305,9 @@ def _local_worker_status(local_worker_url: str, timeout: float = 2.0) -> dict:
         return {
             "ok": False,
             "alive": False,
-            "method": "run_healthcheck",
-            "url": url,
+            "style": "unknown",
+            "method": "post_run_healthcheck_input",
+            "url": run_url,
             "error": str(e) or last_error,
         }
 
@@ -379,7 +409,35 @@ def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: i
     3) RunPod serverless endpoint
     """
     local_worker_url = (os.getenv("LOCAL_WORKER_URL") or "").strip()
-    if local_worker_url and _local_worker_is_alive(local_worker_url, timeout=2):
+    if local_worker_url:
+        status = _local_worker_status(local_worker_url, timeout=2.0)
+        if not status.get("alive"):
+            # If a worker is configured, do not silently fall back to heavy local/RunPod paths.
+            raise RuntimeError(
+                "Local worker is configured but not reachable: "
+                f"method={status.get('method')} url={status.get('url')} error={status.get('error')}"
+            )
+
+        style = status.get("style") or "unknown"
+        if style == "local_http_worker":
+            # Local HTTP worker expects the raw task payload at POST /run.
+            run_url = (local_worker_url.rstrip("/"))
+            if not run_url.lower().endswith("/run"):
+                run_url = f"{run_url}/run"
+
+            payload = {"task": "orchestrate", "youtube_url": youtube_url}
+            if job_id is not None:
+                payload["job_id"] = job_id
+
+            resp = requests.post(run_url, json=payload, timeout=timeout)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Local worker orchestrate failed: {resp.status_code} - {resp.text}")
+            data = resp.json()
+            if isinstance(data, dict) and data.get("error"):
+                raise RuntimeError(f"Local worker orchestrate error: {data.get('error')}")
+            return data if isinstance(data, dict) else {"status": "ok", "clips": data}
+
+        # Default to RunPod-style shape (nested "input") for proxies/serverless.
         payload = {"input": {"task": "orchestrate", "youtube_url": youtube_url}}
         if job_id is not None:
             payload["input"]["job_id"] = job_id
@@ -388,10 +446,18 @@ def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: i
         if resp.status_code != 200:
             raise RuntimeError(f"Local worker orchestrate failed: {resp.status_code} - {resp.text}")
         data = resp.json()
+        if isinstance(data, dict) and data.get("error"):
+            raise RuntimeError(f"Local worker orchestrate error: {data.get('error')}")
         if isinstance(data, dict) and "output" in data:
-            return data.get("output") or {}
+            out = data.get("output") or {}
+            if isinstance(out, dict) and out.get("error"):
+                raise RuntimeError(f"Local worker orchestrate error: {out.get('error')}")
+            return out
         if isinstance(data, dict) and data.get("status") == "COMPLETED" and "output" in data:
-            return data.get("output") or {}
+            out = data.get("output") or {}
+            if isinstance(out, dict) and out.get("error"):
+                raise RuntimeError(f"Local worker orchestrate error: {out.get('error')}")
+            return out
         return data if isinstance(data, dict) else {"status": "ok", "clips": data}
 
     if _local_gpu_available():
@@ -2082,51 +2148,77 @@ def get_free_status(user):
 # ============================================
 # 🎬 ANALYZE ENDPOINT (Elite Build)
 # ============================================
-def process_video(job_id):
-    """Standalone background worker logic for processing video."""
-    log_step("PIPELINE STEP 1 START")
+def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = None) -> None:
+    """Background job processor for /analyze-style Job records."""
     try:
-        # Update job status
         job = Job.query.filter_by(id=job_id).first()
         if not job:
-            log_step("PIPELINE ERROR: Job not found")
+            app.logger.warning("[PIPELINE] job not found id=%s", job_id)
             return
         
         job.status = "processing"
         db.session.commit()
         
-        log_step("PIPELINE STEP 2 DB READY")
-        
-        # If RunPod is available, use it; otherwise use local processing
-        try:
-            log_step("PIPELINE STEP 3 RUNPOD/LOCAL CHECK")
-            if RUNPOD_AVAILABLE and os.environ.get("RUNPOD_ENDPOINT_ID"):
-                log_step("PIPELINE: Using RunPod flow")
-                job.status = "completed"
-                job.analysis_data = json.dumps({"clips": [], "status": "ready"})
-            else:
-                log_step("PIPELINE: Using local flow")
-                job.status = "completed"
-                job.analysis_data = json.dumps({"clips": [], "status": "ready"})
-            
-            # 🧪 ELITE DIAGNOSTIC: Skip export to confirm if FFmpeg is the killer
-            log_step("PIPELINE STEP 4: SKIPPING EXPORT TEMP (DIAGNOSTIC)")
-            
+        youtube_url = (job.video_path or "").strip()
+        if not youtube_url:
+            job.status = "failed"
+            job.analysis_data = json.dumps({"job_id": job_id, "error": "missing_video_path"})
             job.completed_at = datetime.utcnow()
             db.session.commit()
-            log_step("PIPELINE SUCCESS")
-        except Exception as proc_err:
-            log_step(f"PIPELINE PROC ERROR: {proc_err}")
-            job.status = "failed"
-            db.session.commit()
-    except Exception as bg_err:
-        log_step(f"PIPELINE FATAL ERROR: {bg_err}")
+            return
 
-def run_process_video_safe(job_id):
+        app.logger.info("[PIPELINE] job=%s orchestrate_start", job_id)
+        result = process_video_hybrid(youtube_url, job_id=job_id)
+        if not isinstance(result, dict):
+            result = {"status": "ok", "clips": result}
+
+        if "job_id" not in result:
+            result["job_id"] = job_id
+
+        job.analysis_data = json.dumps(result)
+        job.status = "completed"
+        job.completed_at = datetime.utcnow()
+        db.session.commit()
+        app.logger.info("[PIPELINE] job=%s orchestrate_done clips=%s", job_id, len(result.get("clips") or []))
+        return
+
+    except Exception as bg_err:
+        app.logger.exception("[PIPELINE] job=%s fatal_error=%s", job_id, bg_err)
+        try:
+            job = Job.query.filter_by(id=job_id).first()
+            if job:
+                job.status = "failed"
+                try:
+                    job.analysis_data = json.dumps(
+                        {
+                            "job_id": job_id,
+                            "status": "failed",
+                            "error": str(bg_err),
+                        }
+                    )
+                except Exception:
+                    pass
+                job.completed_at = datetime.utcnow()
+                db.session.commit()
+        except Exception:
+            pass
+    finally:
+        try:
+            if analyze_lock is not None:
+                analyze_lock.release()
+        except Exception:
+            pass
+        try:
+            if file_lock_path:
+                _release_analyze_file_lock(file_lock_path)
+        except Exception:
+            pass
+
+def run_process_video_safe(job_id: str, analyze_lock=None, file_lock_path: str | None = None) -> None:
     """Wrapper to run process_video within the Flask application context."""
     try:
         with app.app_context():
-            process_video(job_id)
+            process_video(job_id, analyze_lock=analyze_lock, file_lock_path=file_lock_path)
     except Exception as e:
         app.logger.exception(f"[PROCESS_VIDEO_CRASH] job={job_id} error={e}")
 
@@ -2166,14 +2258,39 @@ def analyze():
                 "reason": "free_limit_reached"
             }), 402  # Payment required
         
-        # 3. Create a Job record
+        # 3. Acquire per-user concurrency slots (in-memory + cross-process file lock)
+        user_id = getattr(current_user, "id", None)
+        if not user_id:
+            return jsonify({"error": "Missing user context"}), 401
+
+        analyze_lock = _acquire_analyze_lock_for_user(user_id)
+        if analyze_lock is None:
+            return jsonify({"error": "Too many concurrent analyze jobs"}), 429
+
+        file_lock_path = _acquire_analyze_file_lock_for_user(user_id)
+        if file_lock_path is None:
+            try:
+                analyze_lock.release()
+            except Exception:
+                pass
+            return jsonify({"error": "Too many concurrent analyze jobs"}), 429
+
+        # 4. Create a Job record
         job_id = str(uuid.uuid4())[:12]
         try:
             job = Job(
                 id=job_id,
-                user_id=current_user.id,
+                user_id=int(user_id),
                 status="pending",
-                video_path=youtube_url  # Store URL as placeholder
+                video_path=youtube_url,  # Store URL as placeholder
+                analysis_data=json.dumps(
+                    {
+                        "job_id": job_id,
+                        "status": "pending",
+                        "source_url": youtube_url,
+                        "requested_at": datetime.utcnow().isoformat(),
+                    }
+                ),
             )
             db.session.add(job)
             db.session.commit()
@@ -2181,13 +2298,18 @@ def analyze():
         except Exception as e:
             log.error("[ANALYZE] Failed to create job: %s", e)
             db.session.rollback()
+            try:
+                analyze_lock.release()
+            except Exception:
+                pass
+            _release_analyze_file_lock(file_lock_path)
             return jsonify({"error": "Failed to create job"}), 500
         
         # Start background processing in a non-daemon thread
         # (Safer for production lifecycle management)
         bg_thread = threading.Thread(
             target=run_process_video_safe,
-            args=(job_id,)
+            args=(job_id, analyze_lock, file_lock_path)
         )
         bg_thread.start()
         
@@ -2204,6 +2326,222 @@ def analyze():
         import traceback
         log.error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
+
+
+def _effective_user_id_for_request() -> int | None:
+    """
+    Resolve a user_id for request-scoped Job creation.
+
+    In production this should always be ``current_user.id`` (enforced by login).
+    When Flask-Login is configured with ``LOGIN_DISABLED=True`` (tests/dev), we
+    create/reuse a lightweight dev user so Job rows remain valid.
+    """
+    uid = getattr(current_user, "id", None)
+    if uid:
+        try:
+            return int(uid)
+        except Exception:
+            return None
+
+    if not app.config.get("LOGIN_DISABLED"):
+        return None
+
+    email = (os.getenv("HS_DEV_USER_EMAIL") or "dev@local").strip().lower()
+    name = (os.getenv("HS_DEV_USER_NAME") or "Dev User").strip()
+    if not email:
+        return None
+
+    try:
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            user = User(email=email, name=name)
+            db.session.add(user)
+            db.session.commit()
+        return int(user.id)
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return None
+
+
+@app.route("/analyze-video", methods=["POST"], endpoint="analyze_video")
+@login_required
+def analyze_video():
+    """
+    Browser-friendly analyze endpoint.
+
+    Creates a Job and redirects to `/results/<job_id>` (instead of returning JSON).
+    """
+    youtube_url = (request.form.get("youtube_url") or "").strip()
+    if not youtube_url:
+        flash("Please provide a YouTube URL", "error")
+        return redirect(url_for("dashboard"))
+
+    free_status = get_free_status(current_user)
+    if not free_status.get("is_paid") and free_status.get("free_clips_left", 0) <= 0:
+        return redirect(url_for("limit_reached"))
+
+    user_id = _effective_user_id_for_request()
+    if not user_id:
+        flash("Missing user context", "error")
+        return redirect(url_for("dashboard"))
+
+    analyze_lock = _acquire_analyze_lock_for_user(user_id)
+    if analyze_lock is None:
+        flash("Too many concurrent analyze jobs. Try again in a moment.", "error")
+        return redirect(url_for("dashboard"))
+
+    file_lock_path = _acquire_analyze_file_lock_for_user(user_id)
+    if file_lock_path is None:
+        try:
+            analyze_lock.release()
+        except Exception:
+            pass
+        flash("Too many concurrent analyze jobs. Try again in a moment.", "error")
+        return redirect(url_for("dashboard"))
+
+    job_id = str(uuid.uuid4())[:12]
+    try:
+        job = Job(
+            id=job_id,
+            user_id=int(user_id),
+            status="pending",
+            video_path=youtube_url,
+            analysis_data=json.dumps(
+                {
+                    "job_id": job_id,
+                    "status": "pending",
+                    "source_url": youtube_url,
+                    "requested_at": datetime.utcnow().isoformat(),
+                }
+            ),
+        )
+        db.session.add(job)
+        db.session.commit()
+    except Exception as e:
+        log.error("[ANALYZE_VIDEO] Failed to create job: %s", e)
+        db.session.rollback()
+        try:
+            analyze_lock.release()
+        except Exception:
+            pass
+        _release_analyze_file_lock(file_lock_path)
+        flash("Failed to create job. Please try again.", "error")
+        return redirect(url_for("dashboard"))
+
+    bg_thread = threading.Thread(
+        target=run_process_video_safe,
+        args=(job_id, analyze_lock, file_lock_path),
+    )
+    bg_thread.start()
+    return redirect(url_for("results", job_id=job_id))
+
+
+@app.route("/v2/analyze", methods=["POST"])
+@login_required
+def v2_analyze():
+    """Async analyze API: submit a job and receive a job id."""
+    data = request.get_json(silent=True) or {}
+    source_url = (data.get("source_url") or data.get("youtube_url") or data.get("url") or "").strip()
+    if not source_url:
+        return jsonify({"error": "Missing source_url"}), 400
+
+    user_id = _effective_user_id_for_request()
+    if not user_id:
+        return jsonify({"error": "Missing user context"}), 401
+
+    analyze_lock = _acquire_analyze_lock_for_user(user_id)
+    if analyze_lock is None:
+        return jsonify({"error": "Too many concurrent analyze jobs"}), 429
+
+    file_lock_path = _acquire_analyze_file_lock_for_user(user_id)
+    if file_lock_path is None:
+        try:
+            analyze_lock.release()
+        except Exception:
+            pass
+        return jsonify({"error": "Too many concurrent analyze jobs"}), 429
+
+    job_id = str(uuid.uuid4())[:12]
+    profile = (data.get("profile") or DEFAULT_WORKER_PROFILE or "balanced").strip().lower()
+    try:
+        job = Job(
+            id=job_id,
+            user_id=int(user_id),
+            status="pending",
+            video_path=source_url,
+            analysis_data=json.dumps(
+                {
+                    "job_id": job_id,
+                    "status": "pending",
+                    "source_url": source_url,
+                    "profile": profile,
+                    "requested_at": datetime.utcnow().isoformat(),
+                }
+            ),
+        )
+        db.session.add(job)
+        db.session.commit()
+    except Exception as e:
+        log.error("[V2_ANALYZE] Failed to create job: %s", e)
+        db.session.rollback()
+        try:
+            analyze_lock.release()
+        except Exception:
+            pass
+        _release_analyze_file_lock(file_lock_path)
+        return jsonify({"error": "Failed to create job"}), 500
+
+    bg_thread = threading.Thread(
+        target=run_process_video_safe,
+        args=(job_id, analyze_lock, file_lock_path),
+    )
+    bg_thread.start()
+
+    return jsonify(
+        {
+            "ok": True,
+            "job_id": job_id,
+            "status": "pending",
+            "results_url": f"/v2/result/{job_id}",
+        }
+    )
+
+
+@app.route("/v2/result/<job_id>", methods=["GET"])
+@login_required
+def v2_result(job_id: str):
+    """Async analyze API: fetch job status/result envelope."""
+    job_q = Job.query.filter_by(id=job_id)
+    if not app.config.get("LOGIN_DISABLED"):
+        job_q = job_q.filter_by(user_id=getattr(current_user, "id", None))
+    job = job_q.first()
+    if not job:
+        return jsonify({"ok": False, "job_id": job_id, "status": "not_found"}), 404
+
+    envelope = {}
+    if job.analysis_data:
+        try:
+            envelope = json.loads(job.analysis_data) or {}
+        except Exception:
+            envelope = {}
+
+    payload = {
+        "ok": True,
+        "job_id": job.id,
+        "status": job.status,
+    }
+    if job.status == "completed":
+        payload.update(envelope if isinstance(envelope, dict) else {"result": envelope})
+    else:
+        # still pending/processing/failed: return lightweight diagnostics
+        if isinstance(envelope, dict):
+            payload["diagnostics"] = envelope.get("diagnostics") or {}
+            if envelope.get("error"):
+                payload["error"] = envelope.get("error")
+    return jsonify(payload)
 
 
 @app.route("/api/worker/status", methods=["GET"])
@@ -2620,9 +2958,8 @@ def dashboard():
     if request.method == 'POST':
         youtube_url = request.form.get('youtube_url', '').strip()
         if youtube_url:
-            # Redirect to /analyze endpoint for processing
-            # (JavaScript clients POST directly to /analyze, but form submissions come here)
-            return redirect(url_for('analyze_video'))
+            # Handle browser form submissions without losing POST body via redirect.
+            return analyze_video()
         else:
             flash('Please provide a YouTube URL', 'error')
             return redirect(url_for('dashboard'))
@@ -2649,7 +2986,10 @@ def results(job_id):
     """
     try:
         # 1. Fetch the Job record
-        job = Job.query.filter_by(id=job_id, user_id=current_user.id).first()
+        job_q = Job.query.filter_by(id=job_id)
+        if not app.config.get("LOGIN_DISABLED"):
+            job_q = job_q.filter_by(user_id=getattr(current_user, "id", None))
+        job = job_q.first()
         if not job:
             return render_template(
                 'results_new.html',
@@ -3121,7 +3461,10 @@ def export_all():
         if not job_id:
             return jsonify({"error": "Job ID required"}), 400
             
-        job = Job.query.filter_by(id=job_id, user_id=current_user.id).first()
+        job_q = Job.query.filter_by(id=job_id)
+        if not app.config.get("LOGIN_DISABLED"):
+            job_q = job_q.filter_by(user_id=getattr(current_user, "id", None))
+        job = job_q.first()
         if not job:
             return jsonify({"error": "Job not found"}), 404
             
