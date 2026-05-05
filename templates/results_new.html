@@ -1062,15 +1062,21 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
             <span>📦 Batch Export All (TikTok)</span>
           </button>
         </div>
-        <div class="carousel" id="carousel" data-job-id="{{ job_id }}">
+      <div class="carousel" id="carousel" data-job-id="{{ job_id }}">
           <!-- Populated by JS or server -->
-        </div>
-      </section>
+      </div>
+    </section>
 
       <!-- No clips message -->
       <div class="empty-state" id="emptyState" style="display: none;">
         <h2>No clips generated yet</h2>
         <p>Analyze a video to see your viral moments</p>
+      </div>
+
+      <!-- Processing message (shown while job is running) -->
+      <div class="empty-state" id="processingState" style="display: none;">
+        <h2>Analyzing your video…</h2>
+        <p style="opacity:0.8">This can take a few minutes (queue + processing). Keep this tab open.</p>
       </div>
     </main>
 
@@ -1086,6 +1092,7 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
   <!-- ✅ Server injects clips_json here (from Flask template) -->
   <script id="clips-json" type="application/json">{{ clips_json | tojson }}</script>
   <script id="free-status-json" type="application/json">{{ free_status_json | tojson }}</script>
+  <script id="worker-envelope-json" type="application/json">{{ (worker_envelope or {}) | tojson }}</script>
   <script>
     // Read server-provided clips JSON from a safe application/json script tag
     (function(){
@@ -1130,6 +1137,58 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
     // Format: Array of ViralClip objects (see utils/clip_schema.py)
     let clips = window.CLIPS_DATA || [];
     let freeStatus = window.FREE_STATUS || {};
+
+    (function(){
+      try{
+        const node = document.getElementById('worker-envelope-json');
+        const raw = node ? node.textContent.trim() : '{}';
+        let envRaw = JSON.parse(raw || '{}');
+        if (typeof envRaw === 'string') {
+          envRaw = JSON.parse(envRaw || '{}');
+        }
+        window.WORKER_ENVELOPE = (envRaw && typeof envRaw === 'object') ? envRaw : {};
+      }catch(e){
+        window.WORKER_ENVELOPE = {};
+      }
+    })();
+
+    function _jobStatus() {
+      const env = window.WORKER_ENVELOPE || {};
+      const s = (env.status || '').toString().toLowerCase();
+      return s;
+    }
+
+    function _isJobRunning() {
+      const s = _jobStatus();
+      return (s === 'pending' || s === 'processing' || s === 'queued' || s === 'in_queue');
+    }
+
+    async function pollJobUntilDone(jobId) {
+      let delayMs = 2000;
+      const maxDelayMs = 8000;
+      while (true) {
+        await new Promise(r => setTimeout(r, delayMs));
+        try {
+          const resp = await fetch(`/v2/result/${encodeURIComponent(jobId)}`, { credentials: 'same-origin' });
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          const st = (data.status || '').toString().toLowerCase();
+          if (st === 'completed') {
+            window.location.reload();
+            return;
+          }
+          if (st === 'failed') {
+            const msg = data.error || 'Job failed.';
+            const node = document.querySelector('header p[style*=\"#ffb4b4\"]');
+            if (node) node.textContent = msg;
+            return;
+          }
+        } catch (e) {
+          // ignore transient polling errors
+        }
+        delayMs = Math.min(maxDelayMs, Math.floor(delayMs * 1.35));
+      }
+    }
 
     function normalizeFreeStatus(s) {
       const obj = (s && typeof s === 'object') ? s : {};
@@ -1410,8 +1469,14 @@ Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
     renderTierLine();
 
     if (!clips || clips.length === 0) {
-      document.getElementById('emptyState').style.display = 'block';
       document.querySelector('.carousel-container').style.display = 'none';
+      if (_isJobRunning()) {
+        document.getElementById('processingState').style.display = 'block';
+        const jobId = currentJobId();
+        if (jobId) pollJobUntilDone(jobId);
+      } else {
+        document.getElementById('emptyState').style.display = 'block';
+      }
     } else {
       renderCarousel();
       setTimeout(refreshFreeStatus, 500);

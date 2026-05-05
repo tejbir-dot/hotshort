@@ -3006,6 +3006,22 @@ def results(job_id):
                 job_id=job_id,
                 error='Job not found'
             )
+
+        # If the job is still running, render a processing state instead of "no clips found".
+        if str(job.status or "").lower() in ("pending", "processing", "queued", "in_queue"):
+            worker_envelope = {
+                "job_id": job.id,
+                "status": job.status,
+            }
+            return render_template(
+                "results_new.html",
+                clips_json=[],
+                free_status_json=get_free_status(current_user),
+                pro_checkout_url=url_for("create_checkout_session", plan="pro"),
+                job_id=job_id,
+                worker_envelope=worker_envelope,
+                error=None,
+            )
         
         # 2. Fetch all clips for this job (from Clip table or Job.analysis_data)
         try:
@@ -3054,6 +3070,7 @@ def results(job_id):
                 free_status_json=get_free_status(current_user),
                 pro_checkout_url=url_for("create_checkout_session", plan="pro"),
                 job_id=job_id,
+                worker_envelope=getattr(job, "_worker_envelope", None),
                 error='No clips found'
             )
         
