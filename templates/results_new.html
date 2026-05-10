@@ -1007,17 +1007,17 @@
         {% endif %}
         {% if worker_envelope %}
           <p style="font-size:0.85rem; color:var(--gold-200); margin-top:6px;">
-            Job status: {{ worker_envelope.status }}
-            {% if worker_envelope.confidence_score is not none %}
-              | confidence: {{ "%.2f"|format(worker_envelope.confidence_score) }}
+            Job status: {{ worker_envelope.get("status", "unknown") }}
+            {% if worker_envelope.get("confidence_score") is not none %}
+              | confidence: {{ "%.2f"|format(worker_envelope.get("confidence_score", 0)) }}
             {% endif %}
-            {% if worker_envelope.low_confidence %}
+            {% if worker_envelope.get("low_confidence") %}
               <span style="color:var(--accent-warn);">(low confidence)</span>
             {% endif %}
           </p>
-          {% if worker_envelope.diagnostics %}
+          {% if worker_envelope.get("diagnostics") %}
             <pre style="font-size:0.75rem; margin-top:4px; color:#ccc;">
-Diagnostics: {{ worker_envelope.diagnostics | tojson(indent=2) }}
+Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
             </pre>
           {% endif %}
         {% endif %}
