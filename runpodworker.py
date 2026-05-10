@@ -136,6 +136,8 @@ def _upload_to_s3(local_path: str) -> str | None:
 
 
 def handler(event):
+    print("[WORKER] REQUEST RECEIVED")
+    print(event)
     input_data = event.get("input", {})
     task = input_data.get("task")
     youtube_url = input_data.get("youtube_url") or input_data.get("url")

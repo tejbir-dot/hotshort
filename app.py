@@ -377,6 +377,8 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
         "Content-Type": "application/json",
     }
 
+    print("[RAILWAY] SENDING RUNPOD REQUEST")
+    print(payload)
     log.info("[RUNPOD] Sending orchestrate request")
     resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
     if resp.status_code != 200:
@@ -480,19 +482,6 @@ def _runpod_status_url(endpoint: str, run_id: str) -> str:
 
 # RunPod GPU integration functions
 
-def _cancel_runpod_job(endpoint: str, run_id: str, headers: dict) -> bool:
-    """Attempt to cancel a queued RunPod serverless job. Returns True on success."""
-    try:
-        import requests as _req
-        cancel_url = f"https://api.runpod.ai/v2/{endpoint}/cancel/{run_id}"
-        resp = _req.post(cancel_url, headers=headers, timeout=15)
-        log.info("[RUNPOD] cancel %s -> %s %s", run_id, resp.status_code, resp.text[:120])
-        return resp.status_code in (200, 204)
-    except Exception as e:
-        log.warning("[RUNPOD] cancel request failed: %s", e)
-        return False
-
-
 
 def _wait_for_runpod_completion(
     *,
@@ -547,13 +536,13 @@ def _wait_for_runpod_completion(
         time.sleep(_cur_poll_interval)
         _cur_poll_interval = min(_cur_poll_interval * 2, _MAX_POLL_INTERVAL)
 
-        if run_id:
-            status_url = _runpod_status_url(endpoint, run_id)
-            log_step(f"RUNPOD POLL: {task_label} (elapsed {elapsed:.1f}s)")
-            resp = requests.get(status_url, headers=headers, timeout=10)
-        else:
-            log_step(f"RUNPOD POST (RETRY): {task_label}")
-            resp = requests.post(request_url, json=request_payload, headers=headers, timeout=timeout)
+        if not run_id:
+            log_step(f"RUNPOD ERROR: No run_id for {task_label}")
+            raise RuntimeError(f"RunPod {task_label} failed: No run_id")
+
+        status_url = _runpod_status_url(endpoint, run_id)
+        log_step(f"RUNPOD POLL: {task_label} (elapsed {elapsed:.1f}s)")
+        resp = requests.get(status_url, headers=headers, timeout=10)
 
         if resp.status_code != 200:
             log_step(f"RUNPOD API ERROR: {resp.status_code} - {resp.text[:200]}")

@@ -2678,7 +2678,7 @@ def orchestrate(path: str,
       - staged (default): explicit cognitive pipeline stages
       - legacy: direct ultron engine passthrough
     """
-    print("🚨 ORCHESTRATOR ENTRYPOINT HIT")
+    print("[ORCH] ORCHESTRATOR STARTED")
     start_time = time.time()
     mode = _pipeline_mode(pipeline_mode)
     log.info("[ORCH] pipeline_mode=%s", mode)
