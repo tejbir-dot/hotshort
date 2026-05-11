@@ -20,8 +20,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libsndfile1 \
+    gcc \
+    build-essential \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-
+    
 # Fix python symlinks and upgrade pip/setuptools once
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/python3.10 /usr/bin/python3 && \
