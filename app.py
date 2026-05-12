@@ -381,11 +381,16 @@ def _download_to_cloudinary(youtube_url: str) -> str:
     cloudinary.config(cloud_name=cloud_name, api_key=api_key_c, api_secret=api_secret)
 
     with tempfile.TemporaryDirectory() as tmp:
-        video_path = os.path.join(tmp, "video.mp4")
+        # Use %(ext)s so yt-dlp can download in any available format,
+        # then postprocessors convert to mp4 regardless of source container.
+        outtmpl = os.path.join(tmp, "video.%(ext)s")
         ydl_opts = {
-            "format": "best[ext=mp4]/best",
+            # Broadest selector: any single-file best quality, no ext restriction.
+            # Postprocessor handles the mp4 conversion so we're not blocked by
+            # "Requested format is not available" on Shorts / webm-only videos.
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
             "merge_output_format": "mp4",
-            "outtmpl": video_path,
+            "outtmpl": outtmpl,
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
@@ -393,10 +398,24 @@ def _download_to_cloudinary(youtube_url: str) -> str:
             "retries": 5,
             "cookiefile": os.path.join(os.path.dirname(__file__), "cookies.txt"),
             "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+            "postprocessors": [{
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": "mp4",
+            }],
         }
         log.info("[RAILWAY] Downloading YouTube video for Cloudinary relay: %s", youtube_url)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([youtube_url])
+            info = ydl.extract_info(youtube_url, download=True)
+            # Resolve the actual downloaded filename (ext may differ before conversion)
+            actual_path = ydl.prepare_filename(info)
+            # After postprocessing, file is always .mp4
+            video_path = os.path.splitext(actual_path)[0] + ".mp4"
+            if not os.path.exists(video_path):
+                # Fallback: find any video file in tmp
+                for f in os.listdir(tmp):
+                    if f.endswith((".mp4", ".webm", ".mkv")):
+                        video_path = os.path.join(tmp, f)
+                        break
 
         log.info("[RAILWAY] Uploading to Cloudinary…")
         result = cloudinary.uploader.upload(
