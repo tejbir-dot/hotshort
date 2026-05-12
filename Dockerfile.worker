@@ -35,6 +35,7 @@ RUN pip install -r requirements_worker.txt
 
 # Copy source (filtered by .dockerignore)
 COPY . .
+COPY cookies.txt /app/cookies.txt
 
 # Pre-download the Whisper model at build time so workers start instantly
 # (avoids slow cold-start download on every new worker boot)

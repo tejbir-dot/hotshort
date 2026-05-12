@@ -243,6 +243,7 @@ def handler(event):
                 "nocheckcertificate": True,
                 "socket_timeout": 30,
                 "retries": 3,
+                "cookiefile": "/app/cookies.txt",
                 "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "http_headers": {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -328,23 +329,53 @@ def handler(event):
 
 if os.getenv("LOCAL_HTTP_WORKER") == "1":
     from flask import Flask, jsonify, request
+    import queue
+    import uuid
 
     app = Flask(__name__)
 
+    _MAX_CONCURRENCY = max(1, int(os.getenv("LOCAL_WORKER_MAX_CONCURRENCY", "1") or "1"))
+    _MAX_QUEUE = max(0, int(os.getenv("LOCAL_WORKER_MAX_QUEUE", "0") or "0"))
+    
+    # Proper queue implementation
+    _TASK_QUEUE = queue.Queue(maxsize=_MAX_QUEUE + _MAX_CONCURRENCY)
+    _TASK_RESULTS = {}
+    
+    def _worker_thread_func():
+        while True:
+            task_info = _TASK_QUEUE.get()
+            if task_info is None:
+                break
+                
+            job_id = task_info["job_id"]
+            job_data = task_info["job_data"]
+            event = task_info["event"]
+            
+            try:
+                result = handler(job_data)
+                _TASK_RESULTS[job_id] = result
+            except Exception as e:
+                _TASK_RESULTS[job_id] = {"error": str(e)}
+            finally:
+                _TASK_QUEUE.task_done()
+                event.set()
+                
+    for _ in range(_MAX_CONCURRENCY):
+        t = threading.Thread(target=_worker_thread_func, daemon=True)
+        t.start()
+
     def _local_worker_capacity() -> dict:
-        max_concurrency = max(1, int(os.getenv("LOCAL_WORKER_MAX_CONCURRENCY", "1") or "1"))
-        max_queue = max(0, int(os.getenv("LOCAL_WORKER_MAX_QUEUE", "0") or "0"))
         with _ACTIVE_REQUESTS_LOCK:
             inflight = int(_ACTIVE_REQUESTS)
-        queue_depth = max(0, inflight - max_concurrency)
-        can_accept = inflight < (max_concurrency + max_queue)
+        queue_depth = max(0, inflight - _MAX_CONCURRENCY)
+        can_accept = inflight < (_MAX_CONCURRENCY + _MAX_QUEUE)
         return {
             "status": "ok",
             "gpu": _gpu_alive(),
             "inflight": inflight,
             "queue_depth": queue_depth,
-            "max_concurrency": max_concurrency,
-            "max_queue": max_queue,
+            "max_concurrency": _MAX_CONCURRENCY,
+            "max_queue": _MAX_QUEUE,
             "can_accept": can_accept,
             "busy": not can_accept,
         }
@@ -369,9 +400,22 @@ if os.getenv("LOCAL_HTTP_WORKER") == "1":
 
         with _ACTIVE_REQUESTS_LOCK:
             _ACTIVE_REQUESTS += 1
-        job = {"input": request.json}
+            
         try:
-            result = handler(job)
+            job_id = str(uuid.uuid4())
+            done_event = threading.Event()
+            
+            job_data = {"input": request.json}
+            _TASK_QUEUE.put({
+                "job_id": job_id,
+                "job_data": job_data,
+                "event": done_event
+            })
+            
+            # Wait for the dedicated worker thread to process it
+            done_event.wait()
+            
+            result = _TASK_RESULTS.pop(job_id, {"error": "job_lost"})
             return jsonify(result)
         finally:
             with _ACTIVE_REQUESTS_LOCK:
