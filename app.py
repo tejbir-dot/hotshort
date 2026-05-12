@@ -452,6 +452,12 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
         "task": "orchestrate",
         "video_url": video_url,      # ← Cloudinary URL, NOT youtube_url
         "youtube_url": youtube_url,  # kept for logging / metadata only
+        # Cloudinary creds so RunPod can upload the cut clips back
+        "cloud_provider": {
+            "cloud_name": os.getenv("CLOUDINARY_CLOUD_NAME"),
+            "api_key":    os.getenv("CLOUDINARY_API_KEY"),
+            "api_secret": os.getenv("CLOUDINARY_API_SECRET"),
+        },
     }
     if job_id:
         task_input["job_id"] = job_id

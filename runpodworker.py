@@ -334,7 +334,63 @@ def handler(event):
                     pipeline_mode=os.environ.get("HS_ORCH_PIPELINE_MODE", None),
                 )
 
-                return {"status": "ok", "clips": clips}
+                # ── Cut each clip + upload to Cloudinary ──────────────────────
+                # orchestrate() only returns timestamps — we must actually cut
+                # the video and upload each clip so Railway can serve them.
+                print(f"[WORKER] Orchestration done: {len(clips or [])} clips — cutting + uploading…")
+                cloudinary_ok = _configure_cloudinary()
+
+                processed_clips = []
+                for i, clip in enumerate(clips or []):
+                    start = float(clip.get("start", 0))
+                    end   = float(clip.get("end",   start + 30))
+                    clip_filename = f"clip_{i}_{int(start)}_{int(end)}.mp4"
+                    clip_path = os.path.join(temp_dir, clip_filename)
+
+                    print(f"[WORKER] ffmpeg cut clip {i}: {start:.1f}s → {end:.1f}s")
+                    try:
+                        result = subprocess.run(
+                            [
+                                "ffmpeg", "-y",
+                                "-ss", str(start),
+                                "-to", str(end),
+                                "-i", video_path,
+                                "-c", "copy",          # stream copy = fast, no re-encode
+                                "-avoid_negative_ts", "make_zero",
+                                clip_path,
+                            ],
+                            capture_output=True,
+                            timeout=120,
+                        )
+                        if result.returncode != 0:
+                            print(f"[WORKER] ffmpeg clip {i} failed: {result.stderr[-300:]}")
+                            processed_clips.append({**clip, "clip_url": None, "error": "ffmpeg_failed"})
+                            continue
+                    except Exception as e:
+                        print(f"[WORKER] ffmpeg clip {i} exception: {e}")
+                        processed_clips.append({**clip, "clip_url": None, "error": str(e)})
+                        continue
+
+                    # Upload clip to Cloudinary
+                    clip_url = None
+                    if cloudinary_ok:
+                        try:
+                            print(f"[WORKER] Uploading clip {i} to Cloudinary…")
+                            up = cloudinary.uploader.upload(
+                                clip_path,
+                                resource_type="video",
+                                folder="hotshort_clips",
+                            )
+                            clip_url = up.get("secure_url")
+                            print(f"[WORKER] Clip {i} uploaded: {clip_url}")
+                        except Exception as e:
+                            print(f"[WORKER] Cloudinary upload clip {i} failed: {e}")
+
+                    processed_clips.append({**clip, "clip_url": clip_url})
+
+                print(f"[WORKER] All clips processed: {len(processed_clips)}")
+                return {"status": "ok", "clips": processed_clips}
+                # ── End cut + upload ───────────────────────────────────────────
 
             subprocess.run(
                 ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path],
