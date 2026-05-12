@@ -355,6 +355,62 @@ def _orchestrate_via_local_gpu(youtube_url: str, job_id: str | None = None, time
     return out
 
 
+def _download_to_cloudinary(youtube_url: str) -> str:
+    """
+    Step 1 of the Railway→Cloudinary→RunPod pipeline.
+
+    Downloads the YouTube video on Railway (residential-ish IP, not blocked)
+    then uploads it to Cloudinary and returns the public CDN URL.
+    RunPod will then fetch from Cloudinary — never touching YouTube directly.
+    """
+    import tempfile
+    import yt_dlp
+
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+    api_key_c = os.getenv("CLOUDINARY_API_KEY")
+    api_secret = os.getenv("CLOUDINARY_API_SECRET")
+    if not (cloud_name and api_key_c and api_secret):
+        raise RuntimeError("Cloudinary credentials not configured (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET)")
+
+    try:
+        import cloudinary
+        import cloudinary.uploader
+    except ImportError:
+        raise RuntimeError("cloudinary package not installed on Railway — add to requirements.railway.txt")
+
+    cloudinary.config(cloud_name=cloud_name, api_key=api_key_c, api_secret=api_secret)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        video_path = os.path.join(tmp, "video.mp4")
+        ydl_opts = {
+            "format": "best[ext=mp4]/best",
+            "merge_output_format": "mp4",
+            "outtmpl": video_path,
+            "quiet": True,
+            "no_warnings": True,
+            "nocheckcertificate": True,
+            "socket_timeout": 30,
+            "retries": 5,
+            "cookiefile": os.path.join(os.path.dirname(__file__), "cookies.txt"),
+            "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        }
+        log.info("[RAILWAY] Downloading YouTube video for Cloudinary relay: %s", youtube_url)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([youtube_url])
+
+        log.info("[RAILWAY] Uploading to Cloudinary…")
+        result = cloudinary.uploader.upload(
+            video_path,
+            resource_type="video",
+            folder="hotshort_relay",
+        )
+        cdn_url = result.get("secure_url")
+        if not cdn_url:
+            raise RuntimeError("Cloudinary upload succeeded but returned no URL")
+        log.info("[RAILWAY] Cloudinary relay URL: %s", cdn_url)
+        return cdn_url
+
+
 def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 600) -> dict:
     endpoint = (os.getenv("RUNPOD_ENDPOINT_ID") or "").strip()
     if not endpoint:
@@ -364,10 +420,19 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
     if not api_key:
         raise RuntimeError("RUNPOD_API_KEY not configured")
 
+    # ── Railway → Cloudinary → RunPod pipeline ──────────────────────────────
+    # Railway downloads the video (its IPs aren't datacenter-blocked by YouTube)
+    # and uploads to Cloudinary. RunPod then fetches from Cloudinary — never
+    # touching YouTube directly, so datacenter IP blocks don't apply.
+    log.info("[RUNPOD] Relay mode: downloading on Railway then sending Cloudinary URL to RunPod")
+    video_url = _download_to_cloudinary(youtube_url)
+    # ────────────────────────────────────────────────────────────────────────
+
     url = _runpod_task_url(endpoint)
     task_input = {
         "task": "orchestrate",
-        "youtube_url": youtube_url,
+        "video_url": video_url,      # ← Cloudinary URL, NOT youtube_url
+        "youtube_url": youtube_url,  # kept for logging / metadata only
     }
     if job_id:
         task_input["job_id"] = job_id
@@ -380,7 +445,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
 
     print("[RAILWAY] SENDING RUNPOD REQUEST")
     print(payload)
-    log.info("[RUNPOD] Sending orchestrate request")
+    log.info("[RUNPOD] Sending orchestrate request with Cloudinary video_url")
     resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
     if resp.status_code != 200:
         raise RuntimeError(f"RunPod orchestrate failed: {resp.status_code} - {resp.text}")

@@ -167,8 +167,8 @@ def handler(event):
             "gpu": _gpu_alive(),
         }
 
-    if task in {"download", "transcribe_youtube", "orchestrate"} and not youtube_url:
-        return {"error": f"Invalid task '{task}': missing youtube_url/url"}
+    if task in {"download", "transcribe_youtube", "orchestrate"} and not youtube_url and not media_url:
+        return {"error": f"Invalid task '{task}': missing youtube_url or video_url"}
 
     if task == "analyze" and not transcript:
         return {"error": "Invalid task 'analyze': missing transcript"}
@@ -233,34 +233,61 @@ def handler(event):
 
                 return {"status": "ok", "segments": transcript}
 
-            ydl_opts = {
-                "format": "best",
-                "merge_output_format": "mp4",
-                "outtmpl": video_path,
-                "quiet": True,
-                "no_warnings": True,
-                "geo_bypass": True,
-                "nocheckcertificate": True,
-                "socket_timeout": 30,
-                "retries": 3,
-                "cookiefile": "/app/cookies.txt",
-                # Android client bypasses YouTube 403s on datacenter IPs
-                # (different token flow, less aggressively blocked than web client)
-                "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "http_headers": {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5",
-                    "Accept-Encoding": "gzip, deflate",
-                    "DNT": "1",
-                    "Connection": "keep-alive",
-                    "Upgrade-Insecure-Requests": "1",
-                },
-            }
+            # ── Video acquisition: prefer Cloudinary relay URL over direct yt-dlp ──
+            # When Railway has already downloaded and uploaded the video to Cloudinary,
+            # it passes `video_url` in the payload. RunPod downloads from Cloudinary
+            # (no YouTube IP blocks), so yt-dlp never runs on the datacenter IP.
+            if media_url:
+                # Path A: Cloudinary / pre-uploaded URL → simple HTTP download
+                print(f"[WORKER] Downloading from relay URL: {media_url}")
+                try:
+                    import requests as _requests
+                except Exception as e:
+                    return {"error": f"requests import failed: {e}"}
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([youtube_url])
+                if not (str(media_url).startswith("http://") or str(media_url).startswith("https://")):
+                    return {"error": "Invalid video_url: must be http(s)"}
+
+                resp = _requests.get(str(media_url), stream=True, timeout=300)
+                if resp.status_code != 200:
+                    return {"error": f"Video relay download failed: {resp.status_code}"}
+
+                with open(video_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=4 * 1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                print(f"[WORKER] Relay download complete: {os.path.getsize(video_path)} bytes")
+
+            else:
+                # Path B: Direct yt-dlp (fallback for local dev / non-RunPod environments)
+                print(f"[WORKER] Falling back to yt-dlp download: {youtube_url}")
+                ydl_opts = {
+                    "format": "best[ext=mp4]/best",
+                    "merge_output_format": "mp4",
+                    "outtmpl": video_path,
+                    "quiet": True,
+                    "no_warnings": True,
+                    "geo_bypass": True,
+                    "nocheckcertificate": True,
+                    "socket_timeout": 30,
+                    "retries": 3,
+                    "cookiefile": "/app/cookies.txt",
+                    # Android client bypasses YouTube 403s on datacenter IPs
+                    "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "http_headers": {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.5",
+                        "Accept-Encoding": "gzip, deflate",
+                        "DNT": "1",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1",
+                    },
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([youtube_url])
+            # ── End video acquisition ────────────────────────────────────────────
 
             if task == "download":
                 video_url = _upload_to_cloudinary(video_path) or _upload_to_s3(video_path)

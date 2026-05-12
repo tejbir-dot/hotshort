@@ -38,3 +38,4 @@ youtube-transcript-api==0.6.2
 psutil==6.1.0
 python-dateutil==2.9.0.post0
 six==1.17.0
+cloudinary>=1.36.0
