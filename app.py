@@ -3374,15 +3374,20 @@ def results(job_id):
                 viral_potential_emoji = "🔥" if confidence_pct >= 80 else "⚡" if confidence_pct >= 60 else "✨"
                 viral_potential_label = f"{viral_potential_emoji} {confidence_pct}%"
 
+                # [CLIP-DEBUG] resolve URL with fallback priority
+                resolved_url = simple_clip.get("clip_url") or simple_clip.get("video_url") or simple_clip.get("url") or ""
+                log.info(f"[CLIP-DEBUG] raw_clip_keys={list(simple_clip.keys())}")
+                log.info(f"[CLIP-DEBUG] resolved_clip_url={resolved_url}")
+
                 # Create proper ViralClip object from simple data
                 clip = ViralClip(
                     clip_id=simple_clip.get("clip_id") or simple_clip.get("job_id") or f"clip_{idx}",
                     title=simple_clip.get("title", f"Viral Clip #{idx}"),
-                    clip_url=simple_clip.get("clip_url", ""),
+                    clip_url=resolved_url,
                     platform_variants={
-                        "youtube_shorts": simple_clip.get("clip_url", ""),
-                        "instagram_reels": simple_clip.get("clip_url", ""),
-                        "tiktok": simple_clip.get("clip_url", ""),
+                        "youtube_shorts": resolved_url,
+                        "instagram_reels": resolved_url,
+                        "tiktok": resolved_url,
                     },
                     hook_type=hook_type,
                     confidence=confidence_pct,
