@@ -376,6 +376,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    _validate_runpod_capacity(endpoint, headers, task_label="orchestrate")
 
     print("[RAILWAY] SENDING RUNPOD REQUEST")
     print(payload)
@@ -480,6 +481,31 @@ def _runpod_status_url(endpoint: str, run_id: str) -> str:
         return f"https://{endpoint}-8000.proxy.runpod.net/status/{run_id}"
     return f"https://api.runpod.ai/v2/{endpoint}/status/{run_id}"
 
+def _runpod_health_url(endpoint: str) -> str:
+    if RUNPOD_MODE == "pod":
+        return f"https://{endpoint}-8000.proxy.runpod.net/health"
+    return f"https://api.runpod.ai/v2/{endpoint}/health"
+
+def _check_runpod_health(endpoint: str, headers: dict) -> dict:
+    url = _runpod_health_url(endpoint)
+    try:
+        import requests
+        resp = requests.get(url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return {}
+
+def _validate_runpod_capacity(endpoint: str, headers: dict, task_label: str = "task"):
+    health = _check_runpod_health(endpoint, headers)
+    workers = health.get("workers", {})
+    if workers:
+        active = workers.get("initializing", 0) + workers.get("running", 0) + workers.get("ready", 0)
+        in_queue = health.get("jobs", {}).get("inQueue", 0)
+        if in_queue > 0 and active == 0:
+            raise RuntimeError(f"RunPod Capacity Error ({task_label}): No active workers and queue is stalled.")
+
 # RunPod GPU integration functions
 
 
@@ -525,6 +551,19 @@ def _wait_for_runpod_completion(
                 _in_queue_since = time.time()
             queue_wait_s = time.time() - _in_queue_since
             log_step(f"RUNPOD STATUS: {status} (queue_wait={queue_wait_s:.0f}s)")
+
+            if queue_wait_s > 60:
+                health = _check_runpod_health(endpoint, headers)
+                workers = health.get("workers", {})
+                if workers:
+                    active = workers.get("initializing", 0) + workers.get("running", 0) + workers.get("ready", 0)
+                    if active == 0:
+                        raise RuntimeError(f"RunPod Capacity Error ({task_label}): Job stuck in queue for >60s and no workers are scaling up.")
+            
+            # Fail-fast: If the job is stuck in queue for >180 seconds, even with active workers, 
+            # it means the worker is likely crash-looping (OOM) and returning the job to the queue.
+            if queue_wait_s > 180:
+                raise RuntimeError(f"RunPod Crash Loop Error ({task_label}): Job stuck in IN_QUEUE for >180s. The worker is likely experiencing an Out-Of-Memory (OOM) crash and continuously dropping the task.")
 
             # Resubmission disabled: queue delays are normal; the UI should show "processing…"
         else:
@@ -584,6 +623,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         'Authorization': f"Bearer {os.environ.get('RUNPOD_API_KEY')}",
         'Content-Type': 'application/json'
     }
+    _validate_runpod_capacity(endpoint, headers, task_label="transcribe_youtube")
 
     log.info("[RUNPOD] Sending transcription request")
     response = requests.post(url, json=payload, headers=headers, timeout=600)  # Increased timeout for download
@@ -642,6 +682,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
         'Authorization': f"Bearer {os.environ.get('RUNPOD_API_KEY')}",
         'Content-Type': 'application/json'
     }
+    _validate_runpod_capacity(endpoint, headers, task_label="analyze")
 
     log.info("[RUNPOD] Sending analysis request to GPU endpoint...")
     response = requests.post(url, json=payload, headers=headers, timeout=300)
@@ -2142,7 +2183,10 @@ def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = N
             result["job_id"] = job_id
 
         job.analysis_data = json.dumps(result)
-        job.status = "completed"
+        if isinstance(result, dict) and "error" in result:
+            job.status = "failed"
+        else:
+            job.status = "completed"
         job.completed_at = datetime.utcnow()
         db.session.commit()
         app.logger.info("[PIPELINE] job=%s orchestrate_done clips=%s", job_id, len(result.get("clips") or []))
@@ -2500,7 +2544,12 @@ def v2_result(job_id: str):
         "status": job.status,
     }
     if job.status == "completed":
-        payload.update(envelope if isinstance(envelope, dict) else {"result": envelope})
+        if isinstance(envelope, dict):
+            env_copy = dict(envelope)
+            env_copy.pop("status", None)
+            payload.update(env_copy)
+        else:
+            payload["result"] = envelope
     else:
         # still pending/processing/failed: return lightweight diagnostics
         if isinstance(envelope, dict):

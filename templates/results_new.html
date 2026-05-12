@@ -1074,9 +1074,19 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
       </div>
 
       <!-- Processing message (shown while job is running) -->
-      <div class="empty-state" id="processingState" style="display: none;">
-        <h2>Analyzing your video…</h2>
-        <p style="opacity:0.8">This can take a few minutes (queue + processing). Keep this tab open.</p>
+      <div class="empty-state" id="processingState" style="display: none; text-align: center; margin-top: 40px;">
+        <div id="loader" class="loader" aria-hidden="true" style="display: block !important;">
+          <p class="loader-caption" style="margin: 0 auto 10px; max-width: 420px; font-size: 0.74rem; letter-spacing: 0.26em; text-transform: uppercase; color: rgba(255, 236, 205, 0.52);">HotShort Intelligence</p>
+          <div class="loader-visual" style="position: relative; width: min(220px, 72vw); margin: 0 auto 18px; padding: 14px; border-radius: 28px; background: radial-gradient(circle at 50% 20%, rgba(255, 190, 95, 0.14), transparent 52%), radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.08), transparent 56%), linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)); border: 1px solid rgba(255, 215, 170, 0.12); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255,255,255,0.05); overflow: hidden;">
+            <img class="loader-animation" src="{{ url_for('static', filename='media/hotshort-thinking.gif') }}" alt="HotShort AI analyzing video structure" style="position: relative; z-index: 1; display: block; width: 100%; height: auto; border-radius: 22px; mix-blend-mode: screen; filter: saturate(1.04) contrast(1.06) drop-shadow(0 0 22px rgba(255, 196, 112, 0.12));" />
+          </div>
+          <div class="wave" style="position: relative; overflow: hidden; width: 240px; height: 8px; margin: 0 auto 18px; border-radius: 999px; background: linear-gradient(90deg, rgba(255, 194, 94, 0.16), rgba(255, 244, 210, 0.92), rgba(255, 194, 94, 0.16)); background-size: 240% 100%; animation: waveMove 1.6s ease-in-out infinite; box-shadow: 0 0 20px rgba(255, 215, 160, 0.45), 0 0 46px rgba(255, 176, 71, 0.18);"></div>
+          <p id="loaderText" style="font-size: 0.9rem; letter-spacing: 0.3px; opacity: 0.85; color: var(--gold-100); font-weight: 500; margin: 0;">Analyzing video… this may take a few minutes</p>
+          <p class="loader-subtext" style="margin: 10px auto 0; max-width: 460px; font-size: 0.82rem; color: rgba(255, 235, 214, 0.68); letter-spacing: 0.01em;">Keep this tab open while we orchestrate the processing queue.</p>
+          <style>
+            @keyframes waveMove { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
+          </style>
+        </div>
       </div>
     </main>
 
@@ -1179,8 +1189,25 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           }
           if (st === 'failed') {
             const msg = data.error || 'Job failed.';
-            const node = document.querySelector('header p[style*=\"#ffb4b4\"]');
+            let node = document.querySelector('header p[style*="#ffb4b4"]');
+            if (!node) {
+              node = document.createElement('p');
+              node.style = "opacity:0.8;color:#ffb4b4";
+              const headerDiv = document.querySelector('header > div');
+              if (headerDiv) headerDiv.appendChild(node);
+            }
             if (node) node.textContent = msg;
+            
+            const pState = document.getElementById('processingState');
+            if (pState) pState.style.display = 'none';
+            const eState = document.getElementById('emptyState');
+            if (eState) {
+              eState.style.display = 'block';
+              const eTitle = eState.querySelector('h2');
+              if (eTitle) eTitle.textContent = 'Analysis Failed';
+              const eText = eState.querySelector('p');
+              if (eText) eText.textContent = msg;
+            }
             return;
           }
         } catch (e) {
