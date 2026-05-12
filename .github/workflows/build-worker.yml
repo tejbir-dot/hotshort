@@ -7,6 +7,7 @@ on:
       - "runpodworker.py"
       - "Dockerfile.worker"
       - "requirements_worker.txt"
+      - "cookies.txt"
 
 jobs:
   build-and-push:
