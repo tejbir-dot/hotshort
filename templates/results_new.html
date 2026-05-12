@@ -1168,9 +1168,43 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
       return s;
     }
 
+    function _isJobDone() {
+      const s = _jobStatus();
+      // Only treat as truly done if explicitly completed or failed
+      return (s === 'completed' || s === 'failed');
+    }
+
     function _isJobRunning() {
       const s = _jobStatus();
-      return (s === 'pending' || s === 'processing' || s === 'queued' || s === 'in_queue');
+      // Running states include RunPod's 'ok' intermediate status
+      if (s === 'pending' || s === 'processing' || s === 'queued' || s === 'in_queue' || s === 'ok' || s === '') {
+        return true;
+      }
+      // If status is set but not a terminal state, assume running
+      return !_isJobDone();
+    }
+
+    // Loader text cycling for UX feedback during long jobs
+    const _loaderMessages = [
+      'Downloading video from YouTube…',
+      'Transcribing audio with Whisper AI…',
+      'Building idea graph from transcript…',
+      'Scoring viral moments…',
+      'Selecting top clips…',
+      'Finalizing results… almost there!',
+    ];
+    let _loaderMsgIdx = 0;
+    let _loaderInterval = null;
+
+    function _startLoaderTextCycle() {
+      const el = document.getElementById('loaderText');
+      if (!el) return;
+      el.textContent = _loaderMessages[0];
+      if (_loaderInterval) clearInterval(_loaderInterval);
+      _loaderInterval = setInterval(() => {
+        _loaderMsgIdx = (_loaderMsgIdx + 1) % _loaderMessages.length;
+        if (el) el.textContent = _loaderMessages[_loaderMsgIdx];
+      }, 5000);
     }
 
     async function pollJobUntilDone(jobId) {
@@ -1180,31 +1214,26 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         await new Promise(r => setTimeout(r, delayMs));
         try {
           const resp = await fetch(`/v2/result/${encodeURIComponent(jobId)}`, { credentials: 'same-origin' });
-          if (!resp.ok) continue;
+          if (!resp.ok) { delayMs = Math.min(maxDelayMs, Math.floor(delayMs * 1.35)); continue; }
           const data = await resp.json();
           const st = (data.status || '').toString().toLowerCase();
           if (st === 'completed') {
-            window.location.reload();
+            if (_loaderInterval) clearInterval(_loaderInterval);
+            const el = document.getElementById('loaderText');
+            if (el) el.textContent = '✅ Done! Loading your clips…';
+            setTimeout(() => window.location.reload(), 600);
             return;
           }
           if (st === 'failed') {
-            const msg = data.error || 'Job failed.';
-            let node = document.querySelector('header p[style*="#ffb4b4"]');
-            if (!node) {
-              node = document.createElement('p');
-              node.style = "opacity:0.8;color:#ffb4b4";
-              const headerDiv = document.querySelector('header > div');
-              if (headerDiv) headerDiv.appendChild(node);
-            }
-            if (node) node.textContent = msg;
-            
+            if (_loaderInterval) clearInterval(_loaderInterval);
+            const msg = data.error || 'Job failed. Please try again.';
             const pState = document.getElementById('processingState');
             if (pState) pState.style.display = 'none';
             const eState = document.getElementById('emptyState');
             if (eState) {
               eState.style.display = 'block';
               const eTitle = eState.querySelector('h2');
-              if (eTitle) eTitle.textContent = 'Analysis Failed';
+              if (eTitle) eTitle.textContent = '❌ Analysis Failed';
               const eText = eState.querySelector('p');
               if (eText) eText.textContent = msg;
             }
@@ -1497,12 +1526,30 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
     if (!clips || clips.length === 0) {
       document.querySelector('.carousel-container').style.display = 'none';
-      if (_isJobRunning()) {
-        document.getElementById('processingState').style.display = 'block';
-        const jobId = currentJobId();
-        if (jobId) pollJobUntilDone(jobId);
-      } else {
+      const jobId = currentJobId();
+      const st = _jobStatus();
+
+      if (st === 'failed') {
+        // Job explicitly failed — show error state
+        const pState = document.getElementById('processingState');
+        if (pState) pState.style.display = 'none';
+        const eState = document.getElementById('emptyState');
+        if (eState) {
+          eState.style.display = 'block';
+          const eTitle = eState.querySelector('h2');
+          const eText = eState.querySelector('p');
+          if (eTitle) eTitle.textContent = 'Analysis Failed';
+          const env = window.WORKER_ENVELOPE || {};
+          if (eText) eText.textContent = env.error || 'Job failed. Please try again.';
+        }
+      } else if (st === 'completed') {
+        // Completed but no clips — show empty state
         document.getElementById('emptyState').style.display = 'block';
+      } else {
+        // Pending / processing / queued / ok / unknown — show loader and poll
+        document.getElementById('processingState').style.display = 'block';
+        _startLoaderTextCycle();
+        if (jobId) pollJobUntilDone(jobId);
       }
     } else {
       renderCarousel();
