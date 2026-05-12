@@ -244,6 +244,9 @@ def handler(event):
                 "socket_timeout": 30,
                 "retries": 3,
                 "cookiefile": "/app/cookies.txt",
+                # Android client bypasses YouTube 403s on datacenter IPs
+                # (different token flow, less aggressively blocked than web client)
+                "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
                 "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "http_headers": {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

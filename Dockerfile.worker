@@ -33,6 +33,9 @@ RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
 COPY requirements_worker.txt .
 RUN pip install -r requirements_worker.txt
 
+# Always use the latest yt-dlp so YouTube anti-bot bypasses are up to date
+RUN pip install -U yt-dlp
+
 # Copy source (filtered by .dockerignore)
 COPY . .
 COPY cookies.txt /app/cookies.txt
@@ -43,4 +46,4 @@ ARG WHISPER_MODEL=small
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('${WHISPER_MODEL}', device='cpu', compute_type='int8')" || true
 
 CMD ["python", "runpodworker.py"]
-# cookies.txt is committed and copied via COPY . . (build trigger v2)
+# cookies.txt is committed and copied via COPY . . (build trigger v3 - android client + latest yt-dlp)
