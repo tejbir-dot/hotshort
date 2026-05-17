@@ -182,18 +182,13 @@ def transcribe_media_url(
 
 
 def transcribe_local_media_path(local_path: str) -> List[Dict[str, Any]]:
-    """Upload a local file to a public URL and transcribe it using a RunPod worker."""
+    """Transcribe local file directly using local Whisper — no RunPod call."""
     if str(local_path or "").startswith(("http://", "https://")):
-        return transcribe_media_url(str(local_path))
+        from viral_finder.transcript_engine import extract_transcript
+        return extract_transcript(str(local_path))
 
     if not os.path.exists(local_path):
         raise FileNotFoundError(local_path)
 
-    media_url = _upload_to_cloudinary(local_path) or _upload_to_s3(local_path)
-    if not media_url:
-        raise RuntimeError(
-            "No upload provider configured for RunPod transcription. "
-            "Set Cloudinary (CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET) "
-            "or S3 (AWS_S3_BUCKET/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)."
-        )
-    return transcribe_media_url(media_url)
+    from viral_finder.transcript_engine import extract_transcript
+    return extract_transcript(local_path)
