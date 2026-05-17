@@ -388,7 +388,7 @@ def _download_to_cloudinary(youtube_url: str) -> str:
             # Broadest selector: any single-file best quality, no ext restriction.
             # Postprocessor handles the mp4 conversion so we're not blocked by
             # "Requested format is not available" on Shorts / webm-only videos.
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+            "format": "bestvideo*+bestaudio/best",
             "merge_output_format": "mp4",
             "outtmpl": outtmpl,
             "quiet": True,
