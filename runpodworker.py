@@ -70,26 +70,33 @@ def _gpu_alive() -> bool:
 
 
 def _resolve_whisper_runtime() -> tuple[str, str, str]:
-    device = "cuda" if _gpu_alive() else "cpu"
+    if torch is None:
+        print("[WHISPER] torch not installed → device=cpu")
+        gpu = False
+    elif not torch.cuda.is_available():
+        print(f"[WHISPER] torch.cuda.is_available()=False → device=cpu")
+        gpu = False
+    else:
+        gpu = True
+        try:
+            print(f"[WHISPER] GPU detected: {torch.cuda.get_device_name(0)} "
+                  f"| VRAM: {torch.cuda.get_device_properties(0).total_memory // 1024**2} MB")
+        except Exception as e:
+            print(f"[WHISPER] GPU detected but couldn't read name: {e}")
+
+    device = "cuda" if gpu else "cpu"
     model_name = (os.getenv("WHISPER_MODEL") or "small").strip() or "small"
     compute_type = (os.getenv("WHISPER_COMPUTE_TYPE") or "").strip()
 
     if not compute_type:
-        # Conservative defaults: keep CPU memory usage predictable and
-        # prefer a GPU-friendly mixed path when CUDA is available.
         compute_type = "int8" if device == "cpu" else "float16"
 
+    print(f"[WHISPER] Runtime selected → model={model_name} device={device} compute_type={compute_type}")
     return model_name, device, compute_type
 
 
 def _load_whisper_model() -> WhisperModel:
     model_name, device, compute_type = _resolve_whisper_runtime()
-    print(f"Whisper runtime: model={model_name} device={device} compute_type={compute_type}")
-    if device == "cuda" and torch is not None:
-        try:
-            print(f"GPU: {torch.cuda.get_device_name(0)}")
-        except Exception as e:
-            print(f"GPU: unavailable ({e})")
     return WhisperModel(model_name, device=device, compute_type=compute_type)
 
 
