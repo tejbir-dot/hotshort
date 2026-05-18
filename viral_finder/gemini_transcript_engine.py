@@ -24,6 +24,7 @@ import shutil
 import hashlib
 import tempfile
 import subprocess
+import traceback
 import warnings
 from typing import List, Dict, Generator, Tuple, Optional, Union
 
@@ -871,7 +872,9 @@ def transcribe_turbo(
                 audio_duration=audio_duration,
             )
         except Exception as e:
-            _log("WARN", f"[TWO-PASS] failed, falling back to existing turbo pipeline: {e}")
+            _log("ERROR", f"[TWO-PASS] FATAL: two-pass accelerated transcription crashed — NOT falling back. Error: {e}")
+            _log("ERROR", f"[TWO-PASS] Traceback:\n{traceback.format_exc()}")
+            raise
 
     # 1) Instrument VAD cost (optional; logging-only, no behavior change)
     if VAD_BENCH:
