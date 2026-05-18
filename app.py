@@ -775,7 +775,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
     _validate_runpod_capacity(endpoint, headers, task_label="analyze")
 
     log.info("[RUNPOD] Sending analysis request to GPU endpoint...")
-    response = requests.post(url, json=payload, headers=headers, timeout=300)
+    response = requests.post(url, json=payload, headers=headers, timeout=600)
 
     if response.status_code != 200:
         raise RuntimeError(f"RunPod analysis failed: {response.status_code} - {response.text}")
@@ -788,7 +788,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
         initial_data=result,
         request_url=url,
         request_payload=payload,
-        timeout=300,
+        timeout=600,
         task_label="analysis",
         poll_timeout_s=HS_RUNPOD_ANALYSIS_POLL_TIMEOUT_SECONDS,
     )
