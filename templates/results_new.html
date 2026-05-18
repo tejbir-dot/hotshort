@@ -1773,10 +1773,10 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
               <div class="clip-actions">
               <button class="btn" data-action="view">👁 View Reasons</button>
               
-              <select id="exportFormat_${clipIdNum}" class="form-select bg-dark text-white border-secondary mb-2" style="max-width: 200px; display: inline-block;">
-                <option value="tiktok">TikTok (9:16 • 60s • 30fps)</option>
-                <option value="instagram">Instagram Reel (9:16 • 90s • 30fps)</option>
-                <option value="shorts">YouTube Shorts (9:16 • 60s • 60fps)</option>
+              <select id="exportFormat_${clipIdNum}" style="background:rgba(255,210,120,0.06);color:rgba(255,210,120,0.85);border:1px solid rgba(255,210,120,0.25);border-radius:8px;padding:6px 10px;font-size:0.8rem;font-weight:600;cursor:pointer;outline:none;width:100%;transition:border-color 0.2s;">
+                <option value="tiktok" style="background:#1a1a1a">TikTok (9:16 • 60s • 30fps)</option>
+                <option value="instagram" style="background:#1a1a1a">Instagram Reel (9:16 • 90s • 30fps)</option>
+                <option value="shorts" style="background:#1a1a1a">YouTube Shorts (9:16 • 60s • 60fps)</option>
               </select>
 
               <a class="btn ${downloadClass}" data-action="download" ${downloadAttrs}>⬇ Download</a>
