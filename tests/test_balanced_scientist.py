@@ -2,6 +2,8 @@ import os
 import sys
 import importlib
 
+os.environ["HS_USE_OPTIMIZED_PASSES"] = "0"
+
 
 def _reload_idea_graph():
     sys.modules.pop("viral_finder.idea_graph", None)

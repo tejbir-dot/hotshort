@@ -1140,14 +1140,21 @@ def _run_transcription(ctx: PipelineContext) -> None:
 
 def _run_av_features(ctx: PipelineContext) -> None:
     t0 = time.time()
-    try:
-        ctx.audio_features = analyze_audio(ctx.path) or []
-    except Exception:
-        ctx.audio_features = []
-    try:
-        ctx.visual_features = analyze_visual(ctx.path) or []
-    except Exception:
-        ctx.visual_features = []
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_audio = executor.submit(analyze_audio, ctx.path)
+        future_visual = executor.submit(analyze_visual, ctx.path)
+        
+        try:
+            ctx.audio_features = future_audio.result() or []
+        except Exception:
+            ctx.audio_features = []
+            
+        try:
+            ctx.visual_features = future_visual.result() or []
+        except Exception:
+            ctx.visual_features = []
+
     ctx.av_features = {
         "audio": list(ctx.audio_features or []),
         "visual": list(ctx.visual_features or []),
@@ -1799,8 +1806,8 @@ def _run_validation(ctx: PipelineContext) -> None:
             else:
                 rejected.append(cand)
 
-    # Smart fallback: if validation removed everything, reuse already-computed candidates.
-    if not accepted:
+    # Smart fallback: if validation removed everything, reuse already-computed candidates if fallback is allowed.
+    if not accepted and ctx.allow_fallback:
         fallback_source = enriched_before_validation or list(ctx.raw_candidates or [])
         if fallback_source:
             log.warning("[ORCH-FALLBACK] validation removed all candidates, using enriched candidates")

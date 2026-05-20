@@ -227,6 +227,7 @@ class YouTubeCookieManager:
         log.info("🔄 Exporting YouTube cookies from %s browser...", browser)
 
         try:
+            # Try 1: Executing active python's yt_dlp module
             cmd = [
                 sys.executable,
                 "-m",
@@ -245,6 +246,29 @@ class YouTubeCookieManager:
                 text=True,
                 timeout=60,
             )
+
+            # Try 2: If active python doesn't have it as a module, fallback to direct "yt-dlp" command
+            if result.returncode != 0 and ("No module named yt_dlp" in (result.stderr or "") or "No module named" in (result.stderr or "")):
+                log.debug("Module yt_dlp not found in current Python path. Retrying with direct 'yt-dlp' executable...")
+                fallback_cmd = [
+                    "yt-dlp",
+                    "--cookies-from-browser",
+                    browser,
+                    "--cookies",
+                    str(self.cookies_path),
+                    "--extract-flat",
+                    "https://www.youtube.com/feed/home",
+                ]
+                try:
+                    result = subprocess.run(
+                        fallback_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                except FileNotFoundError:
+                    # 'yt-dlp' command is not in system PATH either, so keep the original module error
+                    pass
 
             if result.returncode == 0:
                 log.info("✅ Cookies extracted successfully from %s", browser)

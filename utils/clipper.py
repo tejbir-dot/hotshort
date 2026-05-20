@@ -9,16 +9,29 @@ def cut_clip_segment(video_path, start_time, end_time, output_path):
     # Make sure folder exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # Force overwrite and write correct codec
+    # Auto-detect if CUDA/NVENC is available for GPU acceleration
+    use_nvenc = False
+    if os.getenv("HS_USE_NVENC") == "1":
+        use_nvenc = True
+    elif os.getenv("HS_USE_NVENC") != "0":
+        try:
+            import torch
+            use_nvenc = torch.cuda.is_available()
+        except Exception:
+            pass
+
+    vcodec = "h264_nvenc" if use_nvenc else "libx264"
+    preset = "p4" if use_nvenc else "fast"  # p4 is a balanced speed/quality NVENC preset
+
     command = [
         "ffmpeg",
         "-y",
         "-ss", str(start_time),
         "-to", str(end_time),
         "-i", video_path,
-        "-c:v", "libx264",
+        "-c:v", vcodec,
         "-c:a", "aac",
-        "-preset", "fast",
+        "-preset", preset,
         "-movflags", "+faststart",
         output_path
     ]

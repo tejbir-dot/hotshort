@@ -1088,7 +1088,19 @@ def _generate_clip_ffmpeg_safe(video_path: str, start: float, end: float, output
         return False, (time.time() - t0), "copy_failed"
 
     try:
-        reencode_preset = os.environ.get("HS_CLIP_REENCODE_PRESET", "fast").strip() or "fast"
+        # Auto-detect if CUDA/NVENC is available for GPU acceleration
+        use_nvenc = False
+        if os.getenv("HS_USE_NVENC") == "1":
+            use_nvenc = True
+        elif os.getenv("HS_USE_NVENC") != "0":
+            try:
+                import torch
+                use_nvenc = torch.cuda.is_available()
+            except Exception:
+                pass
+
+        vcodec = "h264_nvenc" if use_nvenc else "libx264"
+        reencode_preset = os.environ.get("HS_CLIP_REENCODE_PRESET", "p4" if use_nvenc else "fast").strip() or ("p4" if use_nvenc else "fast")
         reencode_crf = int(os.environ.get("HS_CLIP_REENCODE_CRF", "18") or 18)
         import subprocess
         cmd = [
@@ -1101,15 +1113,17 @@ def _generate_clip_ffmpeg_safe(video_path: str, start: float, end: float, output
             "-i",
             video_path,
             "-c:v",
-            "libx264",
+            vcodec,
             "-preset",
             reencode_preset,
-            "-crf",
-            str(reencode_crf),
+        ]
+        if not use_nvenc:
+            cmd.extend(["-crf", str(reencode_crf)])
+        cmd.extend([
             "-c:a",
             "aac",
             output_path,
-        ]
+        ])
         rc = subprocess.run(
             cmd,
             stdout=subprocess.DEVNULL,

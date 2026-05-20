@@ -516,8 +516,12 @@ def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=
                 path, model_name="small", device="cpu", aud=None, vis=None, brain=brain
             )
             # ensure aud/vis exist
-            aud = analyze_audio(path) or []
-            vis = analyze_visual(path) or []
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                f_aud = executor.submit(analyze_audio, path)
+                f_vis = executor.submit(analyze_visual, path)
+                aud = f_aud.result() or []
+                vis = f_vis.result() or []
         else:
             raise RuntimeError("transcribe_and_analyze not available")
     except Exception as exc:
@@ -538,8 +542,12 @@ def find_viral_moments(path, top_k=12, allow_fallback=False, payoff_conf_thresh=
         print("[ULTRON] Transcript failed:", e)
         trs = []
 
-    aud = analyze_audio(path) or []
-    vis = analyze_visual(path) or []
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        f_aud = executor.submit(analyze_audio, path)
+        f_vis = executor.submit(analyze_visual, path)
+        aud = f_aud.result() or []
+        vis = f_vis.result() or []
 
     total_segs = len(trs)
     print("\n[ULTRON V33-X] Starting full self-evolving viral scan…")

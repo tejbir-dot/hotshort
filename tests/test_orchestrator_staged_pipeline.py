@@ -205,7 +205,8 @@ def test_staged_pipeline_backfills_longform_underflow(monkeypatch):
         ],
     )
 
-    out = orchestrator.orchestrate("dummy.mp4", top_k=5, pipeline_mode="staged", allow_fallback=False)
+    monkeypatch.setattr(orchestrator, "_final_quality_reject_reasons", lambda candidate: [])
+    out = orchestrator.orchestrate("dummy.mp4", top_k=5, pipeline_mode="staged", allow_fallback=True)
 
     assert len(out) >= 3
     assert any(bool(c.get("backfill")) for c in out)

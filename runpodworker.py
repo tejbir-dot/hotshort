@@ -89,7 +89,7 @@ def _resolve_whisper_runtime() -> tuple[str, str, str]:
     compute_type = (os.getenv("WHISPER_COMPUTE_TYPE") or "").strip()
 
     if not compute_type:
-        compute_type = "int8" if device == "cpu" else "float16"
+        compute_type = "int8" if device == "cpu" else "int8_float16"
 
     print(f"[WHISPER] Runtime selected → model={model_name} device={device} compute_type={compute_type}")
     return model_name, device, compute_type
@@ -229,7 +229,7 @@ def handler(event):
                     capture_output=True,
                 )
 
-                segments, _ = _get_model().transcribe(audio_path)
+                segments, _ = _get_model().transcribe(audio_path, beam_size=2, vad_filter=True, vad_parameters=dict(min_silence_duration_ms=500))
                 transcript = []
                 for s in segments:
                     transcript.append({
@@ -315,7 +315,7 @@ def handler(event):
                     capture_output=True,
                 )
 
-                segments, _ = _get_model().transcribe(audio_path)
+                segments, _ = _get_model().transcribe(audio_path, beam_size=2, vad_filter=True, vad_parameters=dict(min_silence_duration_ms=500))
                 transcript = []
                 for s in segments:
                     transcript.append({
@@ -405,7 +405,7 @@ def handler(event):
                 capture_output=True,
             )
 
-            segments, _ = _get_model().transcribe(audio_path)
+            segments, _ = _get_model().transcribe(audio_path, beam_size=2, vad_filter=True, vad_parameters=dict(min_silence_duration_ms=500))
             transcript = []
             for s in segments:
                 transcript.append({

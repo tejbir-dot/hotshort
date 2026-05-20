@@ -467,7 +467,7 @@ def load_model_instance(model_name: str, prefer_gpu: bool):
 
     if FasterWhisperModel:
         _log("INFO", f"Loading faster-whisper '{model_name}' on {device}...")
-        compute_type = "float16" if device == "cuda" else "int8"
+        compute_type = "int8_float16" if device == "cuda" else "int8"
         extra_kwargs = {}
         if (device or "").strip().lower() == "cpu":
             cpu_threads = FW_CPU_THREADS if FW_CPU_THREADS > 0 else (os.cpu_count() or 4)

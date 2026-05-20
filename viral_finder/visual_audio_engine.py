@@ -124,7 +124,7 @@ class AsyncVideoReader:
         self.stopped = True
 
 
-# def analyze_visual(
+def analyze_visual(
     video_path: str,
     max_seconds: float = None,
     target_samples: int = 50,

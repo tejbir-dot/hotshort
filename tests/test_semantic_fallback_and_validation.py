@@ -4,7 +4,7 @@ from viral_finder.validation_gates import apply_post_enrichment_validation
 
 
 def test_ultron_brain_falls_back_to_heuristics_without_embeddings(monkeypatch):
-    monkeypatch.setattr(ultron_brain, "embed_model", None)
+    monkeypatch.setattr(ultron_brain, "get_embed_model", lambda: None)
     monkeypatch.setattr(ultron_brain, "util", None)
     monkeypatch.setattr(ultron_brain, "torch", None)
 
