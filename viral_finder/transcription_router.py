@@ -17,6 +17,25 @@ import logging
 from typing import Optional, Dict, Any, Tuple
 from viral_finder.pipeline_context import PipelineContext
 
+# viral_finder/transcription_router.py
+"""
+🚀 Intelligent Transcription Engine Router
+
+Chooses optimal transcription engine based on:
+- Video duration
+- Segment count
+- Silence ratio  
+- Speech density
+- Arc complexity
+
+SaaS-optimized economics: Fast for short, Cheap for medium, GPU-accelerated for long
+"""
+
+import os
+import logging
+from typing import Optional, Dict, Any, Tuple
+from viral_finder.pipeline_context import PipelineContext
+
 log = logging.getLogger("transcription_router")
 
 # ===================================
@@ -26,7 +45,16 @@ log = logging.getLogger("transcription_router")
 # Override via env vars if needed
 TRANSCRIPTION_ROUTER_ENABLED = os.getenv("HS_TRANSCRIPTION_ROUTER_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
 TRANSCRIPTION_ROUTER_DEBUG = os.getenv("HS_TRANSCRIPTION_ROUTER_DEBUG", "0").strip().lower() in ("1", "true", "yes", "on")
-FORCE_RUNPOD_TRANSCRIPTION = os.getenv("HS_TRANSCRIPTION_FORCE_RUNPOD", "1").strip().lower() in ("1", "true", "yes", "on")
+
+# FORCE_LOCAL_GPU: When set, ALWAYS use local GPU transcription — even if FORCE_RUNPOD is on.
+# Set this to "1" on the RunPod worker to prevent the worker from calling RunPod again.
+# Auto-detected: if RUNPOD_POD_ID is set (we ARE a RunPod worker), default to "1".
+_on_runpod_worker = bool(os.getenv("RUNPOD_POD_ID") or os.getenv("RUNPOD_ENDPOINT_ID") and os.getenv("LOCAL_HTTP_WORKER"))
+FORCE_LOCAL_GPU_TRANSCRIPTION = os.getenv("HS_TRANSCRIPTION_FORCE_LOCAL", "1" if _on_runpod_worker else "0").strip().lower() in ("1", "true", "yes", "on")
+
+# FORCE_RUNPOD: Default changed to "0" — RunPod workers must NOT call RunPod again.
+# Set to "1" only on Railway (the orchestrating side), not on the worker.
+FORCE_RUNPOD_TRANSCRIPTION = os.getenv("HS_TRANSCRIPTION_FORCE_RUNPOD", "0").strip().lower() in ("1", "true", "yes", "on")
 
 # Duration thresholds (seconds)
 DURATION_SHORT_MAX = float(os.getenv("HS_TRANSCRIPTION_SHORT_MAX", "180") or 180)      # 3 min
@@ -48,6 +76,7 @@ ENGINE_CPU_TINY = "cpu_tiny"
 ENGINE_CPU_BASE = "cpu_base"
 ENGINE_CPU_BASE_PARALLEL = "cpu_base_parallel"
 ENGINE_RUNPOD_GPU = "runpod_gpu_medium"
+ENGINE_LOCAL_GPU = "local_gpu"   # Local faster-whisper on CUDA (used inside RunPod worker)
 ENGINE_LEGACY = "legacy"
 
 
@@ -83,8 +112,13 @@ def choose_transcription_engine(
     if not TRANSCRIPTION_ROUTER_ENABLED:
         return ENGINE_LEGACY
 
-    # The business decision is no longer optional: route transcription to RunPod GPU
-    # unless explicitly disabled for local development/testing.
+    # Priority 0: Force local GPU — used inside RunPod worker to prevent self-calling.
+    # This fires when HS_TRANSCRIPTION_FORCE_LOCAL=1 OR when RUNPOD_POD_ID is detected.
+    if FORCE_LOCAL_GPU_TRANSCRIPTION:
+        log.info("[ROUTER] -> LOCAL GPU (HS_TRANSCRIPTION_FORCE_LOCAL or RunPod worker detected)")
+        return ENGINE_LOCAL_GPU
+
+    # Priority 1: Force RunPod — set on Railway side only.
     if FORCE_RUNPOD_TRANSCRIPTION:
         log.info("[ROUTER] -> GPU (forced RunPod transcription)")
         return ENGINE_RUNPOD_GPU
@@ -183,8 +217,15 @@ def get_transcription_config(engine: str) -> Dict[str, Any]:
             "endpoint": os.getenv("RUNPOD_ENDPOINT_ID", ""),
             "description": "RunPod GPU medium, remote processing",
         },
+        ENGINE_LOCAL_GPU: {
+            "model": os.getenv("WHISPER_MODEL", MODEL_SMALL),  # Respects WHISPER_MODEL env
+            "device": "cuda",
+            "compute_type": "float16",
+            "num_workers": 1,
+            "description": "Local faster-whisper on CUDA (RunPod worker GPU)",
+        },
     }
-    
+
     return config.get(engine, config[ENGINE_LEGACY])
 
 

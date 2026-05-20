@@ -1067,7 +1067,7 @@ def _run_transcription(ctx: PipelineContext) -> None:
             except Exception as e:
                 log.warning("[TRANSCRIPTION] Router failed, using legacy mode: %s", e)
 
-        force_runpod = os.getenv("HS_TRANSCRIPTION_FORCE_RUNPOD", "1").strip().lower() in ("1", "true", "yes", "on")
+        force_runpod = os.getenv("HS_TRANSCRIPTION_FORCE_RUNPOD", "0").strip().lower() in ("1", "true", "yes", "on")
         local_gpu_available = False
         try:
             import torch  # type: ignore
@@ -1075,7 +1075,10 @@ def _run_transcription(ctx: PipelineContext) -> None:
         except Exception:
             local_gpu_available = False
 
-        runpod_required = force_runpod and not local_gpu_available
+        # If the router chose LOCAL_GPU (we're on the RunPod worker), skip the remote call.
+        # Also skip if GPU is detected locally — no point calling RunPod from RunPod.
+        engine_chosen = getattr(ctx, "transcription_engine", "unknown")
+        runpod_required = force_runpod and not local_gpu_available and engine_chosen != "local_gpu"
 
         if runpod_required:
             try:
@@ -1116,6 +1119,7 @@ def _run_transcription(ctx: PipelineContext) -> None:
                     log.info("[TRANSCRIPTION] Completed via legacy_transcribe (segments=%d)", len(transcript))
                 except Exception as e:
                     log.error("[TRANSCRIPTION] All engines failed: %s", e)
+
     
     if transcript and ctx.use_cache:
         _save_cached_transcript(ctx.path, transcript)

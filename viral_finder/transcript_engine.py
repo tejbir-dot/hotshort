@@ -53,7 +53,7 @@ except ImportError:
 # -----------------------
 # Config knobs (Preserved)
 # -----------------------
-DEFAULT_MODEL = os.environ.get("HS_TRANSCRIPT_MODEL", "base")
+DEFAULT_MODEL = os.environ.get("HS_TRANSCRIPT_MODEL") or os.environ.get("WHISPER_MODEL") or "small"
 DEFAULT_PRETEND_GPU = True
 CACHE_DIR = os.environ.get("HS_TRANSCRIPT_CACHE", ".hotshort_transcripts_cache")
 LOG_LEVEL = os.environ.get("HS_LOG_LEVEL", "INFO").upper()
@@ -666,7 +666,7 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
                 vad_filter=True,               # ⚡ Native VAD filters silence BEFORE inference
                 vad_parameters=vad_parameters,
                 word_timestamps=False,         # ⚡ Skip word-level (saves 15% time, unnecessary)
-                language="en",                 # ⚡ Skip auto-detect (saves 2-3s)
+                language=None,                  # ⚡ Auto-detect (required for Hindi/multilingual)
                 condition_on_previous_text=False,  # ⚡ No context hallucination overhead
             )
             segments_gen, _info = _unpack_transcribe_result(_res)
