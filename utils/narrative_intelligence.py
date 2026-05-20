@@ -526,9 +526,42 @@ def _contains_phrase(text_lower: str, phrase: str) -> bool:
     p = (phrase or "").strip().lower()
     if not p:
         return False
-    if p.count(" ") == 0:
+    if p in text_lower:
+        return True
+
+    p_words = p.split()
+    if len(p_words) <= 1:
         return bool(re.search(rf"\b{re.escape(p)}\b", text_lower))
-    return p in text_lower
+
+    # Clean text to alphanumeric lists
+    t_words = [w for w in re.findall(r"[\w']+", text_lower) if w]
+    if len(t_words) < len(p_words):
+        return False
+
+    # Standard greedy sub-sequence matcher with a max gap constraint of 5 words between consecutive matched words
+    p_idx = 0
+    last_t_idx = -1
+    for t_idx, w in enumerate(t_words):
+        if w == p_words[p_idx]:
+            if last_t_idx != -1 and (t_idx - last_t_idx) > 5:
+                # Reset search if gap is too large
+                p_idx = 0
+                last_t_idx = -1
+                # Check if this word can be the start of the phrase
+                if w == p_words[0]:
+                    p_idx = 1
+                    last_t_idx = t_idx
+            else:
+                p_idx += 1
+                last_t_idx = t_idx
+                if p_idx == len(p_words):
+                    return True
+        elif p_idx > 0 and w == p_words[0]:
+            # Reset starting match if we see the start word again closer
+            p_idx = 1
+            last_t_idx = t_idx
+            
+    return False
 
 
 def _score_hook_lexicon(text: str) -> float:
@@ -564,7 +597,7 @@ def _score_hook_lexicon(text: str) -> float:
     return _clamp01(score)
 
 
-def compute_hook_score(transcript: list, clip_start: float, look_s: float = 4.0) -> float:
+def compute_hook_score(transcript: list, clip_start: float, look_s: float = 8.0) -> float:
     """
     🚀 INTELLIGENT HOOK SCORING (8 Advanced Patterns)
     

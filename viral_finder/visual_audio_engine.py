@@ -125,124 +125,44 @@ class AsyncVideoReader:
 
 
 # def analyze_visual(
-#     video_path: str,
-#     max_samples: int = 60,
-#     resize=(160, 90),
-#     skip_visual=False
-# ):
-#     """
-#     ULTRON Ultra-Fast Visual Heuristic
-#     ---------------------------------
-#     - Hard capped samples
-#     - Early exit
-#     - Safe fallback
-#     - O(1) runtime feel
-#     """
-
-#     # 🔥 MASTER SWITCH
-#     if skip_visual:
-#         return [{"time": 0.0, "motion": 0.5}]
-
-#     import cv2
-#     import numpy as np
-
-#     cap = cv2.VideoCapture(video_path)
-#     if not cap.isOpened():
-#         return [{"time": 0.0, "motion": 0.5}]
-
-#     fps = cap.get(cv2.CAP_PROP_FPS) or 25
-#     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-
-#     if total == 0:
-#         cap.release()
-#         return [{"time": 0.0, "motion": 0.5}]
-
-#     # sample evenly across timeline
-#     step = max(1, total // max_samples)
-
-#     last = None
-#     out = []
-#     collected = 0
-
-#     for i in range(0, total, step):
-#         cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-#         ok, frame = cap.read()
-#         if not ok:
-#             break
-
-#         small = cv2.resize(frame, resize)
-#         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-
-#         if last is not None:
-#             diff = cv2.absdiff(gray, last)
-#             motion = float(diff.mean())
-#             out.append({
-#                 "time": round(i / fps, 2),
-#                 "motion": motion
-#             })
-#             collected += 1
-
-#         last = gray
-
-#         # 🚀 HARD STOP
-#         if collected >= max_samples:
-#             break
-
-#     cap.release()
-
-#     # fallback safety
-#     if not out:
-#         return [{"time": 0.0, "motion": 0.5}]
-
-#     return out
-def analyze_visual(
     video_path: str,
-    max_seconds: float = 1.0,
+    max_seconds: float = None,
     target_samples: int = 50,
     down=(128, 72),
     skip=False
 ):
     """
-    ULTRON V34 — LIGHTNING VISUAL ENGINE
-    ------------------------------------
-    - Scans only the first N seconds (default 1 sec)
-    - ~50 samples max
-    - Sequential read (FAST)
-    - Downscaled grayscale
-    - Motion = frame delta mean
+    ULTRON V35 — SPARSE UNIFORM SAMPLING VISUAL ENGINE
+    --------------------------------------------------
+    - Samples target_samples uniformly across the entire video.
+    - Extremely fast, uses downscaled grayscale frames.
+    - Avoids scanning only the first 1.0 second of video.
     """
-
     if skip:
         return [{"time": 0.0, "motion": 0.5}]
 
     import cv2
-    import time
     import numpy as np
 
-    t0 = time.time()
     cap = cv2.VideoCapture(video_path)
-
     if not cap.isOpened():
         return [{"time": 0.0, "motion": 0.5}]
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
-    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
-    # process only first N seconds
-    max_frames = min(total_frames, int(fps * max_seconds))
+    if total_frames <= 0:
+        cap.release()
+        return [{"time": 0.0, "motion": 0.5}]
 
-    step = max(1, max_frames // target_samples)
+    # Determine frame step to sample target_samples across the entire video duration
+    step = max(1, total_frames // target_samples)
 
     last = None
     results = []
-    count = 0
 
-    for idx in range(0, max_frames, step):
-
-        # break hard by time
-        if (time.time() - t0) > max_seconds:
-            break
-
+    for idx in range(0, total_frames, step):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ok, frame = cap.read()
         if not ok:
             break
@@ -250,15 +170,12 @@ def analyze_visual(
         gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), down)
 
         if last is not None:
-            # NumPy vector op
+            # NumPy vector operation for absolute difference
             motion = float(np.mean(cv2.absdiff(gray, last)))
             ts = round(idx / fps, 2)
             results.append({"time": ts, "motion": motion})
-            count += 1
 
         last = gray
-        if count >= target_samples:
-            break
 
     cap.release()
 

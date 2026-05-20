@@ -35,16 +35,26 @@ def get_fallback_brain():
 ULTRON_BRAIN_PATH = "ultron_brain.json"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") if torch is not None else "cpu"
 
-# ---- DYNAMIC DEVICE MODEL ----
-embed_model = None
-if SentenceTransformer is not None:
-    try:
-        embed_model = SentenceTransformer(
-            "sentence-transformers/all-MiniLM-L6-v2",
-            device=DEVICE
-        )
-    except Exception:
-        embed_model = None
+# ---- DYNAMIC DEVICE MODEL (LAZY LOADED SINGLETON) ----
+import threading
+
+_embed_model = None
+_embed_model_lock = threading.Lock()
+
+def get_embed_model():
+    global _embed_model
+    if _embed_model is None and SentenceTransformer is not None:
+        with _embed_model_lock:
+            if _embed_model is None:
+                try:
+                    _embed_model = SentenceTransformer(
+                        "sentence-transformers/all-MiniLM-L6-v2",
+                        device=DEVICE
+                    )
+                except Exception as e:
+                    print("[ULTRON BRAIN] Failed to load SentenceTransformer:", e)
+                    _embed_model = None
+    return _embed_model
 
 # ==============================
 # LOAD / SAVE
@@ -59,7 +69,7 @@ def load_ultron_brain():
             "clarity_weight": 1.0,
             "pattern_memory": [],
             "learning_rate": 0.03,
-            "semantic_enabled": bool(embed_model is not None),
+            "semantic_enabled": bool(SentenceTransformer is not None),
         }
         save_ultron_brain(brain)
         return brain
@@ -67,7 +77,7 @@ def load_ultron_brain():
     with open(ULTRON_BRAIN_PATH, "r") as f:
         brain = json.load(f)
     if "semantic_enabled" not in brain:
-        brain["semantic_enabled"] = bool(embed_model is not None)
+        brain["semantic_enabled"] = bool(SentenceTransformer is not None)
     return brain
 
 def save_ultron_brain(brain):
@@ -91,7 +101,7 @@ def ultron_brain_score(text: str, brain: dict):
     brain.setdefault("novelty_weight", 1.0)
     brain.setdefault("emotion_weight", 1.0)
     brain.setdefault("clarity_weight", 1.0)
-    brain.setdefault("semantic_enabled", bool(embed_model is not None))
+    brain.setdefault("semantic_enabled", bool(SentenceTransformer is not None))
 
     text = (text or "").strip()
     if not text:
@@ -133,12 +143,13 @@ def ultron_brain_score(text: str, brain: dict):
     # --------------------------------------------------
     # EMBEDDING MODE (PRODUCTION)
     # --------------------------------------------------
-    if embed_model is None or util is None or torch is None:
+    model = get_embed_model()
+    if model is None or util is None or torch is None:
         brain["semantic_enabled"] = False
         return ultron_brain_score(text, brain)
 
     try:
-        emb = embed_model.encode(
+        emb = model.encode(
             text,
             convert_to_tensor=True,
             normalize_embeddings=True
