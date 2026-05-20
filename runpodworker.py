@@ -70,21 +70,29 @@ def _gpu_alive() -> bool:
 
 
 def _resolve_whisper_runtime() -> tuple[str, str, str]:
-    if torch is None:
-        print("[WHISPER] torch not installed → device=cpu")
-        gpu = False
-    elif not torch.cuda.is_available():
-        print(f"[WHISPER] torch.cuda.is_available()=False → device=cpu")
-        gpu = False
+    # 1. Respect explicit environment variable WHISPER_DEVICE
+    env_device = os.getenv("WHISPER_DEVICE", "").strip().lower()
+    if env_device in ("cuda", "cpu"):
+        device = env_device
+        print(f"[WHISPER] WHISPER_DEVICE env override detected: device={device}")
     else:
-        gpu = True
+        # 2. Try detection via ctranslate2 or torch
+        has_gpu = False
         try:
-            print(f"[WHISPER] GPU detected: {torch.cuda.get_device_name(0)} "
-                  f"| VRAM: {torch.cuda.get_device_properties(0).total_memory // 1024**2} MB")
-        except Exception as e:
-            print(f"[WHISPER] GPU detected but couldn't read name: {e}")
+            import ctranslate2
+            if ctranslate2.get_cuda_device_count() > 0:
+                has_gpu = True
+                print(f"[WHISPER] ctranslate2 detected {ctranslate2.get_cuda_device_count()} CUDA device(s)")
+        except Exception:
+            pass
 
-    device = "cuda" if gpu else "cpu"
+        if not has_gpu:
+            if torch is not None and torch.cuda.is_available():
+                has_gpu = True
+                print(f"[WHISPER] PyTorch detected CUDA device")
+
+        device = "cuda" if has_gpu else "cpu"
+
     model_name = (os.getenv("WHISPER_MODEL") or "small").strip() or "small"
     compute_type = (os.getenv("WHISPER_COMPUTE_TYPE") or "").strip()
 
@@ -93,6 +101,7 @@ def _resolve_whisper_runtime() -> tuple[str, str, str]:
 
     print(f"[WHISPER] Runtime selected → model={model_name} device={device} compute_type={compute_type}")
     return model_name, device, compute_type
+
 
 
 def _load_whisper_model() -> WhisperModel:

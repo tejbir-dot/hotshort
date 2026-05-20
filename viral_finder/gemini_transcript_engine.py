@@ -105,6 +105,19 @@ def _log(level: str, *args):
 # -----------------------
 def resolve_device(prefer_gpu: bool = DEFAULT_PRETEND_GPU) -> str:
     try:
+        # 1. Respect explicit environment variable WHISPER_DEVICE
+        env_device = os.environ.get("WHISPER_DEVICE", "").strip().lower()
+        if env_device in ("cuda", "cpu"):
+            return env_device
+
+        # 2. Check ctranslate2 CUDA devices
+        try:
+            import ctranslate2
+            if ctranslate2.get_cuda_device_count() > 0:
+                return "cuda"
+        except Exception:
+            pass
+
         if prefer_gpu and torch is not None and torch.cuda.is_available():
             return "cuda"
     except Exception:
