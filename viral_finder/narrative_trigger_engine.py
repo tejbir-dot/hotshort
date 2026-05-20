@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 
+# ── English trigger phrases ──────────────────────────────────────────────────
 _BELIEF_REVERSAL = (
     "most people think",
     "but actually",
@@ -32,16 +33,82 @@ _STRONG_CLAIM = (
     "the reason is",
 )
 
+# ── Hindi / Hinglish trigger phrases ─────────────────────────────────────────
+# Belief Reversal: "log sochte hain", "lekin sach ye hai", "asal mein"
+_BELIEF_REVERSAL_HI = (
+    "log sochte hain",
+    "log mante hain",
+    "lekin sach ye hai",
+    "lekin asli baat",
+    "asal mein",
+    "असल में",
+    "लेकिन सच ये है",
+    "लोग सोचते हैं",
+    "हकीकत ये है",
+    "par sach ye hai",
+    "but sach ye hai",
+)
+# Secret Revelation: "raaz ye hai", "koi nahi batata"
+_SECRET_REVELATION_HI = (
+    "raaz ye hai",
+    "asli raaz",
+    "koi nahi batata",
+    "sabse badi baat",
+    "ye koi nahi batata",
+    "राज़ ये है",
+    "असली राज़",
+    "कोई नहीं बताता",
+    "सबसे बड़ी बात",
+    "sach baat ye hai",
+)
+# Mistake Explanation: "sabse badi galti", "log galat karte hain"
+_MISTAKE_EXPLANATION_HI = (
+    "sabse badi galti",
+    "log galat karte hain",
+    "ye galat hai",
+    "galat tarika",
+    "सबसे बड़ी गलती",
+    "लोग गलत करते हैं",
+    "ye sab galat kar rahe hain",
+    "isko galat samajhte hain",
+)
+# Strong Claim: "sach ye hai", "problem ye hai"
+_STRONG_CLAIM_HI = (
+    "sach ye hai",
+    "problem ye hai",
+    "asli problem",
+    "wajah ye hai",
+    "matlab ye hai",
+    "सच ये है",
+    "समस्या ये है",
+    "वजह ये है",
+    "seedhi baat",
+    "simple baat",
+)
+
 _TRIGGER_MAP = {
-    "belief_reversal": _BELIEF_REVERSAL,
-    "secret_revelation": _SECRET_REVELATION,
-    "mistake_explanation": _MISTAKE_EXPLANATION,
-    "strong_claim": _STRONG_CLAIM,
+    "belief_reversal":    _BELIEF_REVERSAL    + _BELIEF_REVERSAL_HI,
+    "secret_revelation":  _SECRET_REVELATION  + _SECRET_REVELATION_HI,
+    "mistake_explanation":_MISTAKE_EXPLANATION + _MISTAKE_EXPLANATION_HI,
+    "strong_claim":       _STRONG_CLAIM       + _STRONG_CLAIM_HI,
 }
 
-_CONTRAST_MARKERS = ("but", "however", "instead", "yet", "in reality", "actually")
-_NEG_WORDS = ("not", "never", "wrong", "can't", "dont", "don't", "no")
-_POS_WORDS = ("best", "right", "works", "truth", "real", "clear")
+# Contrast markers — English + Hindi Devanagari + Hinglish romanized
+_CONTRAST_MARKERS = (
+    "but", "however", "instead", "yet", "in reality", "actually",
+    "lekin", "parantu", "magar", "par",  # Hinglish
+    "लेकिन", "परंतु", "मगर", "पर",       # Devanagari
+)
+_NEG_WORDS = (
+    "not", "never", "wrong", "can't", "dont", "don't", "no",
+    "nahi", "galat", "mat",  # Hinglish
+    "नहीं", "गलत", "मत",     # Devanagari
+)
+_POS_WORDS = (
+    "best", "right", "works", "truth", "real", "clear",
+    "sahi", "sach", "asli",  # Hinglish
+    "सही", "सच", "असली",     # Devanagari
+)
 
 
 def _sentiment_proxy_shift(text: str) -> float:

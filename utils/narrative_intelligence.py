@@ -113,27 +113,27 @@ def detect_message_punch(clip_start: float, clip_end: float, text: str, transcri
     # HINDI / HINGLISH PUNCH MARKERS
     # ---------------------------
     hindi_punch_markers = [
-        "तो बात ये है",
-        "असल में",
-        "सच ये है",
-        "हकीकत ये है",
-        "यही कारण है",
-        "यही वजह है",
-        "इसका मतलब",
-        "याद रखो",
-        "आखिरकार",
-        "अंत में",
-        "तो समझो",
-        "सीधी बात",
-        "मतलब साफ है"
+        # Devanagari
+        "तो बात ये है", "असल में", "सच ये है", "हकीकत ये है",
+        "यही कारण है", "यही वजह है", "इसका मतलब", "याद रखो",
+        "आखिरकार", "अंत में", "तो समझो", "सीधी बात", "मतलब साफ है",
+        "सबसे जरूरी बात", "ध्यान रखो", "इसीलिए",
+        # Romanized Hinglish
+        "isliye", "to baat ye hai", "yahi wajah hai", "yahi karan hai",
+        "matlab ye hai", "seedhi baat", "sach ye hai", "asal mein",
+        "yaad rakho", "akhir mein", "to samjho", "sach baat",
+        "sabse important", "dhyan raho", "kyunki dekho",
     ]
 
     # ---------------------------
-    # EMOTIONAL PAYOFF MARKERS
+    # EMOTIONAL PAYOFF MARKERS  (English + Hindi)
     # ---------------------------
     payoff_markers = [
         "amazing", "insane", "crazy", "unbelievable", "mind-blowing",
-        "shocking", "devastating", "life-changing", "game-changer"
+        "shocking", "devastating", "life-changing", "game-changer",
+        # Hindi emotional words
+        "kamaal", "zabardast", "shandaar", "ajeeb", "hairaan",
+        "कमाल", "जबरदस्त", "शानदार", "अजीब", "हैरान",
     ]
 
     # ---------------------------
@@ -402,58 +402,53 @@ _STOPWORDS = {
 }
 
 _TENSION_PHRASES = (
-    "most people think",
-    "everyone thinks",
-    "people think",
-    "here's the problem",
-    "the thing is",
-    "what nobody tells you",
-    "what people don't realize",
-    "you'd think",
+    # English
+    "most people think", "everyone thinks", "people think",
+    "here's the problem", "the thing is", "what nobody tells you",
+    "what people don't realize", "you'd think",
+    # Hinglish romanized
+    "log sochte hain", "log mante hain", "lekin sach ye hai",
+    "sabse badi baat", "ye koi nahi batata", "asal mein",
+    "par sach ye hai", "asli baat ye hai",
+    # Devanagari
+    "लोग सोचते हैं", "हकीकत ये है", "असल में",
+    "सबसे बड़ी बात", "यही असली",
 )
 
 _CLOSURE_PHRASES = (
-    "so remember",
-    "don't forget",
-    "always remember",
-    "bottom line",
-    "to summarize",
-    "in conclusion",
-    "ultimately",
-    "the point is",
-    "and that's why",
-    "which is why",
-    "this is why",
+    # English
+    "so remember", "don't forget", "always remember", "final thought",
+    "bottom line", "to summarize", "in conclusion", "ultimately",
+    "the point is", "and that's why", "which is why", "this is why",
+    # Hinglish romanized
+    "yaad rakho", "to samjho", "seedhi baat", "to baat ye hai",
+    "akhir mein", "asal mein", "isliye", "matlab ye hai",
+    "sach baat ye hai", "yahi karan hai", "yahi wajah hai",
+    # Devanagari
+    "याद रखो", "तो समझो", "सीधी बात", "तो बात ये है",
+    "आखिरकार", "असल में", "इसलिए", "मतलब ये है",
 )
 
 # 🔥 PAYOFF PHRASES - Semantic markers that signal resolution/takeaway
 _PAYOFF_PHRASES = (
-    "that's the secret",
-    "that's why",
-    "that's the difference",
-    "the truth is",
-    "this is why",
-    "and that's how",
-    "that's what most people miss",
-    "that's the key",
-    "that's the real reason",
-    "here's the thing",
-    "and there you have it",
-    "so that's",
-    "that's exactly",
-    "there's your answer",
-    "the reality is",
-    "and that changes everything",
-    "so the lesson is",
-    "and here's what changed",
-    "that's the breakthrough",
-    "at the end of the day",
-    "the bottom line is",
-    "you want to know the crazy part",
-    "that one decision made all the difference",
-    "and that's when everything changed",
-    "the best part is",
-    "and now you know",
+    # English
+    "that's the secret", "that's why", "that's the difference", "the truth is",
+    "this is why", "and that's how", "that's what most people miss", "that's the key",
+    "that's the real reason", "here's the thing", "and there you have it",
+    "so that's", "that's exactly", "there's your answer", "the reality is",
+    "and that changes everything", "so the lesson is", "and here's what changed",
+    "that's the breakthrough", "at the end of the day", "the bottom line is",
+    "you want to know the crazy part", "that one decision made all the difference",
+    "and that's when everything changed", "the best part is", "and now you know",
+    # Hinglish romanized
+    "isliye", "yahi wajah hai", "yahi raaz hai", "to baat ye hai",
+    "matlab ye hai", "seedhi baat", "sach ye hai", "asal mein",
+    "yahi karan hai", "sach baat ye hai", "to samjho",
+    "sabse badi seekh", "ye hai asli raaz", "ab samjhe",
+    # Devanagari
+    "इसलिए", "यही वजह है", "यही राज़ है", "तो बात ये है",
+    "मतलब ये है", "सीधी बात", "सच ये है", "असल में",
+    "यही कारण है", "तो समझो", "अब समझे",
 )
 
 # 🚀 VIRAL RHETORIC PATTERNS - Structural framing that drives shares/rewatches
@@ -515,7 +510,9 @@ def transcript_text_window(transcript: list, start: float, end: float):
 def _word_tokens(text: str) -> list[str]:
     if not text:
         return []
-    return [w for w in re.findall(r"[a-zA-Z0-9']+", text.lower()) if w]
+    # Include Unicode word characters so Hindi/Devanagari script is counted,
+    # not silently dropped by the original [a-zA-Z0-9]+ pattern.
+    return [w for w in re.findall(r"[\w']+", text, flags=re.UNICODE) if w]
 
 
 def _first_sentence_word_count(text: str) -> int:

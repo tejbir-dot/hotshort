@@ -1249,13 +1249,42 @@ def _run_narrative_intelligence(ctx: PipelineContext) -> None:
     narrative_samples: List[Dict[str, float]] = []
 
     if ctx.transcript:
+        # ── Hindi / Hinglish keyword banks ──────────────────────────────────
+        _HOOK_HI = (
+            "kya aap jante hain", "kya aapko pata hai", "socho", "imagine karo",
+            "kabhi socha", "aisa kyun", "ye kyun hota hai",
+            "क्या आप जानते हैं", "क्या आपको पता है", "सोचो", "क्यों",
+        )
+        _PAYOFF_HI = (
+            "isliye", "to baat ye hai", "yahi wajah hai", "yahi karan hai",
+            "matlab ye hai", "seedhi baat", "sach ye hai", "asal mein",
+            "yaad rakho", "akhir mein", "to samjho", "sach baat",
+            "इसलिए", "तो बात ये है", "यही वजह है", "यही कारण है",
+            "मतलब ये है", "सीधी बात", "सच ये है", "असल में",
+            "याद रखो", "आखिरकार", "तो समझो",
+        )
+        _BUILD_HI = (
+            "kyunki", "to", "phir", "uske baad", "aur phir", "jaise ki",
+            "क्योंकि", "तो", "फिर", "उसके बाद", "और फिर", "जैसे कि",
+        )
+        # ────────────────────────────────────────────────────────────────────
         for seg in ctx.transcript:
             txt = str(seg.get("text", "") or "").lower()
-            if "?" in txt or any(k in txt for k in ("did you know", "what if", "ever wondered")):
+            if (
+                "?" in txt
+                or any(k in txt for k in ("did you know", "what if", "ever wondered"))
+                or any(k in txt for k in _HOOK_HI)
+            ):
                 role = "HOOK"
-            elif any(k in txt for k in ("that's why", "the point is", "in conclusion", "bottom line", "therefore")):
+            elif (
+                any(k in txt for k in ("that's why", "the point is", "in conclusion", "bottom line", "therefore"))
+                or any(k in txt for k in _PAYOFF_HI)
+            ):
                 role = "PAYOFF"
-            elif any(k in txt for k in ("because", "so", "for example", "then", "next")):
+            elif (
+                any(k in txt for k in ("because", "so", "for example", "then", "next"))
+                or any(k in txt for k in _BUILD_HI)
+            ):
                 role = "BUILD"
             else:
                 role = "BUILD"
