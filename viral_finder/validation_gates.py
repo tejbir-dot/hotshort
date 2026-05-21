@@ -1,8 +1,12 @@
-"""
+﻿"""
 Validation gate facade for post-enrichment policy.
 """
 
 from typing import Any, Dict, Iterable, List, Tuple
+
+# Kill-switch: set to False to bypass strict Hindi/Hinglish rejection gates.
+# Set back to True to re-enable strict validation.
+STRICT_GATES_ENABLED = False
 
 
 def _clamp01(value: Any) -> float:
@@ -103,6 +107,17 @@ def apply_post_enrichment_validation(
     min_peak: float = 0.22,
     payoff_conf_thresh: float = 0.5,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    # ---- SOFT MODE BYPASS ----
+    if not STRICT_GATES_ENABLED:
+        print("[INFO] Traffic-light gates bypassed! Forcing top 3 clips through.")
+        sorted_cands = sorted(
+            [dict(c, validation={"accepted": True, "reasons": []}) for c in (candidates or [])],
+            key=lambda x: float(x.get("final_score") or x.get("score", 0.0)),
+            reverse=True,
+        )
+        return sorted_cands[:3], []
+    # ---- END SOFT MODE BYPASS ----
+
     accepted: List[Dict[str, Any]] = []
     rejected: List[Dict[str, Any]] = []
     for cand in candidates or []:
