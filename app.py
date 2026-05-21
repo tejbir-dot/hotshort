@@ -414,9 +414,24 @@ def _download_via_api(youtube_url):
     """
     print(f"[INFO] Bypassing yt-dlp... Requesting MP4 link for: {youtube_url}", flush=True)
     
-    # Extract video ID
-    video_id = youtube_url.split("v=")[-1] if "v=" in youtube_url else youtube_url.split("/")[-1]
-    video_id = video_id.split("&")[0] if "&" in video_id else video_id
+    # Extract video ID (handling tracking params like ?si= and format variants)
+    import re
+    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})'
+    match = re.search(pattern, youtube_url)
+    if match:
+        video_id = match.group(1)
+    else:
+        # Fallback to string splits if regex fails
+        if "v=" in youtube_url:
+            video_id = youtube_url.split("v=")[-1].split("&")[0].split("?")[0]
+        elif "youtu.be/" in youtube_url:
+            video_id = youtube_url.split("youtu.be/")[-1].split("?")[0].split("&")[0]
+        elif "shorts/" in youtube_url:
+            video_id = youtube_url.split("shorts/")[-1].split("?")[0].split("&")[0]
+        else:
+            video_id = youtube_url.split("/")[-1].split("?")[0].split("&")[0]
+
+    print(f"[INFO] Cleaned Video ID: {video_id}", flush=True)
     
     url = "https://youtube-media-downloader.p.rapidapi.com/v2/video/details"
     querystring = {"videoId": video_id} 
