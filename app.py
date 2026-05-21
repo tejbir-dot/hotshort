@@ -350,117 +350,68 @@ def _orchestrate_via_local_gpu(youtube_url: str, job_id: str | None = None, time
         pipeline_mode=(os.getenv("HS_ORCH_PIPELINE_MODE") or "staged"),
     )
     out = {"status": "ok", "clips": clips or []}
-    if job_id is not None:
-        out["job_id"] = job_id
     return out
 
 
-def _extract_download_url(data):
-    """
-    Robustly extracts the direct video download URL from the JSON response.
-    Specifically parses the youtube-media-downloader API structure.
-    """
-    if not isinstance(data, dict):
-        return None
-        
-    videos_data = data.get('videos', {})
-    if not isinstance(videos_data, dict):
-        return None
-        
-    items = videos_data.get('items', [])
-    if not isinstance(items, list) or len(items) == 0:
-        return None
-        
-    combined_mp4 = []
-    combined_other = []
-    
-    for item in items:
-        url_str = item.get('url')
-        if not url_str:
-            continue
-            
-        has_audio = item.get('hasAudio', False)
-        ext = item.get('extension', '').lower()
-        quality = item.get('quality', '0p')
-        
-        try:
-            res_num = int(quality.lower().replace('p', ''))
-        except ValueError:
-            res_num = 0
-            
-        if has_audio:
-            if ext == 'mp4':
-                combined_mp4.append((res_num, url_str))
-            else:
-                combined_other.append((res_num, url_str))
-                
-    if combined_mp4:
-        combined_mp4.sort(key=lambda x: x[0], reverse=True)
-        print(f"[INFO] Selected combined MP4 stream with resolution {combined_mp4[0][0]}p", flush=True)
-        return combined_mp4[0][1]
-        
-    if combined_other:
-        combined_other.sort(key=lambda x: x[0], reverse=True)
-        print(f"[INFO] Selected combined non-MP4 stream with resolution {combined_other[0][0]}p", flush=True)
-        return combined_other[0][1]
-        
-    print("[WARNING] No combined video+audio stream found. Using first available stream.", flush=True)
-    return items[0].get('url')
-
-
 def _download_via_api(youtube_url):
-    """
-    Downloads YouTube video via RapidAPI and returns a direct MP4 link.
-    """
-    print(f"[INFO] Bypassing yt-dlp... Requesting MP4 link for: {youtube_url}", flush=True)
+    print(f"[INFO] Bypassing Google CDN... Requesting Proxy MP4 link for: {youtube_url}", flush=True)
     
-    # Extract video ID (handling tracking params like ?si= and format variants)
-    import re
-    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})'
-    match = re.search(pattern, youtube_url)
-    if match:
-        video_id = match.group(1)
-    else:
-        # Fallback to string splits if regex fails
-        if "v=" in youtube_url:
-            video_id = youtube_url.split("v=")[-1].split("&")[0].split("?")[0]
-        elif "youtu.be/" in youtube_url:
-            video_id = youtube_url.split("youtu.be/")[-1].split("?")[0].split("&")[0]
-        elif "shorts/" in youtube_url:
-            video_id = youtube_url.split("shorts/")[-1].split("?")[0].split("&")[0]
-        else:
-            video_id = youtube_url.split("/")[-1].split("?")[0].split("&")[0]
-
-    print(f"[INFO] Cleaned Video ID: {video_id}", flush=True)
+    # 1. Start the proxy download job
+    api_url = "https://youtube-info-download-api.p.rapidapi.com/ajax/download.php"
     
-    url = "https://youtube-media-downloader.p.rapidapi.com/v2/video/details"
-    querystring = {"videoId": video_id} 
-
-    headers = {
-        "x-rapidapi-key": os.environ.get("RAPIDAPI_KEY", "teri_api_key_yahan_daal_de"),
-        "x-rapidapi-host": "youtube-media-downloader.p.rapidapi.com"
+    querystring = {
+        "format": "720", 
+        "add_info": "0",
+        "url": youtube_url,
+        "audio_quality": "128",
+        "allow_extended_duration": "false",
+        "no_merge": "false",
+        "audio_language": "en"
     }
-
+    
+    headers = {
+        "Content-Type": "application/json",
+        "x-rapidapi-host": "youtube-info-download-api.p.rapidapi.com",
+        "x-rapidapi-key": os.environ.get("RAPIDAPI_KEY")
+    }
+    
     try:
-        response = requests.get(url, headers=headers, params=querystring, timeout=30)
+        response = requests.get(api_url, headers=headers, params=querystring, timeout=30)
         response.raise_for_status()
-        
         data = response.json()
-        print("[INFO] API Response received!", flush=True)
         
-        raw_mp4_url = _extract_download_url(data)
+        progress_url = data.get("progress_url")
+        if not progress_url:
+            raise RuntimeError(f"API Failed to provide progress URL. Response: {data}")
+            
+        print(f"[INFO] Proxy Job Started! Polling progress URL: {progress_url}", flush=True)
         
-        if not raw_mp4_url:
-             raise ValueError("API did not return an MP4 URL.")
-             
-        print(f"[INFO] Successfully extracted MP4 URL: {raw_mp4_url[:120]}...", flush=True)
-        return raw_mp4_url
-
-    except requests.exceptions.RequestException as e:
-        print(f"[ERROR] API Call Failed: {e}", flush=True)
-        return None
-    except KeyError as e:
-        print(f"[ERROR] JSON Parsing Failed. Check API response structure: {e}", flush=True)
+        # 2. Poll the progress URL until the video is ready
+        max_retries = 40  # Max 80 seconds wait
+        for i in range(max_retries):
+            time.sleep(2)
+            try:
+                prog_resp = requests.get(progress_url, timeout=30)
+                prog_data = prog_resp.json()
+                
+                # Check if download is ready
+                final_link = prog_data.get("download_url") or prog_data.get("url") or prog_data.get("file")
+                success_flag = prog_data.get("success")
+                
+                if success_flag and final_link:
+                    print(f"[INFO] Success! Got Final Proxy MP4 URL: {final_link[:120]}...", flush=True)
+                    return final_link
+                elif success_flag is False or prog_data.get("error"):
+                     raise RuntimeError(f"Proxy processing error: {prog_data}")
+                     
+                print(f"[TRACE] Proxy server still processing... (Attempt {i+1}/{max_retries})", flush=True)
+                
+            except Exception as e:
+                print(f"[WARN] Polling exception: {e}. Retrying...", flush=True)
+                
+        raise TimeoutError("Proxy API took too long to process the video.")
+    except Exception as e:
+        print(f"[ERROR] Proxy download setup failed: {e}", flush=True)
         return None
 
 
@@ -468,12 +419,12 @@ def _download_to_cloudinary(youtube_url: str) -> str:
     """
     Step 1 of the Railway→Cloudinary→RunPod pipeline.
 
-    Downloads the YouTube video on Railway via RapidAPI (residential-ish IP, not blocked)
+    Downloads the YouTube video on Railway via the SavNow proxy API (bypassing Google block)
     then uploads it to Cloudinary and returns the public CDN URL.
-    RunPod will then fetch from Cloudinary — never touching YouTube directly.
+    RunPod will then fetch from Cloudinary.
     """
     import tempfile
-
+    
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
     api_key_c = os.getenv("CLOUDINARY_API_KEY")
     api_secret = os.getenv("CLOUDINARY_API_SECRET")
@@ -488,45 +439,33 @@ def _download_to_cloudinary(youtube_url: str) -> str:
 
     cloudinary.config(cloud_name=cloud_name, api_key=api_key_c, api_secret=api_secret)
 
-    # 1. Fetch direct MP4 URL via RapidAPI
+    # 1. Get the final proxy MP4 URL
     raw_mp4_url = _download_via_api(youtube_url)
     if not raw_mp4_url:
-        raise RuntimeError(f"Failed to get direct MP4 URL from RapidAPI for: {youtube_url}")
+        raise RuntimeError(f"Failed to get direct MP4 URL from Proxy API for: {youtube_url}")
 
     with tempfile.TemporaryDirectory() as tmp:
         video_path = os.path.join(tmp, "video.mp4")
         
-        # 2. Download the direct MP4 to local temp file
-        log_step(f"[RAILWAY] Downloading direct MP4 from URL: {raw_mp4_url}")
+        log_step(f"[RAILWAY] Downloading direct MP4 from Proxy URL: {raw_mp4_url[:120]}...")
+        
+        # 2. Download the video from the proxy server
+        browser_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.youtube.com/"
+        }
+        
         try:
-            import re
-            ip_match = re.search(r'ip=([^&]+)', raw_mp4_url)
-            original_ip = ip_match.group(1) if ip_match else "127.0.0.1"
-            
-            log_step(f"[RAILWAY] Spoofing IP for Google Video CDN: {original_ip}")
-            
-            browser_headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "https://www.youtube.com/",
-                "Origin": "https://www.youtube.com",
-                "Accept": "*/*",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Sec-Fetch-Site": "cross-site",
-                "Sec-Fetch-Mode": "no-cors",
-                "X-Forwarded-For": original_ip,
-                "Client-IP": original_ip
-            }
-            
-            session = requests.Session()
-            with session.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
-                r.raise_for_status()
-                with open(video_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
+            with requests.Session() as session:
+                with session.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
+                    r.raise_for_status()
+                    with open(video_path, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
         except Exception as e:
             raise RuntimeError(f"Failed to download direct MP4 video from API URL: {e}")
-
+            
         # 3. Upload to Cloudinary
         log_step("[RAILWAY] Uploading to Cloudinary…")
         result = cloudinary.uploader.upload(
@@ -537,6 +476,7 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         cdn_url = result.get("secure_url")
         if not cdn_url:
             raise RuntimeError("Cloudinary upload succeeded but returned no URL")
+            
         log_step(f"[RAILWAY] Cloudinary relay URL: {cdn_url}")
         return cdn_url
 
