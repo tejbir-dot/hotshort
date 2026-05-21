@@ -349,6 +349,8 @@ def _orchestrate_via_local_gpu(youtube_url: str, job_id: str | None = None, time
         allow_fallback=False,
         pipeline_mode=(os.getenv("HS_ORCH_PIPELINE_MODE") or "staged"),
     )
+    # Apply format_viral_clips filter
+    clips = format_viral_clips(clips or [], min_duration=30.0, overlap_threshold=5.0)
     out = {"status": "ok", "clips": clips or []}
     return out
 
@@ -879,7 +881,7 @@ def _load_world_editor():
     return ClipEditor, ClipEditConfig
 
 from flask import make_response
-from utils.clipper import cut_clip_segment
+from utils.clipper import cut_clip_segment, format_viral_clips, get_video_duration
 
 # heavy editor stack lazy-loaded so the web service can start with minimal RAM.
 # the original top-level import pulled in torch/weights/ML pipelines and blew
@@ -2425,7 +2427,7 @@ def analyze():
             }), 402  # Payment required
         
         # 3. Acquire per-user concurrency slots (in-memory + cross-process file lock)
-        user_id = getattr(current_user, "id", None)
+        user_id = _effective_user_id_for_request()
         if not user_id:
             return jsonify({"error": "Missing user context"}), 401
 

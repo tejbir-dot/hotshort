@@ -1,5 +1,101 @@
 import subprocess
 import os
+import json
+
+def get_video_duration(video_path: str) -> float:
+    """
+    Get video duration in seconds using ffprobe.
+    """
+    try:
+        result = subprocess.run([
+            'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', video_path
+        ], capture_output=True, text=True, timeout=15)
+        data = json.loads(result.stdout)
+        return float(data['format']['duration'])
+    except Exception as e:
+        print(f"[FFPROBE ERROR] Failed to read video duration: {e}")
+        return 0.0
+
+def format_viral_clips(raw_clips, min_duration=30.0, overlap_threshold=5.0, video_duration=None):
+    """
+    Deduplicate clips that start at nearly the same time, and pad short clips to min_duration.
+    Supports both dictionary objects and objects with attributes.
+    """
+    if not raw_clips:
+        return []
+
+    print(f"[INFO] Formatting {len(raw_clips)} raw clips (Applying Deduplication & 30s Padding)...")
+    
+    # Copy clips to avoid in-place side effects
+    clips_copy = []
+    for c in raw_clips:
+        if isinstance(c, dict):
+            clips_copy.append(c.copy())
+        else:
+            import copy
+            try:
+                clips_copy.append(copy.copy(c))
+            except Exception:
+                clips_copy.append(c)
+
+    def get_val(item, key, default=0.0):
+        if isinstance(item, dict):
+            return item.get(key, default)
+        return getattr(item, key, default)
+
+    def set_val(item, key, val):
+        if isinstance(item, dict):
+            item[key] = val
+        else:
+            setattr(item, key, val)
+
+    # 1. Sort clips by start time, and if start same, descending duration
+    clips_copy.sort(key=lambda x: (get_val(x, 'start', 0.0), -(get_val(x, 'end', 0.0) - get_val(x, 'start', 0.0))))
+
+    deduplicated = []
+    for clip in clips_copy:
+        if not deduplicated:
+            deduplicated.append(clip)
+            continue
+
+        prev_clip = deduplicated[-1]
+        
+        # RULE 1: Deduplication - Check if start times are too close (Clones)
+        if abs(get_val(clip, 'start', 0.0) - get_val(prev_clip, 'start', 0.0)) <= overlap_threshold:
+            prev_duration = get_val(prev_clip, 'end', 0.0) - get_val(prev_clip, 'start', 0.0)
+            curr_duration = get_val(clip, 'end', 0.0) - get_val(clip, 'start', 0.0)
+            
+            # If current clip is longer, replace the previous one
+            if curr_duration > prev_duration:
+                deduplicated[-1] = clip 
+        else:
+            deduplicated.append(clip)
+
+    # RULE 2: The 30-Second Minimum (Padding)
+    final_clips = []
+    for clip in deduplicated:
+        start = get_val(clip, 'start', 0.0)
+        end = get_val(clip, 'end', 0.0)
+        duration = end - start
+        
+        if duration < min_duration:
+            new_end = start + min_duration
+            # Ensure we do not cut beyond the actual video length
+            if video_duration and new_end > video_duration:
+                new_end = video_duration
+            
+            print(f"[TRACE] Padded clip from {duration:.1f}s to {new_end - start:.1f}s")
+            set_val(clip, 'end', new_end)
+            if isinstance(clip, dict):
+                clip['duration'] = round(new_end - start, 2)
+            else:
+                if hasattr(clip, 'duration'):
+                    clip.duration = round(new_end - start, 2)
+                
+        final_clips.append(clip)
+
+    print(f"[INFO] Formatting complete. {len(final_clips)} viral clips ready.")
+    return final_clips
 
 def cut_clip_segment(video_path, start_time, end_time, output_path):
     """
@@ -48,3 +144,4 @@ def cut_clip_segment(video_path, start_time, end_time, output_path):
         return None
 
     return output_path
+

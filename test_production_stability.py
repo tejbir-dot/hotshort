@@ -12,6 +12,7 @@ import os
 import sys
 import json
 import time
+import uuid
 import logging
 from pathlib import Path
 
@@ -410,6 +411,7 @@ def test_worker_process_job():
     try:
         from models.user import Job, db
         from worker.main import process_job
+        from app import app
     except ImportError as e:
         log.info("skipping worker.process_job test (missing DB libs): %s", e)
         return True
@@ -473,41 +475,46 @@ def test_v2_api_endpoints():
     import app as app_module
     from app import app
 
-    prev = app_module.app.config.get('LOGIN_DISABLED', False)
-    app_module.app.config['LOGIN_DISABLED'] = True
-    with app.test_client() as client:
-        # submit job
-        payload = {"source_url": "https://youtube.com/watch?v=test"}
-        resp = client.post('/v2/analyze', json=payload)
-        log.info(f"submit status {resp.status_code} json={resp.get_json()}")
-        assert resp.status_code == 200
-        job_id = resp.get_json().get('job_id')
-        assert job_id
-        # fetch status
-        resp2 = client.get(f'/v2/result/{job_id}')
-        assert resp2.status_code == 200
-        data = resp2.get_json()
-        assert data.get('status') in ('pending','processing','completed','failed')
-        # now hit legacy analyze route with worker mode enabled; should create another pending job
-        os.environ['HS_WORKER_MODE'] = 'runpod'
-        resp3 = client.post('/analyze', data={'youtube_url': 'https://youtube.com/watch?v=foo'})
-        assert resp3.status_code in (302, 200)
-        # parse redirect to results and extract job id
-        if resp3.is_json:
-            body = resp3.get_json()
-            legacy_job = body.get('job_id')
-        else:
-            # redirect URL contains /results/<id>
-            loc = resp3.location or ''
-            legacy_job = loc.rsplit('/', 1)[-1]
-        assert legacy_job
-        resp4 = client.get(f'/v2/result/{legacy_job}')
-        assert resp4.status_code == 200
-        data2 = resp4.get_json()
-        assert data2.get('status') in ('pending','processing','completed','failed')
-    app_module.app.config['LOGIN_DISABLED'] = prev
-    os.environ.pop('HS_WORKER_MODE', None)
-    return True
+    prev_get_free = app_module.get_free_status
+    app_module.get_free_status = lambda u: {"is_paid": True, "free_clips_left": 999}
+    try:
+        prev = app_module.app.config.get('LOGIN_DISABLED', False)
+        app_module.app.config['LOGIN_DISABLED'] = True
+        with app.test_client() as client:
+            # submit job
+            payload = {"source_url": "https://youtube.com/watch?v=test"}
+            resp = client.post('/v2/analyze', json=payload)
+            log.info(f"submit status {resp.status_code} json={resp.get_json()}")
+            assert resp.status_code == 200
+            job_id = resp.get_json().get('job_id')
+            assert job_id
+            # fetch status
+            resp2 = client.get(f'/v2/result/{job_id}')
+            assert resp2.status_code == 200
+            data = resp2.get_json()
+            assert data.get('status') in ('pending','processing','completed','failed')
+            # now hit legacy analyze route with worker mode enabled; should create another pending job
+            os.environ['HS_WORKER_MODE'] = 'runpod'
+            resp3 = client.post('/analyze', data={'youtube_url': 'https://youtube.com/watch?v=foo'})
+            assert resp3.status_code in (302, 200)
+            # parse redirect to results and extract job id
+            if resp3.is_json:
+                body = resp3.get_json()
+                legacy_job = body.get('job_id')
+            else:
+                # redirect URL contains /results/<id>
+                loc = resp3.location or ''
+                legacy_job = loc.rsplit('/', 1)[-1]
+            assert legacy_job
+            resp4 = client.get(f'/v2/result/{legacy_job}')
+            assert resp4.status_code == 200
+            data2 = resp4.get_json()
+            assert data2.get('status') in ('pending','processing','completed','failed')
+        app_module.app.config['LOGIN_DISABLED'] = prev
+        os.environ.pop('HS_WORKER_MODE', None)
+        return True
+    finally:
+        app_module.get_free_status = prev_get_free
 
 
 def test_app_structure():

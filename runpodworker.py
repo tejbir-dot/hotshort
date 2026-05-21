@@ -7,6 +7,7 @@ import runpod
 import yt_dlp
 from dotenv import load_dotenv
 from faster_whisper import WhisperModel
+from utils.clipper import format_viral_clips, get_video_duration
 
 try:
     import torch
@@ -349,6 +350,10 @@ def handler(event):
                     allow_fallback=False,
                     pipeline_mode=os.environ.get("HS_ORCH_PIPELINE_MODE", None),
                 )
+
+                # Get actual video duration and format clips (Applying Deduplication & 30s Padding)
+                video_duration = get_video_duration(video_path)
+                clips = format_viral_clips(clips or [], min_duration=30.0, overlap_threshold=5.0, video_duration=video_duration)
 
                 # ── Cut each clip + upload to Cloudinary ──────────────────────
                 # orchestrate() only returns timestamps — we must actually cut
