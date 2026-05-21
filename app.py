@@ -355,16 +355,109 @@ def _orchestrate_via_local_gpu(youtube_url: str, job_id: str | None = None, time
     return out
 
 
+def _extract_download_url(data):
+    """
+    Robustly extracts the direct video download URL from the JSON response.
+    Specifically parses the youtube-media-downloader API structure.
+    """
+    if not isinstance(data, dict):
+        return None
+        
+    videos_data = data.get('videos', {})
+    if not isinstance(videos_data, dict):
+        return None
+        
+    items = videos_data.get('items', [])
+    if not isinstance(items, list) or len(items) == 0:
+        return None
+        
+    combined_mp4 = []
+    combined_other = []
+    
+    for item in items:
+        url_str = item.get('url')
+        if not url_str:
+            continue
+            
+        has_audio = item.get('hasAudio', False)
+        ext = item.get('extension', '').lower()
+        quality = item.get('quality', '0p')
+        
+        try:
+            res_num = int(quality.lower().replace('p', ''))
+        except ValueError:
+            res_num = 0
+            
+        if has_audio:
+            if ext == 'mp4':
+                combined_mp4.append((res_num, url_str))
+            else:
+                combined_other.append((res_num, url_str))
+                
+    if combined_mp4:
+        combined_mp4.sort(key=lambda x: x[0], reverse=True)
+        print(f"[INFO] Selected combined MP4 stream with resolution {combined_mp4[0][0]}p", flush=True)
+        return combined_mp4[0][1]
+        
+    if combined_other:
+        combined_other.sort(key=lambda x: x[0], reverse=True)
+        print(f"[INFO] Selected combined non-MP4 stream with resolution {combined_other[0][0]}p", flush=True)
+        return combined_other[0][1]
+        
+    print("[WARNING] No combined video+audio stream found. Using first available stream.", flush=True)
+    return items[0].get('url')
+
+
+def _download_via_api(youtube_url):
+    """
+    Downloads YouTube video via RapidAPI and returns a direct MP4 link.
+    """
+    print(f"[INFO] Bypassing yt-dlp... Requesting MP4 link for: {youtube_url}", flush=True)
+    
+    # Extract video ID
+    video_id = youtube_url.split("v=")[-1] if "v=" in youtube_url else youtube_url.split("/")[-1]
+    video_id = video_id.split("&")[0] if "&" in video_id else video_id
+    
+    url = "https://youtube-media-downloader.p.rapidapi.com/v2/video/details"
+    querystring = {"videoId": video_id} 
+
+    headers = {
+        "x-rapidapi-key": os.environ.get("RAPIDAPI_KEY", "teri_api_key_yahan_daal_de"),
+        "x-rapidapi-host": "youtube-media-downloader.p.rapidapi.com"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=querystring, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        print("[INFO] API Response received!", flush=True)
+        
+        raw_mp4_url = _extract_download_url(data)
+        
+        if not raw_mp4_url:
+             raise ValueError("API did not return an MP4 URL.")
+             
+        print(f"[INFO] Successfully extracted MP4 URL: {raw_mp4_url[:120]}...", flush=True)
+        return raw_mp4_url
+
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] API Call Failed: {e}", flush=True)
+        return None
+    except KeyError as e:
+        print(f"[ERROR] JSON Parsing Failed. Check API response structure: {e}", flush=True)
+        return None
+
+
 def _download_to_cloudinary(youtube_url: str) -> str:
     """
     Step 1 of the Railway→Cloudinary→RunPod pipeline.
 
-    Downloads the YouTube video on Railway (residential-ish IP, not blocked)
+    Downloads the YouTube video on Railway via RapidAPI (residential-ish IP, not blocked)
     then uploads it to Cloudinary and returns the public CDN URL.
     RunPod will then fetch from Cloudinary — never touching YouTube directly.
     """
     import tempfile
-    import yt_dlp
 
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
     api_key_c = os.getenv("CLOUDINARY_API_KEY")
@@ -380,44 +473,28 @@ def _download_to_cloudinary(youtube_url: str) -> str:
 
     cloudinary.config(cloud_name=cloud_name, api_key=api_key_c, api_secret=api_secret)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        # Use %(ext)s so yt-dlp can download in any available format,
-        # then postprocessors convert to mp4 regardless of source container.
-        outtmpl = os.path.join(tmp, "video.%(ext)s")
-        ydl_opts = {
-            # Broadest selector: any single-file best quality, no ext restriction.
-            # Postprocessor handles the mp4 conversion so we're not blocked by
-            # "Requested format is not available" on Shorts / webm-only videos.
-            "format": "18/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
-            "merge_output_format": "mp4",
-            "outtmpl": outtmpl,
-            "quiet": True,
-            "no_warnings": True,
-            "nocheckcertificate": True,
-            "socket_timeout": 30,
-            "retries": 5,
-            "cookiefile": os.path.join(os.path.dirname(__file__), "cookies.txt"),
-            "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-            "postprocessors": [{
-                "key": "FFmpegVideoConvertor",
-                "preferedformat": "mp4",
-            }],
-        }
-        log.info("[RAILWAY] Downloading YouTube video for Cloudinary relay: %s", youtube_url)
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=True)
-            # Resolve the actual downloaded filename (ext may differ before conversion)
-            actual_path = ydl.prepare_filename(info)
-            # After postprocessing, file is always .mp4
-            video_path = os.path.splitext(actual_path)[0] + ".mp4"
-            if not os.path.exists(video_path):
-                # Fallback: find any video file in tmp
-                for f in os.listdir(tmp):
-                    if f.endswith((".mp4", ".webm", ".mkv")):
-                        video_path = os.path.join(tmp, f)
-                        break
+    # 1. Fetch direct MP4 URL via RapidAPI
+    raw_mp4_url = _download_via_api(youtube_url)
+    if not raw_mp4_url:
+        raise RuntimeError(f"Failed to get direct MP4 URL from RapidAPI for: {youtube_url}")
 
-        log.info("[RAILWAY] Uploading to Cloudinary…")
+    with tempfile.TemporaryDirectory() as tmp:
+        video_path = os.path.join(tmp, "video.mp4")
+        
+        # 2. Download the direct MP4 to local temp file
+        log_step(f"[RAILWAY] Downloading direct MP4 from URL: {raw_mp4_url}")
+        try:
+            with requests.get(raw_mp4_url, stream=True, timeout=120) as r:
+                r.raise_for_status()
+                with open(video_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+        except Exception as e:
+            raise RuntimeError(f"Failed to download direct MP4 video from API URL: {e}")
+
+        # 3. Upload to Cloudinary
+        log_step("[RAILWAY] Uploading to Cloudinary…")
         result = cloudinary.uploader.upload(
             video_path,
             resource_type="video",
@@ -426,8 +503,9 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         cdn_url = result.get("secure_url")
         if not cdn_url:
             raise RuntimeError("Cloudinary upload succeeded but returned no URL")
-        log.info("[RAILWAY] Cloudinary relay URL: %s", cdn_url)
+        log_step(f"[RAILWAY] Cloudinary relay URL: {cdn_url}")
         return cdn_url
+
 
 
 def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 600) -> dict:
