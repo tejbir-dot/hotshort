@@ -1114,7 +1114,8 @@ def _run_transcription(ctx: PipelineContext) -> None:
 
             if not transcript and legacy_transcribe:
                 try:
-                    transcript = legacy_transcribe(ctx.path) or []
+                    _model_name = os.getenv("WHISPER_MODEL", "small")
+                    transcript = legacy_transcribe(ctx.path, _model_name, True) or []
                     source = "legacy_transcribe"
                     log.info("[TRANSCRIPTION] Completed via legacy_transcribe (segments=%d)", len(transcript))
                 except Exception as e:
