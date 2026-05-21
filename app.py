@@ -499,11 +499,26 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         # 2. Download the direct MP4 to local temp file
         log_step(f"[RAILWAY] Downloading direct MP4 from URL: {raw_mp4_url}")
         try:
+            import re
+            ip_match = re.search(r'ip=([^&]+)', raw_mp4_url)
+            original_ip = ip_match.group(1) if ip_match else "127.0.0.1"
+            
+            log_step(f"[RAILWAY] Spoofing IP for Google Video CDN: {original_ip}")
+            
             browser_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "https://www.youtube.com/"
+                "Referer": "https://www.youtube.com/",
+                "Origin": "https://www.youtube.com",
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-Fetch-Site": "cross-site",
+                "Sec-Fetch-Mode": "no-cors",
+                "X-Forwarded-For": original_ip,
+                "Client-IP": original_ip
             }
-            with requests.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
+            
+            session = requests.Session()
+            with session.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
                 r.raise_for_status()
                 with open(video_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
