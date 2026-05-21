@@ -499,7 +499,11 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         # 2. Download the direct MP4 to local temp file
         log_step(f"[RAILWAY] Downloading direct MP4 from URL: {raw_mp4_url}")
         try:
-            with requests.get(raw_mp4_url, stream=True, timeout=120) as r:
+            browser_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "https://www.youtube.com/"
+            }
+            with requests.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
                 r.raise_for_status()
                 with open(video_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
