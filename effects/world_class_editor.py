@@ -545,6 +545,36 @@ class ClipEditor:
             return "#podcast #viralclips"
         return " ".join(f"#{w}" for w, _ in top)
 
+    def _highlight_text(self, text: str) -> str:
+        words = text.split()
+        if not words:
+            return text
+        highlight_keywords = {
+            "secret", "mistake", "truth", "nobody", "stop", "why", "how", "instant", "viral", "wrong",
+            "money", "profit", "revenue", "sale", "ai", "tool", "automation", "grow", "growth", "fast",
+            "quick", "instantly", "never", "always", "power", "win", "lose", "free", "real", "fake"
+        }
+        highlighted_indices = []
+        for idx, w in enumerate(words):
+            clean = re.sub(r"[^\w]", "", w).lower()
+            if clean in highlight_keywords:
+                highlighted_indices.append(idx)
+                if len(highlighted_indices) >= 2:
+                    break
+        if not highlighted_indices:
+            longest_idx = -1
+            longest_len = -1
+            for idx, w in enumerate(words):
+                clean = re.sub(r"[^\w]", "", w)
+                if len(clean) > longest_len:
+                    longest_len = len(clean)
+                    longest_idx = idx
+            if longest_idx != -1:
+                highlighted_indices.append(longest_idx)
+        for idx in highlighted_indices:
+            words[idx] = f"{{\\rHighlight}}{words[idx]}{{\\r}}"
+        return " ".join(words)
+
     def _write_ass(
         self,
         path: str,
@@ -556,24 +586,19 @@ class ClipEditor:
         cta_line: Optional[str],
         hashtags_line: Optional[str],
     ) -> None:
-        font_size = 50 if height >= 1700 else 38
-        hook_size = max(30, int(font_size * 0.74))
-        cta_size = max(26, int(font_size * 0.56))
         header = [
             "[Script Info]",
             "ScriptType: v4.00+",
-            f"PlayResX: {width}",
-            f"PlayResY: {height}",
+            "PlayResX: 1080",
+            "PlayResY: 1920",
             "ScaledBorderAndShadow: yes",
             "",
             "[V4+ Styles]",
-            "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,"
-            "Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,"
-            "MarginL,MarginR,MarginV,Encoding",
-            # ASS colors use AABBGGRR. Keep a neutral, high-contrast palette.
-            f"Style: Caption,Arial,{font_size},&H00F8FAFC,&H00F8FAFC,&H00101214,&H6E000000,1,0,0,0,100,100,0,0,1,1.6,0.4,2,72,72,132,1",
-            f"Style: Hook,Arial,{hook_size},&H00F8FAFC,&H00F8FAFC,&H00101214,&H72000000,1,0,0,0,100,100,0,0,3,0,0,8,92,92,224,1",
-            f"Style: CTA,Arial,{cta_size},&H00F8FAFC,&H00F8FAFC,&H00101214,&H72000000,1,0,0,0,100,100,0,0,3,0,0,2,74,74,76,1",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+            "Style: Caption,Montserrat,65,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
+            "Style: Hook,Montserrat,75,&H00FFAA00,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
+            "Style: Highlight,Montserrat,70,&H0000C8FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
+            "Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -582,7 +607,9 @@ class ClipEditor:
         for seg in captions:
             if seg.end <= seg.start:
                 continue
-            events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{_ass_escape(seg.text)}")
+            escaped_text = _ass_escape(seg.text)
+            highlighted_text = self._highlight_text(escaped_text)
+            events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{highlighted_text}")
         if hook_line:
             hook_text = self._format_hook_line(hook_line)
             if hook_text:
