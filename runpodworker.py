@@ -94,7 +94,7 @@ def _resolve_whisper_runtime() -> tuple[str, str, str]:
 
         device = "cuda" if has_gpu else "cpu"
 
-    model_name = (os.getenv("WHISPER_MODEL") or "small").strip() or "small"
+    model_name = (os.getenv("WHISPER_MODEL") or "medium").strip() or "medium"
     compute_type = (os.getenv("WHISPER_COMPUTE_TYPE") or "").strip()
 
     if not compute_type:
