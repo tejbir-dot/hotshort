@@ -20,7 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     fontconfig \
-    fonts-montserrat \
     libgl1 \
     libglib2.0-0 \
     libsndfile1 \
@@ -30,8 +29,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcublas-12-0 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Refresh font cache
-RUN fc-cache -fv
+# Sniper Shot: Seedha GitHub se raw fonts uthao (Kabhi block nahi hota)
+RUN mkdir -p /usr/share/fonts/truetype/montserrat && \
+    wget -qO /usr/share/fonts/truetype/montserrat/Montserrat-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Regular.ttf" && \
+    wget -qO /usr/share/fonts/truetype/montserrat/Montserrat-Bold.ttf "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf" && \
+    wget -qO /usr/share/fonts/truetype/montserrat/Montserrat-ExtraBold.ttf "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-ExtraBold.ttf" && \
+    fc-cache -fv
 # Fix python symlinks and upgrade pip/setuptools once
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/python3.10 /usr/bin/python3 && \
