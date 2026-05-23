@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     git \
     curl \
+    wget \
+    unzip \
+    fontconfig \
     libgl1 \
     libglib2.0-0 \
     libsndfile1 \
@@ -25,6 +28,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcublas-11-8 \
     libcublas-12-0 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Montserrat font for cinematic ASS captions
+# Source: Google Fonts GitHub mirror (raw .ttf, no unzip needed)
+RUN mkdir -p /usr/share/fonts/truetype/montserrat && \
+    BASE="https://github.com/google/fonts/raw/main/ofl/montserrat/static" && \
+    for WEIGHT in Regular Bold SemiBold ExtraBold Black Italic BoldItalic; do \
+        wget -q "${BASE}/Montserrat-${WEIGHT}.ttf" \
+             -O "/usr/share/fonts/truetype/montserrat/Montserrat-${WEIGHT}.ttf" || true; \
+    done && \
+    fc-cache -fv && \
+    fc-list | grep -i montserrat
     
 # Fix python symlinks and upgrade pip/setuptools once
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
