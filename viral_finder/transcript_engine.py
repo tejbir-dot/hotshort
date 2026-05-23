@@ -480,7 +480,10 @@ def load_model_instance(model_name: str, prefer_gpu: bool):
 
     if FasterWhisperModel:
         _log("INFO", f"Loading faster-whisper '{model_name}' on {device}...")
-        compute_type = "int8" if device == "cuda" else "int8"  # int8 works on all GPUs (T4/V100/A100); int8_float16 requires Ampere+
+        # float32 = universally supported on ALL CUDA GPUs (T4/V100/A100/H100).
+        # int8 on CUDA still routes through cuBLAS and throws
+        # CUBLAS_STATUS_NOT_SUPPORTED on older/restricted GPU instances.
+        compute_type = "float32" if device == "cuda" else "int8"
         extra_kwargs = {}
         if (device or "").strip().lower() == "cpu":
             cpu_threads = FW_CPU_THREADS if FW_CPU_THREADS > 0 else (os.cpu_count() or 4)
@@ -492,14 +495,19 @@ def load_model_instance(model_name: str, prefer_gpu: bool):
             except TypeError:
                 model = FasterWhisperModel(model_name, device=device, compute_type=compute_type)
             _MODEL_CACHE[key] = ("faster", model, device)
+            _log("INFO", f"faster-whisper loaded: device={device} compute_type={compute_type} ✅")
             return _MODEL_CACHE[key]
         except Exception as e:
-            _log("WARN", f"Float16 failed, falling back to int8/default: {e}")
+            _log("WARN", f"GPU load failed ({e}), falling back to CPU int8...")
+            # Hard CPU fallback — no cuBLAS dependency at all
+            cpu_threads = FW_CPU_THREADS if FW_CPU_THREADS > 0 else (os.cpu_count() or 4)
+            cpu_kwargs = {"cpu_threads": int(max(1, cpu_threads)), "num_workers": int(max(1, FW_NUM_WORKERS))}
             try:
-                model = FasterWhisperModel(model_name, device=device, **extra_kwargs)
+                model = FasterWhisperModel(model_name, device="cpu", compute_type="int8", **cpu_kwargs)
             except TypeError:
-                model = FasterWhisperModel(model_name, device=device)
-            _MODEL_CACHE[key] = ("faster", model, device)
+                model = FasterWhisperModel(model_name, device="cpu", compute_type="int8")
+            _MODEL_CACHE[key] = ("faster", model, "cpu")
+            _log("INFO", "faster-whisper loaded on CPU int8 (fallback) ✅")
             return _MODEL_CACHE[key]
             
     if whisper:
