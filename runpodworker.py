@@ -355,11 +355,32 @@ def handler(event):
                 video_duration = get_video_duration(video_path)
                 clips = format_viral_clips(clips or [], min_duration=30.0, overlap_threshold=5.0, video_duration=video_duration)
 
-                # ── Cut each clip + upload to Cloudinary ──────────────────────
-                # orchestrate() only returns timestamps — we must actually cut
-                # the video and upload each clip so Railway can serve them.
-                print(f"[WORKER] Orchestration done: {len(clips or [])} clips — cutting + uploading…")
+                # ── Lazy-load world_class_editor (captions + reframe + audio polish) ──
+                _wce_editor_cls = None
+                _wce_config_cls = None
+                _wce_enabled = os.environ.get("HS_WORKER_EDITOR_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+                if _wce_enabled:
+                    try:
+                        from effects.world_class_editor import ClipEditor as _WCE, ClipEditConfig as _WCC
+                        _wce_editor_cls = _WCE
+                        _wce_config_cls = _WCC
+                        print("[WORKER] world_class_editor loaded ✅ — captions + reframe active")
+                    except Exception as _e:
+                        print(f"[WORKER] world_class_editor import failed (raw clips fallback): {_e}")
+                else:
+                    print("[WORKER] HS_WORKER_EDITOR_ENABLED=0 — skipping editor, raw clips mode")
+
+                # Grab full transcript from orchestrator output (needed for captions)
+                _full_transcript = None
+                if clips and isinstance(clips[0], dict):
+                    _full_transcript = clips[0].get("transcript") or clips[0].get("captions") or None
+
+                # ── Cut each clip + apply editor + upload to Cloudinary ──────────────
+                print(f"[WORKER] Orchestration done: {len(clips or [])} clips — cutting + editing + uploading…")
                 cloudinary_ok = _configure_cloudinary()
+
+                _editor_work_dir = os.path.join(temp_dir, "wce_work")
+                os.makedirs(_editor_work_dir, exist_ok=True)
 
                 processed_clips = []
                 for i, clip in enumerate(clips or []):
@@ -368,6 +389,7 @@ def handler(event):
                     clip_filename = f"clip_{i}_{int(start)}_{int(end)}.mp4"
                     clip_path = os.path.join(temp_dir, clip_filename)
 
+                    # Step 1: Raw fast cut (stream copy)
                     print(f"[WORKER] ffmpeg cut clip {i}: {start:.1f}s → {end:.1f}s")
                     try:
                         result = subprocess.run(
@@ -376,7 +398,7 @@ def handler(event):
                                 "-ss", str(start),
                                 "-to", str(end),
                                 "-i", video_path,
-                                "-c", "copy",          # stream copy = fast, no re-encode
+                                "-c", "copy",
                                 "-avoid_negative_ts", "make_zero",
                                 clip_path,
                             ],
@@ -392,13 +414,58 @@ def handler(event):
                         processed_clips.append({**clip, "clip_url": None, "error": str(e)})
                         continue
 
-                    # Upload clip to Cloudinary
+                    # Step 2: Apply world_class_editor (captions + reframe + audio)
+                    final_clip_path = clip_path  # default: raw cut
+                    if _wce_editor_cls is not None and _wce_config_cls is not None:
+                        try:
+                            edited_filename = f"edited_{i}_{int(start)}_{int(end)}.mp4"
+                            edited_path = os.path.join(temp_dir, edited_filename)
+
+                            # Grab clip-level transcript if available
+                            clip_transcript = (
+                                clip.get("transcript")
+                                or clip.get("captions")
+                                or _full_transcript
+                                or []
+                            )
+
+                            editor = _wce_editor_cls(work_dir=_editor_work_dir)
+                            edit_cfg = _wce_config_cls(
+                                add_captions=True,
+                                add_dynamic_overlays=True,
+                                add_cta=True,
+                                add_hashtags=True,
+                                add_emojis=True,
+                                enhance_visuals=True,
+                                enhance_audio=True,
+                                target_ratio="9:16",
+                            )
+
+                            print(f"[WORKER] Running world_class_editor on clip {i}…")
+                            edit_result = editor.enhance_pretrimmed_clip(
+                                input_path=clip_path,
+                                output_path=edited_path,
+                                source_start=start,
+                                source_end=end,
+                                transcript=clip_transcript,
+                                config=edit_cfg,
+                                clip_title=clip.get("text", "") or "",
+                            )
+                            if edit_result and os.path.exists(edit_result.output_path):
+                                final_clip_path = edit_result.output_path
+                                print(f"[WORKER] Editor done for clip {i} — score={edit_result.engagement_score:.1f}")
+                            else:
+                                print(f"[WORKER] Editor output missing for clip {i}, using raw cut")
+                        except Exception as _edit_err:
+                            print(f"[WORKER] Editor failed for clip {i} (falling back to raw cut): {_edit_err}")
+
+                    # Step 3: Upload final clip (edited or raw) to Cloudinary
                     clip_url = None
                     if cloudinary_ok:
                         try:
                             print(f"[WORKER] Uploading clip {i} to Cloudinary…")
                             up = cloudinary.uploader.upload(
-                                clip_path,
+                                final_clip_path,
                                 resource_type="video",
                                 folder="hotshort_clips",
                             )
@@ -411,7 +478,7 @@ def handler(event):
 
                 print(f"[WORKER] All clips processed: {len(processed_clips)}")
                 return {"status": "ok", "clips": processed_clips}
-                # ── End cut + upload ───────────────────────────────────────────
+                # ── End cut + edit + upload ────────────────────────────────────────────
 
             subprocess.run(
                 ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path],

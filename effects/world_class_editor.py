@@ -549,30 +549,55 @@ class ClipEditor:
         words = text.split()
         if not words:
             return text
-        highlight_keywords = {
-            "secret", "mistake", "truth", "nobody", "stop", "why", "how", "instant", "viral", "wrong",
-            "money", "profit", "revenue", "sale", "ai", "tool", "automation", "grow", "growth", "fast",
-            "quick", "instantly", "never", "always", "power", "win", "lose", "free", "real", "fake"
+
+        # Semantic color routing — priority: Danger > Success > Highlight
+        _danger_keywords = {
+            "wrong", "mistake", "fail", "failing", "failed", "failure", "lose", "losing", "loss",
+            "bad", "never", "stop", "quit", "risk", "trap", "scam", "fake", "lie", "lies",
+            "warning", "danger", "worst", "broke", "debt", "crash", "kill", "dead", "dying",
         }
-        highlighted_indices = []
+        _success_keywords = {
+            "win", "winning", "winner", "grow", "growth", "profit", "revenue", "sale", "sales",
+            "free", "best", "top", "success", "succeed", "rich", "wealth", "power", "strong",
+            "fast", "quick", "instant", "instantly", "viral", "launch", "unlock", "proven",
+        }
+        _highlight_keywords = {
+            "secret", "truth", "nobody", "why", "how", "money", "ai", "tool", "automation",
+            "always", "real", "hack", "exposed", "hidden",
+        }
+
+        def _style_for(word: str) -> str:
+            clean = re.sub(r"[^\w]", "", word).lower()
+            if clean in _danger_keywords:
+                return "Danger"
+            if clean in _success_keywords:
+                return "Success"
+            if clean in _highlight_keywords:
+                return "Highlight"
+            return ""
+
+        # First pass: find up to 2 semantically tagged words
+        tagged: list[tuple[int, str]] = []
         for idx, w in enumerate(words):
-            clean = re.sub(r"[^\w]", "", w).lower()
-            if clean in highlight_keywords:
-                highlighted_indices.append(idx)
-                if len(highlighted_indices) >= 2:
-                    break
-        if not highlighted_indices:
-            longest_idx = -1
-            longest_len = -1
+            style = _style_for(w)
+            if style:
+                tagged.append((idx, style))
+            if len(tagged) >= 2:
+                break
+
+        # Fallback: highlight longest word with golden Highlight if nothing matched
+        if not tagged:
+            longest_idx, longest_len = -1, -1
             for idx, w in enumerate(words):
                 clean = re.sub(r"[^\w]", "", w)
                 if len(clean) > longest_len:
                     longest_len = len(clean)
                     longest_idx = idx
             if longest_idx != -1:
-                highlighted_indices.append(longest_idx)
-        for idx in highlighted_indices:
-            words[idx] = f"{{\\rHighlight}}{words[idx]}{{\\r}}"
+                tagged.append((longest_idx, "Highlight"))
+
+        for idx, style in tagged:
+            words[idx] = f"{{\\r{style}}}{words[idx]}{{\\r}}"
         return " ".join(words)
 
     def _write_ass(
@@ -598,6 +623,8 @@ class ClipEditor:
             "Style: Caption,Montserrat,65,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
             "Style: Hook,Montserrat,75,&H00FFAA00,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
             "Style: Highlight,Montserrat,70,&H0000C8FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
+            "Style: Danger,Montserrat,70,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
+            "Style: Success,Montserrat,70,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
             "Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
             "",
             "[Events]",
