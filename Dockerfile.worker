@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     fontconfig \
+    fonts-montserrat \
     libgl1 \
     libglib2.0-0 \
     libsndfile1 \
@@ -29,13 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcublas-12-0 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Montserrat font for cinematic ASS captions (bulletproof zip method)
-RUN wget -qO /tmp/montserrat.zip "https://fonts.google.com/download?family=Montserrat" && \
-    mkdir -p /usr/share/fonts/truetype/montserrat && \
-    unzip -o /tmp/montserrat.zip -d /usr/share/fonts/truetype/montserrat/ && \
-    fc-cache -fv && \
-    rm /tmp/montserrat.zip
-    
+# Refresh font cache
+RUN fc-cache -fv
 # Fix python symlinks and upgrade pip/setuptools once
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/python3.10 /usr/bin/python3 && \
