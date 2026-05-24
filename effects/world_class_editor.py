@@ -57,14 +57,20 @@ def _nvenc_available() -> bool:
 def _video_encode_args(crf: int = 17, preset: str = "medium") -> List[str]:
     """Return encoder args: NVENC (GPU) if available, else libx264 (CPU)."""
     if _nvenc_available():
-        # NVENC: -cq = constant quality (like CRF), -preset p4 = balanced
-        nvenc_preset = "p4"  # p1=fastest … p7=slowest
+        # THE CINEMATIC UPGRADE: CQ 12 (Near-Lossless), Preset p5, High Tier
         return [
             "-c:v", "h264_nvenc",
-            "-preset", nvenc_preset,
-            "-rc", "vbr",
-            "-cq", str(max(15, min(30, crf))),
-            "-b:v", "0",
+            "-preset", "p5",       # p5 = Slower but High Quality
+            "-tune", "hq",         # HQ tuning
+            "-profile:v", "high",
+            "-rc", "vbr",          # Variable Bitrate
+            "-cq", "12",           # Near-Lossless Visuals
+            "-qmin", "10",
+            "-qmax", "14",
+            "-b:v", "8M",          # Target 8Mbps (Perfect for social media)
+            "-maxrate", "12M",
+            "-bufsize", "12M",
+            "-spatial-aq", "1"     # Better details in motion/sharp edges
         ]
     # CPU fallback
     return [
@@ -387,7 +393,7 @@ class ClipEditor:
         vf_parts = [f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}", f"scale={dst_w}:{dst_h}:flags=lanczos"]
         if config.enhance_visuals:
             vf_parts.append("eq=contrast=1.06:saturation=1.11:brightness=0.01")
-            vf_parts.append("unsharp=5:5:0.75:3:3:0.1")
+            vf_parts.append("unsharp=5:5:1.0:3:3:0.2") # Stronger luma sharp, slight chroma sharp
             if boring_mode:
                 vf_parts.append("scale=iw*1.03:ih*1.03")
                 vf_parts.append("crop=iw/1.03:ih/1.03")
