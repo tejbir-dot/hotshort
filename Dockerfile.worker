@@ -13,11 +13,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 python3.10-dev python3-pip ffmpeg git curl fontconfig \
     libgl1 libglib2.0-0 libsndfile1 gcc build-essential libcublas-11-8 libcublas-12-0 \
+    libass-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 2. The CTO Boss Move: Local Font Vendoring
 COPY fonts/ /usr/share/fonts/truetype/montserrat/
 RUN fc-cache -fv
+# Verify fonts are registered — this line prints in Docker build logs
+RUN echo "=== Font verification ===" && fc-list | grep -i montserrat || echo "WARNING: Montserrat not found in fc-list"
 # Fix python symlinks and upgrade pip/setuptools once
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/python3.10 /usr/bin/python3 && \

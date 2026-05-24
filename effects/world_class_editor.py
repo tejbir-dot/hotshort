@@ -27,6 +27,14 @@ except Exception:
 
 log = logging.getLogger("world_class_editor")
 
+# Font directory: matches the COPY path in Dockerfile.worker.
+# On the NVIDIA container, fontconfig may not index these correctly,
+# so we pass this path directly to libass via the fontsdir= parameter.
+_FONTS_DIR = os.environ.get(
+    "HS_FONTS_DIR",
+    "/usr/share/fonts/truetype/montserrat",
+)
+
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
@@ -130,7 +138,18 @@ class ClipEditor:
         _ensure_dir(self.work_dir)
 
     def _run(self, cmd: List[str], timeout_s: int = 120) -> None:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout_s)
+        result = subprocess.run(cmd, capture_output=True, timeout=timeout_s)
+        if result.stderr:
+            stderr_text = result.stderr.decode("utf-8", errors="replace")[-2000:]
+            # Log libass / fontconfig warnings so we can actually debug
+            for line in stderr_text.splitlines():
+                line_lower = line.lower()
+                if any(k in line_lower for k in ("libass", "font", "glyph", "subtitle", "fontselect", "error", "warning")):
+                    log.warning("[FFmpeg-stderr] %s", line.strip())
+            if result.returncode != 0:
+                log.error("[FFmpeg-FAIL] rc=%d | last stderr: %s", result.returncode, stderr_text[-500:])
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, cmd)
 
     def _probe_video(self, path: str) -> Dict[str, Any]:
         cmd = [
@@ -349,7 +368,9 @@ class ClipEditor:
             if boring_mode:
                 vf_parts.append("scale=iw*1.03:ih*1.03")
                 vf_parts.append("crop=iw/1.03:ih/1.03")
-        vf_parts.append("format=yuv420p")
+        # NOTE: format=yuv420p is intentionally NOT appended here.
+        # It must come AFTER the subtitles filter so libass can do
+        # RGBA compositing on the frame before pixel-format conversion.
         return ",".join(vf_parts)
 
     def _build_audio_filter(self, config: ClipEditConfig) -> str:
@@ -629,12 +650,12 @@ class ClipEditor:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            "Style: Caption,Arial,65,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
-            "Style: Hook,Arial,75,&H00FFAA00,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
-            "Style: Highlight,Arial,70,&H0000C8FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
-            "Style: Danger,Arial,70,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
-            "Style: Success,Arial,70,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
-            "Style: CTA,Arial,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
+            "Style: Caption,Montserrat,65,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
+            "Style: Hook,Montserrat,75,&H00FFAA00,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
+            "Style: Highlight,Montserrat,70,&H0000C8FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
+            "Style: Danger,Montserrat,70,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
+            "Style: Success,Montserrat,70,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
+            "Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -663,7 +684,8 @@ class ClipEditor:
             f.write("\n".join(header + events))
 
     def _burn_ass(self, input_path: str, ass_path: str, output_path: str, fps: int, preserve_quality: bool) -> None:
-        vf = f"subtitles={_ffmpeg_filter_path(ass_path)}"
+        fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
+        vf = f"subtitles={_ffmpeg_filter_path(ass_path)}:fontsdir={fonts_dir_esc},format=yuv420p"
         cmd = [
             "ffmpeg",
             "-y",
@@ -859,7 +881,8 @@ class ClipEditor:
                     cta_line=cta_line if cfg.add_cta else None,
                     hashtags_line=hashtags_line,
                 )
-                vf_render = f"{vf_render},subtitles={_ffmpeg_filter_path(ass_path)}"
+                fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
+                vf_render = f"{vf_render},subtitles={_ffmpeg_filter_path(ass_path)}:fontsdir={fonts_dir_esc}"
 
                 # ── Debug: verify .ass file before FFmpeg consumes it ──
                 if os.path.exists(ass_path):
@@ -876,6 +899,9 @@ class ClipEditor:
                         log.warning("[WCE-DEBUG] Could not read .ass for debug: %s", _re)
                 else:
                     log.error("[WCE-DEBUG] .ass file MISSING after _write_ass()! Path: %s", ass_path)
+
+            # format=yuv420p MUST come after subtitles for correct RGBA compositing
+            vf_render = f"{vf_render},format=yuv420p"
 
             log.info("[WCE-DEBUG] Final -vf filter: %s", vf_render)
 
