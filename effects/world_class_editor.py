@@ -64,9 +64,18 @@ def _ass_escape(text: str) -> str:
 
 
 def _ffmpeg_filter_path(path_value: str) -> str:
+    """Escape a filesystem path for use inside an FFmpeg libass filter expression.
+
+    libass requires:  \\ for backslash, \: for colon, \' for apostrophe,
+    \[ and \] for brackets.  We also normalise Windows backslashes to
+    forward slashes so the same code works locally and on Linux containers.
+    """
     p = (path_value or "").replace("\\", "/")
-    p = p.replace(":", r"\:")
+    # Order matters: escape special chars that libass interprets
     p = p.replace("'", r"\'")
+    p = p.replace(":", r"\:")
+    p = p.replace("[", r"\[")
+    p = p.replace("]", r"\]")
     return p
 
 
@@ -654,7 +663,7 @@ class ClipEditor:
             f.write("\n".join(header + events))
 
     def _burn_ass(self, input_path: str, ass_path: str, output_path: str, fps: int, preserve_quality: bool) -> None:
-        vf = f"subtitles='{_ffmpeg_filter_path(ass_path)}'"
+        vf = f"subtitles={_ffmpeg_filter_path(ass_path)}"
         cmd = [
             "ffmpeg",
             "-y",
@@ -850,7 +859,25 @@ class ClipEditor:
                     cta_line=cta_line if cfg.add_cta else None,
                     hashtags_line=hashtags_line,
                 )
-                vf_render = f"{vf_render},subtitles='{_ffmpeg_filter_path(ass_path)}'"
+                vf_render = f"{vf_render},subtitles={_ffmpeg_filter_path(ass_path)}"
+
+                # ── Debug: verify .ass file before FFmpeg consumes it ──
+                if os.path.exists(ass_path):
+                    ass_size = os.path.getsize(ass_path)
+                    log.info("[WCE-DEBUG] .ass file written OK: %s (%d bytes)", ass_path, ass_size)
+                    try:
+                        with open(ass_path, "r", encoding="utf-8") as _dbg:
+                            _lines = _dbg.readlines()
+                            _events = [l.strip() for l in _lines if l.startswith("Dialogue:")]
+                            log.info("[WCE-DEBUG] .ass has %d Dialogue events (showing first 3):", len(_events))
+                            for _ev in _events[:3]:
+                                log.info("[WCE-DEBUG]   %s", _ev)
+                    except Exception as _re:
+                        log.warning("[WCE-DEBUG] Could not read .ass for debug: %s", _re)
+                else:
+                    log.error("[WCE-DEBUG] .ass file MISSING after _write_ass()! Path: %s", ass_path)
+
+            log.info("[WCE-DEBUG] Final -vf filter: %s", vf_render)
 
             cmd = [
                 "ffmpeg",
