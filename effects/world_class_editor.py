@@ -26,6 +26,12 @@ try:
 except Exception:
     hf_pipeline = None
 
+# Fallback fonts dir for local Windows testing vs Linux RunPod
+if os.path.exists("./fonts"):
+    _FONTS_DIR = os.environ.get("HS_FONTS_DIR", os.path.abspath("./fonts"))
+else:
+    _FONTS_DIR = os.environ.get("HS_FONTS_DIR", "/usr/share/fonts/truetype/montserrat")
+
 log = logging.getLogger("world_class_editor")
 
 # Font directory: matches the COPY path in Dockerfile.worker.
@@ -123,7 +129,8 @@ def _ffmpeg_filter_path(path_value: str) -> str:
     forward slashes so the same code works locally and on Linux containers.
     """
     p = (path_value or "").replace("\\", "/")
-    # Order matters: escape special chars that libass interprets
+    # Avoid escaping colons if we are wrapping the path in single quotes later,
+    # but keep it for safety in complex graphs. Single quotes fix most Linux issues.
     p = p.replace("'", r"\'")
     p = p.replace(":", r"\:")
     p = p.replace("[", r"\[")
@@ -709,7 +716,8 @@ class ClipEditor:
 
     def _burn_ass(self, input_path: str, ass_path: str, output_path: str, fps: int, preserve_quality: bool) -> None:
         fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
-        vf = f"subtitles={_ffmpeg_filter_path(ass_path)}:fontsdir={fonts_dir_esc},format=yuv420p"
+        ass_esc = _ffmpeg_filter_path(ass_path)
+        vf = f"subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}',format=yuv420p"
         cmd = [
             "ffmpeg",
             "-y",
@@ -829,6 +837,12 @@ class ClipEditor:
                 boring_mode = self._is_boring_monologue(transcript_window)
                 pre_trim = None
             metadata["boring_monologue_detected"] = bool(boring_mode)
+            
+            # [WCE-DEBUG] Forensic Trace for Empty Transcripts
+            if not transcript_window:
+                log.warning(f"[WCE-FORENSIC] transcript_window is EMPTY for {source_start}-{source_end}! Check if transcriber sent valid data.")
+            else:
+                log.info(f"[WCE-FORENSIC] Loaded {len(transcript_window)} transcript words for {source_start}-{source_end}.")
 
             if isinstance(pre_trim, dict):
                 trim_in = _safe_float(pre_trim.get("in"), 0.0)
@@ -887,12 +901,16 @@ class ClipEditor:
                     ramp_window=ramp_window,
                 )
             vf_render = vf
-            if cfg.add_captions and captions:
+            
+            hook_line = clip_title.strip() if clip_title else (captions[0].text if captions else "")
+            cta_line = "Follow for more creator breakdowns"
+            hashtags_line = self._extract_hashtags(transcript_window) if cfg.add_hashtags else None
+            
+            has_any_overlay = (cfg.add_captions and captions) or (cfg.add_dynamic_overlays and hook_line) or (cfg.add_cta and cta_line)
+            
+            if has_any_overlay:
                 ass_path = os.path.join(self.work_dir, f"wc_subs_{uuid.uuid4().hex}.ass")
                 tmp_files.append(ass_path)
-                hook_line = clip_title.strip() if clip_title else captions[0].text
-                cta_line = "Follow for more creator breakdowns"
-                hashtags_line = self._extract_hashtags(transcript_window) if cfg.add_hashtags else None
                 self._write_ass(
                     path=ass_path,
                     width=target_wh[0],
@@ -904,7 +922,8 @@ class ClipEditor:
                     hashtags_line=hashtags_line,
                 )
                 fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
-                vf_render = f"{vf_render},subtitles={_ffmpeg_filter_path(ass_path)}:fontsdir={fonts_dir_esc}"
+                ass_esc = _ffmpeg_filter_path(ass_path)
+                vf_render = f"{vf_render},subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}'"
 
                 # ── Debug: verify .ass file before FFmpeg consumes it ──
                 if os.path.exists(ass_path):
