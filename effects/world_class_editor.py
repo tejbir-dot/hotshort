@@ -5,6 +5,7 @@ import re
 import shutil
 import statistics
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -138,18 +139,8 @@ class ClipEditor:
         _ensure_dir(self.work_dir)
 
     def _run(self, cmd: List[str], timeout_s: int = 120) -> None:
-        result = subprocess.run(cmd, capture_output=True, timeout=timeout_s)
-        if result.stderr:
-            stderr_text = result.stderr.decode("utf-8", errors="replace")[-2000:]
-            # Log libass / fontconfig warnings so we can actually debug
-            for line in stderr_text.splitlines():
-                line_lower = line.lower()
-                if any(k in line_lower for k in ("libass", "font", "glyph", "subtitle", "fontselect", "error", "warning")):
-                    log.warning("[FFmpeg-stderr] %s", line.strip())
-            if result.returncode != 0:
-                log.error("[FFmpeg-FAIL] rc=%d | last stderr: %s", result.returncode, stderr_text[-500:])
-        if result.returncode != 0:
-            raise subprocess.CalledProcessError(result.returncode, cmd)
+        # stderr ko sys.stderr pe bhej diya taaki RunPod logs mein print ho (DEVNULL hata diya)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=sys.stderr, timeout=timeout_s)
 
     def _probe_video(self, path: str) -> Dict[str, Any]:
         cmd = [
