@@ -37,6 +37,43 @@ _FONTS_DIR = os.environ.get(
 )
 
 
+def _nvenc_available() -> bool:
+    """Probe once whether h264_nvenc is usable on this system."""
+    if not hasattr(_nvenc_available, "_cached"):
+        try:
+            r = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-f", "lavfi", "-i",
+                 "nullsrc=s=64x64:d=0.1", "-c:v", "h264_nvenc",
+                 "-f", "null", "-"],
+                capture_output=True, timeout=10,
+            )
+            _nvenc_available._cached = r.returncode == 0
+        except Exception:
+            _nvenc_available._cached = False
+        log.info("[WCE] NVENC available: %s", _nvenc_available._cached)
+    return _nvenc_available._cached
+
+
+def _video_encode_args(crf: int = 17, preset: str = "medium") -> List[str]:
+    """Return encoder args: NVENC (GPU) if available, else libx264 (CPU)."""
+    if _nvenc_available():
+        # NVENC: -cq = constant quality (like CRF), -preset p4 = balanced
+        nvenc_preset = "p4"  # p1=fastest … p7=slowest
+        return [
+            "-c:v", "h264_nvenc",
+            "-preset", nvenc_preset,
+            "-rc", "vbr",
+            "-cq", str(max(15, min(30, crf))),
+            "-b:v", "0",
+        ]
+    # CPU fallback
+    return [
+        "-c:v", "libx264",
+        "-preset", preset,
+        "-crf", str(crf),
+    ]
+
+
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -234,12 +271,7 @@ class ClipEditor:
             vf,
             "-af",
             af,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "16",
+            *_video_encode_args(crf=16, preset="fast"),
             "-c:a",
             "aac",
             "-b:a",
@@ -405,12 +437,7 @@ class ClipEditor:
             "[v]",
             "-map",
             "[a]",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "16",
+            *_video_encode_args(crf=16, preset="fast"),
             "-c:a",
             "aac",
             "-b:a",
@@ -691,12 +718,10 @@ class ClipEditor:
             vf,
             "-r",
             str(max(24, int(fps))),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "slow" if preserve_quality else "veryfast",
-            "-crf",
-            "17" if preserve_quality else "20",
+            *_video_encode_args(
+                crf=17 if preserve_quality else 20,
+                preset="slow" if preserve_quality else "veryfast",
+            ),
             "-c:a",
             "aac",
             "-b:a",
@@ -910,12 +935,10 @@ class ClipEditor:
                 "0:a:0?",
                 "-r",
                 str(max(24, int(cfg.export_fps))),
-                "-c:v",
-                "libx264",
-                "-preset",
-                cfg.quality_preset if cfg.preserve_quality else "veryfast",
-                "-crf",
-                str(int(cfg.quality_crf if cfg.preserve_quality else 20)),
+                *_video_encode_args(
+                    crf=int(cfg.quality_crf if cfg.preserve_quality else 20),
+                    preset=cfg.quality_preset if cfg.preserve_quality else "veryfast",
+                ),
                 "-movflags",
                 "+faststart",
             ]
