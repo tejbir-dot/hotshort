@@ -108,8 +108,11 @@ except Exception:
 
 try:
     from utils.narrative_intelligence import compute_quality_scores
+    from utils.narrative_intelligence import cqs_cache_reset, cqs_cache_stats
 except Exception:
     compute_quality_scores = None
+    cqs_cache_reset = lambda: {}
+    cqs_cache_stats = lambda: {}
 try:
     from utils.narrative_intelligence import detect_message_punch as _detect_message_punch
 except Exception:
@@ -2516,6 +2519,8 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
 def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool) -> List[Dict]:
     start = time.time()
     print("PIPELINE STAGE: start staged pipeline")
+    # OPT-1: reset memoization cache at pipeline start
+    cqs_cache_reset()
     ctx = PipelineContext(
         path=path,
         top_k=max(1, int(top_k)),
@@ -2700,7 +2705,11 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
             out = env.get("candidates", [])
         except Exception:
             out = []
-    _record_stage(ctx, "SUMMARY", wall_s=round(time.time() - t0, 3), final=len(out), rejected=len(ctx.rejected_candidates))
+    # OPT-1: log cache stats before reset
+    _cqs_stats = cqs_cache_stats()
+    log.info("[CQS-CACHE] pipeline_end %s", _cqs_stats)
+    cqs_cache_reset()
+    _record_stage(ctx, "SUMMARY", wall_s=round(time.time() - t0, 3), final=len(out), rejected=len(ctx.rejected_candidates), cqs_cache=_cqs_stats)
     if trace:
         trace.render()
     print("TOTAL PROCESS TIME:", time.time() - start)

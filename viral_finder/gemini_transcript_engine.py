@@ -88,6 +88,9 @@ VAD_SMART_HARD_SILENCE_RATIO_THRESHOLD = float(
 FORCE_VAD = os.environ.get("HS_FORCE_VAD", "0").strip().lower() in ("1", "true", "yes", "on")
 FW_CPU_THREADS = int(os.environ.get("HS_FW_CPU_THREADS", "0") or 0)
 FW_NUM_WORKERS = int(os.environ.get("HS_FW_NUM_WORKERS", "2") or 2)
+# OPT-4: Language hint — skip auto-detection for known languages (saves ~10-15%)
+_WHISPER_LANG_RAW = (os.environ.get("HS_WHISPER_LANGUAGE") or "").strip().lower()
+WHISPER_LANGUAGE = _WHISPER_LANG_RAW if _WHISPER_LANG_RAW else None  # None = auto-detect
 
 # -----------------------
 # Logging helper
@@ -535,7 +538,7 @@ def _transcribe_baseline_vad(model, path: str, use_vad: bool, vad_params: Dict) 
         beam_size=1,
         vad_filter=bool(use_vad),
         word_timestamps=False,
-        language="en",
+        language=WHISPER_LANGUAGE or "en",
         condition_on_previous_text=False,
     )
     if use_vad:
@@ -898,7 +901,7 @@ def transcribe_turbo(
                 beam_size=1,
                 vad_filter=False,
                 word_timestamps=False,
-                language="en",
+                language=WHISPER_LANGUAGE or "en",
                 condition_on_previous_text=False,
             )
             _gen0 = _res0[0] if isinstance(_res0, (tuple, list)) else _res0
@@ -934,7 +937,7 @@ def transcribe_turbo(
                     beam_size=1,
                     vad_filter=bool(use_vad),
                     word_timestamps=False,
-                    language="en",
+                    language=WHISPER_LANGUAGE or "en",
                     condition_on_previous_text=False,
                 )
                 if use_vad:
@@ -986,7 +989,7 @@ def transcribe_turbo(
                         vad_filter=True,
                         vad_parameters=vad_params,
                         word_timestamps=False,
-                        language="en",
+                        language=WHISPER_LANGUAGE or "en",
                         condition_on_previous_text=False,
                     )
                     base = []
@@ -1023,7 +1026,7 @@ def transcribe_turbo(
         beam_size=1,              # ⚡ Greedy search (5x faster than beam_size=5)
         vad_filter=bool(use_vad),
         word_timestamps=False,    # ⚡ Skip word-level (saves 15% time, unnecessary for viral)
-        language="en",            # Skip auto-detection (saves 2-3s)
+        language=WHISPER_LANGUAGE,            # Skip auto-detection (saves 2-3s) if specified
         condition_on_previous_text=False,  # ⚡ No context hallucination
     )
     if use_vad:

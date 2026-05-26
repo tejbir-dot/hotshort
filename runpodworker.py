@@ -288,7 +288,7 @@ def handler(event):
                     "nocheckcertificate": True,
                     "socket_timeout": 30,
                     "retries": 3,
-                    "cookiefile": "/app/cookies.txt",
+                    "cookiefile": "/app/cookies.txt" if os.path.exists("/app/cookies.txt") else "cookies.txt" if os.path.exists("cookies.txt") else None,
                     # Android client bypasses YouTube 403s on datacenter IPs
                     "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
                     "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -383,6 +383,7 @@ def handler(event):
                 os.makedirs(_editor_work_dir, exist_ok=True)
 
                 processed_clips = []
+                clips_to_upload = []
                 for i, clip in enumerate(clips or []):
                     start = float(clip.get("start", 0))
                     end   = float(clip.get("end",   start + 30))
@@ -407,11 +408,11 @@ def handler(event):
                         )
                         if result.returncode != 0:
                             print(f"[WORKER] ffmpeg clip {i} failed: {result.stderr[-300:]}")
-                            processed_clips.append({**clip, "clip_url": None, "error": "ffmpeg_failed"})
+                            processed_clips.append((i, {**clip, "clip_url": None, "error": "ffmpeg_failed"}))
                             continue
                     except Exception as e:
                         print(f"[WORKER] ffmpeg clip {i} exception: {e}")
-                        processed_clips.append({**clip, "clip_url": None, "error": str(e)})
+                        processed_clips.append((i, {**clip, "clip_url": None, "error": str(e)}))
                         continue
 
                     # Step 2: Apply world_class_editor (captions + reframe + audio)
@@ -459,25 +460,43 @@ def handler(event):
                         except Exception as _edit_err:
                             print(f"[WORKER] Editor failed for clip {i} (falling back to raw cut): {_edit_err}")
 
-                    # Step 3: Upload final clip (edited or raw) to Cloudinary
-                    clip_url = None
-                    if cloudinary_ok:
+                    clips_to_upload.append((i, clip, final_clip_path))
+
+                # Step 3: Parallel uploads using ThreadPoolExecutor
+                if cloudinary_ok and clips_to_upload:
+                    from concurrent.futures import ThreadPoolExecutor
+                    print(f"[WORKER] Uploading {len(clips_to_upload)} clips to Cloudinary in parallel…")
+                    
+                    def _upload_fn(item):
+                        idx, clp, filepath = item
+                        url = None
                         try:
-                            print(f"[WORKER] Uploading clip {i} to Cloudinary…")
+                            print(f"[WORKER] Thread starting upload for clip {idx}…")
                             up = cloudinary.uploader.upload(
-                                final_clip_path,
+                                filepath,
                                 resource_type="video",
                                 folder="hotshort_clips",
                             )
-                            clip_url = up.get("secure_url")
-                            print(f"[WORKER] Clip {i} uploaded: {clip_url}")
+                            url = up.get("secure_url")
+                            print(f"[WORKER] Thread finished upload for clip {idx}: {url}")
                         except Exception as e:
-                            print(f"[WORKER] Cloudinary upload clip {i} failed: {e}")
+                            print(f"[WORKER] Cloudinary upload clip {idx} failed: {e}")
+                        return (idx, {**clp, "clip_url": url})
 
-                    processed_clips.append({**clip, "clip_url": clip_url})
+                    with ThreadPoolExecutor(max_workers=min(6, len(clips_to_upload))) as executor:
+                        upload_results = list(executor.map(_upload_fn, clips_to_upload))
+                    processed_clips.extend(upload_results)
+                else:
+                    # Cloudinary not configured or nothing to upload, keep None urls
+                    for idx, clp, filepath in clips_to_upload:
+                        processed_clips.append((idx, {**clp, "clip_url": None}))
 
-                print(f"[WORKER] All clips processed: {len(processed_clips)}")
-                return {"status": "ok", "clips": processed_clips}
+                # Sort back to preserve original clip list order
+                processed_clips.sort(key=lambda x: x[0])
+                final_clips_ordered = [item[1] for item in processed_clips]
+
+                print(f"[WORKER] All clips processed: {len(final_clips_ordered)}")
+                return {"status": "ok", "clips": final_clips_ordered}
                 # ── End cut + edit + upload ────────────────────────────────────────────
 
             subprocess.run(

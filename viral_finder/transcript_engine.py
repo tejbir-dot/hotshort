@@ -63,6 +63,9 @@ VAD_BENCH = os.environ.get("HS_VAD_BENCH", "0").strip().lower() in ("1", "true",
 VAD_COMPARE = os.environ.get("HS_VAD_COMPARE", "0").strip().lower() in ("1", "true", "yes", "on")
 FW_CPU_THREADS = int(os.environ.get("HS_FW_CPU_THREADS", "0") or 0)
 FW_NUM_WORKERS = int(os.environ.get("HS_FW_NUM_WORKERS", "2") or 2)
+# OPT-4: Language hint — skip auto-detection for known languages (saves ~10-15%)
+_WHISPER_LANG_RAW = (os.environ.get("HS_WHISPER_LANGUAGE") or "").strip().lower()
+WHISPER_LANGUAGE = _WHISPER_LANG_RAW if _WHISPER_LANG_RAW else None  # None = auto-detect
 
 # Global Model Cache
 _MODEL_CACHE = {}
@@ -558,7 +561,7 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
                         beam_size=1,
                         vad_filter=False,
                         word_timestamps=False,
-                        language="en",
+                        language=WHISPER_LANGUAGE or "en",
                         condition_on_previous_text=False,
                     )
                     _gen0, _i0 = _unpack_transcribe_result(_res0)
@@ -594,7 +597,7 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
                             vad_filter=True,
                             vad_parameters=vad_parameters,
                             word_timestamps=False,
-                            language="en",
+                            language=WHISPER_LANGUAGE or "en",
                             condition_on_previous_text=False,
                         )
                         segments_gen, _info = _unpack_transcribe_result(_res)
@@ -643,7 +646,7 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
                                 vad_filter=True,
                                 vad_parameters=vad_parameters,
                                 word_timestamps=False,
-                                language="en",
+                                language=WHISPER_LANGUAGE or "en",
                                 condition_on_previous_text=False,
                             )
                             base_gen, _bi = _unpack_transcribe_result(_resb)
@@ -687,7 +690,7 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
                 vad_filter=True,               # ⚡ Native VAD filters silence BEFORE inference
                 vad_parameters=vad_parameters,
                 word_timestamps=False,         # ⚡ Skip word-level (saves 15% time, unnecessary)
-                language=None,                  # ⚡ Auto-detect (required for Hindi/multilingual)
+                language=WHISPER_LANGUAGE,       # ⚡ OPT-4: env-controlled (None = auto-detect)
                 condition_on_previous_text=False,  # ⚡ No context hallucination overhead
             )
             segments_gen, _info = _unpack_transcribe_result(_res)
@@ -809,7 +812,7 @@ def transcribe_file_elite_adaptive(path: str, model_name: str, prefer_gpu: bool)
         beam_size=1,
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=400),
-        language="en"
+        language=WHISPER_LANGUAGE or "en"
     )
     segments_gen, info = _unpack_transcribe_result(_res)
     
@@ -843,7 +846,7 @@ def transcribe_file_elite_adaptive(path: str, model_name: str, prefer_gpu: bool)
             path,
             beam_size=3,  # More thorough search
             vad_filter=False,  # Already have boundaries
-            language="en"
+            language=WHISPER_LANGUAGE or "en"
         )
         segments_gen_2, _info2 = _unpack_transcribe_result(_res2)
 

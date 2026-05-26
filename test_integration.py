@@ -87,10 +87,11 @@ def test_integration():
         )
         selection_time = time.time() - start_time
 
-        print(".2f"        print(f"   ✅ Candidates found: {len(candidates)}")
+        print(f"   ✅ Candidates found: {len(candidates)}")
         if candidates:
             avg_score = sum(c.get('score', 0) for c in candidates) / len(candidates)
-            print(".3f"        print()
+            print(f"   ✅ Average score: {avg_score:.3f}")
+            print()
 
         # Test 4: Performance comparison
         print("⚡ Testing performance comparison...")
@@ -121,14 +122,18 @@ def test_integration():
 
         speedup = original_time / optimized_time if optimized_time > 0 else 1.0
 
-        print(".2f"        print(".2f"        print(".1f"        print(f"   📊 Results match: {len(candidates_original) == len(candidates_optimized)}")
+        print(f"   • Original time: {original_time:.4f}s")
+        print(f"   • Optimized time: {optimized_time:.4f}s")
+        print(f"   • Speedup: {speedup:.1f}x")
+        print(f"   📊 Results match: {len(candidates_original) == len(candidates_optimized)}")
         print()
 
         print("✅ INTEGRATION TEST COMPLETE!")
         print()
         print("🎯 Key Results:")
         print(f"   • Optimized system: {'✅ Available' if OPTIMIZED_PASSES_AVAILABLE else '❌ Not available'}")
-        print(".1f"        print(f"   • Quality maintained: {'✅ Yes' if len(candidates_original) == len(candidates_optimized) else '⚠️  Check needed'}")
+        print(f"   • Speedup multiplier: {speedup:.1f}x")
+        print(f"   • Quality maintained: {'✅ Yes' if len(candidates_original) == len(candidates_optimized) else '⚠️  Check needed'}")
         print("   • Integration: ✅ Working")
 
         return True

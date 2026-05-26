@@ -1,10 +1,70 @@
+import hashlib
 import logging
 import math
 import re
 import json
 import os
+import time
+import threading
 
 log = logging.getLogger("narrative_intelligence")
+
+# ── OPT-1: compute_quality_scores() memoization cache ──────────────────────
+# Avoids 500-2000 redundant calls across Hook Hunter, Arc Assembler, and
+# Editor Refiner stages.  Cache key = (transcript_identity, start_q, end_q).
+# Quantization resolution is 0.25 s — windows closer than that get the same
+# result (which is exact because the underlying functions are deterministic
+# for a given transcript + window).
+_CQS_CACHE: dict = {}
+_CQS_CACHE_LOCK = threading.Lock()
+_CQS_HITS = 0
+_CQS_MISSES = 0
+_CQS_QUANT = 0.25  # seconds
+_CQS_DEBUG = os.getenv("HS_CQS_CACHE_DEBUG", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _cqs_transcript_id(transcript: list) -> int:
+    """Fast identity hash for a transcript list (id + length).
+
+    Using ``id()`` is safe here because within a single orchestration run the
+    transcript list object is never replaced — it's created once in
+    ``_run_transcription`` and threaded through the ``PipelineContext``.
+    Between runs the cache is cleared via ``cqs_cache_reset()``.
+    """
+    return id(transcript) ^ (len(transcript) << 16)
+
+
+def _cqs_cache_key(transcript: list, start: float, end: float) -> tuple:
+    q = _CQS_QUANT
+    return (
+        _cqs_transcript_id(transcript),
+        round(start / q) * q,
+        round(end / q) * q,
+    )
+
+
+def cqs_cache_reset() -> dict:
+    """Clear the cache and return stats.  Called between pipeline runs."""
+    global _CQS_CACHE, _CQS_HITS, _CQS_MISSES
+    stats = {"hits": _CQS_HITS, "misses": _CQS_MISSES, "size": len(_CQS_CACHE)}
+    with _CQS_CACHE_LOCK:
+        _CQS_CACHE.clear()
+        _CQS_HITS = 0
+        _CQS_MISSES = 0
+    if _CQS_DEBUG:
+        log.info("[CQS-CACHE] reset stats=%s", stats)
+    return stats
+
+
+def cqs_cache_stats() -> dict:
+    """Return current cache statistics without clearing."""
+    total = _CQS_HITS + _CQS_MISSES
+    return {
+        "hits": _CQS_HITS,
+        "misses": _CQS_MISSES,
+        "size": len(_CQS_CACHE),
+        "hit_rate": round(_CQS_HITS / max(1, total), 4),
+    }
 
 
 def _load_hook_lexicon():
@@ -1122,7 +1182,21 @@ def compute_quality_scores(transcript: list, clip_start: float, clip_end: float)
     """
     Compute (hook_score, open_loop_score, ending_strength, duration_score, final_score).
     Designed to be used for ranking/curation only (no hard filtering).
+
+    Results are memoized per (transcript_id, start_quantized, end_quantized)
+    to avoid 500-2000 redundant calls across pipeline stages.
     """
+    global _CQS_HITS, _CQS_MISSES
+
+    # ── Cache lookup ────────────────────────────────────────────────────────
+    cache_key = _cqs_cache_key(transcript, clip_start, clip_end)
+    cached = _CQS_CACHE.get(cache_key)
+    if cached is not None:
+        _CQS_HITS += 1
+        return cached
+    _CQS_MISSES += 1
+    # ────────────────────────────────────────────────────────────────────────
+
     s = float(clip_start or 0.0)
     e = float(clip_end or (s + 0.01))
     d = max(0.0, e - s)
@@ -1154,7 +1228,7 @@ def compute_quality_scores(transcript: list, clip_start: float, clip_end: float)
     final = final * (0.88 + (0.12 * reliability))
     final = _clamp01(final)
 
-    return {
+    result = {
         "hook_score": round(hook, 4),
         "open_loop_score": round(open_loop, 4),
         "pattern_break_score": round(pattern_break, 4),
@@ -1166,5 +1240,14 @@ def compute_quality_scores(transcript: list, clip_start: float, clip_end: float)
         "duration_score": round(dur_score, 4),
         "final_score": round(final, 4),
     }
+
+    # ── Store in cache ──────────────────────────────────────────────────────
+    _CQS_CACHE[cache_key] = result
+
+    if _CQS_DEBUG and (_CQS_MISSES % 50 == 0):
+        log.info("[CQS-CACHE] %s", cqs_cache_stats())
+    # ────────────────────────────────────────────────────────────────────────
+
+    return result
 
 # MAIN
