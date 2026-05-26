@@ -97,7 +97,7 @@ def format_viral_clips(raw_clips, min_duration=30.0, overlap_threshold=5.0, vide
     print(f"[INFO] Formatting complete. {len(final_clips)} viral clips ready.")
     return final_clips
 
-def cut_clip_segment(video_path, start_time, end_time, output_path):
+def cut_clip_segment(video_path, start_time, end_time, output_path, is_free=False):
     """
     Cuts a clean mp4 clip using FFmpeg. NEVER produces corrupt files.
     """
@@ -127,11 +127,22 @@ def cut_clip_segment(video_path, start_time, end_time, output_path):
         "-i", video_path,
     ]
     
+    vf_parts = []
     visual_style = os.getenv("HS_VISUAL_STYLE", "").strip().lower()
     if visual_style == "pixel_enhance":
-        command += [
-            "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=contrast=1.18:saturation=1.12:brightness=-0.03,unsharp=5:5:0.8:3:3:0.4,noise=alls=6:allf=t"
-        ]
+        vf_parts.append("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=contrast=1.18:saturation=1.12:brightness=-0.03,unsharp=5:5:0.8:3:3:0.4,noise=alls=6:allf=t")
+        
+    if os.getenv("HS_WATERMARK_ENABLED") == "1" and (os.getenv("HS_WATERMARK_FREE_ONLY", "1") != "1" or is_free):
+        wm_path = os.path.abspath("static/branding/logo_icon.png").replace("\\", "/")
+        command.extend(["-i", wm_path])
+        vf_str = ",".join(vf_parts) if vf_parts else "null"
+        # Combine the linear chain with the second input using filter_complex
+        vf_complex = f"[0:v]{vf_str}[v_main];[1:v]scale=90:-1[wm];[v_main][wm]overlay=W-w-30:H-h-120,drawtext=text='MADE WITH HOTSHORT':fontcolor=white@0.85:fontsize=28:borderw=2:bordercolor=black@0.5:x=w-text_w-25:y=h-80[out_v]"
+        command += ["-filter_complex", vf_complex, "-map", "[out_v]", "-map", "0:a?"]
+        print("[WATERMARK] premium applied=true path=clipper (fast-input mode)")
+    else:
+        if vf_parts:
+            command += ["-vf", ",".join(vf_parts)]
         
     command += [
         "-c:v", vcodec,

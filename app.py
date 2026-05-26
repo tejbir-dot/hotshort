@@ -518,7 +518,7 @@ def _download_to_cloudinary(youtube_url: str) -> str:
 
 
 
-def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 600) -> dict:
+def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 600, is_free_user: bool = False) -> dict:
     endpoint = (os.getenv("RUNPOD_ENDPOINT_ID") or "").strip()
     if not endpoint:
         raise RuntimeError("RUNPOD_ENDPOINT_ID not configured")
@@ -546,6 +546,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
             "api_key":    os.getenv("CLOUDINARY_API_KEY"),
             "api_secret": os.getenv("CLOUDINARY_API_SECRET"),
         },
+        "is_free_user": is_free_user,
     }
     if job_id:
         task_input["job_id"] = job_id
@@ -581,6 +582,15 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
 
 
 def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: int = 600) -> dict:
+    is_free_user = True
+    if job_id:
+        job = Job.query.filter_by(id=job_id).first()
+        if job:
+            user = User.query.get(job.user_id)
+            if user:
+                is_free_user = not get_free_status(user).get("is_paid")
+                
+
     """
     Hybrid orchestration entrypoint.
 
@@ -606,7 +616,7 @@ def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: i
             if not run_url.lower().endswith("/run"):
                 run_url = f"{run_url}/run"
 
-            payload = {"task": "orchestrate", "youtube_url": youtube_url}
+            payload = {"task": "orchestrate", "youtube_url": youtube_url, "is_free_user": is_free_user}
             if job_id is not None:
                 payload["job_id"] = job_id
 
@@ -619,7 +629,7 @@ def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: i
             return data if isinstance(data, dict) else {"status": "ok", "clips": data}
 
         # Default to RunPod-style shape (nested "input") for proxies/serverless.
-        payload = {"input": {"task": "orchestrate", "youtube_url": youtube_url}}
+        payload = {"input": {"task": "orchestrate", "youtube_url": youtube_url, "is_free_user": is_free_user}}
         if job_id is not None:
             payload["input"]["job_id"] = job_id
 
@@ -644,7 +654,7 @@ def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: i
     if _local_gpu_available():
         return _orchestrate_via_local_gpu(youtube_url, job_id=job_id, timeout=timeout)
 
-    return _orchestrate_via_runpod(youtube_url, job_id=job_id, timeout=timeout)
+    return _orchestrate_via_runpod(youtube_url, job_id=job_id, timeout=timeout, is_free_user=is_free_user)
 
 # Helper to build the correct RunPod endpoint URL per mode
 def _runpod_task_url(endpoint: str) -> str:
@@ -829,7 +839,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
     log.info("[RUNPOD] Transcription completed: %d segments", len(segments))
     return segments
 
-def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
+def send_analysis_request(transcript: List[Dict], video_path: str, is_free_user: bool = False) -> Dict:
     """Send transcript and video metadata to RunPod GPU for analysis."""
     import requests
 
@@ -842,6 +852,7 @@ def send_analysis_request(transcript: List[Dict], video_path: str) -> Dict:
     # Prepare request data + cloud provider config for worker upload
     data = {
         'task': 'analyze',
+        'is_free_user': is_free_user,
         'transcript': transcript,
         'video_metadata': {
             'duration': get_video_duration(video_path),
@@ -1974,7 +1985,7 @@ def _google_authorized_override():
                 name = user_info.get("name", "")
                 picture = user_info.get("picture", "")
 
-                google_sub = user_info.get("id")
+                google_sub = user_info.get("sub") or user_info.get("id")
                 
                 user = None
                 if google_sub:
@@ -1988,9 +1999,17 @@ def _google_authorized_override():
                         db.session.commit()
 
                 if not user:
-                    user = User(email=email, name=name, profile_pic=picture, google_sub=google_sub)
-                    db.session.add(user)
-                    db.session.commit()
+                    try:
+                        user = User(email=email, name=name, profile_pic=picture, google_sub=google_sub)
+                        db.session.add(user)
+                        db.session.commit()
+                    except Exception as e:
+                        db.session.rollback()
+                        user = User.query.filter_by(google_sub=google_sub).first()
+                        if not user and email:
+                            user = User.query.filter_by(email=email).first()
+                        if not user:
+                            raise e
                 else:
                     # Update info if necessary
                     updated = False
@@ -1998,11 +2017,14 @@ def _google_authorized_override():
                         user.google_sub = google_sub
                         updated = True
                     if updated:
-                        db.session.commit()
+                        try:
+                            db.session.commit()
+                        except Exception:
+                            db.session.rollback()
 
                 login_user(user)
                 flask.session["user_id"] = user.id
-                app.logger.info("[OAUTH-DEBUG] User %s logged in via Google", email)
+                app.logger.info("[AUTH] google_sub=%s email=%s user_id=%s", google_sub, email, user.id)
         except ValueError as error:
             app.logger.warning("OAuth 2 authorization error: %s", str(error))
             oauth_error.send(google_bp, error=error)
@@ -2468,6 +2490,10 @@ def analyze():
         
         # 2. Check free tier limits
         free_status = get_free_status(current_user)
+        free_tier_limit = int(os.environ.get("FREE_GENERATION_LIMIT", 1))
+        used = free_status.get("free_clips_used", 0)
+        app.logger.info("[LIMIT] user_id=%s used=%s limit=%s", current_user.id, used, free_tier_limit)
+        
         if not free_status.get("is_paid") and free_status.get("free_clips_left", 0) <= 0:
             # User has exhausted free tier quota
             return jsonify({

@@ -165,6 +165,7 @@ def handler(event):
         or (input_data.get("url") if task == "transcribe_url" else None)
     )
     transcript = input_data.get("transcript") or []
+    is_free_user = input_data.get("is_free_user", False)
 
     cloud_provider = input_data.get("cloud_provider", {})
     if cloud_provider and isinstance(cloud_provider, dict):
@@ -451,6 +452,7 @@ def handler(event):
                                 transcript=clip_transcript,
                                 config=edit_cfg,
                                 clip_title=clip.get("text", "") or "",
+                                is_free=clip.get("is_free", False) or is_free_user,
                             )
                             if edit_result and os.path.exists(edit_result.output_path):
                                 final_clip_path = edit_result.output_path

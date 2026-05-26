@@ -821,6 +821,7 @@ class ClipEditor:
         clip_title: str = "",
         precomputed_narrative: Optional[Dict[str, Any]] = None,
         write_metadata_file: bool = True,
+        is_free: bool = False,
     ) -> EditResult:
         cfg = config or ClipEditConfig()
         _ensure_dir(os.path.dirname(output_path) or ".")
@@ -975,20 +976,30 @@ class ClipEditor:
             # format=yuv420p MUST come after subtitles for correct RGBA compositing
             vf_render = f"{vf_render},format=yuv420p"
 
-            log.info("[WCE-DEBUG] Final -vf filter: %s", vf_render)
+            is_watermarked = os.getenv("HS_WATERMARK_ENABLED") == "1" and (os.getenv("HS_WATERMARK_FREE_ONLY", "1") != "1" or is_free)
+            wm_path = os.path.abspath("static/branding/logo_icon.png").replace("\\", "/")
+
+            if is_watermarked:
+                vf_render = f"[0:v]{vf_render}[v_main];[1:v]scale=90:-1[wm];[v_main][wm]overlay=W-w-30:H-h-120,drawtext=text='MADE WITH HOTSHORT':fontcolor=white@0.85:fontsize=28:borderw=2:bordercolor=black@0.5:x=w-text_w-25:y=h-80[out_v]"
+                log.info("[WATERMARK] premium applied=true path=wce (fast-input mode)")
+
+            log.info("[WCE-DEBUG] Final filter: %s", vf_render)
 
             cmd = [
                 "ffmpeg",
                 "-y",
                 "-nostdin",
-                "-i",
-                work_b,
-                "-vf",
+                "-i", work_b
+            ]
+            
+            if is_watermarked:
+                cmd.extend(["-i", wm_path])
+                
+            cmd.extend([
+                "-filter_complex" if is_watermarked else "-vf",
                 vf_render,
-                "-map",
-                "0:v:0",
-                "-map",
-                "0:a:0?",
+                "-map", "[out_v]" if is_watermarked else "0:v:0",
+                "-map", "0:a:0?",
                 "-r",
                 str(max(24, int(cfg.export_fps))),
                 *_video_encode_args(
