@@ -470,11 +470,16 @@ def _download_to_cloudinary(youtube_url: str) -> str:
             
         # 3. Upload to Cloudinary
         log_step("[RAILWAY] Uploading to Cloudinary…")
-        result = cloudinary.uploader.upload(
-            video_path,
-            resource_type="video",
-            folder="hotshort_relay",
-        )
+        log_step("[CLOUDINARY] using upload_large for relay video.")
+        try:
+            result = cloudinary.uploader.upload_large(
+                video_path,
+                resource_type="video",
+                folder="hotshort_relay",
+                chunk_size=20_000_000,
+            )
+        except Exception:
+            raise RuntimeError("Video is too large to import automatically. Please upload a shorter video or file directly.")
         cdn_url = result.get("secure_url")
         if not cdn_url:
             raise RuntimeError("Cloudinary upload succeeded but returned no URL")
