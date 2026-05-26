@@ -2446,6 +2446,16 @@ def analyze():
         if not user_id:
             return jsonify({"error": "Missing user context"}), 401
 
+        active_job = Job.query.filter(
+            Job.user_id == user_id,
+            Job.status.in_(["queued", "processing", "in_progress", "pending"])
+        ).first()
+        if active_job:
+            return jsonify({
+                "action": "show_pricing_modal",
+                "error": "You already have one video processing. Please wait until it finishes."
+            }), 429
+
         analyze_lock = _acquire_analyze_lock_for_user(user_id)
         if analyze_lock is None:
             return jsonify({"error": "Too many concurrent analyze jobs"}), 429
@@ -2571,6 +2581,17 @@ def analyze_video():
         flash("Missing user context", "error")
         return redirect(url_for("dashboard"))
 
+    active_job = Job.query.filter(
+        Job.user_id == user_id,
+        Job.status.in_(["queued", "processing", "in_progress", "pending"])
+    ).first()
+    if active_job:
+        return render_template(
+            "pricing_modal.html",
+            current_user=current_user,
+            error="You already have one video processing. Please wait until it finishes."
+        )
+
     analyze_lock = _acquire_analyze_lock_for_user(user_id)
     if analyze_lock is None:
         flash("Too many concurrent analyze jobs. Try again in a moment.", "error")
@@ -2634,6 +2655,13 @@ def v2_analyze():
     user_id = _effective_user_id_for_request()
     if not user_id:
         return jsonify({"error": "Missing user context"}), 401
+
+    active_job = Job.query.filter(
+        Job.user_id == user_id,
+        Job.status.in_(["queued", "processing", "in_progress", "pending"])
+    ).first()
+    if active_job:
+        return jsonify({"error": "You already have one video processing. Please wait until it finishes."}), 429
 
     analyze_lock = _acquire_analyze_lock_for_user(user_id)
     if analyze_lock is None:
