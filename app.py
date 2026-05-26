@@ -468,12 +468,41 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         except Exception as e:
             raise RuntimeError(f"Failed to download direct MP4 video from API URL: {e}")
             
+        # 2.5 Compress if too large
+        original_size_mb = os.path.getsize(video_path) / (1024 * 1024)
+        upload_path = video_path
+        
+        if original_size_mb > 95:
+            log_step(f"[RAILWAY] Video size {original_size_mb:.1f}MB > 95MB. Compressing...")
+            compressed_path = os.path.join(tmp, "video_compressed.mp4")
+            import subprocess
+            cmd = [
+                "ffmpeg", "-y", "-i", video_path,
+                "-vf", "scale='min(1280,iw)':-2",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                "-c:a", "aac", "-b:a", "96k",
+                compressed_path
+            ]
+            try:
+                subprocess.run(cmd, check=True, capture_output=True)
+                compressed_size_mb = os.path.getsize(compressed_path) / (1024 * 1024)
+                log_step(f"[RAILWAY] Compressed from {original_size_mb:.1f}MB to {compressed_size_mb:.1f}MB")
+                if compressed_size_mb > 100:
+                    raise RuntimeError("Video is too large to import automatically. Please upload a shorter video or file directly.")
+                upload_path = compressed_path
+            except subprocess.CalledProcessError as e:
+                err_msg = e.stderr.decode("utf-8", errors="ignore") if e.stderr else str(e)
+                log_step(f"[RAILWAY] Compression failed: {err_msg}")
+                raise RuntimeError("Failed to compress large video before upload.")
+        else:
+            log_step(f"[RAILWAY] Video size {original_size_mb:.1f}MB is within limits.")
+
         # 3. Upload to Cloudinary
         log_step("[RAILWAY] Uploading to Cloudinary…")
         log_step("[CLOUDINARY] using upload_large for relay video.")
         try:
             result = cloudinary.uploader.upload_large(
-                video_path,
+                upload_path,
                 resource_type="video",
                 folder="hotshort_relay",
                 chunk_size=20_000_000,
