@@ -241,26 +241,36 @@ class ClipEditor:
     def _window_transcript(self, transcript: Optional[List[Dict[str, Any]]], source_start: float, source_end: float) -> List[Dict[str, Any]]:
         if not transcript:
             return []
-        s = float(source_start or 0.0)
-        e = float(source_end or s)
+        clip_start = float(source_start or 0.0)
+        clip_end = float(source_end or clip_start)
+        clip_duration = clip_end - clip_start
         win = []
         for seg in transcript:
             seg_s = _safe_float(seg.get("start"), 0.0)
             seg_e = _safe_float(seg.get("end"), seg_s)
-            if seg_e <= s or seg_s >= e:
-                continue
-            txt = (seg.get("text") or "").strip()
-            if txt:
-                win.append({"start": seg_s, "end": seg_e, "text": txt})
+            
+            # Select overlapping segments
+            if seg_e > clip_start and seg_s < clip_end:
+                # Convert to clip-relative timing
+                rel_start = max(0.0, seg_s - clip_start)
+                rel_end = min(clip_duration, seg_e - clip_start)
+                
+                txt = (seg.get("text") or "").strip()
+                if txt:
+                    win.append({"start": rel_start, "end": rel_end, "text": txt})
+        
+        n_segments = len(win)
+        n_words = sum(len((item.get("text") or "").split()) for item in win)
+        log.info(f"[WCE] transcript_window segments={n_segments} words={n_words} for clip {clip_start:.2f}-{clip_end:.2f}")
         return win
 
     def _trim_bounds(self, clip_duration: float, source_start: float, source_end: float, transcript_window: List[Dict[str, Any]], config: ClipEditConfig) -> Tuple[float, float]:
         if not config.auto_trim or not transcript_window:
             return (0.0, max(0.0, clip_duration))
-        speech_start = min(_safe_float(x.get("start"), source_start) for x in transcript_window)
-        speech_end = max(_safe_float(x.get("end"), source_end) for x in transcript_window)
-        trim_in = _clamp((speech_start - source_start) - config.trim_pad_in_s, 0.0, max(0.0, clip_duration - 0.2))
-        trim_out = _clamp((speech_end - source_start) + config.trim_pad_out_s, trim_in + 0.2, clip_duration)
+        speech_start = min(_safe_float(x.get("start"), 0.0) for x in transcript_window)
+        speech_end = max(_safe_float(x.get("end"), clip_duration) for x in transcript_window)
+        trim_in = _clamp(speech_start - config.trim_pad_in_s, 0.0, max(0.0, clip_duration - 0.2))
+        trim_out = _clamp(speech_end + config.trim_pad_out_s, trim_in + 0.2, clip_duration)
         if (trim_out - trim_in) < 8.0:
             return (0.0, clip_duration)
         return (trim_in, trim_out)
@@ -398,7 +408,17 @@ class ClipEditor:
             crop_y = int(round((src_h - crop_h) / 2.0))
 
         vf_parts = [f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}", f"scale={dst_w}:{dst_h}:flags=lanczos"]
-        if config.enhance_visuals:
+        
+        visual_style = os.getenv("HS_VISUAL_STYLE", "").strip().lower()
+        if visual_style == "pixel_enhance":
+            # Best "YouTube Shorts pixel-enhance" filter: punchy dark cinematic look, rich color, deeper blacks, crisp text/face, light noise
+            vf_parts.append("eq=contrast=1.18:saturation=1.12:brightness=-0.03")
+            vf_parts.append("unsharp=5:5:0.8:3:3:0.4")
+            vf_parts.append("noise=alls=6:allf=t")
+            if boring_mode:
+                vf_parts.append("scale=iw*1.03:ih*1.03")
+                vf_parts.append("crop=iw/1.03:ih/1.03")
+        elif config.enhance_visuals:
             vf_parts.append("eq=contrast=1.06:saturation=1.11:brightness=0.01")
             vf_parts.append("unsharp=5:5:1.0:3:3:0.2") # Stronger luma sharp, slight chroma sharp
             if boring_mode:
@@ -562,8 +582,8 @@ class ClipEditor:
         speed = _clamp(config.hook_ramp_speed, 1.01, 1.30)
         clip_rel_max = max(0.0, trim_out - trim_in)
         for seg in transcript_window:
-            raw_start = _safe_float(seg.get("start"), source_start) - source_start
-            raw_end = _safe_float(seg.get("end"), raw_start) - source_start
+            raw_start = _safe_float(seg.get("start"), 0.0)
+            raw_end = _safe_float(seg.get("end"), raw_start)
             rel_start = max(0.0, raw_start - trim_in)
             rel_end = max(rel_start + 0.12, raw_end - trim_in)
             if rel_end <= 0.0 or rel_start >= clip_rel_max:
@@ -830,6 +850,17 @@ class ClipEditor:
             clip_duration = max(0.01, float(base_meta.get("duration") or 0.0))
             if precomputed_narrative and isinstance(precomputed_narrative, dict):
                 transcript_window = list(precomputed_narrative.get("transcript_window") or [])
+                if transcript_window and any(_safe_float(x.get("start"), 0.0) > clip_duration for x in transcript_window):
+                    new_win = []
+                    for x in transcript_window:
+                        xs = _safe_float(x.get("start"), 0.0)
+                        xe = _safe_float(x.get("end"), xs)
+                        new_win.append({
+                            "start": max(0.0, xs - source_start),
+                            "end": min(clip_duration, xe - source_start),
+                            "text": x.get("text", "")
+                        })
+                    transcript_window = new_win
                 boring_mode = bool(precomputed_narrative.get("boring_monologue_detected", False))
                 pre_trim = precomputed_narrative.get("trim")
             else:

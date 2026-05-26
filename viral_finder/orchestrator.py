@@ -2705,6 +2705,13 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
             out = env.get("candidates", [])
         except Exception:
             out = []
+            
+    # Attach transcript to every candidate so downstream consumer (WCE/worker) has access to it
+    for c in out:
+        if isinstance(c, dict):
+            c["transcript"] = ctx.transcript
+            c["transcript_segments"] = ctx.transcript
+
     # OPT-1: log cache stats before reset
     _cqs_stats = cqs_cache_stats()
     log.info("[CQS-CACHE] pipeline_end %s", _cqs_stats)

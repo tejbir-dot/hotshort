@@ -125,6 +125,15 @@ def cut_clip_segment(video_path, start_time, end_time, output_path):
         "-ss", str(start_time),
         "-to", str(end_time),
         "-i", video_path,
+    ]
+    
+    visual_style = os.getenv("HS_VISUAL_STYLE", "").strip().lower()
+    if visual_style == "pixel_enhance":
+        command += [
+            "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=contrast=1.18:saturation=1.12:brightness=-0.03,unsharp=5:5:0.8:3:3:0.4,noise=alls=6:allf=t"
+        ]
+        
+    command += [
         "-c:v", vcodec,
         "-c:a", "aac",
         "-preset", preset,
