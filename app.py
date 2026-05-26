@@ -1940,11 +1940,31 @@ def _google_authorized_override():
                 name = user_info.get("name", "")
                 picture = user_info.get("picture", "")
 
-                user = User.query.filter_by(email=email).first()
+                google_sub = user_info.get("id")
+                
+                user = None
+                if google_sub:
+                    user = User.query.filter_by(google_sub=google_sub).first()
+                
+                # Fallback to email for existing users (migration)
+                if not user and email:
+                    user = User.query.filter_by(email=email).first()
+                    if user and google_sub:
+                        user.google_sub = google_sub
+                        db.session.commit()
+
                 if not user:
-                    user = User(email=email, name=name, profile_pic=picture)
+                    user = User(email=email, name=name, profile_pic=picture, google_sub=google_sub)
                     db.session.add(user)
                     db.session.commit()
+                else:
+                    # Update info if necessary
+                    updated = False
+                    if not user.google_sub and google_sub:
+                        user.google_sub = google_sub
+                        updated = True
+                    if updated:
+                        db.session.commit()
 
                 login_user(user)
                 flask.session["user_id"] = user.id
@@ -2263,28 +2283,16 @@ def get_free_status(user):
                 "claimed_clip_ids": []
             }
         
-        # Free tier logic: 3 clips per week
-        from config.tiers import TIERS
-        free_tier_limit = TIERS.get("free", {}).get("max_clips_per_job", 3)
+        # Simple generation limit
+        free_tier_limit = int(os.environ.get("FREE_GENERATION_LIMIT", 3))
         
-        # Calculate clips used this week
-        now = datetime.utcnow()
-        week_ago = now - timedelta(days=7)
-        
-        # Count Job records created this week
-        try:
-            clips_this_week = Job.query.filter(
-                Job.user_id == user.id,
-                Job.created_at >= week_ago
-            ).count()
-        except Exception as e:
-            log.warning("[FREE_STATUS] Could not count jobs: %s", e)
-            clips_this_week = user.clips_this_week or 0
-        
-        free_clips_left = max(0, free_tier_limit - clips_this_week)
+        generations_used = getattr(user, "free_generations_used", 0) or 0
+        free_clips_left = max(0, free_tier_limit - generations_used)
         
         # Get claimed clip IDs (clips user has downloaded this week)
         claimed_ids = []
+        now = datetime.utcnow()
+        week_ago = now - timedelta(days=7)
         try:
             claimed_clips = FreeClipClaim.query.filter(
                 FreeClipClaim.user_id == user.id,
@@ -2296,7 +2304,7 @@ def get_free_status(user):
         
         return {
             "is_paid": False,
-            "free_clips_used": clips_this_week,
+            "free_clips_used": generations_used,
             "free_clips_left": free_clips_left,
             "claimed_clip_ids": claimed_ids
         }
@@ -2345,6 +2353,13 @@ def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = N
             job.status = "failed"
         else:
             job.status = "completed"
+            clips = result.get("clips") or []
+            if len(clips) > 0 and not job.usage_counted:
+                user = User.query.get(job.user_id)
+                if user:
+                    user.free_generations_used = getattr(user, 'free_generations_used', 0) + 1
+                    job.usage_counted = True
+
         job.completed_at = datetime.utcnow()
         db.session.commit()
         app.logger.info("[PIPELINE] job=%s orchestrate_done clips=%s", job_id, len(result.get("clips") or []))
@@ -2785,7 +2800,7 @@ def subscription():
 @app.route('/limit-reached')
 @login_required
 def limit_reached():
-    return redirect(url_for("subscription"))
+    return render_template('pricing_modal.html', current_user=current_user)
 
 # ⚡ Analytics Endpoint (for frontend event tracking)
 @app.route('/analytics', methods=['POST'])
@@ -3769,6 +3784,26 @@ def init_db():
 
             # Use the safe retry-logic wrapper
             _db_create_all_safe()
+            
+            # Safe schema migrations for new columns
+            from sqlalchemy import text
+            try:
+                db.session.execute(text("ALTER TABLE user ADD COLUMN google_sub VARCHAR(255)"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                
+            try:
+                db.session.execute(text("ALTER TABLE user ADD COLUMN free_generations_used INTEGER DEFAULT 0 NOT NULL"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+            try:
+                db.session.execute(text("ALTER TABLE job ADD COLUMN usage_counted BOOLEAN DEFAULT 0 NOT NULL"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
     except (OperationalError, Exception) as e:
         # Ignore "table already exists" or "locked" errors during multi-worker boot
         msg = str(e).lower()

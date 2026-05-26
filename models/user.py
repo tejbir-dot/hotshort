@@ -24,6 +24,9 @@ class User(db.Model, UserMixin):
     # Free trial usage accounting (server authoritative)
     trial_analyze_count = db.Column(db.Integer, default=0, nullable=False)
     trial_clip_exports = db.Column(db.Integer, default=0, nullable=False)
+    # Google Identity + Unified generation limits
+    google_sub = db.Column(db.String(255), unique=True, nullable=True)
+    free_generations_used = db.Column(db.Integer, default=0, nullable=False)
 
 class FreeClipClaim(db.Model):
     __tablename__ = "free_clip_claim"
@@ -61,6 +64,7 @@ class Job(db.Model):
     status = db.Column(db.String(50), default="pending")  # pending, processing, completed, failed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
+    usage_counted = db.Column(db.Boolean, default=False, nullable=False)
     
     def __repr__(self):
         return f"<Job {self.id}>"
