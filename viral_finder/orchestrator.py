@@ -2520,9 +2520,10 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
     )
 
 
-def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool) -> List[Dict]:
+def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool):
     start = time.time()
     print("PIPELINE STAGE: start staged pipeline")
+    has_tf_moments = False
     # OPT-1: reset memoization cache at pipeline start
     cqs_cache_reset()
     ctx = PipelineContext(
@@ -2633,47 +2634,101 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         trace.exit("L6B_GLOBAL_HOOK_HUNTER", {"candidates": len(ctx.raw_candidates or []), "injected": int((ctx.stage_stats.get("L6B_GLOBAL_HOOK_HUNTER", {}) or {}).get("injected", 0) or 0)})
 
     # Transcript-First Groq Cortex
-    if os.environ.get("HS_GROQ_TRANSCRIPT_FIRST", "0").strip() == "1":
-        try:
-            from viral_finder.groq_cortex import find_moments_from_transcript
-            log.info("[GROQ_TRANSCRIPT_FIRST] enabled=True")
-            moments = find_moments_from_transcript(ctx.transcript, total_dur)
-            injected_count = 0
-            for i, m in enumerate(moments):
-                start = float(m.get("start", 0))
-                end = float(m.get("end", start))
-                duration = round(end - start, 2)
-                
-                # Extract text for the moment from transcript segments
-                seg_texts = []
-                for seg in ctx.transcript:
-                    s_t = float(seg.get("start", 0))
-                    e_t = float(seg.get("end", 0))
-                    if s_t >= start - 1.0 and e_t <= end + 1.0:
-                        seg_texts.append(seg.get("text", ""))
-                text = " ".join(seg_texts).strip() or m.get("text", "")
-                
-                # Construct candidate dict
-                cand = {
-                    "start": start,
-                    "end": end,
-                    "duration": duration,
-                    "text": text,
-                    "viral_score": float(m.get("viral_score", 80)) / 100.0 if float(m.get("viral_score", 80)) > 1.0 else float(m.get("viral_score", 0.80)),
-                    "reason": "groq_transcript_first",
-                    "origin": "groq_transcript_first",
-                    "cortex_enabled": True,
-                    "title": m.get("title", ""),
-                    "opening_caption": m.get("opening_caption", ""),
-                    "clip_archetype": m.get("clip_archetype", ""),
-                    "editing_notes": m.get("editing_notes", {}),
-                    "groq_moment": True
-                }
-                ctx.raw_candidates.append(cand)
-                injected_count += 1
-            log.info(f"[GROQ_TRANSCRIPT_FIRST] injected_candidates={injected_count}")
-        except Exception as e:
-            log.warning("[GROQ_TRANSCRIPT_FIRST] Failed: %s", e)
+    tf_env = os.environ.get("HS_GROQ_TRANSCRIPT_FIRST", "0").strip() == "1"
+    tf_force = os.environ.get("HS_GROQ_TRANSCRIPT_FIRST_FORCE", "0").strip() == "1"
+    log.info(f"[GROQ_TRANSCRIPT_FIRST] enabled={tf_env} force={tf_force}")
+    log.info("[GROQ_TRANSCRIPT_FIRST] checkpoint reached before validation")
+
+    if tf_env or tf_force:
+        transcript_source = None
+        for attr in ["transcript_segments", "segments", "transcript"]:
+            val = getattr(ctx, attr, None)
+            if val and isinstance(val, list) and len(val) > 0:
+                transcript_source = val
+                log.info(f"[GROQ_TRANSCRIPT_FIRST] found transcript in ctx.{attr} (length={len(val)})")
+                break
+        
+        if not transcript_source:
+            for attr in ["transcript_words", "words"]:
+                words = getattr(ctx, attr, None)
+                if words and isinstance(words, list) and len(words) > 0:
+                    log.info(f"[GROQ_TRANSCRIPT_FIRST] grouping words from ctx.{attr} into segments (length={len(words)})")
+                    grouped = []
+                    chunk_size = 20
+                    for idx, i in enumerate(range(0, len(words), chunk_size)):
+                        chunk = words[i:i+chunk_size]
+                        if not chunk:
+                            continue
+                        text = " ".join(w.get("text", w.get("word", "")) for w in chunk).strip()
+                        start = float(chunk[0].get("start", 0))
+                        end = float(chunk[-1].get("end", start))
+                        grouped.append({
+                            "start": start,
+                            "end": end,
+                            "text": text,
+                            "words": chunk
+                        })
+                    transcript_source = grouped
+                    break
+
+        if not transcript_source:
+            log.info("[GROQ_TRANSCRIPT_FIRST] skipped: transcript_segments empty")
+        else:
+            log.info(f"[GROQ_TRANSCRIPT_FIRST] transcript_segments={len(transcript_source)}")
+            try:
+                from viral_finder.groq_cortex import find_moments_from_transcript
+                # Calculate chunks count
+                chunk_len = 240
+                overlap = 30
+                if total_dur <= chunk_len:
+                    chunks_count = 1
+                else:
+                    chunks_count = int((total_dur - overlap) // (chunk_len - overlap)) + 1
+                log.info(f"[GROQ_TRANSCRIPT_FIRST] chunks={chunks_count}")
+
+                moments = find_moments_from_transcript(transcript_source, total_dur)
+                log.info(f"[GROQ_TRANSCRIPT_FIRST] moments_found={len(moments)}")
+
+                injected_count = 0
+                for i, m in enumerate(moments):
+                    start = float(m.get("start", 0))
+                    end = float(m.get("end", start))
+                    duration = round(end - start, 2)
+                    
+                    # Extract text for the moment from transcript segments
+                    seg_texts = []
+                    for seg in transcript_source:
+                        s_t = float(seg.get("start", 0))
+                        e_t = float(seg.get("end", 0))
+                        if s_t >= start - 1.0 and e_t <= end + 1.0:
+                            seg_texts.append(seg.get("text", ""))
+                    text = " ".join(seg_texts).strip() or m.get("text", "")
+                    
+                    # Construct candidate dict
+                    cand = {
+                        "start": start,
+                        "end": end,
+                        "duration": duration,
+                        "text": text,
+                        "viral_score": float(m.get("viral_score", 80)) / 100.0 if float(m.get("viral_score", 80)) > 1.0 else float(m.get("viral_score", 0.80)),
+                        "reason": "groq_transcript_first",
+                        "origin": "groq_transcript_first",
+                        "cortex_enabled": True,
+                        "title": m.get("title", ""),
+                        "opening_caption": m.get("opening_caption", ""),
+                        "clip_archetype": m.get("clip_archetype", ""),
+                        "editing_notes": m.get("editing_notes", {}),
+                        "groq_moment": True
+                    }
+                    if not ctx.raw_candidates:
+                        ctx.raw_candidates = []
+                    ctx.raw_candidates.append(cand)
+                    injected_count += 1
+                log.info(f"[GROQ_TRANSCRIPT_FIRST] injected_candidates={injected_count}")
+                if injected_count > 0:
+                    has_tf_moments = True
+            except Exception as e:
+                log.warning("[GROQ_TRANSCRIPT_FIRST] Failed: %s", e)
 
     if trace:
         trace.enter("L8_SEMANTIC_SCORING")
@@ -2798,7 +2853,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     if trace:
         trace.render()
     print("TOTAL PROCESS TIME:", time.time() - start)
-    return out, _groq_pool
+    return out, _groq_pool, has_tf_moments
 
 
 def orchestrate(path: str,
@@ -2817,10 +2872,15 @@ def orchestrate(path: str,
     start_time = time.time()
     mode = _pipeline_mode(pipeline_mode)
     log.info("[ORCH] pipeline_mode=%s", mode)
+    log.info("[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST=%s", os.environ.get("HS_GROQ_TRANSCRIPT_FIRST"))
+    log.info("[ORCH] Startup Env: HS_GROQ_CORTEX_ENABLED=%s", os.environ.get("HS_GROQ_CORTEX_ENABLED"))
+    log.info("[ORCH] Startup Env: HS_FORCE_30S_PADDING=%s", os.environ.get("HS_FORCE_30S_PADDING"))
+    log.info("[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST_FORCE=%s", os.environ.get("HS_GROQ_TRANSCRIPT_FIRST_FORCE"))
 
     final_candidates = []
     _groq_pool: list = []  # richer pre-filter pool for Groq
 
+    has_tf_moments = False
     if mode == "staged":
         try:
             _staged_result = _run_staged_pipeline(
@@ -2830,12 +2890,16 @@ def orchestrate(path: str,
                 use_cache=use_cache,
                 allow_fallback=allow_fallback,
             )
-            # _run_staged_pipeline now returns (ranked_out, groq_pool)
+            # _run_staged_pipeline now returns (ranked_out, groq_pool, has_tf_moments)
             if isinstance(_staged_result, tuple):
-                final_candidates, _groq_pool = _staged_result
+                if len(_staged_result) == 3:
+                    final_candidates, _groq_pool, has_tf_moments = _staged_result
+                else:
+                    final_candidates, _groq_pool = _staged_result
+                    has_tf_moments = any(c.get("groq_moment") for c in final_candidates)
             else:
                 final_candidates = _staged_result  # safety fallback
-            log.info("[ORCH] staged returned %d candidates (groq_pool=%d).", len(final_candidates), len(_groq_pool))
+            log.info("[ORCH] staged returned %d candidates (groq_pool=%d, has_tf_moments=%s).", len(final_candidates), len(_groq_pool), has_tf_moments)
         except Exception as exc:
             log.exception("[ORCH] staged pipeline failed: %s", exc)
             if not _env_bool("HS_ORCH_STAGED_FAILOVER_TO_LEGACY", False):
@@ -2866,28 +2930,31 @@ def orchestrate(path: str,
         from viral_finder.groq_cortex import is_groq_enabled, review_candidates_with_groq, _get_groq_api_key
         _groq_api_key = _get_groq_api_key()
         if is_groq_enabled() and _groq_api_key:
-            _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
-            if not _pool:
-                log.info("[GROQ_CORTEX] Skipping — empty candidate pool.")
+            if has_tf_moments:
+                log.info("[GROQ_CORTEX] Skipping candidate-review Cortex because transcript-first Moment Director already discovered moments.")
             else:
-                transcript = (final_candidates[0].get("transcript") if final_candidates else None)
-                log.info(
-                    "[GROQ_CORTEX] groq_input_candidates_count=%d (ranked_output=%d, enriched_pool=%d)",
-                    len(_pool), len(final_candidates), len(_groq_pool),
-                )
-                groq_result = review_candidates_with_groq(_pool, transcript_meta=transcript)
-                log.info(
-                    "[GROQ_CORTEX] groq_selected_count=%d groq_rejected_count=%d",
-                    len(groq_result), len(_pool) - len(groq_result),
-                )
-                if groq_result:
-                    is_fallback = all(not (c.get("cortex_enabled") or c.get("groq_moment")) for c in groq_result)
-                    if is_fallback:
-                        log.info("[GROQ_CORTEX] Groq returned fallback raw pool — keeping local pipeline filtered output instead.")
-                    else:
-                        final_candidates = groq_result
+                _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
+                if not _pool:
+                    log.info("[GROQ_CORTEX] Skipping — empty candidate pool.")
                 else:
-                    log.info("[GROQ_CORTEX] No clips selected — keeping local pipeline output.")
+                    transcript = (final_candidates[0].get("transcript") if final_candidates else None)
+                    log.info(
+                        "[GROQ_CORTEX] groq_input_candidates_count=%d (ranked_output=%d, enriched_pool=%d)",
+                        len(_pool), len(final_candidates), len(_groq_pool),
+                    )
+                    groq_result = review_candidates_with_groq(_pool, transcript_meta=transcript)
+                    log.info(
+                        "[GROQ_CORTEX] groq_selected_count=%d groq_rejected_count=%d",
+                        len(groq_result), len(_pool) - len(groq_result),
+                    )
+                    if groq_result:
+                        is_fallback = all(not (c.get("cortex_enabled") or c.get("groq_moment")) for c in groq_result)
+                        if is_fallback:
+                            log.info("[GROQ_CORTEX] Groq returned fallback raw pool — keeping local pipeline filtered output instead.")
+                        else:
+                            final_candidates = groq_result
+                    else:
+                        log.info("[GROQ_CORTEX] No clips selected — keeping local pipeline output.")
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:
