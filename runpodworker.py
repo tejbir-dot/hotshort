@@ -16,6 +16,9 @@ except ImportError:
 
 load_dotenv()
 
+groq_present = "GROQ_API_KEY" in os.environ and bool(os.environ["GROQ_API_KEY"].strip())
+print(f"GROQ_API_KEY present={str(groq_present).lower()}", flush=True)
+
 try:
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError

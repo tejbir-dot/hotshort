@@ -12,6 +12,9 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 
+groq_present = "GROQ_API_KEY" in os.environ and bool(os.environ["GROQ_API_KEY"].strip())
+print(f"GROQ_API_KEY present={str(groq_present).lower()}", flush=True)
+
 ALL_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 UPSTREAM_TIMEOUT_SECONDS = 900
 HOP_BY_HOP_HEADERS = {

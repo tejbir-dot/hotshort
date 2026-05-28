@@ -60,29 +60,29 @@ def _nvenc_available() -> bool:
     return _nvenc_available._cached
 
 
-def _video_encode_args(crf: int = 17, preset: str = "medium") -> List[str]:
+def _video_encode_args(crf: int = 23, preset: str = "veryfast") -> List[str]:
     """Return encoder args: NVENC (GPU) if available, else libx264 (CPU)."""
     if _nvenc_available():
-        # THE CINEMATIC UPGRADE: CQ 12 (Near-Lossless), Preset p5, High Tier
         return [
             "-c:v", "h264_nvenc",
-            "-preset", "p5",       # p5 = Slower but High Quality
+            "-preset", "p3",       # Fast preset for NVENC
             "-tune", "hq",         # HQ tuning
             "-profile:v", "high",
             "-rc", "vbr",          # Variable Bitrate
-            "-cq", "12",           # Near-Lossless Visuals
-            "-qmin", "10",
-            "-qmax", "14",
-            "-b:v", "8M",          # Target 8Mbps (Perfect for social media)
-            "-maxrate", "12M",
-            "-bufsize", "12M",
-            "-spatial-aq", "1"     # Better details in motion/sharp edges
+            "-cq", str(crf),
+            "-b:v", "3M",          # Target 3Mbps
+            "-maxrate", "4500k",
+            "-bufsize", "9000k",
+            "-pix_fmt", "yuv420p"
         ]
     # CPU fallback
     return [
         "-c:v", "libx264",
         "-preset", preset,
         "-crf", str(crf),
+        "-maxrate", "4500k",
+        "-bufsize", "9000k",
+        "-pix_fmt", "yuv420p"
     ]
 
 
@@ -155,8 +155,8 @@ class ClipEditConfig:
     hook_ramp_window_s: float = 2.8
     hook_ramp_speed: float = 1.06
     preserve_quality: bool = True
-    quality_crf: int = 15
-    quality_preset: str = "medium"
+    quality_crf: int = 23
+    quality_preset: str = "veryfast"
     export_fps: int = 30
     auto_trim: bool = True
     trim_pad_in_s: float = 0.12
@@ -294,11 +294,11 @@ class ClipEditor:
             vf,
             "-af",
             af,
-            *_video_encode_args(crf=16, preset="fast"),
+            *_video_encode_args(crf=23, preset="veryfast"),
             "-c:a",
             "aac",
             "-b:a",
-            "160k",
+            "128k",
             "-movflags",
             "+faststart",
             output_path,
@@ -470,11 +470,11 @@ class ClipEditor:
             "[v]",
             "-map",
             "[a]",
-            *_video_encode_args(crf=16, preset="fast"),
+            *_video_encode_args(crf=23, preset="veryfast"),
             "-c:a",
             "aac",
             "-b:a",
-            "160k",
+            "128k",
             output_path,
         ]
         try:
@@ -791,13 +791,13 @@ class ClipEditor:
             "-r",
             str(max(24, int(fps))),
             *_video_encode_args(
-                crf=17 if preserve_quality else 20,
-                preset="slow" if preserve_quality else "veryfast",
+                crf=23 if preserve_quality else 24,
+                preset="veryfast",
             ),
             "-c:a",
             "aac",
             "-b:a",
-            "192k",
+            "128k",
             "-movflags",
             "+faststart",
             output_path,
@@ -1112,14 +1112,14 @@ class ClipEditor:
                 "-r",
                 str(max(24, int(cfg.export_fps))),
                 *_video_encode_args(
-                    crf=int(cfg.quality_crf if cfg.preserve_quality else 20),
+                    crf=int(cfg.quality_crf if cfg.preserve_quality else 24),
                     preset=cfg.quality_preset if cfg.preserve_quality else "veryfast",
                 ),
                 "-movflags",
                 "+faststart",
             ])
             if bool(work_meta.get("has_audio")):
-                cmd += ["-af", af, "-c:a", "aac", "-b:a", "192k"]
+                cmd += ["-af", af, "-c:a", "aac", "-b:a", "128k"]
             else:
                 cmd += ["-an"]
             cmd.append(output_path)

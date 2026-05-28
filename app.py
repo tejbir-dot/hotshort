@@ -26,6 +26,9 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 
+groq_present = "GROQ_API_KEY" in os.environ and bool(os.environ["GROQ_API_KEY"].strip())
+print(f"GROQ_API_KEY present={str(groq_present).lower()}", flush=True)
+
 import flask
 from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app
 from flask_login import LoginManager, current_user, login_required, login_user
