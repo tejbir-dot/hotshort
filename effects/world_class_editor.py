@@ -60,29 +60,59 @@ def _nvenc_available() -> bool:
     return _nvenc_available._cached
 
 
+def _get_export_crf(default: int = 23) -> int:
+    """Read CRF from env: HS_EXPORT_CRF (default 23)."""
+    try:
+        return int(os.environ.get("HS_EXPORT_CRF", str(default)))
+    except (ValueError, TypeError):
+        return default
+
+
+def _get_export_preset(default: str = "veryfast") -> str:
+    """Read FFmpeg preset from env: HS_EXPORT_PRESET (default veryfast)."""
+    return os.environ.get("HS_EXPORT_PRESET", default).strip() or default
+
+
+def _get_export_maxrate() -> str:
+    return os.environ.get("HS_EXPORT_MAXRATE", "4500k").strip() or "4500k"
+
+
+def _get_export_bufsize() -> str:
+    return os.environ.get("HS_EXPORT_BUFSIZE", "9000k").strip() or "9000k"
+
+
+def _get_export_audio_bitrate() -> str:
+    return os.environ.get("HS_EXPORT_AUDIO_BITRATE", "128k").strip() or "128k"
+
+
 def _video_encode_args(crf: int = 23, preset: str = "veryfast") -> List[str]:
-    """Return encoder args: NVENC (GPU) if available, else libx264 (CPU)."""
+    """Return encoder args driven by env vars (HS_EXPORT_*). NVENC if available, else libx264."""
+    _crf = _get_export_crf(default=crf)
+    _preset = _get_export_preset(default=preset)
+    _maxrate = _get_export_maxrate()
+    _bufsize = _get_export_bufsize()
+
     if _nvenc_available():
         return [
             "-c:v", "h264_nvenc",
-            "-preset", "p3",       # Fast preset for NVENC
-            "-tune", "hq",         # HQ tuning
+            "-preset", "p3",
+            "-tune", "hq",
             "-profile:v", "high",
-            "-rc", "vbr",          # Variable Bitrate
-            "-cq", str(crf),
-            "-b:v", "3M",          # Target 3Mbps
-            "-maxrate", "4500k",
-            "-bufsize", "9000k",
-            "-pix_fmt", "yuv420p"
+            "-rc", "vbr",
+            "-cq", str(_crf),
+            "-b:v", "3M",
+            "-maxrate", _maxrate,
+            "-bufsize", _bufsize,
+            "-pix_fmt", "yuv420p",
         ]
-    # CPU fallback
+    # CPU fallback (libx264)
     return [
         "-c:v", "libx264",
-        "-preset", preset,
-        "-crf", str(crf),
-        "-maxrate", "4500k",
-        "-bufsize", "9000k",
-        "-pix_fmt", "yuv420p"
+        "-preset", _preset,
+        "-crf", str(_crf),
+        "-maxrate", _maxrate,
+        "-bufsize", _bufsize,
+        "-pix_fmt", "yuv420p",
     ]
 
 
@@ -298,7 +328,7 @@ class ClipEditor:
             "-c:a",
             "aac",
             "-b:a",
-            "128k",
+            _get_export_audio_bitrate(),
             "-movflags",
             "+faststart",
             output_path,
@@ -474,7 +504,7 @@ class ClipEditor:
             "-c:a",
             "aac",
             "-b:a",
-            "128k",
+            _get_export_audio_bitrate(),
             output_path,
         ]
         try:
@@ -797,7 +827,7 @@ class ClipEditor:
             "-c:a",
             "aac",
             "-b:a",
-            "128k",
+            _get_export_audio_bitrate(),
             "-movflags",
             "+faststart",
             output_path,
@@ -1119,7 +1149,7 @@ class ClipEditor:
                 "+faststart",
             ])
             if bool(work_meta.get("has_audio")):
-                cmd += ["-af", af, "-c:a", "aac", "-b:a", "128k"]
+                cmd += ["-af", af, "-c:a", "aac", "-b:a", _get_export_audio_bitrate()]
             else:
                 cmd += ["-an"]
             cmd.append(output_path)
