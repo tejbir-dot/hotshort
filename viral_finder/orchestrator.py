@@ -1013,6 +1013,8 @@ def _maybe_backfill_raw_candidates(ctx: "PipelineContext") -> None:
 
 
 def _final_quality_rescue(candidate: Dict[str, Any]) -> bool:
+    if candidate.get("groq_moment") or candidate.get("cortex_enabled"):
+        return True
     semantic_strength = _semantic_explanation_strength(candidate)
     hook_metric = _clamp01(candidate.get("hook_score", candidate.get("hook_strength", 0.0)))
     payoff_metric = _clamp01(candidate.get("payoff_score", candidate.get("payoff_confidence", 0.0)))
@@ -1021,6 +1023,8 @@ def _final_quality_rescue(candidate: Dict[str, Any]) -> bool:
 
 
 def _final_quality_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
+    if candidate.get("groq_moment") or candidate.get("cortex_enabled"):
+        return []
     reasons: List[str] = []
     motion = _clamp01(candidate.get("motion", (candidate.get("signals", {}) or {}).get("engagement", {}).get("motion", 0.0)))
     hook_strength = _clamp01(candidate.get("hook_strength", candidate.get("hook_score", 0.0)))
@@ -2628,6 +2632,49 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     if trace:
         trace.exit("L6B_GLOBAL_HOOK_HUNTER", {"candidates": len(ctx.raw_candidates or []), "injected": int((ctx.stage_stats.get("L6B_GLOBAL_HOOK_HUNTER", {}) or {}).get("injected", 0) or 0)})
 
+    # Transcript-First Groq Cortex
+    if os.environ.get("HS_GROQ_TRANSCRIPT_FIRST", "0").strip() == "1":
+        try:
+            from viral_finder.groq_cortex import find_moments_from_transcript
+            log.info("[GROQ_TRANSCRIPT_FIRST] enabled=True")
+            moments = find_moments_from_transcript(ctx.transcript, total_dur)
+            injected_count = 0
+            for i, m in enumerate(moments):
+                start = float(m.get("start", 0))
+                end = float(m.get("end", start))
+                duration = round(end - start, 2)
+                
+                # Extract text for the moment from transcript segments
+                seg_texts = []
+                for seg in ctx.transcript:
+                    s_t = float(seg.get("start", 0))
+                    e_t = float(seg.get("end", 0))
+                    if s_t >= start - 1.0 and e_t <= end + 1.0:
+                        seg_texts.append(seg.get("text", ""))
+                text = " ".join(seg_texts).strip() or m.get("text", "")
+                
+                # Construct candidate dict
+                cand = {
+                    "start": start,
+                    "end": end,
+                    "duration": duration,
+                    "text": text,
+                    "viral_score": float(m.get("viral_score", 80)) / 100.0 if float(m.get("viral_score", 80)) > 1.0 else float(m.get("viral_score", 0.80)),
+                    "reason": "groq_transcript_first",
+                    "origin": "groq_transcript_first",
+                    "cortex_enabled": True,
+                    "title": m.get("title", ""),
+                    "opening_caption": m.get("opening_caption", ""),
+                    "clip_archetype": m.get("clip_archetype", ""),
+                    "editing_notes": m.get("editing_notes", {}),
+                    "groq_moment": True
+                }
+                ctx.raw_candidates.append(cand)
+                injected_count += 1
+            log.info(f"[GROQ_TRANSCRIPT_FIRST] injected_candidates={injected_count}")
+        except Exception as e:
+            log.warning("[GROQ_TRANSCRIPT_FIRST] Failed: %s", e)
+
     if trace:
         trace.enter("L8_SEMANTIC_SCORING")
     print("STAGE ENTER: semantic scoring")
@@ -2834,7 +2881,11 @@ def orchestrate(path: str,
                     len(groq_result), len(_pool) - len(groq_result),
                 )
                 if groq_result:
-                    final_candidates = groq_result
+                    is_fallback = all(not (c.get("cortex_enabled") or c.get("groq_moment")) for c in groq_result)
+                    if is_fallback:
+                        log.info("[GROQ_CORTEX] Groq returned fallback raw pool — keeping local pipeline filtered output instead.")
+                    else:
+                        final_candidates = groq_result
                 else:
                     log.info("[GROQ_CORTEX] No clips selected — keeping local pipeline output.")
         elif is_groq_enabled() and not _groq_api_key:

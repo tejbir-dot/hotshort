@@ -117,7 +117,19 @@ def validate_groq_clips(parsed_json: dict, original_candidates: list) -> list:
         if score <= 1.0 and min_score > 1.0:
             score = score * 100
             
-        if score < min_score:
+        # Allow the exception rule from the prompt: high usefulness or insight passes even if viral_score < min_score
+        scores = clip.get("scores", {})
+        is_exceptional = False
+        if isinstance(scores, dict):
+            try:
+                usefulness = float(scores.get("usefulness") or 0)
+                insight = float(scores.get("insight_strength") or 0)
+                if usefulness >= 80 or insight >= 80:
+                    is_exceptional = True
+            except (ValueError, TypeError):
+                pass
+            
+        if score < min_score and not is_exceptional:
             continue
             
         # Normalise candidate_id
@@ -487,3 +499,294 @@ Now review these candidates:
             log.info("[GROQ_CORTEX] Falling back to original candidates.")
             return candidates
         return []
+
+
+def _chunk_transcript(segments: list, video_duration: float, window_size: float = 240.0, overlap: float = 30.0) -> list:
+    chunks = []
+    if not segments:
+        return chunks
+    
+    current_start = 0.0
+    # If video is extremely short (e.g. <= window_size), just do one chunk
+    if video_duration <= window_size:
+        chunks.append({
+            "start": 0.0,
+            "end": video_duration,
+            "segments": segments
+        })
+        return chunks
+        
+    while current_start < video_duration:
+        current_end = current_start + window_size
+        # Gather segments in this window
+        chunk_segs = [
+            s for s in segments
+            if float(s.get("start", 0)) >= current_start
+            and float(s.get("start", 0)) < current_end
+        ]
+        if chunk_segs:
+            chunks.append({
+                "start": current_start,
+                "end": min(current_end, video_duration),
+                "segments": chunk_segs
+            })
+        current_start += (window_size - overlap)
+        if window_size <= overlap:
+            break
+            
+    return chunks
+
+
+def validate_groq_moments(moments: list, video_duration: float) -> list:
+    valid_moments = []
+    min_score = _get_min_score()
+    for m in moments:
+        if not isinstance(m, dict):
+            continue
+        try:
+            start = float(m.get("start", -1))
+            end = float(m.get("end", -1))
+        except (ValueError, TypeError):
+            continue
+            
+        if start < 0 or end < 0 or start >= end:
+            continue
+            
+        # Ensure it fits within video duration
+        if video_duration and end > video_duration + 5.0:  # allow 5s grace
+            end = video_duration
+            
+        dur = end - start
+        if dur < 8.0 or dur > 120.0:  # duration between 8s and 120s
+            continue
+            
+        m["start"] = round(start, 2)
+        m["end"] = round(end, 2)
+        m["duration"] = round(dur, 2)
+        
+        # Parse score
+        score = m.get("viral_score")
+        if score is None:
+            score = 75.0
+        try:
+            score = float(score)
+        except (ValueError, TypeError):
+            score = 75.0
+            
+        # Normalize score
+        if score <= 1.0:
+            score = score * 100.0
+        m["viral_score"] = round(score, 2)
+        
+        # Exception validation pass: usefulness >= 80 or insight_strength >= 80
+        is_exceptional = False
+        try:
+            usefulness = float(m.get("usefulness") or 0)
+            insight = float(m.get("insight_strength") or 0)
+            if usefulness >= 80 or insight >= 80:
+                is_exceptional = True
+        except (ValueError, TypeError):
+            pass
+            
+        if m["viral_score"] < min_score and not is_exceptional:
+            continue
+            
+        valid_moments.append(m)
+        
+    return valid_moments
+
+
+def _overlap_ratio(a_start, a_end, b_start, b_end):
+    try:
+        inter_start = max(a_start, b_start)
+        inter_end = min(a_end, b_end)
+        inter = max(0.0, inter_end - inter_start)
+        union_start = min(a_start, b_start)
+        union_end = max(a_end, b_end)
+        union = max(0.001, union_end - union_start)
+        return inter / union
+    except Exception:
+        return 0.0
+
+
+def dedupe_moments(moments: list, threshold=0.70) -> list:
+    if not moments:
+        return []
+    sorted_m = sorted(moments, key=lambda x: float(x.get("viral_score", 0)), reverse=True)
+    kept = []
+    for m in sorted_m:
+        m_start = m["start"]
+        m_end = m["end"]
+        duplicate = False
+        for k in kept:
+            ratio = _overlap_ratio(m_start, m_end, k["start"], k["end"])
+            if ratio > threshold:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(m)
+    return sorted(kept, key=lambda x: x["start"])
+
+
+def find_moments_from_transcript(transcript_segments: list, video_duration: float, max_clips: int = 8) -> list:
+    if not is_groq_enabled():
+        return []
+
+    api_key = _get_groq_api_key()
+    if not api_key:
+        log.warning("[GROQ_CORTEX] API key missing for transcript-first mode.")
+        return []
+
+    if not transcript_segments:
+        return []
+
+    try:
+        chunk_size = float(os.environ.get("HS_GROQ_TRANSCRIPT_CHUNK_SECONDS", "240"))
+        overlap_size = float(os.environ.get("HS_GROQ_TRANSCRIPT_OVERLAP_SECONDS", "30"))
+    except ValueError:
+        chunk_size = 240.0
+        overlap_size = 30.0
+
+    # 1. Chunk transcript into rolling windows
+    chunks = _chunk_transcript(transcript_segments, video_duration, window_size=chunk_size, overlap=overlap_size)
+    log.info(f"[GROQ_TRANSCRIPT_FIRST] enabled=True")
+    log.info(f"[GROQ_TRANSCRIPT_FIRST] chunks={len(chunks)}")
+    
+    all_raw_moments = []
+    
+    # 2. Iterate chunks and query Groq
+    for idx, chunk in enumerate(chunks):
+        groq_input = []
+        for s in chunk["segments"]:
+            groq_input.append({
+                "start": round(float(s.get("start", 0)), 2),
+                "end": round(float(s.get("end", 0)), 2),
+                "text": str(s.get("text", "")).strip()
+            })
+            
+        prompt_json = json.dumps(groq_input, indent=2)
+        
+        system_prompt = """
+You are HotShort Moment Director: a world-class short-form content director, retention psychologist, podcast editor, and content research lab.
+
+Your job is to read the provided transcript segments and identify the most valuable complete, standalone short-form moments.
+For each valuable moment, identify:
+- start (precise time in seconds where the speaker begins the thought/scene, do not cut mid-sentence)
+- end (precise time in seconds where the speaker finishes the payoff/takeaway, do not cut mid-sentence)
+- viral_score (0 to 100 based on hook, insight, usefulness, and narrative completeness)
+- usefulness (0 to 100 based on practical value or how actionable it is)
+- insight_strength (0 to 100 based on counterintuitive or deep thoughts)
+- completeness_score (0 to 100 score of stand-alone completeness)
+- title (a punchy, curiosity-driven title for the clip)
+- opening_caption (the very first spoken phrase or a curiosity hook caption)
+- clip_archetype (choose from: practical_insight, warning, contrarian_take, story, framework, mistake, case_study, emotional_truth, tactical_steps)
+- hook_line (the hook line of the clip)
+- build (the build/context text)
+- payoff (the core payoff/takeaway of the clip)
+- why_valuable (why this clip is insightful, emotional, or practical for the audience)
+- why_people_keep_watching (retention driver)
+- editing_notes (pacing_note: fast/medium/slow, subtitle_style: classic|neon|beast|retro|minimal, face_priority: center)
+
+MOMENT VALIDITY RULES:
+- Start must not be mid-sentence if avoidable.
+- End must include payoff/takeaway.
+- Duration ideal 18–75 seconds.
+- Allow 10–90 seconds only if content is complete.
+- Do NOT force 30 seconds.
+- Reject fragments even if hook sounds good.
+- Prefer complete insight over aggressive hook.
+- For educational/founder podcasts, valuable clips can be:
+  practical insight, mistake correction, framework, warning, counterintuitive idea, tactical steps, story payoff.
+
+SCORING SCALE:
+- 85-100: Exceptional, viral gold, must-share.
+- 72-84: Strong, complete, highly valuable, educational, or emotional. (This is the passing range).
+- 60-71: Moderate quality, but perhaps missing a clear payoff or standalone clarity.
+- Below 60: Weak or incomplete.
+
+Return 0 to N moments.
+Never force moments. If none are strong, return 0 moments.
+
+OUTPUT JSON ONLY.
+No markdown. No explanation outside JSON.
+
+Return this exact structure:
+{
+  "content_diagnosis": {
+    "content_mode": "founder/startup | educational | podcast | mixed",
+    "overall_clip_density": "low | medium | high",
+    "estimated_valuable_clip_count": 0
+  },
+  "moments": [
+    {
+      "start": 12.3,
+      "end": 45.6,
+      "viral_score": 86,
+      "usefulness": 88,
+      "insight_strength": 85,
+      "completeness_score": 84,
+      "clip_archetype": "practical_insight",
+      "title": "...",
+      "opening_caption": "...",
+      "reason": "...",
+      "editing_notes": {
+        "pacing_note": "medium",
+        "subtitle_style": "classic",
+        "face_priority": "center"
+      }
+    }
+  ],
+  "rejected_moments": []
+}
+
+Now review these transcript segments:
+{{TRANSCRIPT_JSON}}
+""".replace("{{TRANSCRIPT_JSON}}", prompt_json)
+
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": _get_groq_model(),
+                    "temperature": 0.2,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": system_prompt
+                        }
+                    ]
+                },
+                timeout=_get_timeout()
+            )
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            parsed = parse_groq_json_safely(content)
+            
+            if parsed and "moments" in parsed:
+                chunk_moments = parsed["moments"]
+                validated_chunk = validate_groq_moments(chunk_moments, video_duration)
+                all_raw_moments.extend(validated_chunk)
+                log.info(f"[GROQ_DIRECTOR] window {idx}: found {len(validated_chunk)} valid moments out of {len(chunk_moments)}")
+            else:
+                log.info(f"[GROQ_DIRECTOR] window {idx}: no moments returned or failed to parse JSON")
+        except Exception as e:
+            log.error(f"[GROQ_DIRECTOR] window {idx} failed: {e}")
+            
+    log.info(f"[GROQ_TRANSCRIPT_FIRST] moments_found={len(all_raw_moments)}")
+    
+    # 3. Dedupe overlapping moments across different windows
+    deduped = dedupe_moments(all_raw_moments, threshold=0.70)
+    log.info(f"[GROQ_TRANSCRIPT_FIRST] moments_after_dedupe={len(deduped)}")
+    
+    try:
+        max_clips_limit = int(os.environ.get("HS_GROQ_TRANSCRIPT_MAX_CLIPS", str(max_clips)))
+    except ValueError:
+        max_clips_limit = max_clips
+
+    return deduped[:max_clips_limit]

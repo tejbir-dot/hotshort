@@ -72,14 +72,17 @@ def format_viral_clips(raw_clips, min_duration=30.0, overlap_threshold=5.0, vide
             deduplicated.append(clip)
 
     # RULE 2: The 30-Second Minimum (Padding)
+    force_padding = os.environ.get("HS_FORCE_30S_PADDING", "0").strip() == "1"
+    target_min_duration = min_duration if force_padding else 0.0
+    
     final_clips = []
     for clip in deduplicated:
         start = get_val(clip, 'start', 0.0)
         end = get_val(clip, 'end', 0.0)
         duration = end - start
         
-        if duration < min_duration:
-            new_end = start + min_duration
+        if duration < target_min_duration:
+            new_end = start + target_min_duration
             # Ensure we do not cut beyond the actual video length
             if video_duration and new_end > video_duration:
                 new_end = video_duration
