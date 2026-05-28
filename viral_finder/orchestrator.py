@@ -2740,18 +2740,18 @@ def orchestrate(path: str,
     mode = _pipeline_mode(pipeline_mode)
     log.info("[ORCH] pipeline_mode=%s", mode)
 
+    final_candidates = []
+
     if mode == "staged":
         try:
-            out = _run_staged_pipeline(
+            final_candidates = _run_staged_pipeline(
                 path=path,
                 top_k=top_k,
                 prefer_gpu=prefer_gpu,
                 use_cache=use_cache,
                 allow_fallback=allow_fallback,
             )
-            log.info("[ORCH] staged returned %d candidates.", len(out))
-            log.info('[ORCH] Orchestration complete (t=%.2fs)', (time.time() - start_time))
-            return out
+            log.info("[ORCH] staged returned %d candidates.", len(final_candidates))
         except Exception as exc:
             log.exception("[ORCH] staged pipeline failed: %s", exc)
             if not _env_bool("HS_ORCH_STAGED_FAILOVER_TO_LEGACY", False):
@@ -2759,20 +2759,32 @@ def orchestrate(path: str,
             log.error("STAGED PIPELINE CRASHED — FALLING BACK TO ULTRON")
             log.info("[ORCH] staged failover -> legacy")
 
-    if not ultron_engine:
-        log.error("[ORCH] FATAL: Ultron V33 engine (ultron_finder_v33.py) is not available.")
-        return []
+    if not final_candidates:
+        if not ultron_engine:
+            log.error("[ORCH] FATAL: Ultron V33 engine (ultron_finder_v33.py) is not available.")
+            return []
 
+        try:
+            result_envelope = ultron_engine(path, top_k=top_k, allow_fallback=allow_fallback)
+            final_candidates = result_envelope.get("candidates", [])
+            log.info("[ORCH] Ultron V33 Engine returned %d candidates.", len(final_candidates))
+        except Exception as exc:
+            log.exception("[ORCH] Ultron V33 engine failed: %s", exc)
+            return []
+
+    log.info('[ORCH] Orchestration complete (t=%.2fs)', (time.time() - start_time))
+
+    # --- NEW: HOTSHORT CORTEX (GROQ) LAYER ---
     try:
-        result_envelope = ultron_engine(path, top_k=top_k, allow_fallback=allow_fallback)
-        godmode_candidates = result_envelope.get("candidates", [])
-        log.info("[ORCH] Ultron V33 Engine returned %d candidates.", len(godmode_candidates))
-        elapsed = time.time() - start_time
-        log.info('[ORCH] Orchestration complete (t=%.2fs)', elapsed)
-        return godmode_candidates
-    except Exception as exc:
-        log.exception("[ORCH] Ultron V33 engine failed: %s", exc)
-        return []
+        from viral_finder.groq_cortex import is_groq_enabled, review_candidates_with_groq
+        if is_groq_enabled() and final_candidates:
+            transcript = final_candidates[0].get("transcript")
+            final_candidates = review_candidates_with_groq(final_candidates, transcript_meta=transcript)
+    except Exception as e:
+        log.warning(f"[GROQ_CORTEX] Exception during review: {e}")
+    # -----------------------------------------
+
+    return final_candidates
 
 # -------------------------
 # CLI helper
