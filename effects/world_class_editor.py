@@ -822,6 +822,7 @@ class ClipEditor:
         precomputed_narrative: Optional[Dict[str, Any]] = None,
         write_metadata_file: bool = True,
         is_free: bool = False,
+        cortex_hints: Optional[Dict[str, Any]] = None,
     ) -> EditResult:
         cfg = config or ClipEditConfig()
         _ensure_dir(os.path.dirname(output_path) or ".")
@@ -934,9 +935,63 @@ class ClipEditor:
                 )
             vf_render = vf
             
-            hook_line = clip_title.strip() if clip_title else (captions[0].text if captions else "")
-            cta_line = "Follow for more creator breakdowns"
-            hashtags_line = self._extract_hashtags(transcript_window) if cfg.add_hashtags else None
+            # --- CORTEX EDITING HINTS ---
+            # If Groq Cortex ran on this clip, use its creative intelligence
+            # for the hook overlay, CTA, and hashtags instead of generic fallbacks.
+            _cortex = cortex_hints or {}
+            _cortex_active = bool(_cortex.get("cortex_enabled"))
+
+            # Hook overlay: Groq's opening_caption > title > clip_title > first caption
+            if _cortex_active and _cortex.get("opening_caption"):
+                hook_line = str(_cortex["opening_caption"]).strip()
+                log.info("[WCE-CORTEX] Using Groq opening_caption as hook: %s", hook_line[:60])
+            elif _cortex_active and _cortex.get("title"):
+                hook_line = str(_cortex["title"]).strip()
+                log.info("[WCE-CORTEX] Using Groq title as hook: %s", hook_line[:60])
+            else:
+                hook_line = clip_title.strip() if clip_title else (captions[0].text if captions else "")
+
+            # CTA: derive context-aware CTA from Groq's hook_type / why_this_clip_works
+            if _cortex_active:
+                hook_type = str(_cortex.get("hook_type", "")).lower()
+                if "curiosity" in hook_type or "mystery" in hook_type:
+                    cta_line = "Would you do it? Comment below."
+                elif "fear" in hook_type or "risk" in hook_type or "danger" in hook_type:
+                    cta_line = "Share this before it's too late."
+                elif "reveal" in hook_type or "twist" in hook_type or "surprise" in hook_type:
+                    cta_line = "Save this — you'll want to rewatch."
+                elif "inspiration" in hook_type or "motivation" in hook_type:
+                    cta_line = "Follow for more of these moments."
+                elif "confession" in hook_type or "personal" in hook_type:
+                    cta_line = "Drop a reaction below."
+                else:
+                    cta_line = "Follow for more creator breakdowns."
+                log.info("[WCE-CORTEX] Using Groq hook_type '%s' -> CTA: %s", hook_type, cta_line)
+            else:
+                cta_line = "Follow for more creator breakdowns"
+
+            # Hashtags: use cortex topic keywords if available, else auto-extract
+            cortex_hashtags = None
+            if _cortex_active:
+                ls = _cortex.get("learning_signal_for_hotshort", {})
+                meaning_pattern = (ls.get("meaning_pattern") or "").strip() if isinstance(ls, dict) else ""
+                topic_tags = [
+                    w.lower().replace(" ", "")
+                    for w in meaning_pattern.split(",")
+                    if len(w.strip()) > 3
+                ][:3]
+                if topic_tags:
+                    cortex_hashtags = " ".join(f"#{t}" for t in topic_tags)
+                    log.info("[WCE-CORTEX] Using Groq hashtags: %s", cortex_hashtags)
+            hashtags_line = (cortex_hashtags or self._extract_hashtags(transcript_window)) if cfg.add_hashtags else None
+
+            # Log cortex usage in metadata
+            if _cortex_active:
+                metadata["cortex_hints_applied"] = True
+                metadata["cortex_hook_type"] = _cortex.get("hook_type", "")
+                metadata["cortex_score"] = _cortex.get("cortex_score", 0)
+            # --- END CORTEX EDITING HINTS ---
+
             
             has_any_overlay = (cfg.add_captions and captions) or (cfg.add_dynamic_overlays and hook_line) or (cfg.add_cta and cta_line)
             

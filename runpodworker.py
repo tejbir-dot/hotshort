@@ -443,7 +443,28 @@ def handler(event):
                                 target_ratio="9:16",
                             )
 
-                            print(f"[WORKER] Running world_class_editor on clip {i}…")
+                            # Build cortex_hints from Groq Cortex data if present on this clip
+                            cortex_hints = None
+                            if clip.get("cortex_enabled"):
+                                cortex_hints = {
+                                    "cortex_enabled": True,
+                                    "opening_caption": clip.get("opening_caption", ""),
+                                    "title": clip.get("title", ""),
+                                    "hook_type": clip.get("hook_type", ""),
+                                    "cortex_score": clip.get("cortex_score", 0),
+                                    "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {}),
+                                }
+                                print(f"[WORKER] Cortex hints loaded for clip {i}: hook_type={clip.get('hook_type', '-')}")
+
+                            # Prefer Groq title/opening_caption for hook overlay
+                            clip_title_str = (
+                                clip.get("opening_caption")
+                                or clip.get("title")
+                                or clip.get("text", "")
+                                or ""
+                            )
+
+                            print(f"[WORKER] Running world_class_editor on clip {i}...")
                             edit_result = editor.enhance_pretrimmed_clip(
                                 input_path=clip_path,
                                 output_path=edited_path,
@@ -451,8 +472,9 @@ def handler(event):
                                 source_end=end,
                                 transcript=clip_transcript,
                                 config=edit_cfg,
-                                clip_title=clip.get("text", "") or "",
+                                clip_title=clip_title_str,
                                 is_free=clip.get("is_free", False) or is_free_user,
+                                cortex_hints=cortex_hints,
                             )
                             if edit_result and os.path.exists(edit_result.output_path):
                                 final_clip_path = edit_result.output_path
