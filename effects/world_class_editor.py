@@ -691,7 +691,45 @@ class ClipEditor:
         hook_line: Optional[str],
         cta_line: Optional[str],
         hashtags_line: Optional[str],
+        subtitle_style: str = "classic",
     ) -> None:
+        style_val = str(subtitle_style or "classic").lower().strip()
+        
+        # Default style tokens
+        caption_color = "&H00FFFFFF"     # White
+        hook_color = "&H00FFAA00"        # Orange-yellow
+        highlight_color = "&H0000C8FF"   # Gold
+        border_size = "3"
+        shadow_size = "2"
+        bold_val = "-1"
+        italic_val = "0"
+        
+        if style_val == "neon":
+            caption_color = "&H00FFFF00"     # Neon Cyan
+            highlight_color = "&H00FF00FF"   # Neon Pink / Magenta
+            hook_color = "&H0000FFFF"        # Neon Yellow
+            border_size = "3.5"
+            shadow_size = "3"
+        elif style_val == "beast":
+            caption_color = "&H0000FFFF"     # Bright Yellow
+            highlight_color = "&H00FFFF00"   # Cyan
+            hook_color = "&H000088FF"        # Bright Orange
+            border_size = "4"
+            shadow_size = "2"
+        elif style_val == "minimal":
+            caption_color = "&H00FFFFFF"     # White
+            highlight_color = "&H0000FF00"   # Pure Green
+            hook_color = "&H00FFFFFF"
+            border_size = "1"                # Thin border
+            shadow_size = "0"                # No shadow
+        elif style_val == "retro":
+            caption_color = "&H0000FFFF"     # Yellow text
+            highlight_color = "&H003300FF"   # Red Highlight
+            hook_color = "&H00FFFFFF"
+            italic_val = "-1"                # Italic
+            border_size = "3"
+            shadow_size = "3"
+
         header = [
             "[Script Info]",
             "ScriptType: v4.00+",
@@ -701,12 +739,12 @@ class ClipEditor:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            "Style: Caption,Montserrat,65,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
-            "Style: Hook,Montserrat,75,&H00FFAA00,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
-            "Style: Highlight,Montserrat,70,&H0000C8FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
-            "Style: Danger,Montserrat,70,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
-            "Style: Success,Montserrat,70,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,350,1",
-            "Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
+            f"Style: Caption,Montserrat,65,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,350,1",
+            f"Style: Hook,Montserrat,75,{hook_color},&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
+            f"Style: Highlight,Montserrat,70,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,350,1",
+            f"Style: Danger,Montserrat,70,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,350,1",
+            f"Style: Success,Montserrat,70,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,350,1",
+            f"Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -848,6 +886,23 @@ class ClipEditor:
         t_encode = 0.0
 
         try:
+            # --- CORTEX EDITING HINTS EXTRACTION ---
+            _cortex = cortex_hints or {}
+            _cortex_active = bool(_cortex.get("cortex_enabled"))
+            editing_notes = _cortex.get("editing_notes", {}) if isinstance(_cortex.get("editing_notes"), dict) else {}
+            
+            pacing_note = str(editing_notes.get("pacing_note", "")).lower().strip()
+            subtitle_style = str(editing_notes.get("subtitle_style", "classic")).lower().strip()
+            
+            if _cortex_active:
+                if pacing_note == "fast":
+                    cfg.max_caption_words = 3
+                    log.info("[WCE-CORTEX] Overriding max_caption_words to 3 based on fast pacing note.")
+                elif pacing_note == "slow":
+                    cfg.max_caption_words = 9
+                    log.info("[WCE-CORTEX] Overriding max_caption_words to 9 based on slow pacing note.")
+            # --- END CORTEX EDITING HINTS EXTRACTION ---
+
             base_meta = self._probe_video(input_path)
             clip_duration = max(0.01, float(base_meta.get("duration") or 0.0))
             if precomputed_narrative and isinstance(precomputed_narrative, dict):
@@ -938,8 +993,6 @@ class ClipEditor:
             # --- CORTEX EDITING HINTS ---
             # If Groq Cortex ran on this clip, use its creative intelligence
             # for the hook overlay, CTA, and hashtags instead of generic fallbacks.
-            _cortex = cortex_hints or {}
-            _cortex_active = bool(_cortex.get("cortex_enabled"))
 
             # Hook overlay: Groq's opening_caption > title > clip_title > first caption
             if _cortex_active and _cortex.get("opening_caption"):
@@ -1007,6 +1060,7 @@ class ClipEditor:
                     hook_line=hook_line if cfg.add_dynamic_overlays else None,
                     cta_line=cta_line if cfg.add_cta else None,
                     hashtags_line=hashtags_line,
+                    subtitle_style=subtitle_style,
                 )
                 fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
                 ass_esc = _ffmpeg_filter_path(ass_path)
@@ -1063,7 +1117,7 @@ class ClipEditor:
                 ),
                 "-movflags",
                 "+faststart",
-            ]
+            ])
             if bool(work_meta.get("has_audio")):
                 cmd += ["-af", af, "-c:a", "aac", "-b:a", "192k"]
             else:

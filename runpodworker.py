@@ -453,6 +453,7 @@ def handler(event):
                                     "hook_type": clip.get("hook_type", ""),
                                     "cortex_score": clip.get("cortex_score", 0),
                                     "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {}),
+                                    "editing_notes": clip.get("editing_notes", {}),
                                 }
                                 print(f"[WORKER] Cortex hints loaded for clip {i}: hook_type={clip.get('hook_type', '-')}")
 

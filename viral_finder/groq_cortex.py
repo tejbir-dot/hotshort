@@ -177,6 +177,7 @@ def merge_groq_results_with_candidates(validated_clips: list, original_candidate
         new_cand["completeness_score"] = v_clip.get("completeness_score", 0)
         new_cand["retention_risk"] = v_clip.get("retention_risk", "")
         new_cand["learning_signal_for_hotshort"] = v_clip.get("learning_signal_for_hotshort", {})
+        new_cand["editing_notes"] = v_clip.get("editing_notes", {})
         
         merged.append(new_cand)
         
@@ -239,24 +240,48 @@ Important:
 - Do NOT rely on hardcoded trigger words.
 - Detect meaning, story movement, tension, contrast, stakes, surprise, specificity, confession, conflict, insight, and payoff.
 - Do NOT force clips.
-- If only 1 clip is great, return 1.
-- If 5 clips are great, return 5.
-- If none are great, return [].
 - Reject weak or incomplete clips.
 - Prefer fewer excellent clips over many average clips.
 - Never invent timestamps.
 - Only use candidate_id values provided.
 - start_adjustment_seconds and end_adjustment_seconds must stay within the candidate boundaries.
-- viral_score is REQUIRED for every clip. Use an integer 0-100.
 - Return JSON only. No markdown. No explanation outside JSON.
 
-For every selected clip, explain:
-- why the hook is dangerous
-- why the clip is complete
-- why people keep watching
-- what the payoff is
-- why it might fail
-- what HotShort should learn from this selection
+You MUST follow this exact JSON output structure:
+{
+  "clips": [
+    {
+      "candidate_id": "c0",
+      "viral_score": 85,
+      "title": "Unveiling the Quantum Core",
+      "hook_type": "Surprise",
+      "opening_caption": "We found something alive inside the core...",
+      "why_dangerous_hook": "Presents a chilling revelation instantly",
+      "why_people_keep_watching": "Desire to know what the anomaly is",
+      "payoff": "Sentience is confirmed",
+      "retention_risk": "Viewer might lose interest if description gets too technical",
+      "start_adjustment_seconds": 0.0,
+      "end_adjustment_seconds": 0.0,
+      "learning_signal_for_hotshort": {
+        "meaning_pattern": "Pattern of scientific discovery",
+        "psychological_trigger": "Curiosity"
+      },
+      "editing_notes": {
+        "pacing_note": "fast",
+        "subtitle_style": "neon"
+      }
+    }
+  ],
+  "rejected_candidates": [
+    {
+      "candidate_id": "c1",
+      "reason": "Generic introduction lacking hook and payoff"
+    }
+  ]
+}
+
+Available subtitle_style options: "classic", "neon", "beast", "retro", "minimal".
+Available pacing_note options: "fast" (short rapid cuts), "normal", "slow" (longer dramatic captions).
 
 Now review these candidates:
 {{CANDIDATES_JSON}}
