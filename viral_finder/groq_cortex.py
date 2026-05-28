@@ -22,15 +22,15 @@ def _get_timeout() -> int:
 
 def _get_max_clips() -> int:
     try:
-        return int(os.environ.get("HS_GROQ_MAX_CLIPS", "6"))
+        return int(os.environ.get("HS_GROQ_MAX_CLIPS", "10"))
     except ValueError:
-        return 6
+        return 10
 
 def _get_min_score() -> int:
     try:
-        return int(os.environ.get("HS_GROQ_MIN_SCORE", "78"))
+        return int(os.environ.get("HS_GROQ_MIN_SCORE", "72"))
     except ValueError:
-        return 78
+        return 72
 
 def _is_fail_open() -> bool:
     return os.environ.get("HS_GROQ_FAIL_OPEN", "1").strip() == "1"
@@ -172,7 +172,14 @@ def merge_groq_results_with_candidates(validated_clips: list, original_candidate
         
         new_cand["title"] = v_clip.get("title", "")
         new_cand["opening_caption"] = v_clip.get("opening_caption", "")
-        new_cand["why_this_clip_works"] = v_clip.get("why_dangerous_hook", "") + " " + v_clip.get("why_people_keep_watching", "")
+        new_cand["why_this_clip_works"] = (
+            v_clip.get("why_this_clip_is_valuable", "")
+            or v_clip.get("why_dangerous_hook", "")
+            + " " + v_clip.get("why_people_keep_watching", "")
+        ).strip()
+        new_cand["clip_archetype"] = v_clip.get("clip_archetype", "")
+        new_cand["payoff"] = v_clip.get("payoff", "")
+        new_cand["clip_scores"] = v_clip.get("scores", {})
         new_cand["hook_type"] = v_clip.get("hook_type", "")
         new_cand["completeness_score"] = v_clip.get("completeness_score", 0)
         new_cand["retention_risk"] = v_clip.get("retention_risk", "")
@@ -201,7 +208,7 @@ def review_candidates_with_groq(candidates: list, transcript_meta=None) -> list:
             c["id"] = f"c{i}"
 
     try:
-        max_candidates = int(os.environ.get("HS_GROQ_MAX_CANDIDATES", "20"))
+        max_candidates = int(os.environ.get("HS_GROQ_MAX_CANDIDATES", "30"))
     except ValueError:
         max_candidates = 20
 
@@ -222,66 +229,183 @@ def review_candidates_with_groq(candidates: list, transcript_meta=None) -> list:
 
     prompt_json = json.dumps(groq_input, indent=2)
     
-    system_prompt = """You are HotShort Cortex, a senior short-form creative director and retention psychologist.
+    system_prompt = """
+You are HotShort Cortex: a world-class short-form content director, retention psychologist, podcast editor, and content research lab.
 
 Your job is NOT to find a fixed number of clips.
-Your job is to identify only genuinely strong, complete, standalone short-form clips from candidate transcript chunks.
+Your job is to discover how many genuinely valuable short-form clips exist in the provided candidates.
 
-A valid clip must have:
-1. A dangerous hook in the first 1-3 seconds.
-2. Instant curiosity, tension, contradiction, surprise, or emotional pull.
-3. Complete meaning without needing previous context.
-4. A clear payoff, reveal, insight, emotional turn, or satisfying ending.
-5. A natural beginning and ending.
-6. Strong reason someone would keep watching.
-7. Strong reason someone might share, save, or comment.
+Return 0 to N clips.
+If only 1 clip is excellent, return 1.
+If 6 clips are excellent and meaningfully different, return 6.
+If none are strong, return 0.
+Never force clips.
 
-Important:
-- Do NOT rely on hardcoded trigger words.
-- Detect meaning, story movement, tension, contrast, stakes, surprise, specificity, confession, conflict, insight, and payoff.
-- Do NOT force clips.
-- Reject weak or incomplete clips.
-- Prefer fewer excellent clips over many average clips.
-- Never invent timestamps.
+CORE PRINCIPLE:
+Not every viral clip needs a dangerous hook.
+Some great clips win because they are useful, insightful, emotional, surprising, practical, contrarian, funny, story-driven, or deeply relatable.
+
+FIRST: Identify the content type.
+Possible content modes:
+- educational
+- founder/startup
+- podcast interview
+- story/confession
+- motivational
+- technical/tutorial
+- business/marketing
+- entertainment
+- philosophical
+- news/commentary
+- mixed
+
+SECOND: Choose clip archetypes based on the transcript.
+Possible strong clip archetypes:
+- dangerous_hook
+- practical_insight
+- founder_lesson
+- contrarian_take
+- mistake_warning
+- story_payoff
+- emotional_truth
+- framework_or_steps
+- quote_or_big_line
+- before_after_realization
+- tactical_tip
+- myth_busting
+- curiosity_loop
+- strong_opinion
+- relatable_problem
+- surprising_fact
+
+A clip is valuable if it has at least ONE strong reason to exist:
+1. It teaches something useful.
+2. It reveals a strong insight.
+3. It opens a curiosity loop.
+4. It gives a clear takeaway.
+5. It contains emotional truth.
+6. It shows conflict, contrast, or contradiction.
+7. It has a memorable line.
+8. It solves a real problem.
+9. It feels shareable, saveable, or comment-worthy.
+10. It works as a standalone short without previous context.
+
+DO NOT over-prioritize suspense.
+DO NOT reject a clip just because it is calm.
+A calm clip can be excellent if the insight is strong.
+
+Reject clips that are:
+- incomplete
+- generic
+- context-dependent
+- repetitive
+- only setup with no payoff
+- only hype with no meaning
+- too vague
+- weak educational value
+- same idea as another stronger clip
+
+DIVERSITY RULE:
+Do not return multiple clips that feel like the same idea.
+Prefer a diverse set like:
+- one practical insight
+- one founder lesson
+- one warning
+- one contrarian take
+- one story payoff
+- one tactical tip
+
+SCORING:
+Score each selected clip from 0 to 100 using:
+- hook_strength
+- insight_strength
+- completeness
+- standalone_clarity
+- retention_potential
+- shareability
+- payoff_strength
+- uniqueness
+- usefulness
+
+Only return clips with viral_score >= 72.
+But if a clip has exceptional educational value, practical value, or founder insight, it can pass even without a dramatic hook.
+
+TIMESTAMP RULES:
 - Only use candidate_id values provided.
-- start_adjustment_seconds and end_adjustment_seconds must stay within the candidate boundaries.
-- Return JSON only. No markdown. No explanation outside JSON.
+- Never invent timestamps.
+- start_adjustment_seconds and end_adjustment_seconds must stay inside original candidate boundaries.
+- Prefer trimming dead setup and ending after the payoff.
 
-You MUST follow this exact JSON output structure:
+EDITING INTELLIGENCE:
+For every selected clip, decide pacing and subtitle style based on the clip type:
+- fast: high-energy, punchy, tactical, controversial
+- normal: educational, founder, business, insight
+- slow: emotional, philosophical, dramatic, story payoff
+
+Subtitle style:
+- classic: clean educational/business
+- neon: tech/futuristic/high-energy
+- beast: loud viral/motivational
+- retro: story/commentary
+- minimal: premium calm insight
+
+OUTPUT JSON ONLY.
+No markdown.
+No explanation outside JSON.
+
+Return this exact structure:
 {
+  "content_diagnosis": {
+    "content_mode": "founder/startup",
+    "dominant_signals": ["insight", "warning", "practical"],
+    "overall_clip_density": "low | medium | high",
+    "estimated_valuable_clip_count": 0
+  },
   "clips": [
     {
       "candidate_id": "c0",
-      "viral_score": 85,
-      "title": "Unveiling the Quantum Core",
-      "hook_type": "Surprise",
-      "opening_caption": "We found something alive inside the core...",
-      "why_dangerous_hook": "Presents a chilling revelation instantly",
-      "why_people_keep_watching": "Desire to know what the anomaly is",
-      "payoff": "Sentience is confirmed",
-      "retention_risk": "Viewer might lose interest if description gets too technical",
+      "clip_archetype": "practical_insight",
+      "viral_score": 86,
+      "title": "The Real Startup Cost Trap",
+      "opening_caption": "Most founders spend money on the wrong thing...",
+      "hook_type": "Insight",
+      "why_this_clip_is_valuable": "It gives a useful founder lesson with clear standalone meaning.",
+      "why_people_keep_watching": "They want to know what cost actually matters.",
+      "payoff": "Customer acquisition matters more than product polish early on.",
+      "retention_risk": "Could feel slow if captions are not punchy.",
       "start_adjustment_seconds": 0.0,
       "end_adjustment_seconds": 0.0,
+      "scores": {
+        "hook_strength": 78,
+        "insight_strength": 92,
+        "completeness": 88,
+        "standalone_clarity": 90,
+        "retention_potential": 82,
+        "shareability": 80,
+        "payoff_strength": 86,
+        "uniqueness": 76,
+        "usefulness": 94
+      },
       "learning_signal_for_hotshort": {
-        "meaning_pattern": "Pattern of scientific discovery",
-        "psychological_trigger": "Curiosity"
+        "meaning_pattern": "Useful founder insight with clear mistake correction",
+        "psychological_trigger": "Problem-solution clarity",
+        "why_selected_over_others": "More useful and complete than generic motivational clips"
       },
       "editing_notes": {
-        "pacing_note": "fast",
-        "subtitle_style": "neon"
+        "pacing_note": "normal",
+        "subtitle_style": "classic",
+        "caption_strategy": "Highlight the mistake and the corrected belief.",
+        "broll_suggestion": "startup dashboard, Stripe, landing page, analytics"
       }
     }
   ],
   "rejected_candidates": [
     {
       "candidate_id": "c1",
-      "reason": "Generic introduction lacking hook and payoff"
+      "reason": "Good topic but incomplete payoff and too dependent on previous context."
     }
   ]
 }
-
-Available subtitle_style options: "classic", "neon", "beast", "retro", "minimal".
-Available pacing_note options: "fast" (short rapid cuts), "normal", "slow" (longer dramatic captions).
 
 Now review these candidates:
 {{CANDIDATES_JSON}}
