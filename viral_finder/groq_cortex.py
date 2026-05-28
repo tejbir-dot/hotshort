@@ -6,6 +6,9 @@ import requests
 log = logging.getLogger("groq_cortex")
 
 def is_groq_enabled() -> bool:
+    # Auto-disable during pytest runs to prevent test interference
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
     return os.environ.get("HS_GROQ_CORTEX_ENABLED", "0").strip() == "1"
 
 def _get_groq_api_key() -> str:

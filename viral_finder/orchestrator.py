@@ -2705,12 +2705,43 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
             out = env.get("candidates", [])
         except Exception:
             out = []
-            
+
     # Attach transcript to every candidate so downstream consumer (WCE/worker) has access to it
     for c in out:
         if isinstance(c, dict):
             c["transcript"] = ctx.transcript
             c["transcript_segments"] = ctx.transcript
+
+    # --- BUILD GROQ PRE-FILTER POOL ---
+    # Give Groq a richer candidate pool than the aggressively-filtered ranked_output.
+    # Pool = enriched (post-signal-enrichment, pre-validation-rejection) +
+    #        validated (post-validation, pre-arc) + ranked_output.
+    # Deduplicate by (round(start,1), round(end,1)) key; sort by viral_score desc.
+    _pool_seen: set = set()
+    _groq_pool: list = []
+    _transcript_ref = ctx.transcript  # reference for downstream
+    for _c in list(ctx.enriched_candidates or []) + list(ctx.validated_candidates or []) + list(out):
+        if not isinstance(_c, dict):
+            continue
+        _key = (round(float(_c.get("start", 0) or 0), 1), round(float(_c.get("end", 0) or 0), 1))
+        if _key in _pool_seen:
+            continue
+        _pool_seen.add(_key)
+        _cp = dict(_c)
+        _cp.setdefault("transcript", _transcript_ref)
+        _cp.setdefault("text", " ".join(
+            seg.get("text", "") for seg in (_transcript_ref or [])
+            if float(seg.get("start", 0) or 0) >= float(_cp.get("start", 0) or 0)
+            and float(seg.get("end", 0) or 0) <= float(_cp.get("end", 0) or 0)
+        ).strip() or _cp.get("text", ""))
+        _groq_pool.append(_cp)
+    _groq_pool.sort(key=lambda x: float(x.get("viral_score", x.get("score", 0)) or 0), reverse=True)
+    log.info(
+        "[ORCH] groq_pool built: pool=%d enriched=%d validated=%d ranked=%d",
+        len(_groq_pool), len(ctx.enriched_candidates or []),
+        len(ctx.validated_candidates or []), len(out),
+    )
+    # ----------------------------------
 
     # OPT-1: log cache stats before reset
     _cqs_stats = cqs_cache_stats()
@@ -2720,7 +2751,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     if trace:
         trace.render()
     print("TOTAL PROCESS TIME:", time.time() - start)
-    return out
+    return out, _groq_pool
 
 
 def orchestrate(path: str,
@@ -2741,17 +2772,23 @@ def orchestrate(path: str,
     log.info("[ORCH] pipeline_mode=%s", mode)
 
     final_candidates = []
+    _groq_pool: list = []  # richer pre-filter pool for Groq
 
     if mode == "staged":
         try:
-            final_candidates = _run_staged_pipeline(
+            _staged_result = _run_staged_pipeline(
                 path=path,
                 top_k=top_k,
                 prefer_gpu=prefer_gpu,
                 use_cache=use_cache,
                 allow_fallback=allow_fallback,
             )
-            log.info("[ORCH] staged returned %d candidates.", len(final_candidates))
+            # _run_staged_pipeline now returns (ranked_out, groq_pool)
+            if isinstance(_staged_result, tuple):
+                final_candidates, _groq_pool = _staged_result
+            else:
+                final_candidates = _staged_result  # safety fallback
+            log.info("[ORCH] staged returned %d candidates (groq_pool=%d).", len(final_candidates), len(_groq_pool))
         except Exception as exc:
             log.exception("[ORCH] staged pipeline failed: %s", exc)
             if not _env_bool("HS_ORCH_STAGED_FAILOVER_TO_LEGACY", False):
@@ -2774,15 +2811,37 @@ def orchestrate(path: str,
 
     log.info('[ORCH] Orchestration complete (t=%.2fs)', (time.time() - start_time))
 
-    # --- NEW: HOTSHORT CORTEX (GROQ) LAYER ---
+    # --- HOTSHORT CORTEX (GROQ) LAYER ---
+    # Pass the RICHER pre-filter pool to Groq, not just the aggressive top-k.
+    # If Groq returns clips → use them as final_candidates.
+    # If Groq returns empty + fail_open → keep original final_candidates.
     try:
-        from viral_finder.groq_cortex import is_groq_enabled, review_candidates_with_groq
-        if is_groq_enabled() and final_candidates:
-            transcript = final_candidates[0].get("transcript")
-            final_candidates = review_candidates_with_groq(final_candidates, transcript_meta=transcript)
+        from viral_finder.groq_cortex import is_groq_enabled, review_candidates_with_groq, _get_groq_api_key
+        _groq_api_key = _get_groq_api_key()
+        if is_groq_enabled() and _groq_api_key:
+            _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
+            if not _pool:
+                log.info("[GROQ_CORTEX] Skipping — empty candidate pool.")
+            else:
+                transcript = (final_candidates[0].get("transcript") if final_candidates else None)
+                log.info(
+                    "[GROQ_CORTEX] groq_input_candidates_count=%d (ranked_output=%d, enriched_pool=%d)",
+                    len(_pool), len(final_candidates), len(_groq_pool),
+                )
+                groq_result = review_candidates_with_groq(_pool, transcript_meta=transcript)
+                log.info(
+                    "[GROQ_CORTEX] groq_selected_count=%d groq_rejected_count=%d",
+                    len(groq_result), len(_pool) - len(groq_result),
+                )
+                if groq_result:
+                    final_candidates = groq_result
+                else:
+                    log.info("[GROQ_CORTEX] No clips selected — keeping local pipeline output.")
+        elif is_groq_enabled() and not _groq_api_key:
+            log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:
-        log.warning(f"[GROQ_CORTEX] Exception during review: {e}")
-    # -----------------------------------------
+        log.warning("[GROQ_CORTEX] Exception during review: %s", e)
+    # ------------------------------------
 
     return final_candidates
 
