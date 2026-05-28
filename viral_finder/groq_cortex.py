@@ -399,6 +399,14 @@ Return this exact structure:
         "subtitle_style": "classic",
         "caption_strategy": "Highlight the mistake and the corrected belief.",
         "broll_suggestion": "startup dashboard, Stripe, landing page, analytics"
+      },
+      "visual_editing_notes": {
+        "reframe_priority": "face_center",
+        "face_position": "upper_center",
+        "clarity_level": "premium_sharp",
+        "caption_safe_zone": "lower_third_below_face",
+        "zoom_style": "subtle_dynamic",
+        "avoid": ["blurry_export", "face_cutoff", "caption_on_mouth", "over_sharpening"]
       }
     }
   ],

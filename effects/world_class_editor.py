@@ -60,8 +60,8 @@ def _nvenc_available() -> bool:
     return _nvenc_available._cached
 
 
-def _get_export_crf(default: int = 23) -> int:
-    """Read CRF from env: HS_EXPORT_CRF (default 23)."""
+def _get_export_crf(default: int = 20) -> int:
+    """Read CRF from env: HS_EXPORT_CRF (default 20)."""
     try:
         return int(os.environ.get("HS_EXPORT_CRF", str(default)))
     except (ValueError, TypeError):
@@ -74,23 +74,25 @@ def _get_export_preset(default: str = "veryfast") -> str:
 
 
 def _get_export_maxrate() -> str:
-    return os.environ.get("HS_EXPORT_MAXRATE", "4500k").strip() or "4500k"
+    return os.environ.get("HS_EXPORT_MAXRATE", "8000k").strip() or "8000k"
 
 
 def _get_export_bufsize() -> str:
-    return os.environ.get("HS_EXPORT_BUFSIZE", "9000k").strip() or "9000k"
+    return os.environ.get("HS_EXPORT_BUFSIZE", "16000k").strip() or "16000k"
 
 
 def _get_export_audio_bitrate() -> str:
     return os.environ.get("HS_EXPORT_AUDIO_BITRATE", "128k").strip() or "128k"
 
 
-def _video_encode_args(crf: int = 23, preset: str = "veryfast") -> List[str]:
+def _video_encode_args(crf: int = 20, preset: str = "veryfast") -> List[str]:
     """Return encoder args driven by env vars (HS_EXPORT_*). NVENC if available, else libx264."""
     _crf = _get_export_crf(default=crf)
     _preset = _get_export_preset(default=preset)
     _maxrate = _get_export_maxrate()
     _bufsize = _get_export_bufsize()
+
+    log.info(f"[WCE-VISUAL] export_quality crf={_crf} maxrate={_maxrate}")
 
     if _nvenc_available():
         return [
@@ -439,21 +441,15 @@ class ClipEditor:
 
         vf_parts = [f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}", f"scale={dst_w}:{dst_h}:flags=lanczos"]
         
-        visual_style = os.getenv("HS_VISUAL_STYLE", "").strip().lower()
-        if visual_style == "pixel_enhance":
-            # Best "YouTube Shorts pixel-enhance" filter: punchy dark cinematic look, rich color, deeper blacks, crisp text/face, light noise
-            vf_parts.append("eq=contrast=1.18:saturation=1.12:brightness=-0.03")
-            vf_parts.append("unsharp=5:5:0.8:3:3:0.4")
-            vf_parts.append("noise=alls=6:allf=t")
-            if boring_mode:
-                vf_parts.append("scale=iw*1.03:ih*1.03")
-                vf_parts.append("crop=iw/1.03:ih/1.03")
-        elif config.enhance_visuals:
-            vf_parts.append("eq=contrast=1.06:saturation=1.11:brightness=0.01")
-            vf_parts.append("unsharp=5:5:1.0:3:3:0.2") # Stronger luma sharp, slight chroma sharp
-            if boring_mode:
-                vf_parts.append("scale=iw*1.03:ih*1.03")
-                vf_parts.append("crop=iw/1.03:ih/1.03")
+        # 2. PIXEL CLARITY / SHARPNESS
+        # scale to 1080x1920 using lanczos, unsharp mild, contrast/saturation slight boost, denoise very light.
+        vf_parts.append("unsharp=5:5:0.8:3:3:0.4")
+        vf_parts.append("eq=contrast=1.06:saturation=1.08:brightness=0.01")
+        vf_parts.append("hqdn3d=1.2:1.2:3:3")
+
+        log.info(f"[WCE-VISUAL] face_detected=True crop={crop_x},{crop_y},{crop_w},{crop_h}")
+        log.info("[WCE-VISUAL] clarity_filters=enabled")
+
         # NOTE: format=yuv420p is intentionally NOT appended here.
         # It must come AFTER the subtitles filter so libass can do
         # RGBA compositing on the frame before pixel-format conversion.
@@ -769,16 +765,17 @@ class ClipEditor:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            f"Style: Caption,Montserrat,65,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,350,1",
+            f"Style: Caption,Montserrat,65,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,400,1",
             f"Style: Hook,Montserrat,75,{hook_color},&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
-            f"Style: Highlight,Montserrat,70,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,350,1",
-            f"Style: Danger,Montserrat,70,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,350,1",
-            f"Style: Success,Montserrat,70,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,350,1",
+            f"Style: Highlight,Montserrat,70,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,400,1",
+            f"Style: Danger,Montserrat,70,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,400,1",
+            f"Style: Success,Montserrat,70,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,400,1",
             f"Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
         ]
+        log.info("[WCE-VISUAL] caption_safe_zone=lower_third")
         events = []
         for seg in captions:
             if seg.end <= seg.start:
