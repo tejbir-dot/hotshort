@@ -539,17 +539,33 @@ def _chunk_transcript(segments: list, video_duration: float, window_size: float 
 
 def validate_groq_moments(moments: list, video_duration: float) -> list:
     valid_moments = []
-    min_score = _get_min_score()
-    for m in moments:
+    
+    # 4. Add env controls: HS_GROQ_DIRECTOR_MIN_SCORE=60
+    director_min_score_raw = os.environ.get("HS_GROQ_DIRECTOR_MIN_SCORE")
+    if director_min_score_raw:
+        try:
+            min_score = float(director_min_score_raw)
+        except ValueError:
+            min_score = 60.0
+    else:
+        min_score = 60.0
+
+    for idx, m in enumerate(moments):
         if not isinstance(m, dict):
             continue
+            
+        cid = str(m.get("candidate_id") or m.get("id") or f"moment_{idx}")
+        title = str(m.get("title") or "Untitled")
+        
         try:
             start = float(m.get("start", -1))
             end = float(m.get("end", -1))
         except (ValueError, TypeError):
+            log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start=-1 end=-1 title={title} viral_score=0 usefulness=0 insight_strength=0 reject_reason=invalid_timestamps")
             continue
             
         if start < 0 or end < 0 or start >= end:
+            log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score=0 usefulness=0 insight_strength=0 reject_reason=negative_or_inverted_timestamps")
             continue
             
         # Ensure it fits within video duration
@@ -557,7 +573,10 @@ def validate_groq_moments(moments: list, video_duration: float) -> list:
             end = video_duration
             
         dur = end - start
-        if dur < 8.0 or dur > 120.0:  # duration between 8s and 120s
+        
+        # allow 8s–75s moments
+        if dur < 8.0 or dur > 75.0:
+            log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score=0 usefulness=0 insight_strength=0 reject_reason=duration_{round(dur,1)}s_not_between_8_and_75")
             continue
             
         m["start"] = round(start, 2)
@@ -578,19 +597,62 @@ def validate_groq_moments(moments: list, video_duration: float) -> list:
             score = score * 100.0
         m["viral_score"] = round(score, 2)
         
-        # Exception validation pass: usefulness >= 80 or insight_strength >= 80
-        is_exceptional = False
+        # Extract usefulness and insight_strength
+        usefulness = 0.0
+        insight_strength = 0.0
         try:
             usefulness = float(m.get("usefulness") or 0)
-            insight = float(m.get("insight_strength") or 0)
-            if usefulness >= 80 or insight >= 80:
-                is_exceptional = True
+            if usefulness <= 1.0 and usefulness > 0:
+                usefulness *= 100.0
+        except (ValueError, TypeError):
+            pass
+        try:
+            insight_strength = float(m.get("insight_strength") or m.get("insight") or 0)
+            if insight_strength <= 1.0 and insight_strength > 0:
+                insight_strength *= 100.0
         except (ValueError, TypeError):
             pass
             
-        if m["viral_score"] < min_score and not is_exceptional:
-            continue
+        m["usefulness"] = round(usefulness, 2)
+        m["insight_strength"] = round(insight_strength, 2)
+        
+        # allow score >= 60 if usefulness >= 75 or insight_strength >= 75
+        is_exceptional = (usefulness >= 75.0 or insight_strength >= 75.0)
+        
+        # check score against relaxed thresholds
+        if is_exceptional:
+            if m["viral_score"] < 60.0:
+                log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=score_below_60_for_exceptional")
+                continue
+        else:
+            if m["viral_score"] < min_score:
+                log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=score_below_minimum_{min_score}")
+                continue
+                
+        # allow incomplete payoff if clip_archetype is curiosity_loop, bold_claim, controversy, question, or prediction
+        completeness = 100.0
+        try:
+            completeness = float(m.get("completeness_score") or m.get("completeness") or 100.0)
+            if completeness <= 1.0 and completeness > 0:
+                completeness *= 100.0
+        except (ValueError, TypeError):
+            pass
             
+        clip_archetype = str(m.get("clip_archetype") or "").strip().lower()
+        allowed_incomplete = {"curiosity_loop", "bold_claim", "controversy", "question", "prediction"}
+        if completeness < 72.0 and clip_archetype not in allowed_incomplete:
+            log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=incomplete_payoff_for_archetype_{clip_archetype}")
+            continue
+
+        # do not reject just because context is sparse if hook/usefulness is strong
+        text_content = str(m.get("text") or m.get("reason") or m.get("title") or "")
+        word_count = len(text_content.split())
+        if word_count < 3:
+            is_strong = (m["viral_score"] >= 75.0 or usefulness >= 75.0 or insight_strength >= 75.0)
+            if not is_strong:
+                log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=sparse_context_and_weak_scores")
+                continue
+                
         valid_moments.append(m)
         
     return valid_moments
@@ -649,13 +711,31 @@ def find_moments_from_transcript(transcript_segments: list, video_duration: floa
 
     # 1. Chunk transcript into rolling windows
     chunks = _chunk_transcript(transcript_segments, video_duration, window_size=chunk_size, overlap=overlap_size)
+    
+    # Apply MAX_CHUNKS control
+    try:
+        max_chunks = int(os.environ.get("HS_GROQ_DIRECTOR_MAX_CHUNKS", "3").strip())
+    except ValueError:
+        max_chunks = 3
+    chunks = chunks[:max_chunks]
+    
     log.info(f"[GROQ_TRANSCRIPT_FIRST] enabled=True")
     log.info(f"[GROQ_TRANSCRIPT_FIRST] chunks={len(chunks)}")
     
     all_raw_moments = []
+    all_unvalidated_moments = []
     
     # 2. Iterate chunks and query Groq
+    import time
+    try:
+        sleep_ms = int(os.environ.get("HS_GROQ_CHUNK_SLEEP_MS", "800").strip())
+    except ValueError:
+        sleep_ms = 800
+
     for idx, chunk in enumerate(chunks):
+        if idx > 0 and sleep_ms > 0:
+            time.sleep(sleep_ms / 1000.0)
+
         groq_input = []
         for s in chunk["segments"]:
             groq_input.append({
@@ -743,41 +823,139 @@ Now review these transcript segments:
 {{TRANSCRIPT_JSON}}
 """.replace("{{TRANSCRIPT_JSON}}", prompt_json)
 
+        response = None
+        for attempt in range(2):
+            try:
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": _get_groq_model(),
+                        "temperature": 0.2,
+                        "response_format": {"type": "json_object"},
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": system_prompt
+                            }
+                        ]
+                    },
+                    timeout=_get_timeout()
+                )
+                if response.status_code == 429:
+                    if attempt == 0:
+                        log.warning(f"[GROQ_DIRECTOR] window {idx} returned 429. Sleeping 2s before retry.")
+                        time.sleep(2.0)
+                        continue
+                    else:
+                        log.error(f"[GROQ_DIRECTOR] window {idx} failed: 429 Too Many Requests after retry.")
+                        break
+                response.raise_for_status()
+                break
+            except Exception as e:
+                is_429 = False
+                if hasattr(e, "response") and e.response is not None:
+                    if e.response.status_code == 429:
+                        is_429 = True
+                if is_429:
+                    if attempt == 0:
+                        log.warning(f"[GROQ_DIRECTOR] window {idx} raised 429. Sleeping 2s before retry.")
+                        time.sleep(2.0)
+                        continue
+                    else:
+                        log.error(f"[GROQ_DIRECTOR] window {idx} failed: 429 Too Many Requests after retry.")
+                        break
+                if attempt == 0:
+                    log.warning(f"[GROQ_DIRECTOR] window {idx} failed attempt 1: {e}. Retrying.")
+                    continue
+                log.error(f"[GROQ_DIRECTOR] window {idx} failed: {e}")
+                break
+
+        if response is None or response.status_code != 200:
+            continue
+
         try:
-            response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": _get_groq_model(),
-                    "temperature": 0.2,
-                    "response_format": {"type": "json_object"},
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": system_prompt
-                        }
-                    ]
-                },
-                timeout=_get_timeout()
-            )
-            response.raise_for_status()
             data = response.json()
             content = data["choices"][0]["message"]["content"]
             parsed = parse_groq_json_safely(content)
             
             if parsed and "moments" in parsed:
                 chunk_moments = parsed["moments"]
+                if not isinstance(chunk_moments, list):
+                    chunk_moments = []
+                
+                # Apply per-chunk limit
+                try:
+                    max_moments_per_chunk = int(os.environ.get("HS_GROQ_DIRECTOR_MAX_MOMENTS_PER_CHUNK", "5").strip())
+                except ValueError:
+                    max_moments_per_chunk = 5
+                
+                chunk_moments = chunk_moments[:max_moments_per_chunk]
+                
+                # Store unvalidated chunk moments for rescue fallback
+                all_unvalidated_moments.extend(chunk_moments)
+                
                 validated_chunk = validate_groq_moments(chunk_moments, video_duration)
                 all_raw_moments.extend(validated_chunk)
                 log.info(f"[GROQ_DIRECTOR] window {idx}: found {len(validated_chunk)} valid moments out of {len(chunk_moments)}")
             else:
                 log.info(f"[GROQ_DIRECTOR] window {idx}: no moments returned or failed to parse JSON")
         except Exception as e:
-            log.error(f"[GROQ_DIRECTOR] window {idx} failed: {e}")
+            log.error(f"[GROQ_DIRECTOR] window {idx} parse failed: {e}")
             
+    # 5. If Groq Director returns raw moments but validation rejects all, inject top 1-2 raw moments as fallback
+    if not all_raw_moments and all_unvalidated_moments:
+        log.warning("[GROQ_TRANSCRIPT_FIRST] All moments rejected by validation. Rescuing top 1-2 raw moments.")
+        
+        def get_score(x):
+            try:
+                s = float(x.get("viral_score", 0))
+                return s * 100.0 if s <= 1.0 else s
+            except Exception:
+                return 0.0
+                
+        sorted_unval = sorted(all_unvalidated_moments, key=get_score, reverse=True)
+        rescued = []
+        for m in sorted_unval:
+            if len(rescued) >= 2:
+                break
+            if not isinstance(m, dict):
+                continue
+            try:
+                start = float(m.get("start", -1))
+                end = float(m.get("end", -1))
+                dur = end - start
+                # Enforce basic sanity duration check for rescue (5s to 90s)
+                if start >= 0 and end > start and 5.0 <= dur <= 90.0:
+                    m["start"] = round(start, 2)
+                    m["end"] = round(end, 2)
+                    m["duration"] = round(dur, 2)
+                    m["viral_score"] = round(get_score(m), 2)
+                    m["reason"] = "groq_director_rescue"
+                    m["cortex_enabled"] = True
+                    m["groq_moment"] = True
+                    m["needs_manual_review"] = True
+                    
+                    # Extract usefulness and insight
+                    try:
+                        u = float(m.get("usefulness") or 0)
+                        m["usefulness"] = round(u * 100.0 if u <= 1.0 and u > 0 else u, 2)
+                    except Exception:
+                        m["usefulness"] = 0.0
+                    try:
+                        i = float(m.get("insight_strength") or m.get("insight") or 0)
+                        m["insight_strength"] = round(i * 100.0 if i <= 1.0 and i > 0 else i, 2)
+                    except Exception:
+                        m["insight_strength"] = 0.0
+                        
+                    rescued.append(m)
+            except Exception:
+                pass
+        all_raw_moments = rescued
+
     log.info(f"[GROQ_TRANSCRIPT_FIRST] moments_found={len(all_raw_moments)}")
     
     # 3. Dedupe overlapping moments across different windows
