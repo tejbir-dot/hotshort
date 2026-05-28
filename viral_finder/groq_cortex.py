@@ -86,12 +86,25 @@ def validate_groq_clips(parsed_json: dict, original_candidates: list) -> list:
     for clip in clips:
         if not isinstance(clip, dict):
             continue
-            
-        cid = str(clip.get("candidate_id", ""))
-        if cid not in original_ids:
+
+        # Accept either candidate_id or id
+        cid = str(clip.get("candidate_id") or clip.get("id") or "")
+        if not cid or cid not in original_ids:
             continue
+
+        # Flatten nested 'analysis' dict if present (some models wrap fields in it)
+        analysis = clip.get("analysis")
+        if isinstance(analysis, dict):
+            for k, v in analysis.items():
+                if k not in clip:
+                    clip[k] = v
             
-        score = clip.get("viral_score", 0)
+        score = clip.get("viral_score")
+        # If Groq didn't return viral_score, use the existing score or assume a passing grade
+        if score is None:
+            existing = clip.get("existing_score", 0)
+            score = float(existing) * 100 if float(existing) <= 1.0 else float(existing)
+            clip["viral_score"] = round(score, 2)
         try:
             score = float(score)
         except (ValueError, TypeError):
@@ -104,6 +117,9 @@ def validate_groq_clips(parsed_json: dict, original_candidates: list) -> list:
         if score < min_score:
             continue
             
+        # Normalise candidate_id
+        clip["candidate_id"] = cid
+
         # Ensure adjustments are reasonable
         try:
             clip["start_adjustment_seconds"] = float(clip.get("start_adjustment_seconds", 0))
@@ -147,9 +163,12 @@ def merge_groq_results_with_candidates(validated_clips: list, original_candidate
         
         # Attach Groq specific fields
         new_cand["cortex_enabled"] = True
-        new_cand["cortex_score"] = float(v_clip.get("viral_score", 0))
+        raw_score = float(v_clip.get("viral_score", 0))
+        # Normalise 0-100 to 0.0-1.0 to match pipeline convention
+        cortex_score = raw_score / 100.0 if raw_score > 1.0 else raw_score
+        new_cand["cortex_score"] = round(cortex_score, 4)
         # Override viral score to ensure ranking
-        new_cand["viral_score"] = new_cand["cortex_score"] 
+        new_cand["viral_score"] = new_cand["cortex_score"]
         
         new_cand["title"] = v_clip.get("title", "")
         new_cand["opening_caption"] = v_clip.get("opening_caption", "")
@@ -191,7 +210,7 @@ def review_candidates_with_groq(candidates: list, transcript_meta=None) -> list:
     groq_input = []
     for c in top_candidates:
         groq_input.append({
-            "id": str(c.get("id")),
+            "candidate_id": str(c.get("id")),
             "start": round(float(c.get("start", 0)), 2),
             "end": round(float(c.get("end", 0)), 2),
             "duration": round(float(c.get("duration", 0)), 2),
@@ -228,6 +247,7 @@ Important:
 - Never invent timestamps.
 - Only use candidate_id values provided.
 - start_adjustment_seconds and end_adjustment_seconds must stay within the candidate boundaries.
+- viral_score is REQUIRED for every clip. Use an integer 0-100.
 - Return JSON only. No markdown. No explanation outside JSON.
 
 For every selected clip, explain:
@@ -270,13 +290,17 @@ Now review these candidates:
         content = data["choices"][0]["message"]["content"]
         
         parsed = parse_groq_json_safely(content)
+        if _is_log_reasoning():
+            log.info(f"[GROQ_CORTEX] Raw content snippet: {content[:500]}")
+            log.info(f"[GROQ_CORTEX] Parsed type: {type(parsed).__name__}, keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'N/A'}")
         if not parsed:
             raise ValueError("Failed to parse Groq response into valid JSON dict.")
             
         validated = validate_groq_clips(parsed, top_candidates)
         
         if _is_log_reasoning():
-            log.info(f"[GROQ_CORTEX] Selected {len(validated)} clips.")
+            log.info(f"[GROQ_CORTEX] Selected {len(validated)} clips after validation.")
+            log.info(f"[GROQ_CORTEX] Parsed keys: {list(parsed.keys())}")
             if "rejected_candidates" in parsed:
                 for r in parsed["rejected_candidates"]:
                     log.info(f"[GROQ_CORTEX] Rejected {r.get('candidate_id')}: {r.get('reason')}")
