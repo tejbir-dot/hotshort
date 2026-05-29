@@ -10,11 +10,11 @@ from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("system_observer")
 
-def safe_fmt(value, fmt=".1f"):
+def safe_fmt(value, precision=1):
     if value is None:
         return "N/A"
     try:
-        return format(value, fmt)
+        return f"{float(value):.{precision}f}"
     except Exception:
         return str(value)
 
@@ -129,8 +129,10 @@ class SystemObserver:
                 s = self.stages[name]
                 lines.append(f"\n⚡ {name}")
                 wall_time = s.get("wall_time")
-                wall_time_str = f"{safe_fmt(wall_time, '.3f')}s" if wall_time is not None else "N/A"
-                lines.append(f"   input={s['input_count']} | output={s['output_count']} | time={wall_time_str}")
+                wall_time_str = f"{safe_fmt(wall_time, precision=3)}s" if wall_time is not None else "N/A"
+                input_str = safe_fmt(s.get("input_count"), precision=0)
+                output_str = safe_fmt(s.get("output_count"), precision=0)
+                lines.append(f"   input={input_str} | output={output_str} | time={wall_time_str}")
                 if s["reject_reasons"]:
                     lines.append("   Rejected:")
                     for r, count in s["reject_reasons"].items():
@@ -149,7 +151,7 @@ class SystemObserver:
                 lines.append(f"\n📌 {cid} | {start_str} - {end_str} | Status: {c['final_reason']}")
                 lines.append(f"   Text: \"{c['text'][:100]}...\"")
                 if c["scores"]:
-                    score_str = ", ".join(f"{k}={safe_fmt(v, '.2f')}" for k, v in c["scores"].items())
+                    score_str = ", ".join(f"{k}={safe_fmt(v, precision=2)}" for k, v in c["scores"].items())
                     lines.append(f"   Scores: {score_str}")
                 lines.append("   History:")
                 for h in c["history"]:

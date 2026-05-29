@@ -22,11 +22,20 @@ def test_observer_none_timestamps():
         scores={"score": 0.85, "viral_score": None}
     )
     
-    # 3. Call render_report and assert it succeeds
+    # 3. Register a stage with None input, output, and wall_time
+    obs.log_stage(
+        name="TEST_STAGE_NONE",
+        input_count=None,
+        output_count=None,
+        wall_time=None
+    )
+    
+    # 4. Call render_report and assert it succeeds
     report = obs.render_report()
     
     assert report is not None
     assert "N/A - N/A" in report
     assert "TEST_STAGE" in report
+    assert "TEST_STAGE_NONE" in report
     assert "cand_1" in report
-    assert "viral_score=None" in report or "viral_score=N/A" in report
+    assert "viral_score=N/A" in report or "viral_score=None" in report

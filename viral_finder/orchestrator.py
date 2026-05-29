@@ -3018,7 +3018,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         xray_report = get_observer().render_report()
     except Exception:
         log.exception("[XRAY] report failed but pipeline output preserved")
-        xray_report = "[XRAY unavailable]"
+        xray_report = "[XRAY FAILED]"
     print(xray_report)
     log.info(xray_report)
 
