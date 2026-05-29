@@ -336,10 +336,15 @@ class OptimizedPassSelector:
                             f"semantic={semantic:.3f} punch={punch:.3f} curiosity={curiosity:.3f}"
                         )
 
+                st = getattr(candidate, 'start_time', 0)
+                et = getattr(candidate, 'end_time', 0)
+                
                 candidate_dict = {
                     'text': getattr(candidate, 'text', ''),
-                    'start_time': getattr(candidate, 'start_time', 0),
-                    'end_time': getattr(candidate, 'end_time', 0),
+                    'start': st,
+                    'end': et,
+                    'start_time': st,
+                    'end_time': et,
                     'score': score,
                     'semantic_quality': semantic,
                     'punch_confidence': punch,
