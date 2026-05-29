@@ -268,7 +268,7 @@ class OptimizedPassSelector:
         reject_reasons = {}
         if pass_type == 'strict':
             reject_reasons = {
-                "semantic<0.5": 0,
+                "semantic<0.35": 0,
                 "punch<0.4": 0
             }
         else:
@@ -290,8 +290,8 @@ class OptimizedPassSelector:
                 if pass_type == 'strict':
                     # Strict pass: high standards
                     failed_strict = False
-                    if semantic < 0.5:
-                        reject_reasons["semantic<0.5"] += 1
+                    if semantic < 0.35:
+                        reject_reasons["semantic<0.35"] += 1
                         failed_strict = True
                     if punch < 0.4:
                         reject_reasons["punch<0.4"] += 1
@@ -358,7 +358,7 @@ class OptimizedPassSelector:
         scored_candidates.sort(key=lambda x: x['score'], reverse=True)
 
         if pass_type == 'strict':
-            obs.log_stage("STRICT_PASS", len(candidates), len(scored_candidates), time.time() - t0, {"semantic<0.5": reject_reasons.get("semantic<0.5", 0), "punch<0.4": reject_reasons.get("punch<0.4", 0)})
+            obs.log_stage("STRICT_PASS", len(candidates), len(scored_candidates), time.time() - t0, {"semantic<0.35": reject_reasons.get("semantic<0.35", 0), "punch<0.4": reject_reasons.get("punch<0.4", 0)})
         else:
             obs.log_stage("RELAXED_PASS", len(candidates), relaxed_passed_count, time.time() - t0, {"relaxed_thresholds": reject_reasons.get("relaxed_thresholds", 0)})
             obs.log_stage("QUALITY_GATE", relaxed_passed_count, len(scored_candidates), 0.0, {"score<quality_gate": reject_reasons.get("quality_gate", 0)})
