@@ -279,7 +279,7 @@ class OptimizedPassSelector:
 
         t0 = time.time()
         relaxed_passed_count = 0
-        for candidate in candidates:
+        for idx, candidate in enumerate(candidates):
             try:
                 # Extract scores
                 semantic = getattr(candidate, 'semantic_quality', 0)
@@ -314,6 +314,9 @@ class OptimizedPassSelector:
                     # Relaxed pass penalty
                     base_score = (0.40 * semantic) + (0.26 * punch) + (0.16 * curiosity) + (0.18 * 0.5)
                     score = base_score * 0.85  # 15% penalty for relaxed clips
+
+                    delta = score - self.quality_gate
+                    print(f"[QGATE] c{idx} score={score:.3f} gate={self.quality_gate:.3f} delta={delta:.3f}")
 
                     # Check quality gate
                     if score < self.quality_gate:
