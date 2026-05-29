@@ -10,6 +10,13 @@ from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("system_observer")
 
+def safe_fmt(value, fmt=".1f"):
+    if value is None:
+        return "N/A"
+    try:
+        return format(value, fmt)
+    except Exception:
+        return str(value)
 
 class SystemObserver:
     def __init__(self):
@@ -36,8 +43,8 @@ class SystemObserver:
         }
 
     def init_candidate(self, cid: str, created_by: str, text: str, start: float, end: float, scores: Optional[Dict[str, float]] = None) -> None:
-        start_str = f"{start:.1f}s" if isinstance(start, (int, float)) else "N/A"
-        end_str = f"{end:.1f}s" if isinstance(end, (int, float)) else "N/A"
+        start_str = f"{safe_fmt(start)}s" if start is not None else "N/A"
+        end_str = f"{safe_fmt(end)}s" if end is not None else "N/A"
         self.candidates[cid] = {
             "cid": cid,
             "created_by": created_by,
@@ -122,7 +129,7 @@ class SystemObserver:
                 s = self.stages[name]
                 lines.append(f"\n⚡ {name}")
                 wall_time = s.get("wall_time")
-                wall_time_str = f"{wall_time:.3f}s" if isinstance(wall_time, (int, float)) else "N/A"
+                wall_time_str = f"{safe_fmt(wall_time, '.3f')}s" if wall_time is not None else "N/A"
                 lines.append(f"   input={s['input_count']} | output={s['output_count']} | time={wall_time_str}")
                 if s["reject_reasons"]:
                     lines.append("   Rejected:")
@@ -137,12 +144,12 @@ class SystemObserver:
             for cid, c in sorted(self.candidates.items()):
                 start = c.get("start")
                 end = c.get("end")
-                start_str = f"{start:.1f}s" if isinstance(start, (int, float)) else "N/A"
-                end_str = f"{end:.1f}s" if isinstance(end, (int, float)) else "N/A"
+                start_str = f"{safe_fmt(start)}s" if start is not None else "N/A"
+                end_str = f"{safe_fmt(end)}s" if end is not None else "N/A"
                 lines.append(f"\n📌 {cid} | {start_str} - {end_str} | Status: {c['final_reason']}")
                 lines.append(f"   Text: \"{c['text'][:100]}...\"")
                 if c["scores"]:
-                    score_str = ", ".join(f"{k}={v:.2f}" if isinstance(v, (int, float)) else f"{k}={v}" for k, v in c["scores"].items())
+                    score_str = ", ".join(f"{k}={safe_fmt(v, '.2f')}" for k, v in c["scores"].items())
                     lines.append(f"   Scores: {score_str}")
                 lines.append("   History:")
                 for h in c["history"]:

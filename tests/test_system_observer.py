@@ -19,7 +19,7 @@ def test_observer_none_timestamps():
         text="A test candidate with no start or end",
         start=None,
         end=None,
-        scores={"score": 0.85}
+        scores={"score": 0.85, "viral_score": None}
     )
     
     # 3. Call render_report and assert it succeeds
@@ -29,3 +29,4 @@ def test_observer_none_timestamps():
     assert "N/A - N/A" in report
     assert "TEST_STAGE" in report
     assert "cand_1" in report
+    assert "viral_score=None" in report or "viral_score=N/A" in report

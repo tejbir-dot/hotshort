@@ -3016,9 +3016,9 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     from viral_finder.system_observer import get_observer
     try:
         xray_report = get_observer().render_report()
-    except Exception as e:
-        log.exception("[XRAY] report failed")
-        xray_report = "[XRAY] unavailable"
+    except Exception:
+        log.exception("[XRAY] report failed but pipeline output preserved")
+        xray_report = "[XRAY unavailable]"
     print(xray_report)
     log.info(xray_report)
 
