@@ -316,12 +316,25 @@ class OptimizedPassSelector:
                     score = base_score * 0.85  # 15% penalty for relaxed clips
 
                     delta = score - self.quality_gate
-                    print(f"[QGATE] c{idx} score={score:.3f} gate={self.quality_gate:.3f} delta={delta:.3f}")
+                    cid = getattr(candidate, 'fingerprint', None) or getattr(candidate, 'cid', None) or f"c{idx}"
 
-                    # Check quality gate
+                    # Check quality gate — forensic logging
                     if score < self.quality_gate:
+                        logger.info(
+                            f"[QGATE_KILL] candidate_id={cid} "
+                            f"base_score={base_score:.4f} penalized_score={score:.4f} "
+                            f"gate={self.quality_gate:.4f} delta={delta:.4f} "
+                            f"semantic={semantic:.3f} punch={punch:.3f} curiosity={curiosity:.3f}"
+                        )
                         reject_reasons["quality_gate"] += 1
                         continue
+                    else:
+                        logger.info(
+                            f"[QGATE_SURVIVE] candidate_id={cid} "
+                            f"base_score={base_score:.4f} penalized_score={score:.4f} "
+                            f"gate={self.quality_gate:.4f} delta={delta:.4f} "
+                            f"semantic={semantic:.3f} punch={punch:.3f} curiosity={curiosity:.3f}"
+                        )
 
                 candidate_dict = {
                     'text': getattr(candidate, 'text', ''),
