@@ -36,6 +36,8 @@ class SystemObserver:
         }
 
     def init_candidate(self, cid: str, created_by: str, text: str, start: float, end: float, scores: Optional[Dict[str, float]] = None) -> None:
+        start_str = f"{start:.1f}s" if isinstance(start, (int, float)) else "N/A"
+        end_str = f"{end:.1f}s" if isinstance(end, (int, float)) else "N/A"
         self.candidates[cid] = {
             "cid": cid,
             "created_by": created_by,
@@ -47,7 +49,7 @@ class SystemObserver:
             "rejected_by": [],
             "rescued_by": [],
             "final_reason": "active",
-            "history": [f"Created by {created_by} at {start:.1f}s-{end:.1f}s"],
+            "history": [f"Created by {created_by} at {start_str}-{end_str}"],
         }
 
     def modify_candidate(self, cid: str, modified_by: str, changes: Optional[Dict[str, Any]] = None) -> None:
@@ -89,58 +91,68 @@ class SystemObserver:
         c["history"].append(f"Finalized as output: {reason}")
 
     def render_report(self) -> str:
-        lines = []
-        lines.append("=" * 60)
-        lines.append("                 HOTSHORT PIPELINE X-RAY")
-        lines.append("=" * 60)
-        
-        # 1. Stage Autopsies
-        lines.append("\n[STAGE AUTOPSIES]")
-        ordered_stages = [
-            "FAST_PREFILTER",
-            "STRICT_PASS",
-            "RELAXED_PASS",
-            "CANDIDATE_GENERATION",
-            "HOOK_HUNTER",
-            "BACKFILL",
-            "GROQ_TRANSCRIPT_FIRST",
-            "VALIDATION",
-            "ARC_ASSEMBLER",
-            "EDITOR_REFINER"
-        ]
-        
-        # Add any other stages that were logged but not in ordered_stages
-        all_logged = set(self.stages.keys())
-        stages_to_show = ordered_stages + sorted(list(all_logged - set(ordered_stages)))
+        try:
+            lines = []
+            lines.append("=" * 60)
+            lines.append("                 HOTSHORT PIPELINE X-RAY")
+            lines.append("=" * 60)
+            
+            # 1. Stage Autopsies
+            lines.append("\n[STAGE AUTOPSIES]")
+            ordered_stages = [
+                "FAST_PREFILTER",
+                "STRICT_PASS",
+                "RELAXED_PASS",
+                "CANDIDATE_GENERATION",
+                "HOOK_HUNTER",
+                "BACKFILL",
+                "GROQ_TRANSCRIPT_FIRST",
+                "VALIDATION",
+                "ARC_ASSEMBLER",
+                "EDITOR_REFINER"
+            ]
+            
+            # Add any other stages that were logged but not in ordered_stages
+            all_logged = set(self.stages.keys())
+            stages_to_show = ordered_stages + sorted(list(all_logged - set(ordered_stages)))
 
-        for name in stages_to_show:
-            if name not in self.stages:
-                continue
-            s = self.stages[name]
-            lines.append(f"\n⚡ {name}")
-            lines.append(f"   input={s['input_count']} | output={s['output_count']} | time={s['wall_time']:.3f}s")
-            if s["reject_reasons"]:
-                lines.append("   Rejected:")
-                for r, count in s["reject_reasons"].items():
-                    lines.append(f"     {r} = {count}")
+            for name in stages_to_show:
+                if name not in self.stages:
+                    continue
+                s = self.stages[name]
+                lines.append(f"\n⚡ {name}")
+                wall_time = s.get("wall_time")
+                wall_time_str = f"{wall_time:.3f}s" if isinstance(wall_time, (int, float)) else "N/A"
+                lines.append(f"   input={s['input_count']} | output={s['output_count']} | time={wall_time_str}")
+                if s["reject_reasons"]:
+                    lines.append("   Rejected:")
+                    for r, count in s["reject_reasons"].items():
+                        lines.append(f"     {r} = {count}")
 
-        # 2. Clip Lifecycles
-        lines.append("\n" + "=" * 60)
-        lines.append("                CLIP LIFECYCLE TRACE")
-        lines.append("=" * 60)
+            # 2. Clip Lifecycles
+            lines.append("\n" + "=" * 60)
+            lines.append("                CLIP LIFECYCLE TRACE")
+            lines.append("=" * 60)
 
-        for cid, c in sorted(self.candidates.items()):
-            lines.append(f"\n📌 {cid} | {c['start']:.1f}s - {c['end']:.1f}s | Status: {c['final_reason']}")
-            lines.append(f"   Text: \"{c['text'][:100]}...\"")
-            if c["scores"]:
-                score_str = ", ".join(f"{k}={v}" if isinstance(v, str) else f"{k}={v:.2f}" for k, v in c["scores"].items())
-                lines.append(f"   Scores: {score_str}")
-            lines.append("   History:")
-            for h in c["history"]:
-                lines.append(f"     → {h}")
+            for cid, c in sorted(self.candidates.items()):
+                start = c.get("start")
+                end = c.get("end")
+                start_str = f"{start:.1f}s" if isinstance(start, (int, float)) else "N/A"
+                end_str = f"{end:.1f}s" if isinstance(end, (int, float)) else "N/A"
+                lines.append(f"\n📌 {cid} | {start_str} - {end_str} | Status: {c['final_reason']}")
+                lines.append(f"   Text: \"{c['text'][:100]}...\"")
+                if c["scores"]:
+                    score_str = ", ".join(f"{k}={v:.2f}" if isinstance(v, (int, float)) else f"{k}={v}" for k, v in c["scores"].items())
+                    lines.append(f"   Scores: {score_str}")
+                lines.append("   History:")
+                for h in c["history"]:
+                    lines.append(f"     → {h}")
 
-        lines.append("\n" + "=" * 60)
-        return "\n".join(lines)
+            lines.append("\n" + "=" * 60)
+            return "\n".join(lines)
+        except Exception as e:
+            log.exception("[XRAY] render_report failed internally")
+            return "[XRAY] report generation failed"
 
 
 # Global singleton for current execution run
