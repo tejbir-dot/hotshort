@@ -2565,6 +2565,17 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
                     "rescued": True,
                 }
             else:
+                for reason in final_reject_reasons:
+                    log.info(
+                        f"[EDITOR_REJECT] "
+                        f"id={c.get('cid', c.get('candidate_id', 'unknown'))} "
+                        f"reason={reason} "
+                        f"start={c.get('start')} "
+                        f"end={c.get('end')} "
+                        f"duration={c.get('duration')} "
+                        f"origin={c.get('origin', _candidate_origin(c))} "
+                        f"groq={c.get('groq_moment')}"
+                    )
                 rejected_final.append(c)
                 log.info(
                     "[FINAL-REJECT] %.2f-%.2f reasons=%s origin=%s final_score=%.3f",
