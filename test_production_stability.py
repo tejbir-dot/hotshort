@@ -478,6 +478,13 @@ def test_v2_api_endpoints():
     prev_get_free = app_module.get_free_status
     app_module.get_free_status = lambda u: {"is_paid": True, "free_clips_left": 999}
     try:
+        from models.user import Job, db
+        with app.app_context():
+            try:
+                Job.query.filter(Job.status.in_(["queued", "processing", "in_progress", "pending"])).delete()
+                db.session.commit()
+            except Exception:
+                pass
         prev = app_module.app.config.get('LOGIN_DISABLED', False)
         app_module.app.config['LOGIN_DISABLED'] = True
         with app.test_client() as client:
@@ -494,6 +501,12 @@ def test_v2_api_endpoints():
             data = resp2.get_json()
             assert data.get('status') in ('pending','processing','completed','failed')
             # now hit legacy analyze route with worker mode enabled; should create another pending job
+            with app.app_context():
+                try:
+                    Job.query.filter(Job.status.in_(["queued", "processing", "in_progress", "pending"])).delete()
+                    db.session.commit()
+                except Exception:
+                    pass
             os.environ['HS_WORKER_MODE'] = 'runpod'
             resp3 = client.post('/analyze', data={'youtube_url': 'https://youtube.com/watch?v=foo'})
             assert resp3.status_code in (302, 200)
@@ -608,6 +621,13 @@ def test_analyze_route_enforces_staged():
     subprocess.run = MagicMock(return_value=MagicMock(returncode=0, stdout="duration=60.0"))
 
     # Config changes
+    from models.user import Job, db
+    with app.app_context():
+        try:
+            Job.query.filter(Job.status.in_(["queued", "processing", "in_progress", "pending"])).delete()
+            db.session.commit()
+        except Exception:
+            pass
     prev_login = app.config.get('LOGIN_DISABLED', False)
     app.config['LOGIN_DISABLED'] = True
     prev_worker_mode = os.environ.get('HS_WORKER_MODE')
@@ -622,6 +642,12 @@ def test_analyze_route_enforces_staged():
             with app.test_client() as client:
                 resp = client.post('/analyze', data={'youtube_url': 'https://youtube.com/watch?v=test'})
                 
+                # Wait for background thread to run orchestrate
+                for _ in range(50):
+                    if "pipeline_mode" in captured_kwargs:
+                        break
+                    time.sleep(0.1)
+
                 if captured_kwargs.get("pipeline_mode") != "staged":
                     log.error(f"❌ analyze_video failed to enforce pipeline_mode='staged'. Got: {captured_kwargs.get('pipeline_mode')}")
                     return False

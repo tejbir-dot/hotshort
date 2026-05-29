@@ -355,9 +355,8 @@ def handler(event):
                     pipeline_mode=os.environ.get("HS_ORCH_PIPELINE_MODE", None),
                 )
 
-                # Get actual video duration and format clips (Applying Deduplication & 30s Padding)
                 video_duration = get_video_duration(video_path)
-                clips = format_viral_clips(clips or [], min_duration=30.0, overlap_threshold=5.0, video_duration=video_duration)
+                # Trust dynamic arc-based boundaries and do not apply format_viral_clips padding
 
                 # ── Lazy-load world_class_editor (captions + reframe + audio polish) ──
                 _wce_editor_cls = None

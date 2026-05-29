@@ -80,8 +80,16 @@ class OptimizedPassSelector:
 
     def _fast_pre_filter(self, candidates: List[Any]) -> List[Any]:
         """Fast pre-filtering to eliminate 80% of low-potential candidates"""
+        from viral_finder.system_observer import get_observer
+        obs = get_observer()
         filtered = []
+        reject_reasons = {
+            "low_semantic": 0,
+            "low_punch": 0,
+            "low_curiosity": 0,
+        }
 
+        t0 = time.time()
         for candidate in candidates:
             # Quick semantic/curiosity/punch check
             try:
@@ -92,10 +100,18 @@ class OptimizedPassSelector:
                 # Must have at least one strong dimension
                 if (semantic >= 0.3 or punch >= 0.4 or curiosity >= 0.35):
                     filtered.append(candidate)
+                else:
+                    if semantic < 0.3:
+                        reject_reasons["low_semantic"] += 1
+                    if punch < 0.4:
+                        reject_reasons["low_punch"] += 1
+                    if curiosity < 0.35:
+                        reject_reasons["low_curiosity"] += 1
             except AttributeError:
                 # If attributes don't exist, include candidate
                 filtered.append(candidate)
 
+        obs.log_stage("FAST_PREFILTER", len(candidates), len(filtered), time.time() - t0, reject_reasons)
         return filtered
 
     def _calculate_adaptive_thresholds(self, content_analysis: Dict[str, float]) -> Dict[str, float]:
@@ -245,9 +261,23 @@ class OptimizedPassSelector:
         thresholds: Dict[str, float]
     ) -> List[Dict[str, Any]]:
         """Build candidate list for a specific pass"""
+        from viral_finder.system_observer import get_observer
+        obs = get_observer()
 
         scored_candidates = []
+        reject_reasons = {}
+        if pass_type == 'strict':
+            reject_reasons = {
+                "semantic<0.5": 0,
+                "punch<0.4": 0
+            }
+        else:
+            reject_reasons = {
+                "relaxed_thresholds": 0,
+                "quality_gate": 0
+            }
 
+        t0 = time.time()
         for candidate in candidates:
             try:
                 # Extract scores
@@ -258,7 +288,14 @@ class OptimizedPassSelector:
                 # Apply pass-specific logic
                 if pass_type == 'strict':
                     # Strict pass: high standards
-                    if semantic < 0.5 or punch < 0.4:
+                    failed_strict = False
+                    if semantic < 0.5:
+                        reject_reasons["semantic<0.5"] += 1
+                        failed_strict = True
+                    if punch < 0.4:
+                        reject_reasons["punch<0.4"] += 1
+                        failed_strict = True
+                    if failed_strict:
                         continue
                     score = (0.40 * semantic) + (0.26 * punch) + (0.16 * curiosity) + (0.18 * 0.5)
                 else:
@@ -268,11 +305,17 @@ class OptimizedPassSelector:
                     semantic_threshold = max(0, semantic - thresholds['semantic_floor'])
 
                     if semantic_threshold < 0.3 and punch_threshold < 0.3 and curio_threshold < 0.3:
+                        reject_reasons["relaxed_thresholds"] += 1
                         continue
 
                     # Relaxed pass penalty
                     base_score = (0.40 * semantic) + (0.26 * punch) + (0.16 * curiosity) + (0.18 * 0.5)
                     score = base_score * 0.85  # 15% penalty for relaxed clips
+
+                    # Check quality gate
+                    if score < self.quality_gate:
+                        reject_reasons["quality_gate"] += 1
+                        continue
 
                 candidate_dict = {
                     'text': getattr(candidate, 'text', ''),
@@ -294,6 +337,9 @@ class OptimizedPassSelector:
 
         # Sort by score descending
         scored_candidates.sort(key=lambda x: x['score'], reverse=True)
+
+        stage_name = "STRICT_PASS" if pass_type == 'strict' else "RELAXED_PASS"
+        obs.log_stage(stage_name, len(candidates), len(scored_candidates), time.time() - t0, reject_reasons)
 
         return scored_candidates
 

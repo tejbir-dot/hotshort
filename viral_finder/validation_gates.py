@@ -1,4 +1,4 @@
-﻿"""
+"""
 Validation gate facade for post-enrichment policy.
 """
 
@@ -87,6 +87,8 @@ def validate_candidate_by_curiosity(
         if candidate and _semantic_validation_rescue(candidate, reason):
             return True, "semantic_rescue"
         return False, reason
+
+
     peak = max(window)
     if peak < min_peak:
         reason = "no_curiosity_peak"
@@ -109,13 +111,36 @@ def apply_post_enrichment_validation(
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     # ---- SOFT MODE BYPASS ----
     if not STRICT_GATES_ENABLED:
-        print("[INFO] Traffic-light gates bypassed! Forcing top 3 clips through.")
+        import os
+        soft_thresh = float(os.getenv("HS_SOFT_GATE_THRESHOLD", "0.35"))
+        print(f"[INFO] Traffic-light gates bypassed! Using soft gates (threshold={soft_thresh}).")
+        
+        # Sort candidates by final_score / score
         sorted_cands = sorted(
-            [dict(c, validation={"accepted": True, "reasons": []}) for c in (candidates or [])],
-            key=lambda x: float(x.get("final_score") or x.get("score", 0.0)),
+            [dict(c) for c in (candidates or [])],
+            key=lambda x: float(x.get("final_score") or x.get("score", 0.0) or 0.0),
             reverse=True,
         )
-        return sorted_cands[:3], []
+        
+        accepted = []
+        rejected = []
+        for c in sorted_cands:
+            vscore = float(c.get("viral_score", c.get("score", 0.0)) or 0.0)
+            if vscore > soft_thresh:
+                c["validation"] = {"accepted": True, "reasons": []}
+                accepted.append(c)
+            else:
+                c["validation"] = {"accepted": False, "reasons": ["viral_score_below_soft_threshold"]}
+                rejected.append(c)
+                
+        if not accepted and sorted_cands:
+            top = sorted_cands[0]
+            top["validation"] = {"accepted": True, "reasons": ["rescued_top_1_by_soft_gate"]}
+            accepted.append(top)
+            # Remove from rejected
+            rejected = [r for r in rejected if r.get("cid") != top.get("cid")]
+            
+        return accepted, rejected
     # ---- END SOFT MODE BYPASS ----
 
     accepted: List[Dict[str, Any]] = []

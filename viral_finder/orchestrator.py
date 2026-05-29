@@ -978,11 +978,16 @@ def _should_backfill_candidates(ctx: "PipelineContext") -> bool:
 
 
 def _maybe_backfill_raw_candidates(ctx: "PipelineContext") -> None:
+    t0 = time.time()
     if not _should_backfill_candidates(ctx):
+        from viral_finder.system_observer import get_observer
+        get_observer().log_stage("BACKFILL", 0, 0, 0.0)
         return
     target_min = max(0, int(ctx.target_min or 0))
     current = list(ctx.raw_candidates or [])
     if target_min <= 0 or len(current) >= target_min:
+        from viral_finder.system_observer import get_observer
+        get_observer().log_stage("BACKFILL", len(current), len(current), 0.0)
         return
     added = _smart_backfill_candidates(
         ctx.transcript or [],
@@ -992,8 +997,20 @@ def _maybe_backfill_raw_candidates(ctx: "PipelineContext") -> None:
         curiosity_candidates=ctx.curiosity_candidates or [],
     )
     if not added:
+        from viral_finder.system_observer import get_observer
+        get_observer().log_stage("BACKFILL", len(current), len(current), time.time() - t0)
         return
     ctx.raw_candidates = current + list(added)
+    
+    from viral_finder.system_observer import get_observer
+    get_observer().log_stage(
+        "BACKFILL",
+        input_count=len(current),
+        output_count=len(ctx.raw_candidates),
+        wall_time=time.time() - t0,
+        reject_reasons={"created": len(added)}
+    )
+
     log.warning(
         "[ORCH-UNDERFLOW] raw_candidates=%d target_min=%d added_backfill=%d origins=%s",
         len(current),
@@ -1415,6 +1432,15 @@ def _run_candidate_generation(ctx: PipelineContext) -> None:
             candidates = []
     ctx.raw_candidates = candidates
     pass_counts = Counter(str(c.get("select_pass", "strict") or "strict") for c in candidates if not c.get("hook_seed"))
+    
+    from viral_finder.system_observer import get_observer
+    get_observer().log_stage(
+        "CANDIDATE_GENERATION",
+        input_count=len(ctx.idea_nodes or []),
+        output_count=len(candidates),
+        wall_time=time.time() - t0
+    )
+
     _record_stage(
         ctx,
         "L5_CANDIDATE_GENERATION",
@@ -1519,6 +1545,15 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
     if injected:
         ctx.raw_candidates = list(existing) + injected
     log.info("[HOOK-HUNTER] scanned=%d strong_hooks=%d", len(transcript), len(hooks))
+
+    from viral_finder.system_observer import get_observer
+    get_observer().log_stage(
+        "HOOK_HUNTER",
+        input_count=len(existing),
+        output_count=len(ctx.raw_candidates or []),
+        wall_time=time.time() - t0
+    )
+
     _record_stage(
         ctx,
         "L6B_GLOBAL_HOOK_HUNTER",
@@ -1824,6 +1859,8 @@ def _run_validation(ctx: PipelineContext) -> None:
                 key=lambda x: float((x or {}).get("score_enriched", (x or {}).get("score", 0.0)) or 0.0),
                 reverse=True,
             )[: max(1, int(ctx.top_k or 1))]
+            for c in accepted:
+                c.setdefault("validation", {}).setdefault("reasons", []).append("validation_fallback_rescue")
             rejected = []
 
     ctx.enriched_candidates = accepted
@@ -1833,6 +1870,33 @@ def _run_validation(ctx: PipelineContext) -> None:
     for cand in rejected:
         for reason in ((cand.get("validation", {}) or {}).get("reasons", []) or []):
             reject_counter[str(reason)] += 1
+
+    from viral_finder.system_observer import get_observer
+    obs = get_observer()
+    obs.log_stage(
+        "VALIDATION",
+        input_count=len(enriched_before_validation),
+        output_count=len(accepted),
+        wall_time=time.time() - t0,
+        reject_reasons=dict(reject_counter),
+    )
+
+    # Trace candidate status in validation
+    for cand in accepted:
+        cid = cand.get("cid")
+        if cid:
+            reasons = (cand.get("validation", {}) or {}).get("reasons", [])
+            if reasons and any("rescue" in r or "fallback" in r or "soft_gate" in r for r in reasons):
+                obs.rescue_candidate(cid, "validation", ", ".join(reasons))
+            else:
+                obs.finalize_candidate(cid, "passed_validation")
+
+    for cand in rejected:
+        cid = cand.get("cid")
+        if cid:
+            reasons = (cand.get("validation", {}) or {}).get("reasons", [])
+            obs.reject_candidate(cid, "validation", ", ".join(reasons) or "failed_validation_rules")
+
     _record_stage(
         ctx,
         "L8_VALIDATION_GATES",
@@ -2198,6 +2262,33 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
     ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
     ctx.ranked_output = list(ctx.final_candidates)
     log.info("[ORCH-ARC] assembled=%d complete=%d input=%d", len(ctx.ranked_output), complete_count, len(ranked))
+
+    from viral_finder.system_observer import get_observer
+    obs = get_observer()
+    obs.log_stage(
+        "ARC_ASSEMBLER",
+        input_count=len(ranked),
+        output_count=len(ctx.ranked_output),
+        wall_time=time.time() - t0
+    )
+    # Trace candidates
+    output_cids = {c.get("cid") for c in ctx.ranked_output if c.get("cid")}
+    for c in ranked:
+        cid = c.get("cid")
+        if cid:
+            if cid in output_cids:
+                obs.modify_candidate(
+                    cid,
+                    "arc_assembler",
+                    {
+                        "start": c.get("start"),
+                        "end": c.get("end"),
+                        "scores": {"arc_score": c.get("arc_score")}
+                    }
+                )
+            else:
+                obs.reject_candidate(cid, "arc_assembler", "dropped_during_overlap_deduplication_or_top_k_limit")
+
     _record_stage(
         ctx,
         "L10_ARC_ASSEMBLER",
@@ -2498,6 +2589,34 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
     out = dedupe_by_overlap(out, overlap_threshold=0.75)
     ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
     ctx.ranked_output = list(ctx.final_candidates)
+
+    from viral_finder.system_observer import get_observer
+    obs = get_observer()
+    
+    reject_reasons = {}
+    for c in rejected_final:
+        for r in ((c.get("final_quality", {}) or {}).get("reasons", []) or []):
+            reject_reasons[r] = reject_reasons.get(r, 0) + 1
+            
+    obs.log_stage(
+        "EDITOR_REFINER",
+        input_count=len(clips),
+        output_count=len(ctx.ranked_output),
+        wall_time=time.time() - t0,
+        reject_reasons=reject_reasons
+    )
+    
+    # Trace candidates
+    output_cids = {c.get("cid") for c in ctx.ranked_output if c.get("cid")}
+    for c in clips:
+        cid = c.get("cid")
+        if cid:
+            if cid in output_cids:
+                obs.finalize_candidate(cid, "final_clip_output")
+            else:
+                reasons = (c.get("final_quality", {}) or {}).get("reasons", [])
+                obs.reject_candidate(cid, "editor_refiner", ", ".join(reasons) or "filtered_or_deduplicated")
+
     if ctx.target_min and len(ctx.ranked_output) < int(ctx.target_min):
         log.warning(
             "[ORCH-UNDERFLOW] final=%d target_min=%d raw=%d accepted=%d ranked=%d",
@@ -2730,6 +2849,47 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
             except Exception as e:
                 log.warning("[GROQ_TRANSCRIPT_FIRST] Failed: %s", e)
 
+    # 1. Log GROQ_TRANSCRIPT_FIRST stage to SystemObserver
+    from viral_finder.system_observer import get_observer
+    obs = get_observer()
+    if tf_env or tf_force:
+        obs.log_stage(
+            "GROQ_TRANSCRIPT_FIRST",
+            input_count=len(transcript_source) if 'transcript_source' in locals() and transcript_source else 0,
+            output_count=injected_count if 'injected_count' in locals() else 0,
+            wall_time=0.0
+        )
+    else:
+        obs.log_stage("GROQ_TRANSCRIPT_FIRST", 0, 0, 0.0)
+
+    # 2. Assign stable IDs & initialize in SystemObserver
+    for idx, cand in enumerate(ctx.raw_candidates or []):
+        if not cand.get("cid"):
+            cand["cid"] = f"c_{idx+1:04d}"
+        
+        cid = cand["cid"]
+        origin = cand.get("origin") or cand.get("reason") or "candidate_generation"
+        if cand.get("hook_seed"):
+            origin = "hook_hunter"
+        elif cand.get("backfill"):
+            origin = "backfill"
+        elif cand.get("groq_moment"):
+            origin = "groq_transcript_first"
+            
+        obs.init_candidate(
+            cid=cid,
+            created_by=origin,
+            text=cand.get("text", ""),
+            start=float(cand.get("start", 0.0)),
+            end=float(cand.get("end", 0.0)),
+            scores={
+                "score": float(cand.get("score", 0.0)),
+                "curiosity": float(cand.get("curiosity", 0.0)),
+                "punch": float(cand.get("punch_confidence", 0.0)),
+                "semantic": float(cand.get("semantic_quality", 0.0)),
+            }
+        )
+
     if trace:
         trace.enter("L8_SEMANTIC_SCORING")
     print("STAGE ENTER: semantic scoring")
@@ -2852,6 +3012,12 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     _record_stage(ctx, "SUMMARY", wall_s=round(time.time() - t0, 3), final=len(out), rejected=len(ctx.rejected_candidates), cqs_cache=_cqs_stats)
     if trace:
         trace.render()
+    
+    from viral_finder.system_observer import get_observer
+    xray_report = get_observer().render_report()
+    print(xray_report)
+    log.info(xray_report)
+
     print("TOTAL PROCESS TIME:", time.time() - start)
     return out, _groq_pool, has_tf_moments
 
@@ -2868,6 +3034,8 @@ def orchestrate(path: str,
       - staged (default): explicit cognitive pipeline stages
       - legacy: direct ultron engine passthrough
     """
+    from viral_finder.system_observer import reset_observer
+    reset_observer()
     print("[ORCH] ORCHESTRATOR STARTED")
     start_time = time.time()
     mode = _pipeline_mode(pipeline_mode)

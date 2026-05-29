@@ -352,8 +352,7 @@ def _orchestrate_via_local_gpu(youtube_url: str, job_id: str | None = None, time
         allow_fallback=False,
         pipeline_mode=(os.getenv("HS_ORCH_PIPELINE_MODE") or "staged"),
     )
-    # Apply format_viral_clips filter
-    clips = format_viral_clips(clips or [], min_duration=30.0, overlap_threshold=5.0)
+    # Trust dynamic arc-based boundaries and do not apply format_viral_clips padding
     out = {"status": "ok", "clips": clips or []}
     return out
 
@@ -2320,7 +2319,7 @@ def get_free_status(user):
     from datetime import timedelta
     
     try:
-        if not user:
+        if not user or getattr(user, "is_anonymous", False):
             return {
                 "is_paid": False,
                 "free_clips_used": 0,
@@ -2388,9 +2387,6 @@ def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = N
             app.logger.warning("[PIPELINE] job not found id=%s", job_id)
             return
         
-        job.status = "processing"
-        db.session.commit()
-        
         youtube_url = (job.video_path or "").strip()
         if not youtube_url:
             job.status = "failed"
@@ -2398,6 +2394,22 @@ def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = N
             job.completed_at = datetime.utcnow()
             db.session.commit()
             return
+
+        # ── Local Worker Mode ─────────────────────────────────────────────────
+        # When USE_LOCAL_WORKER=1, leave the job as "pending" so local_worker.py
+        # can poll /api/jobs/next and process it with the local RTX GPU.
+        # The background thread exits immediately — no blocking on Railway.
+        if os.getenv("USE_LOCAL_WORKER", "0").strip() == "1":
+            job.status = "pending"
+            db.session.commit()
+            app.logger.info(
+                "[PIPELINE] job=%s handed off to local worker (USE_LOCAL_WORKER=1)", job_id
+            )
+            return  # local_worker.py takes it from here
+        # ─────────────────────────────────────────────────────────────────────
+
+        job.status = "processing"
+        db.session.commit()
 
         app.logger.info("[PIPELINE] job=%s orchestrate_start", job_id)
         result = process_video_hybrid(youtube_url, job_id=job_id)
@@ -2495,7 +2507,7 @@ def analyze():
         free_status = get_free_status(current_user)
         free_tier_limit = int(os.environ.get("FREE_GENERATION_LIMIT", 1))
         used = free_status.get("free_clips_used", 0)
-        app.logger.info("[LIMIT] user_id=%s used=%s limit=%s", current_user.id, used, free_tier_limit)
+        app.logger.info("[LIMIT] user_id=%s used=%s limit=%s", getattr(current_user, "id", None), used, free_tier_limit)
         
         if not free_status.get("is_paid") and free_status.get("free_clips_left", 0) <= 0:
             # User has exhausted free tier quota
@@ -2860,6 +2872,147 @@ def api_worker_wake():
         "wake_sent": True,
         "wake_wait_seconds": _wake_wait_seconds(),
     })
+
+
+# ============================================================================
+# 🏭 LOCAL WORKER API  (authenticated via X-Worker-Secret header)
+# ============================================================================
+
+def _check_worker_secret() -> bool:
+    """Return True if the request carries the correct WORKER_SECRET."""
+    secret = (os.getenv("WORKER_SECRET") or "").strip()
+    if not secret:
+        # If no secret is configured, reject all worker calls to avoid open endpoints.
+        return False
+    return request.headers.get("X-Worker-Secret", "") == secret
+
+
+@app.route("/api/jobs/next", methods=["GET"])
+def api_jobs_next():
+    """
+    Called by local_worker.py every N seconds.
+    Returns the oldest pending job and atomically marks it processing.
+    Returns 204 (no content) when the queue is empty.
+    """
+    if not _check_worker_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # Atomically grab + mark the oldest pending job
+    job = (
+        Job.query
+        .filter_by(status="pending")
+        .order_by(Job.created_at.asc())
+        .first()
+    )
+
+    if not job:
+        return "", 204  # Queue empty
+
+    job.status = "processing"
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error("[WORKER_API] Failed to mark job processing: %s", e)
+        return jsonify({"error": "db_error"}), 500
+
+    youtube_url = (job.video_path or "").strip()
+    is_free = True
+    try:
+        user = User.query.get(job.user_id)
+        if user:
+            is_free = not get_free_status(user).get("is_paid", False)
+    except Exception:
+        pass
+
+    log.info("[WORKER_API] Dispatched job=%s to local worker", job.id)
+    return jsonify({
+        "job_id": job.id,
+        "youtube_url": youtube_url,
+        "is_free_user": is_free,
+    })
+
+
+@app.route("/api/jobs/<job_id>/complete", methods=["POST"])
+def api_jobs_complete(job_id: str):
+    """
+    Called by local_worker.py after successful processing.
+    Expects JSON: {"clips": [...]}
+    """
+    if not _check_worker_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    clips = data.get("clips") or []
+
+    job = Job.query.filter_by(id=job_id).first()
+    if not job:
+        return jsonify({"error": "job_not_found"}), 404
+
+    result_envelope = {
+        "job_id": job_id,
+        "status": "completed",
+        "clips": clips,
+    }
+    job.analysis_data = json.dumps(result_envelope)
+    job.status = "completed"
+    job.completed_at = datetime.utcnow()
+
+    # Increment usage counter once per successful generation
+    if clips and not job.usage_counted:
+        try:
+            user = User.query.get(job.user_id)
+            if user:
+                user.free_generations_used = getattr(user, "free_generations_used", 0) + 1
+                job.usage_counted = True
+        except Exception as e:
+            log.warning("[WORKER_API] Usage count failed: %s", e)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error("[WORKER_API] Failed to save completed job=%s: %s", job_id, e)
+        return jsonify({"error": "db_error"}), 500
+
+    log.info("[WORKER_API] Job %s completed with %d clips", job_id, len(clips))
+    return jsonify({"ok": True, "job_id": job_id, "clips": len(clips)})
+
+
+@app.route("/api/jobs/<job_id>/failed", methods=["POST"])
+def api_jobs_failed(job_id: str):
+    """
+    Called by local_worker.py on processing error.
+    Expects JSON: {"error": "..."}
+    """
+    if not _check_worker_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    error_msg = str(data.get("error", "unknown_error"))[:1000]
+
+    job = Job.query.filter_by(id=job_id).first()
+    if not job:
+        return jsonify({"error": "job_not_found"}), 404
+
+    job.status = "failed"
+    job.analysis_data = json.dumps({
+        "job_id": job_id,
+        "status": "failed",
+        "error": error_msg,
+    })
+    job.completed_at = datetime.utcnow()
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error("[WORKER_API] Failed to save failed job=%s: %s", job_id, e)
+        return jsonify({"error": "db_error"}), 500
+
+    log.warning("[WORKER_API] Job %s failed: %s", job_id, error_msg[:120])
+    return jsonify({"ok": True, "job_id": job_id})
+
 
 @app.route('/prototype')
 def ui_prototype():
