@@ -1454,11 +1454,19 @@ def _run_candidate_generation(ctx: PipelineContext) -> None:
 
 def _run_global_hook_hunter(ctx: PipelineContext) -> None:
     t0 = time.time()
+
+    # Kill switch: HS_HOOK_HUNTER=0 disables the entire stage
+    if os.environ.get("HS_HOOK_HUNTER", "1").strip() == "0":
+        log.info("[HOOK_HUNTER] disabled via HS_HOOK_HUNTER=0 — skipping")
+        _record_stage(ctx, "L6B_GLOBAL_HOOK_HUNTER", scanned=0, strong_hooks=0, injected=0, wall_s=0.0)
+        return
+
     transcript = list(ctx.transcript or [])
     existing = list(ctx.raw_candidates or [])
     if not transcript:
         _record_stage(ctx, "L6B_GLOBAL_HOOK_HUNTER", scanned=0, strong_hooks=0, injected=0, wall_s=round(time.time() - t0, 3))
         return
+
 
     debug_enabled = _env_bool("HS_HOOK_HUNTER_DEBUG", False)
     max_global_hooks = max(1, _env_int("HS_ORCH_MAX_GLOBAL_HOOKS", 20))
