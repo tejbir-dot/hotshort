@@ -2673,11 +2673,17 @@ def _select_candidate_clips_v2(
             content_analysis = _analyze_content_for_adaptive_thresholds(nodes, transcript)
 
             # Use optimized selector
+            _qgate_raw = os.environ.get("HS_OPTIMIZED_QUALITY_GATE", "0.42").strip()
+            try:
+                _qgate = float(_qgate_raw)
+            except ValueError:
+                _qgate = 0.42
+            log.info(f"[OPTIMIZED-PASSES] quality_gate={_qgate} (env=HS_OPTIMIZED_QUALITY_GATE)")
             selector = OptimizedPassSelector({
                 'parallel': True,
                 'early_termination': True,
                 'adaptive_relaxation': True,
-                'quality_gate': 0.42
+                'quality_gate': _qgate
             })
 
             candidates, metrics = selector.select_candidates_optimized(
