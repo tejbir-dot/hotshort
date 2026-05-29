@@ -3016,11 +3016,15 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     from viral_finder.system_observer import get_observer
     try:
         xray_report = get_observer().render_report()
+        log.info(xray_report)
+        try:
+            print(xray_report)
+        except Exception:
+            # Fallback for Windows consoles that don't support UTF-8 emojis
+            print(xray_report.encode("ascii", "replace").decode("ascii"))
     except Exception:
         log.exception("[XRAY] report failed but pipeline output preserved")
         xray_report = "[XRAY FAILED]"
-    print(xray_report)
-    log.info(xray_report)
 
     print("TOTAL PROCESS TIME:", time.time() - start)
     return out, _groq_pool, has_tf_moments
