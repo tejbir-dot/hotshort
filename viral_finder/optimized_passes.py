@@ -111,7 +111,7 @@ class OptimizedPassSelector:
                 # If attributes don't exist, include candidate
                 filtered.append(candidate)
 
-        obs.log_stage("FAST_PREFILTER", len(candidates), len(filtered), time.time() - t0, reject_reasons)
+        obs.log_stage("PRE_FILTER", len(candidates), len(filtered), time.time() - t0, reject_reasons)
         return filtered
 
     def _calculate_adaptive_thresholds(self, content_analysis: Dict[str, float]) -> Dict[str, float]:
@@ -278,6 +278,7 @@ class OptimizedPassSelector:
             }
 
         t0 = time.time()
+        relaxed_passed_count = 0
         for candidate in candidates:
             try:
                 # Extract scores
@@ -307,6 +308,8 @@ class OptimizedPassSelector:
                     if semantic_threshold < 0.3 and punch_threshold < 0.3 and curio_threshold < 0.3:
                         reject_reasons["relaxed_thresholds"] += 1
                         continue
+
+                    relaxed_passed_count += 1
 
                     # Relaxed pass penalty
                     base_score = (0.40 * semantic) + (0.26 * punch) + (0.16 * curiosity) + (0.18 * 0.5)
@@ -338,8 +341,11 @@ class OptimizedPassSelector:
         # Sort by score descending
         scored_candidates.sort(key=lambda x: x['score'], reverse=True)
 
-        stage_name = "STRICT_PASS" if pass_type == 'strict' else "RELAXED_PASS"
-        obs.log_stage(stage_name, len(candidates), len(scored_candidates), time.time() - t0, reject_reasons)
+        if pass_type == 'strict':
+            obs.log_stage("STRICT_PASS", len(candidates), len(scored_candidates), time.time() - t0, {"semantic<0.5": reject_reasons.get("semantic<0.5", 0), "punch<0.4": reject_reasons.get("punch<0.4", 0)})
+        else:
+            obs.log_stage("RELAXED_PASS", len(candidates), relaxed_passed_count, time.time() - t0, {"relaxed_thresholds": reject_reasons.get("relaxed_thresholds", 0)})
+            obs.log_stage("QUALITY_GATE", relaxed_passed_count, len(scored_candidates), 0.0, {"score<quality_gate": reject_reasons.get("quality_gate", 0)})
 
         return scored_candidates
 

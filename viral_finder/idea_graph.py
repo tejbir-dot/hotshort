@@ -2661,6 +2661,9 @@ def _select_candidate_clips_v2(
     if not nodes:
         return []
 
+    from viral_finder.system_observer import get_observer
+    get_observer().log_stage("IDEA_GRAPH", len(nodes), len(nodes), 0.0)
+
     # 🚀 USE OPTIMIZED SYSTEM IF AVAILABLE AND ENABLED
     if OPTIMIZED_PASSES_AVAILABLE and USE_OPTIMIZED_PASSES:
         try:
