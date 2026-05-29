@@ -768,11 +768,10 @@ For each valuable moment, identify:
 - editing_notes (pacing_note: fast/medium/slow, subtitle_style: classic|neon|beast|retro|minimal, face_priority: center)
 
 MOMENT VALIDITY RULES:
+- **CRITICAL: Duration MUST be between 30 and 45 seconds.**
+- **NEVER return a moment shorter than 20 seconds.**
 - Start must not be mid-sentence if avoidable.
 - End must include payoff/takeaway.
-- Duration ideal 18–75 seconds.
-- Allow 10–90 seconds only if content is complete.
-- Do NOT force 30 seconds.
 - Reject fragments even if hook sounds good.
 - Prefer complete insight over aggressive hook.
 - For educational/founder podcasts, valuable clips can be:
