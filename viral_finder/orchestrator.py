@@ -2280,18 +2280,19 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         wall_time=time.time() - t0
     )
     # Trace candidates
-    output_cids = {c.get("cid") for c in ctx.ranked_output if c.get("cid")}
+    output_dict = {c.get("cid"): c for c in ctx.ranked_output if c.get("cid")}
     for c in ranked:
         cid = c.get("cid")
         if cid:
-            if cid in output_cids:
+            if cid in output_dict:
+                out_cand = output_dict[cid]
                 obs.modify_candidate(
                     cid,
                     "arc_assembler",
                     {
-                        "start": c.get("start"),
-                        "end": c.get("end"),
-                        "scores": {"arc_score": c.get("arc_score")}
+                        "start": out_cand.get("start"),
+                        "end": out_cand.get("end"),
+                        "scores": {"arc_score": out_cand.get("arc_score")}
                     }
                 )
             else:
