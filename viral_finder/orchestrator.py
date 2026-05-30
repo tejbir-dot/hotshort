@@ -3243,7 +3243,7 @@ def orchestrate(path: str,
                     log.info(f"reject={reject_count}\n")
                     
                     log.info("[GROQ_SURGEON] Phase 2: MOVE_HOOK execution active.")
-                    for c in final_candidates:
+                    for c in groq_result:
                         surgeon = c.get("groq_surgeon")
                         if surgeon:
                             dec = surgeon.get("decision", "")
@@ -3261,8 +3261,35 @@ def orchestrate(path: str,
                                 if 0 <= hook_idx < len(full_transcript):
                                     old_start = float(c.get("start", 0.0))
                                     new_start = float(full_transcript[hook_idx].get("start", 0.0))
-                                    log.info(f"\n[HOOK_REPAIR]\nold_hook={old_start}\nnew_hook={new_start}\nconfidence={conf}\n")
+                                    
+                                    old_text = ""
+                                    for seg in full_transcript:
+                                        ss = float(seg.get("start", 0.0))
+                                        ee = float(seg.get("end", ss))
+                                        if ss <= old_start <= max(ss, ee):
+                                            old_text = str(seg.get("text", "")).strip()
+                                            break
+                                            
+                                    new_text = str(full_transcript[hook_idx].get("text", "")).strip()
+                                    cid = c.get("id", c.get("cid", "?"))
+                                    
+                                    log.info("\n[HOOK_REPAIR]")
+                                    log.info(f"candidate_id={cid}")
+                                    log.info(f"old_start={old_start}")
+                                    log.info(f"new_start={new_start}")
+                                    log.info(f"old_hook_text={old_text}")
+                                    log.info(f"new_hook_text={new_text}")
+                                    log.info(f"confidence={conf}\n")
+                                    
                                     c["start"] = new_start
+                                    
+                                    # The candidates in groq_result are copies of final_candidates
+                                    # We must write the repaired boundary back to the original objects
+                                    for fc in final_candidates:
+                                        if fc.get("cid") == cid and cid != "?":
+                                            fc["start"] = new_start
+                                            break
+                                            
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:
