@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import requests
+from typing import List, Dict
 
 log = logging.getLogger("groq_cortex")
 
