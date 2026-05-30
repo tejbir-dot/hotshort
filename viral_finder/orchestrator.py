@@ -1358,9 +1358,21 @@ def _run_narrative_intelligence(ctx: PipelineContext) -> None:
                 else:
                     log.info(f"[NARRATIVE_COMPARE] Seg {idx} | Text: '{str(seg.get('text',''))[:40]}...' | Legacy: {legacy_role} vs Groq: {groq_role}")
     
+    import random
+    
+    if ctx.transcript:
+        log.info("[NARRATIVE_FORENSIC] --- Sampling 10 segments to verify Groq execution ---")
+        sample_indices = random.sample(range(len(ctx.transcript)), min(10, len(ctx.transcript)))
+        for i in sorted(sample_indices):
+            seg = ctx.transcript[i]
+            log.info(f"[NARRATIVE_FORENSIC] Seg {i:03d} | Legacy: {seg.get('legacy_role', 'N/A'):<6} | Groq: {seg.get('groq_role', 'N/A'):<8} | Text: {str(seg.get('text', ''))[:40]}...")
+        log.info("[NARRATIVE_FORENSIC] ---------------------------------------------------")
+
     agreement_rate = (agreement_count / total_compared) if total_compared > 0 else 1.0
     if total_compared > 0:
         log.info(f"[NARRATIVE_COMPARE] Agreement Rate: {agreement_rate:.2%} ({agreement_count}/{total_compared})")
+    else:
+        log.warning("[NARRATIVE_COMPARE] Groq roles map was empty. Fallback to legacy occurred for 100% of segments.")
 
     # Performance-safe narrative summary: avoid expensive per-window quality scoring here.
     payoff_hints = []
