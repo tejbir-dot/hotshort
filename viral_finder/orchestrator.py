@@ -3323,16 +3323,22 @@ def orchestrate(path: str,
                                     
                                     h_q = str(surgeon.get("hook_question", "none"))
                                     p_a = str(surgeon.get("payoff_answer", "none"))
-                                    r_s = surgeon.get("resolution_strength", 0)
+                                    try:
+                                        r_s = float(surgeon.get("resolution_strength", 0))
+                                    except ValueError:
+                                        r_s = 0.0
+                                        
+                                    log.info(f"[SURGEON_COMPLETE_IDEA_EVAL] cid={cid} r_s={r_s} required=8 payoff_idx={payoff_idx} valid_bounds={0 <= payoff_idx < len(full_transcript)}")
                                     
-                                    log.info("\n[COMPLETE_IDEA_PREVIEW]")
-                                    log.info(f"candidate_id={cid}")
-                                    log.info(f"HOOK_TEXT={hook_text}")
-                                    log.info(f"CURRENT_END_TEXT={old_end_text}")
-                                    log.info(f"PROPOSED_PAYOFF_TEXT={new_end_text}")
-                                    log.info(f"hook_question={h_q}")
-                                    log.info(f"payoff_answer={p_a}")
-                                    log.info(f"resolution_strength={r_s}\n")
+                                    if r_s >= 8 and 0 <= payoff_idx < len(full_transcript):
+                                        log.info("\n[COMPLETE_IDEA_PREVIEW]")
+                                        log.info(f"candidate_id={cid}")
+                                        log.info(f"HOOK_TEXT={hook_text}")
+                                        log.info(f"CURRENT_END_TEXT={old_end_text}")
+                                        log.info(f"PROPOSED_PAYOFF_TEXT={new_end_text}")
+                                        log.info(f"hook_question={h_q}")
+                                        log.info(f"payoff_answer={p_a}")
+                                        log.info(f"resolution_strength={r_s}\n")
                                             
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
