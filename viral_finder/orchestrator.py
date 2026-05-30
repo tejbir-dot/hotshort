@@ -3252,13 +3252,15 @@ def orchestrate(path: str,
                             except ValueError:
                                 conf = 0.0
                                 
-                            if dec == "MOVE_HOOK" and conf >= 0.75:
+                            if dec == "MOVE_HOOK":
                                 try:
                                     hook_idx = int(surgeon.get("hook_segment_index", -1))
                                 except ValueError:
                                     hook_idx = -1
                                     
-                                if 0 <= hook_idx < len(full_transcript):
+                                log.info(f"[SURGEON_MOVE_HOOK_EVAL] cid={c.get('cid', '?')} conf={conf} required=0.75 hook_idx={hook_idx} valid_bounds={0 <= hook_idx < len(full_transcript)}")
+                                
+                                if conf >= 0.75 and 0 <= hook_idx < len(full_transcript):
                                     old_start = float(c.get("start", 0.0))
                                     new_start = float(full_transcript[hook_idx].get("start", 0.0))
                                     
