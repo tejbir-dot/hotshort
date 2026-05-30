@@ -3211,9 +3211,21 @@ def orchestrate(path: str,
     except Exception as e:
         log.warning("[GROQ_CORTEX] Exception during review: %s", e)
     # ------------------------------------
+    
+    # Generate Final Clip Source Report
+    cg_count = 0
+    gtf_count = 0
+    for c in final_candidates:
+        if c.get("groq_moment"):
+            gtf_count += 1
+        else:
+            cg_count += 1
+            
+    log.info("\n[FINAL_CLIP_SOURCE_REPORT]")
+    log.info(f"candidate_generation={cg_count}")
+    log.info(f"groq_transcript_first={gtf_count}\n")
 
     return final_candidates
-
 # -------------------------
 # CLI helper
 # -------------------------
