@@ -298,6 +298,22 @@ Return JSON ONLY in this exact format:
         "Content-Type": "application/json"
     }
 
+    import time
+    
+    audit_data = {
+        "candidates_sent": len(top_candidates),
+        "batches": len(batches),
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_latency_ms": 0.0,
+        "decisions": {
+            "KEEP": 0,
+            "MOVE_HOOK": 0,
+            "COMPLETE_IDEA": 0,
+            "REJECT": 0
+        }
+    }
+
     log.info(f"[SURGEON_ENTER]\ncandidates={len(top_candidates)}")
 
     for batch_idx, batch in enumerate(batches):
@@ -338,12 +354,15 @@ Return JSON ONLY in this exact format:
         max_retries = 3
         for attempt in range(max_retries):
             try:
+                start_t = time.time()
                 response = requests.post(
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers=headers,
                     json=payload,
                     timeout=60
                 )
+                latency = time.time() - start_t
+                audit_data["total_latency_ms"] += (latency * 1000)
                 
                 if response.status_code == 429:
                     log.warning(f"[GROQ_SURGEON] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping 45s...")
@@ -356,7 +375,14 @@ Return JSON ONLY in this exact format:
                 content = data["choices"][0]["message"]["content"]
                 parsed = json.loads(content)
                 
+                usage = data.get("usage", {})
+                audit_data["input_tokens"] += usage.get("prompt_tokens", 0)
+                audit_data["output_tokens"] += usage.get("completion_tokens", 0)
+                
                 for report in parsed.get("surgeon_reports", []):
+                    dec = report.get("decision", "REJECT")
+                    audit_data["decisions"][dec] = audit_data["decisions"].get(dec, 0) + 1
+                    
                     cid = report.get("candidate_id")
                     for c in top_candidates:
                         if c.get("id") == cid:
@@ -374,8 +400,24 @@ Return JSON ONLY in this exact format:
                     log.error(f"[GROQ_SURGEON] Failed batch {batch_idx+1}: {e}")
                     
         if batch_idx < len(batches) - 1:
-            import time
             time.sleep(1.5)
+
+    total_tokens = audit_data["input_tokens"] + audit_data["output_tokens"]
+    c_count = audit_data["candidates_sent"] or 1
+    t_per_c = total_tokens / c_count
+    # Blended estimate: $0.59/1M input, $0.79/1M output for Llama 3 70B
+    cost_estimate = (audit_data["input_tokens"] / 1_000_000 * 0.59) + (audit_data["output_tokens"] / 1_000_000 * 0.79)
+    avg_lat = audit_data["total_latency_ms"] / audit_data["batches"] if audit_data["batches"] else 0
+
+    log.info("\n[GROQ_AUDIT]")
+    log.info(f"candidates_sent={audit_data['candidates_sent']}")
+    log.info(f"batches={audit_data['batches']}")
+    log.info(f"input_tokens={audit_data['input_tokens']}")
+    log.info(f"output_tokens={audit_data['output_tokens']}")
+    log.info(f"tokens_per_candidate={round(t_per_c)}")
+    log.info(f"cost_estimate=${cost_estimate:.5f}")
+    log.info(f"avg_decision_latency={round(avg_lat)}ms")
+    log.info(f"decision_distribution={json.dumps(audit_data['decisions'])}\n")
 
     return candidates
 
