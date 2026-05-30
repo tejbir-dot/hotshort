@@ -967,3 +967,97 @@ Now review these transcript segments:
         max_clips_limit = max_clips
 
     return deduped[:max_clips_limit]
+
+def analyze_narrative_roles(transcript_segments: List[Dict]) -> Dict[int, str]:
+    """
+    Experimental Groq-powered Narrative Intelligence pass.
+    Analyzes the entire transcript and assigns one of [HOOK, STORY, PROOF, LESSON, PAYOFF, BUILD]
+    to each segment by ID.
+    Returns a dictionary mapping segment index to role string.
+    """
+    if not is_cortex_enabled() and os.environ.get("HS_GROQ_NARRATIVE_ROLES") != "1":
+        return {}
+
+    api_key = _get_groq_api_key()
+    if not api_key:
+        return {}
+
+    # Build input array
+    groq_input = []
+    for idx, s in enumerate(transcript_segments):
+        groq_input.append({
+            "id": idx,
+            "text": str(s.get("text", "")).strip()
+        })
+        
+    prompt_json = json.dumps(groq_input, indent=2)
+    
+    system_prompt = """
+You are a world-class Narrative Analyst for short-form video.
+Read the following transcript segments and assign EXACTLY ONE narrative role to EACH segment.
+
+Valid roles:
+1. HOOK: A question, bold claim, or pattern interrupt that grabs attention.
+2. STORY: A personal anecdote, example, or narrative progression.
+3. PROOF: Data, evidence, or logical justification for a claim.
+4. LESSON: The core teaching, framework, or actionable takeaway.
+5. PAYOFF: The final satisfying conclusion, punchline, or "aha!" moment.
+6. BUILD: General context or setup that doesn't fit the above.
+
+OUTPUT JSON ONLY.
+Return this exact structure:
+{
+  "segments": [
+    {"id": 0, "role": "HOOK"},
+    {"id": 1, "role": "STORY"},
+    {"id": 2, "role": "BUILD"}
+  ]
+}
+
+Transcript:
+""" + prompt_json
+
+    log.info(f"[GROQ_NARRATIVE] Analyzing {len(transcript_segments)} segments for narrative roles...")
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": _get_groq_model(),
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "user", "content": system_prompt}
+        ]
+    }
+    
+    try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        parsed = json.loads(content)
+        
+        roles_map = {}
+        for seg in parsed.get("segments", []):
+            try:
+                sid = int(seg.get("id", -1))
+                role = str(seg.get("role", "BUILD")).upper()
+                if sid >= 0:
+                    roles_map[sid] = role
+            except Exception:
+                pass
+                
+        log.info(f"[GROQ_NARRATIVE] Successfully mapped {len(roles_map)} narrative roles.")
+        return roles_map
+        
+    except Exception as e:
+        log.error(f"[GROQ_NARRATIVE] Failed to analyze narrative roles: {e}")
+        return {}

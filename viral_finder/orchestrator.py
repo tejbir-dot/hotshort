@@ -1326,26 +1326,67 @@ def _run_narrative_intelligence(ctx: PipelineContext) -> None:
             if not role_paths or role_paths[-1] != r:
                 role_paths.append(r)
 
+    groq_roles_map = {}
+    if os.environ.get("HS_GROQ_NARRATIVE_ROLES") == "1":
+        try:
+            from viral_finder.groq_cortex import analyze_narrative_roles
+            groq_roles_map = analyze_narrative_roles(ctx.transcript or [])
+        except Exception as e:
+            log.warning(f"[ORCH][NARRATIVE] Failed to run Groq Narrative Roles: {e}")
+
+    agreement_count = 0
+    total_compared = 0
+    groq_role_tags = []
+    
+    if ctx.transcript:
+        for idx, seg in enumerate(ctx.transcript):
+            legacy_role = role_tags[idx] if idx < len(role_tags) else "BUILD"
+            groq_role = groq_roles_map.get(idx, legacy_role)  # fallback to legacy if groq missed it
+            
+            # Map simplified legacy tags to groq taxonomy for fair comparison
+            normalized_legacy = "HOOK" if legacy_role == "HOOK" else ("PAYOFF" if legacy_role == "PAYOFF" else "BUILD")
+            normalized_groq = "HOOK" if groq_role == "HOOK" else ("PAYOFF" if groq_role == "PAYOFF" else "BUILD")
+            
+            seg["legacy_role"] = legacy_role
+            seg["groq_role"] = groq_role
+            groq_role_tags.append(groq_role)
+            
+            if groq_roles_map and idx in groq_roles_map:
+                total_compared += 1
+                if normalized_legacy == normalized_groq:
+                    agreement_count += 1
+                else:
+                    log.info(f"[NARRATIVE_COMPARE] Seg {idx} | Text: '{str(seg.get('text',''))[:40]}...' | Legacy: {legacy_role} vs Groq: {groq_role}")
+    
+    agreement_rate = (agreement_count / total_compared) if total_compared > 0 else 1.0
+    if total_compared > 0:
+        log.info(f"[NARRATIVE_COMPARE] Agreement Rate: {agreement_rate:.2%} ({agreement_count}/{total_compared})")
+
     # Performance-safe narrative summary: avoid expensive per-window quality scoring here.
     payoff_hints = []
     for cand in (ctx.curiosity_candidates or []):
         if isinstance(cand, dict):
             payoff_hints.append(float(cand.get("payoff_confidence", cand.get("payoff_conf", 0.0)) or 0.0))
+            
     if payoff_hints:
         payoff_strength = sum(payoff_hints) / float(len(payoff_hints))
-    elif role_tags:
+        groq_payoff_strength = payoff_strength
+    else:
         payoff_strength = float(sum(1 for r in role_tags if r == "PAYOFF")) / float(max(1, len(role_tags)))
+        groq_payoff_strength = float(sum(1 for r in groq_role_tags if r == "PAYOFF")) / float(max(1, len(groq_role_tags)))
 
     # Keep tiny sample for observability without heavy compute.
     narrative_samples = [
-        {"role": role_tags[i], "idx": float(i)}
+        {"role": role_tags[i], "groq_role": groq_role_tags[i] if i < len(groq_role_tags) else role_tags[i], "idx": float(i)}
         for i in range(0, min(len(role_tags), 12), max(1, len(role_tags) // 6 if len(role_tags) > 6 else 1))
     ]
 
     ctx.narrative = {
         "role_tags": role_tags,
+        "groq_role_tags": groq_role_tags,
         "role_paths": role_paths,
         "payoff_strength": round(float(payoff_strength), 4),
+        "groq_payoff_strength": round(float(groq_payoff_strength), 4),
         "samples": narrative_samples,
     }
     _record_stage(
@@ -1354,6 +1395,8 @@ def _run_narrative_intelligence(ctx: PipelineContext) -> None:
         role_tags=len(role_tags),
         role_paths=len(role_paths),
         payoff_strength=round(float(payoff_strength), 4),
+        groq_payoff_strength=round(float(groq_payoff_strength), 4),
+        agreement_rate=round(agreement_rate, 4),
         wall_s=round(time.time() - t0, 3),
     )
 
