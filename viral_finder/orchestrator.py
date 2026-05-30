@@ -3242,7 +3242,27 @@ def orchestrate(path: str,
                     log.info(f"extend_right={extend_right_count}")
                     log.info(f"reject={reject_count}\n")
                     
-                    log.info("[GROQ_SURGEON] Phase 1: Shadow mode active. Not overriding local candidates.")
+                    log.info("[GROQ_SURGEON] Phase 2: MOVE_HOOK execution active.")
+                    for c in final_candidates:
+                        surgeon = c.get("groq_surgeon")
+                        if surgeon:
+                            dec = surgeon.get("decision", "")
+                            try:
+                                conf = float(surgeon.get("confidence", 0.0))
+                            except ValueError:
+                                conf = 0.0
+                                
+                            if dec == "MOVE_HOOK" and conf >= 0.75:
+                                try:
+                                    hook_idx = int(surgeon.get("hook_segment_index", -1))
+                                except ValueError:
+                                    hook_idx = -1
+                                    
+                                if 0 <= hook_idx < len(full_transcript):
+                                    old_start = float(c.get("start", 0.0))
+                                    new_start = float(full_transcript[hook_idx].get("start", 0.0))
+                                    log.info(f"\n[HOOK_REPAIR]\nold_hook={old_start}\nnew_hook={new_start}\nconfidence={conf}\n")
+                                    c["start"] = new_start
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:
