@@ -972,7 +972,7 @@ Now review these transcript segments:
 def analyze_narrative_roles(transcript_segments: List[Dict]) -> Dict[int, str]:
     """
     Experimental Groq-powered Narrative Intelligence pass.
-    Analyzes the entire transcript and assigns one of [HOOK, STORY, PROOF, LESSON, PAYOFF, BUILD]
+    Analyzes the entire transcript in batches and assigns one of [HOOK, STORY, PROOF, LESSON, PAYOFF, BUILD]
     to each segment by ID.
     Returns a dictionary mapping segment index to role string.
     """
@@ -983,17 +983,36 @@ def analyze_narrative_roles(transcript_segments: List[Dict]) -> Dict[int, str]:
     if not api_key:
         return {}
 
-    # Build input array
-    groq_input = []
-    for idx, s in enumerate(transcript_segments):
-        groq_input.append({
-            "id": idx,
-            "text": str(s.get("text", "")).strip()
-        })
-        
-    prompt_json = json.dumps(groq_input, indent=2)
+    BATCH_SIZE = 40
+    master_roles_map = {}
     
-    system_prompt = """
+    total_segments = len(transcript_segments)
+    batches = [transcript_segments[i:i + BATCH_SIZE] for i in range(0, total_segments, BATCH_SIZE)]
+    
+    log.info(f"[GROQ_NARRATIVE] Analyzing {total_segments} segments across {len(batches)} batches...")
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    for batch_idx, batch in enumerate(batches):
+        # Build input array for this batch
+        groq_input = []
+        for s in batch:
+            # We must use the original index in the full transcript for the ID
+            original_idx = transcript_segments.index(s)
+            groq_input.append({
+                "id": original_idx,
+                "text": str(s.get("text", "")).strip()
+            })
+            
+        prompt_json = json.dumps(groq_input, indent=2)
+        tokens_est = len(prompt_json) // 4
+        
+        log.info(f"[GROQ_NARRATIVE] batch={batch_idx+1}/{len(batches)} segments={len(batch)} tokens_est={tokens_est}")
+        
+        system_prompt = """
 You are a world-class Narrative Analyst for short-form video.
 Read the following transcript segments and assign EXACTLY ONE narrative role to EACH segment.
 
@@ -1017,64 +1036,62 @@ Return this exact structure:
 
 Transcript:
 """ + prompt_json
-
-    log.info(f"[GROQ_NARRATIVE] Analyzing {len(transcript_segments)} segments for narrative roles...")
-    
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": _get_groq_model(),
-        "temperature": 0.1,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {"role": "user", "content": system_prompt}
-        ]
-    }
-    
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
-            
-            if response.status_code == 429:
-                log.warning(f"[GROQ_NARRATIVE] 429 Too Many Requests (attempt {attempt+1}/{max_retries}). Sleeping 45s...")
-                import time
-                time.sleep(45)
-                continue
+        
+        payload = {
+            "model": _get_groq_model(),
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "user", "content": system_prompt}
+            ]
+        }
+        
+        max_retries = 3
+        batch_success = False
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
                 
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-            
-            roles_map = {}
-            for seg in parsed.get("segments", []):
-                try:
-                    sid = int(seg.get("id", -1))
-                    role = str(seg.get("role", "BUILD")).upper()
-                    if sid >= 0:
-                        roles_map[sid] = role
-                except Exception:
-                    pass
+                if response.status_code == 429:
+                    log.warning(f"[GROQ_NARRATIVE] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping 45s...")
+                    import time
+                    time.sleep(45)
+                    continue
                     
-            log.info(f"[GROQ_NARRATIVE] Successfully mapped {len(roles_map)} narrative roles.")
-            return roles_map
+                response.raise_for_status()
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                parsed = json.loads(content)
+                
+                for seg in parsed.get("segments", []):
+                    try:
+                        sid = int(seg.get("id", -1))
+                        role = str(seg.get("role", "BUILD")).upper()
+                        if sid >= 0:
+                            master_roles_map[sid] = role
+                    except Exception:
+                        pass
+                
+                batch_success = True
+                break  # break retry loop on success
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    log.warning(f"[GROQ_NARRATIVE] Batch {batch_idx+1} Attempt {attempt+1} failed: {e}. Retrying in 5s...")
+                    import time
+                    time.sleep(5)
+                else:
+                    log.error(f"[GROQ_NARRATIVE] Failed to analyze narrative roles for batch {batch_idx+1}: {e}")
+        
+        # Add a small delay between batches to avoid immediate 429
+        if batch_idx < len(batches) - 1:
+            import time
+            time.sleep(1.5)
             
-        except Exception as e:
-            if attempt < max_retries - 1:
-                log.warning(f"[GROQ_NARRATIVE] Attempt {attempt+1} failed: {e}. Retrying in 5s...")
-                import time
-                time.sleep(5)
-            else:
-                log.error(f"[GROQ_NARRATIVE] Failed to analyze narrative roles after {max_retries} attempts: {e}")
-                return {}
-    
-    return {}
+    log.info(f"[GROQ_NARRATIVE] Successfully mapped {len(master_roles_map)} total narrative roles.")
+    return master_roles_map
