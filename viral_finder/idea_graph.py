@@ -389,7 +389,15 @@ def analyze_curiosity_and_detect_punches(segments, aud=None, vis=None, brain=Non
 
     # defensive guards
     if not ignitions:
+        import logging
+        log = logging.getLogger(__name__)
+        log.warning(f"[CURIOSITY_FORENSIC] ZERO candidates generated. Reason: analyze_segments_for_ignition returned 0 ignitions.")
+        log.warning(f"[CURIOSITY_FORENSIC] This means the acoustic/semantic ignition threshold was not met anywhere in the {len(feats)} segments.")
         return feats, curiosity, []
+    else:
+        import logging
+        log = logging.getLogger(__name__)
+        log.info(f"[CURIOSITY_FORENSIC] analyze_segments_for_ignition returned {len(ignitions)} ignitions. Proceeding to candidate expansion...")
 
 
 

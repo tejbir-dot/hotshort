@@ -130,7 +130,13 @@ def _confidence_for_phrase(text_lower: str, phrase: str) -> float:
 
 
 def detect_narrative_triggers(transcript_segments: List[Dict]) -> List[Dict]:
+    import logging
+    log = logging.getLogger(__name__)
+    
     triggers: List[Dict] = []
+    total_phrases_checked = 0
+    total_segments = len(transcript_segments or [])
+    
     for seg in transcript_segments or []:
         text = str(seg.get("text", "") or "")
         if not text.strip():
@@ -140,10 +146,13 @@ def detect_narrative_triggers(transcript_segments: List[Dict]) -> List[Dict]:
         end = float(seg.get("end", start) or start)
         if end <= start:
             continue
+            
         for trigger_type, patterns in _TRIGGER_MAP.items():
             for phrase in patterns:
+                total_phrases_checked += 1
                 if phrase in t:
                     conf = _confidence_for_phrase(t, phrase)
+                    log.info(f"[TRIGGER_FORENSIC] MATCH! Phrase: '{phrase}' (Type: {trigger_type}) | Conf: {conf:.2f} | Text: '{t[:40]}...'")
                     triggers.append(
                         {
                             "start": start,
@@ -156,5 +165,12 @@ def detect_narrative_triggers(transcript_segments: List[Dict]) -> List[Dict]:
                         }
                     )
                     break
+    
+    if not triggers:
+        log.warning(f"[TRIGGER_FORENSIC] ZERO triggers found. Evaluated {total_phrases_checked} phrase combinations across {total_segments} segments.")
+        log.warning(f"[TRIGGER_FORENSIC] Threshold logic is NOT the blocker. The EXACT keyword strings in _TRIGGER_MAP were simply not spoken.")
+    else:
+        log.info(f"[TRIGGER_FORENSIC] Found {len(triggers)} triggers.")
+        
     return triggers
 
