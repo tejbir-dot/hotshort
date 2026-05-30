@@ -41,8 +41,8 @@ from collections import deque
 # Tunables (feel free to expose as config)
 HOOK_LOOKBACK_SECS = 6.0           # how far back (seconds) to search for punch/hook
 HOOK_MIN_SCORE = 0.20              # minimal hook score to move start earlier
-RETENTION_DROP_THRESHOLD = 0.35    # min retention (0..1) to keep candidate
-FINAL_SCORE_MIN = 0.28             # global cutoff for output (tunable)
+RETENTION_DROP_THRESHOLD = 0.25    # min retention (0..1) to keep candidate
+FINAL_SCORE_MIN = 0.20             # global cutoff for output (tunable)
 RETENTION_SIM_STEP = 1             # simulate per-segment
 MAX_CANDIDATES_PER_IGNITION = 2    # allow a second fallback per ignition (short)
 IdeaNode = namedtuple("IdeaNode", [
@@ -399,8 +399,10 @@ def analyze_curiosity_and_detect_punches(segments, aud=None, vis=None, brain=Non
         log = logging.getLogger(__name__)
         log.info(f"[CURIOSITY_FORENSIC] analyze_segments_for_ignition returned {len(ignitions)} ignitions. Proceeding to candidate expansion...")
 
-
-
+    # Forensic tracking
+    rejected_retention = 0
+    rejected_score = 0
+    rejected_payoff = 0
 
     for ign in ignitions:
         ign_idx = _normalize_ign_idx(ign)
@@ -492,6 +494,13 @@ def analyze_curiosity_and_detect_punches(segments, aud=None, vis=None, brain=Non
                 # allow some lower-scoring ones if payoff detected strongly
                 if cand[2].get("payoff_confidence", 0.0) >= 0.70 and cand[2]["score"] > 0.18:
                     candidates.append(cand)
+                else:
+                    if cand[2]["retention_score"] < RETENTION_DROP_THRESHOLD:
+                        rejected_retention += 1
+                    elif cand[2]["score"] < FINAL_SCORE_MIN:
+                        rejected_score += 1
+                    else:
+                        rejected_payoff += 1
 
     # dedupe by time (simple)
     def _time_key(c): return (round(c[2]["start_time"], 2), round(c[2]["end_time"], 2))
@@ -503,6 +512,15 @@ def analyze_curiosity_and_detect_punches(segments, aud=None, vis=None, brain=Non
             continue
         seen.add(key)
         final.append((s,e,m))
+
+    import logging
+    log = logging.getLogger(__name__)
+    log.info("\n[CURIOSITY_FORENSIC]")
+    log.info(f"ignitions_found={len(ignitions)}")
+    log.info(f"rejected_retention={rejected_retention}")
+    log.info(f"rejected_score={rejected_score}")
+    log.info(f"rejected_payoff={rejected_payoff}")
+    log.info(f"survived={len(final)}\n")
 
     return feats, curiosity, final
 _PROMISE_PATTERNS=[

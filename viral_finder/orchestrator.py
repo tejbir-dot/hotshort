@@ -2153,6 +2153,9 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         hook_scan_end = min(len(transcript), start_idx + 8)
         why_selected = "fallback to candidate onset (default)"
         final_hook_score = 0.0
+        best_segment_idx = start_idx
+        best_score = -1.0
+        best_reason = why_selected
         
         for j in range(max(0, start_idx - 2), hook_scan_end):
             seg_s, seg_e = _seg_bounds(transcript[j])
@@ -2160,24 +2163,22 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             hook_score = _clamp01(seg_scores.get("hook_score", nar.get("hook_score", 0.0)))
             pattern_break = _clamp01(seg_scores.get("pattern_break_score", nar.get("pattern_break_score", 0.0)))
             
-            if hook_score > 0.2:
-                hook_idx = j
-                hook_found = True
-                final_hook_score = hook_score
-                why_selected = f"hook_score threshold met ({hook_score:.3f} > 0.2)"
-                break
-            elif pattern_break > 0.25:
-                hook_idx = j
-                hook_found = True
-                final_hook_score = hook_score
-                why_selected = f"pattern_break threshold met ({pattern_break:.3f} > 0.25)"
-                break
-            elif candidate_curiosity_peak > 0.25:
-                hook_idx = j
-                hook_found = True
-                final_hook_score = hook_score
-                why_selected = f"curiosity_peak threshold met ({candidate_curiosity_peak:.3f} > 0.25)"
-                break
+            # Compute candidate strength
+            score = max(hook_score, pattern_break)
+            
+            if score > best_score:
+                best_score = score
+                best_segment_idx = j
+                if hook_score >= pattern_break:
+                    best_reason = f"strongest hook_score in window ({hook_score:.3f})"
+                else:
+                    best_reason = f"strongest pattern_break in window ({pattern_break:.3f})"
+                    
+        if best_score > 0.0:
+            hook_idx = best_segment_idx
+            hook_found = True
+            final_hook_score = best_score
+            why_selected = best_reason
 
         hook_seg = transcript[hook_idx]
         hook_start, hook_end = _seg_bounds(hook_seg)
