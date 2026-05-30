@@ -206,8 +206,8 @@ def merge_groq_results_with_candidates(validated_clips: list, original_candidate
         
     return merged
 
-def review_candidates_with_groq(candidates: list, transcript_meta=None) -> list:
-    if not is_groq_enabled():
+def review_candidates_with_groq(candidates: list, full_transcript: list) -> list:
+    if not is_groq_enabled() or not full_transcript:
         return candidates
 
     api_key = _get_groq_api_key()
@@ -221,285 +221,133 @@ def review_candidates_with_groq(candidates: list, transcript_meta=None) -> list:
     # Assign IDs if missing
     for i, c in enumerate(candidates):
         if "id" not in c:
-            c["id"] = f"c{i}"
+            c["id"] = f"c_cand_{i}"
 
     try:
         max_candidates = int(os.environ.get("HS_GROQ_MAX_CANDIDATES", "30"))
     except ValueError:
-        max_candidates = 20
+    def _find_seg_idx(ts: float) -> int:
+        target = float(ts or 0.0)
+        for i, seg in enumerate(full_transcript):
+            ss = float(seg.get("start", 0.0) or 0.0)
+            ee = float(seg.get("end", ss) or ss)
+            if ss <= target <= max(ss, ee):
+                return i
+        return max(0, min(len(full_transcript) - 1, 0 if not full_transcript else int(min(range(len(full_transcript)), key=lambda j: abs(float(full_transcript[j].get("start", 0.0) or 0.0) - target)))))
 
-    top_candidates = candidates[:max_candidates]
+    batch_size = 4
+    batches = [top_candidates[i:i + batch_size] for i in range(0, len(top_candidates), batch_size)]
     
-    # Prepare payload for Groq
-    groq_input = []
-    for c in top_candidates:
-        groq_input.append({
-            "candidate_id": str(c.get("id")),
-            "start": round(float(c.get("start", 0)), 2),
-            "end": round(float(c.get("end", 0)), 2),
-            "duration": round(float(c.get("duration", 0)), 2),
-            "text": str(c.get("text", "")).strip(),
-            "existing_score": round(float(c.get("viral_score", 0)), 2),
-            "existing_reason": str(c.get("reason", "none"))
-        })
+    system_prompt = """You are HotShort Cortex: a world-class Narrative Surgeon for video clips.
+Your ONLY job is to review potential video clips, determine if they contain a complete idea, identify the exact hook and payoff segments, and decide how to repair them.
 
-    prompt_json = json.dumps(groq_input, indent=2)
-    
-    system_prompt = """
-You are HotShort Cortex: a world-class short-form content director, retention psychologist, podcast editor, and content research lab.
+DO NOT rewrite the transcript.
+DO NOT generate timestamps.
 
-Your job is NOT to find a fixed number of clips.
-Your job is to discover how many genuinely valuable short-form clips exist in the provided candidates.
+Available Actions:
+- KEEP: The candidate is perfect. The idea is complete.
+- MOVE_HOOK: The candidate started too early with filler, or missed the true hook just before it. Move the hook.
+- EXTEND_RIGHT: The candidate cuts off before the idea resolves. Extend it to the true payoff.
+- REJECT: The candidate is a weak idea, rambling, or never resolves.
 
-Return 0 to N clips.
-If only 1 clip is excellent, return 1.
-If 6 clips are excellent and meaningfully different, return 6.
-If none are strong, return 0.
-Never force clips.
-
-CORE PRINCIPLE:
-Not every viral clip needs a dangerous hook.
-Some great clips win because they are useful, insightful, emotional, surprising, practical, contrarian, funny, story-driven, or deeply relatable.
-
-FIRST: Identify the content type.
-Possible content modes:
-- educational
-- founder/startup
-- podcast interview
-- story/confession
-- motivational
-- technical/tutorial
-- business/marketing
-- entertainment
-- philosophical
-- news/commentary
-- mixed
-
-SECOND: Choose clip archetypes based on the transcript.
-Possible strong clip archetypes:
-- dangerous_hook
-- practical_insight
-- founder_lesson
-- contrarian_take
-- mistake_warning
-- story_payoff
-- emotional_truth
-- framework_or_steps
-- quote_or_big_line
-- before_after_realization
-- tactical_tip
-- myth_busting
-- curiosity_loop
-- strong_opinion
-- relatable_problem
-- surprising_fact
-
-A clip is valuable if it has at least ONE strong reason to exist:
-1. It teaches something useful.
-2. It reveals a strong insight.
-3. It opens a curiosity loop.
-4. It gives a clear takeaway.
-5. It contains emotional truth.
-6. It shows conflict, contrast, or contradiction.
-7. It has a memorable line.
-8. It solves a real problem.
-9. It feels shareable, saveable, or comment-worthy.
-10. It works as a standalone short without previous context.
-
-DO NOT over-prioritize suspense.
-DO NOT reject a clip just because it is calm.
-A calm clip can be excellent if the insight is strong.
-
-Reject clips that are:
-- incomplete
-- generic
-- context-dependent
-- repetitive
-- only setup with no payoff
-- only hype with no meaning
-- too vague
-- weak educational value
-- same idea as another stronger clip
-
-DIVERSITY RULE:
-Do not return multiple clips that feel like the same idea.
-Prefer a diverse set like:
-- one practical insight
-- one founder lesson
-- one warning
-- one contrarian take
-- one story payoff
-- one tactical tip
-
-SCORING:
-Score each selected clip from 0 to 100 using:
-- hook_strength
-- insight_strength
-- completeness
-- standalone_clarity
-- retention_potential
-- shareability
-- payoff_strength
-- uniqueness
-- usefulness
-
-Only return clips with viral_score >= 72.
-But if a clip has exceptional educational value, practical value, or founder insight, it can pass even without a dramatic hook.
-
-TIMESTAMP RULES:
-- Only use candidate_id values provided.
-- Never invent timestamps.
-- start_adjustment_seconds and end_adjustment_seconds must stay inside original candidate boundaries.
-- Prefer trimming dead setup and ending after the payoff.
-
-EDITING INTELLIGENCE:
-For every selected clip, decide pacing and subtitle style based on the clip type:
-- fast: high-energy, punchy, tactical, controversial
-- normal: educational, founder, business, insight
-- slow: emotional, philosophical, dramatic, story payoff
-
-Subtitle style:
-- classic: clean educational/business
-- neon: tech/futuristic/high-energy
-- beast: loud viral/motivational
-- retro: story/commentary
-- minimal: premium calm insight
-
-OUTPUT JSON ONLY.
-No markdown.
-No explanation outside JSON.
-
-Return this exact structure:
+Return JSON ONLY in this exact format:
 {
-  "content_diagnosis": {
-    "content_mode": "founder/startup",
-    "dominant_signals": ["insight", "warning", "practical"],
-    "overall_clip_density": "low | medium | high",
-    "estimated_valuable_clip_count": 0
-  },
-  "clips": [
+  "surgeon_reports": [
     {
-      "candidate_id": "c0",
-      "clip_archetype": "practical_insight",
-      "viral_score": 86,
-      "title": "The Real Startup Cost Trap",
-      "opening_caption": "Most founders spend money on the wrong thing...",
-      "hook_type": "Insight",
-      "why_this_clip_is_valuable": "It gives a useful founder lesson with clear standalone meaning.",
-      "why_people_keep_watching": "They want to know what cost actually matters.",
-      "payoff": "Customer acquisition matters more than product polish early on.",
-      "retention_risk": "Could feel slow if captions are not punchy.",
-      "start_adjustment_seconds": 0.0,
-      "end_adjustment_seconds": 0.0,
-      "scores": {
-        "hook_strength": 78,
-        "insight_strength": 92,
-        "completeness": 88,
-        "standalone_clarity": 90,
-        "retention_potential": 82,
-        "shareability": 80,
-        "payoff_strength": 86,
-        "uniqueness": 76,
-        "usefulness": 94
-      },
-      "learning_signal_for_hotshort": {
-        "meaning_pattern": "Useful founder insight with clear mistake correction",
-        "psychological_trigger": "Problem-solution clarity",
-        "why_selected_over_others": "More useful and complete than generic motivational clips"
-      },
-      "editing_notes": {
-        "pacing_note": "normal",
-        "subtitle_style": "classic",
-        "caption_strategy": "Highlight the mistake and the corrected belief.",
-        "broll_suggestion": "startup dashboard, Stripe, landing page, analytics"
-      },
-      "visual_editing_notes": {
-        "reframe_priority": "face_center",
-        "face_position": "upper_center",
-        "clarity_level": "premium_sharp",
-        "caption_safe_zone": "lower_third_below_face",
-        "zoom_style": "subtle_dynamic",
-        "avoid": ["blurry_export", "face_cutoff", "caption_on_mouth", "over_sharpening"]
-      }
-    }
-  ],
-  "rejected_candidates": [
-    {
-      "candidate_id": "c1",
-      "reason": "Good topic but incomplete payoff and too dependent on previous context."
+      "candidate_id": "c_cand_0",
+      "decision": "KEEP",
+      "confidence": 0.92,
+      "hook_segment_index": 12,
+      "payoff_segment_index": 15,
+      "reason": "Complete idea with clear resolution."
     }
   ]
 }
+"""
 
-Now review these candidates:
-{{CANDIDATES_JSON}}
-""".replace("{{CANDIDATES_JSON}}", prompt_json)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
 
-    log.info(f"[GROQ_CORTEX] Sending {len(groq_input)} candidates to Groq Cortex...")
+    log.info(f"[GROQ_SURGEON] Processing {len(top_candidates)} candidates in {len(batches)} batches.")
 
-    try:
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": _get_groq_model(),
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": system_prompt
-                    }
-                ],
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"}
-            },
-            timeout=_get_timeout()
-        )
-        response.raise_for_status()
-        
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
-        
-        parsed = parse_groq_json_safely(content)
-        if _is_log_reasoning():
-            log.info(f"[GROQ_CORTEX] Raw content snippet: {content[:500]}")
-            log.info(f"[GROQ_CORTEX] Parsed type: {type(parsed).__name__}, keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'N/A'}")
-        if not parsed:
-            raise ValueError("Failed to parse Groq response into valid JSON dict.")
+    for batch_idx, batch in enumerate(batches):
+        groq_input = []
+        for c in batch:
+            s0 = float(c.get("start", 0.0))
+            e0 = float(c.get("end", s0))
             
-        validated = validate_groq_clips(parsed, top_candidates)
-        
-        if _is_log_reasoning():
-            log.info(f"[GROQ_CORTEX] Selected {len(validated)} clips after validation.")
-            log.info(f"[GROQ_CORTEX] Parsed keys: {list(parsed.keys())}")
-            if "rejected_candidates" in parsed:
-                for r in parsed["rejected_candidates"]:
-                    log.info(f"[GROQ_CORTEX] Rejected {r.get('candidate_id')}: {r.get('reason')}")
-                    
-        if not validated:
-            if _is_fail_open():
-                log.info("[GROQ_CORTEX] 0 clips selected. Fail open is ON. Falling back to original candidates.")
-                return candidates
-            else:
-                log.info("[GROQ_CORTEX] 0 clips selected. Fail open is OFF. Returning empty list.")
-                return []
+            s_idx = _find_seg_idx(s0)
+            e_idx = _find_seg_idx(e0)
+            
+            # Context window: approx 10s before, 30s after
+            window_start = max(0, s_idx - 4)
+            window_end = min(len(full_transcript), e_idx + 10)
+            
+            window_text = []
+            for j in range(window_start, window_end):
+                text = str(full_transcript[j].get("text", "")).strip()
+                window_text.append(f"[{j}] {text}")
                 
-        merged = merge_groq_results_with_candidates(validated, top_candidates)
-        
-        if _is_log_reasoning():
-            for m in merged:
-                log.info(f"[GROQ_CORTEX] Clip '{m.get('title')}' learning signal: {m.get('learning_signal_for_hotshort')}")
-                
-        return merged
+            groq_input.append({
+                "candidate_id": str(c["id"]),
+                "transcript_window": "\n".join(window_text)
+            })
 
-    except Exception as e:
-        log.error(f"[GROQ_CORTEX] failed: {str(e)}")
-        if _is_fail_open():
-            log.info("[GROQ_CORTEX] Falling back to original candidates.")
-            return candidates
-        return []
+        payload = {
+            "model": _get_groq_model(),
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(groq_input, indent=2)}
+            ]
+        }
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
+                
+                if response.status_code == 429:
+                    log.warning(f"[GROQ_SURGEON] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping 45s...")
+                    import time
+                    time.sleep(45)
+                    continue
+                    
+                response.raise_for_status()
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                parsed = json.loads(content)
+                
+                for report in parsed.get("surgeon_reports", []):
+                    cid = report.get("candidate_id")
+                    for c in top_candidates:
+                        if c.get("id") == cid:
+                            c["groq_surgeon"] = report
+                            break
+                            
+                break  # Success
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    log.warning(f"[GROQ_SURGEON] Batch {batch_idx+1} Attempt {attempt+1} failed: {e}. Retrying in 5s...")
+                    import time
+                    time.sleep(5)
+                else:
+                    log.error(f"[GROQ_SURGEON] Failed batch {batch_idx+1}: {e}")
+                    
+        if batch_idx < len(batches) - 1:
+            import time
+            time.sleep(1.5)
+
+    return candidates
 
 
 def _chunk_transcript(segments: list, video_duration: float, window_size: float = 240.0, overlap: float = 30.0) -> list:

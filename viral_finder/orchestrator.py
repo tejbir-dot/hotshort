@@ -3126,7 +3126,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         xray_report = "[XRAY FAILED]"
 
     print("TOTAL PROCESS TIME:", time.time() - start)
-    return out, _groq_pool, has_tf_moments
+    return out, _groq_pool, has_tf_moments, getattr(ctx, "transcript", [])
 
 
 def orchestrate(path: str,
@@ -3156,6 +3156,7 @@ def orchestrate(path: str,
     _groq_pool: list = []  # richer pre-filter pool for Groq
 
     has_tf_moments = False
+    full_transcript = []
     if mode == "staged":
         try:
             _staged_result = _run_staged_pipeline(
@@ -3165,9 +3166,10 @@ def orchestrate(path: str,
                 use_cache=use_cache,
                 allow_fallback=allow_fallback,
             )
-            # _run_staged_pipeline now returns (ranked_out, groq_pool, has_tf_moments)
             if isinstance(_staged_result, tuple):
-                if len(_staged_result) == 3:
+                if len(_staged_result) == 4:
+                    final_candidates, _groq_pool, has_tf_moments, full_transcript = _staged_result
+                elif len(_staged_result) == 3:
                     final_candidates, _groq_pool, has_tf_moments = _staged_result
                 else:
                     final_candidates, _groq_pool = _staged_result
@@ -3217,19 +3219,30 @@ def orchestrate(path: str,
                         "[GROQ_CORTEX] groq_input_candidates_count=%d (ranked_output=%d, enriched_pool=%d)",
                         len(_pool), len(final_candidates), len(_groq_pool),
                     )
-                    groq_result = review_candidates_with_groq(_pool, transcript_meta=transcript)
-                    log.info(
-                        "[GROQ_CORTEX] groq_selected_count=%d groq_rejected_count=%d",
-                        len(groq_result), len(_pool) - len(groq_result),
-                    )
-                    if groq_result:
-                        is_fallback = all(not (c.get("cortex_enabled") or c.get("groq_moment")) for c in groq_result)
-                        if is_fallback:
-                            log.info("[GROQ_CORTEX] Groq returned fallback raw pool — keeping local pipeline filtered output instead.")
-                        else:
-                            final_candidates = groq_result
-                    else:
-                        log.info("[GROQ_CORTEX] No clips selected — keeping local pipeline output.")
+                    
+                    groq_result = review_candidates_with_groq(_pool, full_transcript)
+                    
+                    keep_count = 0
+                    move_hook_count = 0
+                    extend_right_count = 0
+                    reject_count = 0
+                    
+                    for c in groq_result:
+                        surgeon = c.get("groq_surgeon")
+                        if surgeon:
+                            dec = surgeon.get("decision", "")
+                            if dec == "KEEP": keep_count += 1
+                            elif dec == "MOVE_HOOK": move_hook_count += 1
+                            elif dec == "EXTEND_RIGHT": extend_right_count += 1
+                            elif dec == "REJECT": reject_count += 1
+                            
+                    log.info("\n[GROQ_SURGEON_REPORT]")
+                    log.info(f"KEEP={keep_count}")
+                    log.info(f"MOVE_HOOK={move_hook_count}")
+                    log.info(f"EXTEND_RIGHT={extend_right_count}")
+                    log.info(f"REJECT={reject_count}\n")
+                    
+                    log.info("[GROQ_SURGEON] Phase 1: Shadow mode active. Not overriding local candidates.")
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:
