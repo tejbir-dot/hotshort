@@ -3223,7 +3223,22 @@ def orchestrate(path: str,
             
     log.info("\n[FINAL_CLIP_SOURCE_REPORT]")
     log.info(f"candidate_generation={cg_count}")
-    log.info(f"groq_transcript_first={gtf_count}\n")
+    log.info(f"groq_transcript_first={gtf_count}")
+
+    log.info("\n[GROQ_USAGE_REPORT]")
+    log.info(f"narrative_enabled={os.environ.get('HS_GROQ_NARRATIVE_ROLES', '0')}")
+    log.info(f"transcript_first_enabled={os.environ.get('HS_GROQ_TRANSCRIPT_FIRST', '0')}")
+    log.info(f"cortex_enabled={os.environ.get('HS_GROQ_CORTEX', '0')}")
+
+    log.info("\n[PIPELINE_REPORT]")
+    raw_cand_count = len(ctx.candidates) if hasattr(ctx, 'candidates') and ctx.candidates else 0
+    log.info(f"raw_candidates={raw_cand_count}")
+    log.info(f"final_candidates={len(final_candidates)}")
+    log.info(f"runtime_seconds={round(time.time() - start_time, 2)}\n")
+
+    for i, c in enumerate(final_candidates):
+        source = "groq_transcript_first" if c.get("groq_moment") else "candidate_generation"
+        log.info(f"CLIP {i+1}: source={source} hook_score={c.get('hook_score', 0.0)} payoff_score={c.get('payoff_score', 0.0)} duration={c.get('duration', 0.0)} final_score={c.get('final_score', 0.0)}")
 
     return final_candidates
 # -------------------------
