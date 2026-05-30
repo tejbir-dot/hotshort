@@ -3224,7 +3224,7 @@ def orchestrate(path: str,
                     
                     keep_count = 0
                     move_hook_count = 0
-                    extend_right_count = 0
+                    complete_idea_count = 0
                     reject_count = 0
                     
                     for c in groq_result:
@@ -3233,13 +3233,13 @@ def orchestrate(path: str,
                             dec = surgeon.get("decision", "")
                             if dec == "KEEP": keep_count += 1
                             elif dec == "MOVE_HOOK": move_hook_count += 1
-                            elif dec == "EXTEND_RIGHT": extend_right_count += 1
+                            elif dec == "COMPLETE_IDEA": complete_idea_count += 1
                             elif dec == "REJECT": reject_count += 1
                             
                     log.info("\n[SURGEON_RESPONSE]")
                     log.info(f"keep={keep_count}")
                     log.info(f"move_hook={move_hook_count}")
-                    log.info(f"extend_right={extend_right_count}")
+                    log.info(f"complete_idea={complete_idea_count}")
                     log.info(f"reject={reject_count}\n")
                     
                     log.info("[GROQ_SURGEON] Phase 2: MOVE_HOOK execution active.")
@@ -3292,7 +3292,7 @@ def orchestrate(path: str,
                                             fc["start"] = new_start
                                             break
                                             
-                            elif dec == "EXTEND_RIGHT":
+                            elif dec == "COMPLETE_IDEA":
                                 try:
                                     payoff_idx = int(surgeon.get("payoff_segment_index", -1))
                                 except ValueError:
@@ -3301,11 +3301,15 @@ def orchestrate(path: str,
                                 if 0 <= payoff_idx < len(full_transcript):
                                     start_ts = float(c.get("start", 0.0))
                                     end_ts = float(c.get("end", 0.0))
-                                    dur = max(0.0, end_ts - start_ts)
                                     
-                                    new_end = float(full_transcript[payoff_idx].get("end", full_transcript[payoff_idx].get("start", 0.0)))
-                                    new_dur = max(0.0, new_end - start_ts)
-                                    
+                                    hook_text = ""
+                                    for seg in full_transcript:
+                                        ss = float(seg.get("start", 0.0))
+                                        ee = float(seg.get("end", ss))
+                                        if ss <= start_ts <= max(ss, ee):
+                                            hook_text = str(seg.get("text", "")).strip()
+                                            break
+                                            
                                     old_end_text = ""
                                     for seg in full_transcript:
                                         ss = float(seg.get("start", 0.0))
@@ -3317,16 +3321,14 @@ def orchestrate(path: str,
                                     new_end_text = str(full_transcript[payoff_idx].get("text", "")).strip()
                                     cid = c.get("id", c.get("cid", "?"))
                                     
-                                    payoff_score = c.get("punch_confidence", c.get("scores", {}).get("punch", 0.0))
+                                    expl = str(surgeon.get("resolution_explanation", "none"))
                                     
-                                    log.info("\n[EXTEND_RIGHT_PREVIEW]")
+                                    log.info("\n[COMPLETE_IDEA_PREVIEW]")
                                     log.info(f"candidate_id={cid}")
-                                    log.info(f"current_duration={round(dur, 2)}")
-                                    log.info(f"current_payoff_score={round(float(payoff_score), 4)}")
-                                    log.info(f"suggested_payoff_segment={payoff_idx}")
-                                    log.info(f"estimated_new_duration={round(new_dur, 2)}")
-                                    log.info(f"last_transcript_before_extension={old_end_text}")
-                                    log.info(f"payoff_transcript_after_extension={new_end_text}\n")
+                                    log.info(f"HOOK_TEXT={hook_text}")
+                                    log.info(f"CURRENT_END_TEXT={old_end_text}")
+                                    log.info(f"PROPOSED_PAYOFF_TEXT={new_end_text}")
+                                    log.info(f"resolution_explanation={expl}\n")
                                             
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")

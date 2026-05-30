@@ -248,10 +248,17 @@ Your ONLY job is to review potential video clips, determine if they contain a co
 DO NOT rewrite the transcript.
 DO NOT generate timestamps.
 
+PAYOFF RULES:
+- A payoff is NOT another interesting idea.
+- A payoff is the sentence that resolves, answers, explains, or completes the original hook.
+- The payoff must reduce curiosity created by the hook.
+- Do not select a sentence that starts a new topic, new story, new analogy, or new example.
+- If the hook is not resolved within the context window, return REJECT instead of COMPLETE_IDEA.
+
 Available Actions:
 - KEEP: The candidate is perfect. The idea is complete.
 - MOVE_HOOK: The candidate started too early with filler, or missed the true hook just before it. Move the hook.
-- EXTEND_RIGHT: The candidate cuts off before the idea resolves. Extend it to the true payoff.
+- COMPLETE_IDEA: The candidate cuts off before the idea resolves. Extend it to the true payoff.
 - REJECT: The candidate is a weak idea, rambling, or never resolves.
 
 Return JSON ONLY in this exact format:
@@ -263,7 +270,8 @@ Return JSON ONLY in this exact format:
       "confidence": 0.92,
       "hook_segment_index": 12,
       "payoff_segment_index": 15,
-      "reason": "Complete idea with clear resolution."
+      "reason": "Complete idea with clear resolution.",
+      "resolution_explanation": "The payoff directly answers the question raised in the hook."
     }
   ]
 }
