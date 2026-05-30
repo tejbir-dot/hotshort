@@ -3231,7 +3231,7 @@ def orchestrate(path: str,
     log.info(f"cortex_enabled={os.environ.get('HS_GROQ_CORTEX', '0')}")
 
     log.info("\n[PIPELINE_REPORT]")
-    raw_cand_count = len(ctx.candidates) if hasattr(ctx, 'candidates') and ctx.candidates else 0
+    raw_cand_count = len(_groq_pool) if _groq_pool else "N/A"
     log.info(f"raw_candidates={raw_cand_count}")
     log.info(f"final_candidates={len(final_candidates)}")
     log.info(f"runtime_seconds={round(time.time() - start_time, 2)}\n")
