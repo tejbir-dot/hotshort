@@ -976,7 +976,7 @@ def analyze_narrative_roles(transcript_segments: List[Dict]) -> Dict[int, str]:
     to each segment by ID.
     Returns a dictionary mapping segment index to role string.
     """
-    if not is_cortex_enabled() and os.environ.get("HS_GROQ_NARRATIVE_ROLES") != "1":
+    if not is_groq_enabled() and os.environ.get("HS_GROQ_NARRATIVE_ROLES") != "1":
         return {}
 
     api_key = _get_groq_api_key()
