@@ -243,17 +243,24 @@ def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Di
     batches = [top_candidates[i:i + batch_size] for i in range(0, len(top_candidates), batch_size)]
     
     system_prompt = """You are HotShort Cortex: a world-class Narrative Surgeon for video clips.
-Your ONLY job is to review potential video clips, determine if they contain a complete idea, identify the exact hook and payoff segments, and decide how to repair them.
 
-DO NOT rewrite the transcript.
-DO NOT generate timestamps.
+Your job is NOT to find another interesting sentence.
+Your job is to determine whether the hook's tension, question, claim, belief reversal, or curiosity loop becomes resolved.
 
-PAYOFF RULES:
-- A payoff is NOT another interesting idea.
-- A payoff is the sentence that resolves, answers, explains, or completes the original hook.
-- The payoff must reduce curiosity created by the hook.
-- Do not select a sentence that starts a new topic, new story, new analogy, or new example.
-- If the hook is not resolved within the context window, return REJECT instead of COMPLETE_IDEA.
+A valid payoff must:
+1. Answer the hook.
+2. Explain the hook.
+3. Resolve the hook.
+4. Complete the idea started by the hook.
+
+A payoff must NOT:
+- start a new topic
+- start a new example
+- start a new analogy
+- start a new story
+- introduce unrelated information
+
+If no valid payoff exists inside the context window, RETURN REJECT instead of COMPLETE_IDEA.
 
 Available Actions:
 - KEEP: The candidate is perfect. The idea is complete.
@@ -261,17 +268,26 @@ Available Actions:
 - COMPLETE_IDEA: The candidate cuts off before the idea resolves. Extend it to the true payoff.
 - REJECT: The candidate is a weak idea, rambling, or never resolves.
 
+FORCED REASONING STEP:
+Before you choose COMPLETE_IDEA or KEEP, you must extract the hook's core question and the payoff's direct answer, and rate the resolution strength from 0-10.
+Example:
+  "hook_question": "Why do successful people appear lucky?",
+  "payoff_answer": "Because they stay in the game longer.",
+  "resolution_strength": 9
+
 Return JSON ONLY in this exact format:
 {
   "surgeon_reports": [
     {
       "candidate_id": "c_cand_0",
-      "decision": "KEEP",
+      "decision": "COMPLETE_IDEA",
       "confidence": 0.92,
       "hook_segment_index": 12,
       "payoff_segment_index": 15,
-      "reason": "Complete idea with clear resolution.",
-      "resolution_explanation": "The payoff directly answers the question raised in the hook."
+      "hook_question": "What is the real cost of startups?",
+      "payoff_answer": "Customer acquisition, not product building.",
+      "resolution_strength": 9,
+      "reason": "The payoff directly answers the question raised in the hook."
     }
   ]
 }

@@ -3321,14 +3321,18 @@ def orchestrate(path: str,
                                     new_end_text = str(full_transcript[payoff_idx].get("text", "")).strip()
                                     cid = c.get("id", c.get("cid", "?"))
                                     
-                                    expl = str(surgeon.get("resolution_explanation", "none"))
+                                    h_q = str(surgeon.get("hook_question", "none"))
+                                    p_a = str(surgeon.get("payoff_answer", "none"))
+                                    r_s = surgeon.get("resolution_strength", 0)
                                     
                                     log.info("\n[COMPLETE_IDEA_PREVIEW]")
                                     log.info(f"candidate_id={cid}")
                                     log.info(f"HOOK_TEXT={hook_text}")
                                     log.info(f"CURRENT_END_TEXT={old_end_text}")
                                     log.info(f"PROPOSED_PAYOFF_TEXT={new_end_text}")
-                                    log.info(f"resolution_explanation={expl}\n")
+                                    log.info(f"hook_question={h_q}")
+                                    log.info(f"payoff_answer={p_a}")
+                                    log.info(f"resolution_strength={r_s}\n")
                                             
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
