@@ -3292,6 +3292,42 @@ def orchestrate(path: str,
                                             fc["start"] = new_start
                                             break
                                             
+                            elif dec == "EXTEND_RIGHT":
+                                try:
+                                    payoff_idx = int(surgeon.get("payoff_segment_index", -1))
+                                except ValueError:
+                                    payoff_idx = -1
+                                    
+                                if 0 <= payoff_idx < len(full_transcript):
+                                    start_ts = float(c.get("start", 0.0))
+                                    end_ts = float(c.get("end", 0.0))
+                                    dur = max(0.0, end_ts - start_ts)
+                                    
+                                    new_end = float(full_transcript[payoff_idx].get("end", full_transcript[payoff_idx].get("start", 0.0)))
+                                    new_dur = max(0.0, new_end - start_ts)
+                                    
+                                    old_end_text = ""
+                                    for seg in full_transcript:
+                                        ss = float(seg.get("start", 0.0))
+                                        ee = float(seg.get("end", ss))
+                                        if ss <= end_ts <= max(ss, ee):
+                                            old_end_text = str(seg.get("text", "")).strip()
+                                            break
+                                            
+                                    new_end_text = str(full_transcript[payoff_idx].get("text", "")).strip()
+                                    cid = c.get("id", c.get("cid", "?"))
+                                    
+                                    payoff_score = c.get("punch_confidence", c.get("scores", {}).get("punch", 0.0))
+                                    
+                                    log.info("\n[EXTEND_RIGHT_PREVIEW]")
+                                    log.info(f"candidate_id={cid}")
+                                    log.info(f"current_duration={round(dur, 2)}")
+                                    log.info(f"current_payoff_score={round(float(payoff_score), 4)}")
+                                    log.info(f"suggested_payoff_segment={payoff_idx}")
+                                    log.info(f"estimated_new_duration={round(new_dur, 2)}")
+                                    log.info(f"last_transcript_before_extension={old_end_text}")
+                                    log.info(f"payoff_transcript_after_extension={new_end_text}\n")
+                                            
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:
