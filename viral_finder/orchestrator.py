@@ -2151,14 +2151,32 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
 
         # HOOK: scan around candidate onset.
         hook_scan_end = min(len(transcript), start_idx + 8)
+        why_selected = "fallback to candidate onset (default)"
+        final_hook_score = 0.0
+        
         for j in range(max(0, start_idx - 2), hook_scan_end):
             seg_s, seg_e = _seg_bounds(transcript[j])
             seg_scores = compute_quality_scores(transcript, seg_s, seg_e) if compute_quality_scores else {}
             hook_score = _clamp01(seg_scores.get("hook_score", nar.get("hook_score", 0.0)))
             pattern_break = _clamp01(seg_scores.get("pattern_break_score", nar.get("pattern_break_score", 0.0)))
-            if (hook_score > 0.2) or (pattern_break > 0.25) or (candidate_curiosity_peak > 0.25):
+            
+            if hook_score > 0.2:
                 hook_idx = j
                 hook_found = True
+                final_hook_score = hook_score
+                why_selected = f"hook_score threshold met ({hook_score:.3f} > 0.2)"
+                break
+            elif pattern_break > 0.25:
+                hook_idx = j
+                hook_found = True
+                final_hook_score = hook_score
+                why_selected = f"pattern_break threshold met ({pattern_break:.3f} > 0.25)"
+                break
+            elif candidate_curiosity_peak > 0.25:
+                hook_idx = j
+                hook_found = True
+                final_hook_score = hook_score
+                why_selected = f"curiosity_peak threshold met ({candidate_curiosity_peak:.3f} > 0.25)"
                 break
 
         hook_seg = transcript[hook_idx]
@@ -2308,6 +2326,11 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         c["arc_score"] = round(float(arc_score), 4)
         c["viral_score"] = round(float(arc_score), 4)
         c["provenance"] = {"stage": "L10_ARC_ASSEMBLER"}
+        c["hook_selection_trace"] = {
+            "text": str(hook_seg.get("text", "") or ""),
+            "score": round(float(final_hook_score), 4),
+            "reason": why_selected
+        }
         out.append(c)
 
     out = sorted(
@@ -3239,6 +3262,14 @@ def orchestrate(path: str,
     for i, c in enumerate(final_candidates):
         source = "groq_transcript_first" if c.get("groq_moment") else "candidate_generation"
         log.info(f"CLIP {i+1}: source={source} hook_score={c.get('hook_score', 0.0)} payoff_score={c.get('payoff_score', 0.0)} duration={c.get('duration', 0.0)} final_score={c.get('final_score', 0.0)}")
+        
+        # Print Hook Selection Trace
+        trace = c.get("hook_selection_trace", {})
+        if trace:
+            log.info(f"  [HOOK_SELECTION_TRACE]")
+            log.info(f"    selected_hook_score={trace.get('score', 0.0)}")
+            log.info(f"    why_selected={trace.get('reason', 'N/A')}")
+            log.info(f"    selected_hook_text='{trace.get('text', '')}'\n")
 
     return final_candidates
 # -------------------------
