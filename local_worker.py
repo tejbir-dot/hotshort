@@ -35,12 +35,16 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 # Load .env.worker (worker-specific config) first, then fall back to .env
 _worker_env = os.path.join(BASE_DIR, ".env.worker")
 _default_env = os.path.join(BASE_DIR, ".env")
-if os.path.exists(_worker_env):
-    load_dotenv(_worker_env)
-    print(f"[LOCAL_WORKER] Loaded env from .env.worker", flush=True)
-else:
+
+# Always load .env first for global configs
+if os.path.exists(_default_env):
     load_dotenv(_default_env)
-    print(f"[LOCAL_WORKER] Loaded env from .env (consider creating .env.worker)", flush=True)
+    print(f"[LOCAL_WORKER] Loaded env from .env", flush=True)
+
+# Then override with .env.worker if present
+if os.path.exists(_worker_env):
+    load_dotenv(_worker_env, override=True)
+    print(f"[LOCAL_WORKER] Overrode env with .env.worker", flush=True)
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
