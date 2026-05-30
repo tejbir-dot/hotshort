@@ -226,6 +226,10 @@ def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Di
     try:
         max_candidates = int(os.environ.get("HS_GROQ_MAX_CANDIDATES", "30"))
     except ValueError:
+        max_candidates = 20
+
+    top_candidates = candidates[:max_candidates]
+
     def _find_seg_idx(ts: float) -> int:
         target = float(ts or 0.0)
         for i, seg in enumerate(full_transcript):
