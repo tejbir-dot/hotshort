@@ -3236,11 +3236,11 @@ def orchestrate(path: str,
                             elif dec == "EXTEND_RIGHT": extend_right_count += 1
                             elif dec == "REJECT": reject_count += 1
                             
-                    log.info("\n[GROQ_SURGEON_REPORT]")
-                    log.info(f"KEEP={keep_count}")
-                    log.info(f"MOVE_HOOK={move_hook_count}")
-                    log.info(f"EXTEND_RIGHT={extend_right_count}")
-                    log.info(f"REJECT={reject_count}\n")
+                    log.info("\n[SURGEON_RESPONSE]")
+                    log.info(f"keep={keep_count}")
+                    log.info(f"move_hook={move_hook_count}")
+                    log.info(f"extend_right={extend_right_count}")
+                    log.info(f"reject={reject_count}\n")
                     
                     log.info("[GROQ_SURGEON] Phase 1: Shadow mode active. Not overriding local candidates.")
         elif is_groq_enabled() and not _groq_api_key:

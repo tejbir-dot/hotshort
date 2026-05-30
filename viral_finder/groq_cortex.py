@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import requests
-from typing import List, Dict
+from typing import List, Dict, Any, Optional
 
 log = logging.getLogger("groq_cortex")
 
@@ -206,7 +206,7 @@ def merge_groq_results_with_candidates(validated_clips: list, original_candidate
         
     return merged
 
-def review_candidates_with_groq(candidates: list, full_transcript: list) -> list:
+def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Dict]) -> List[Dict]:
     if not is_groq_enabled() or not full_transcript:
         return candidates
 
@@ -270,9 +270,11 @@ Return JSON ONLY in this exact format:
         "Content-Type": "application/json"
     }
 
-    log.info(f"[GROQ_SURGEON] Processing {len(top_candidates)} candidates in {len(batches)} batches.")
+    log.info(f"[SURGEON_ENTER]\ncandidates={len(top_candidates)}")
 
     for batch_idx, batch in enumerate(batches):
+        log.info(f"[SURGEON_BATCH]\nbatch={batch_idx+1}\ncount={len(batch)}")
+        
         groq_input = []
         for c in batch:
             s0 = float(c.get("start", 0.0))
