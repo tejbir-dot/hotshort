@@ -1034,31 +1034,47 @@ Transcript:
         ]
     }
     
-    try:
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-        response.raise_for_status()
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
-        parsed = json.loads(content)
-        
-        roles_map = {}
-        for seg in parsed.get("segments", []):
-            try:
-                sid = int(seg.get("id", -1))
-                role = str(seg.get("role", "BUILD")).upper()
-                if sid >= 0:
-                    roles_map[sid] = role
-            except Exception:
-                pass
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=60
+            )
+            
+            if response.status_code == 429:
+                log.warning(f"[GROQ_NARRATIVE] 429 Too Many Requests (attempt {attempt+1}/{max_retries}). Sleeping 45s...")
+                import time
+                time.sleep(45)
+                continue
                 
-        log.info(f"[GROQ_NARRATIVE] Successfully mapped {len(roles_map)} narrative roles.")
-        return roles_map
-        
-    except Exception as e:
-        log.error(f"[GROQ_NARRATIVE] Failed to analyze narrative roles: {e}")
-        return {}
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            parsed = json.loads(content)
+            
+            roles_map = {}
+            for seg in parsed.get("segments", []):
+                try:
+                    sid = int(seg.get("id", -1))
+                    role = str(seg.get("role", "BUILD")).upper()
+                    if sid >= 0:
+                        roles_map[sid] = role
+                except Exception:
+                    pass
+                    
+            log.info(f"[GROQ_NARRATIVE] Successfully mapped {len(roles_map)} narrative roles.")
+            return roles_map
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                log.warning(f"[GROQ_NARRATIVE] Attempt {attempt+1} failed: {e}. Retrying in 5s...")
+                import time
+                time.sleep(5)
+            else:
+                log.error(f"[GROQ_NARRATIVE] Failed to analyze narrative roles after {max_retries} attempts: {e}")
+                return {}
+    
+    return {}
