@@ -21,8 +21,8 @@ set "LOCAL_WORKER_URL=http://127.0.0.1:%LOCAL_WORKER_PORT%/run"
 set "LOCAL_WORKER_MAX_CONCURRENCY=1"
 set "LOCAL_WORKER_MAX_QUEUE=0"
 
-echo Starting RunPod worker...
-start "HotShort Worker" /d "%ROOT%" cmd /k ""%VENV_PY%" runpodworker.py"
+echo Starting Local worker...
+start "HotShort Worker" /d "%ROOT%" cmd /k ""%VENV_PY%" local_worker.py"
 
 echo Starting Flask app...
 start "HotShort App" /d "%ROOT%" cmd /k ""%VENV_PY%" app.py"
