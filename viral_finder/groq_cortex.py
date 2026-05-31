@@ -252,6 +252,7 @@ STRICT REJECTION RULES:
 - If payoff does not advance the same idea introduced by the hook, REJECT.
 - If payoff is the exact same sentence as the hook (zero development), REJECT.
 - If payoff starts a new topic, new example, or new analogy, REJECT.
+- The payoff must resolve the SAME keywords. If more than 50% of the payoff discussion moves to a different idea cluster, REJECT.
 
 If no valid payoff exists inside the context window, RETURN REJECT instead of COMPLETE_IDEA.
 
@@ -266,7 +267,8 @@ Before you make a decision, you must map the narrative arc.
 1. Extract the core idea identified in the hook.
 2. Summarize the development (the bridge).
 3. Extract the idea resolution from the payoff.
-4. Rate the resolution strength from 0-10.
+4. Extract 3-5 idea_keywords that define the core concept.
+5. Rate the resolution strength from 0-10.
 
 Return JSON ONLY in this exact format:
 {
@@ -278,6 +280,7 @@ Return JSON ONLY in this exact format:
       "core_idea_identified": "Claim: Building product is not the hard part.",
       "development_summary": "Explains that engineers naturally want to build, but that ignores the real bottleneck.",
       "idea_resolution": "Customer acquisition is the actual cost and challenge of startups.",
+      "idea_keywords": ["product", "engineers", "cost", "acquisition"],
       "resolution_strength": 9,
       "decision": "COMPLETE_IDEA",
       "rejection_reason": "none"

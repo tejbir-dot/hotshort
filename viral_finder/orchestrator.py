@@ -3344,6 +3344,7 @@ def orchestrate(path: str,
                                     c_i_i = str(surgeon.get("core_idea_identified", "none"))
                                     d_s = str(surgeon.get("development_summary", "none"))
                                     i_r = str(surgeon.get("idea_resolution", "none"))
+                                    i_k = surgeon.get("idea_keywords", [])
                                     try:
                                         r_s = float(surgeon.get("resolution_strength", 0))
                                     except ValueError:
@@ -3360,6 +3361,7 @@ def orchestrate(path: str,
                                         log.info(f"core_idea_identified={c_i_i}")
                                         log.info(f"development_summary={d_s}")
                                         log.info(f"idea_resolution={i_r}")
+                                        log.info(f"idea_keywords={i_k}")
                                         log.info(f"resolution_strength={r_s}\n")
                                             
         elif is_groq_enabled() and not _groq_api_key:
