@@ -251,6 +251,11 @@ ZONE B = TRANSCRIPT_WINDOW
 
 You MUST extract `core_idea_identified` ONLY from ZONE A (CURRENT_CLIP_TEXT).
 ZONE B (TRANSCRIPT_WINDOW) exists ONLY to locate natural boundaries before and after the clip.
+
+LOCALIZATION AUDIT:
+If your extracted core_idea_identified requires ANY sentence outside ZONE A (CURRENT_CLIP_TEXT), mark `core_idea_source` as "WINDOW_DEPENDENT".
+Otherwise, mark it as "CLIP_ONLY".
+
 If your extracted idea depends on information found only in ZONE B, RETURN REJECT.
 
 Your job is to evaluate whether a video clip forms a complete Narrative Arc: Core Idea → Development → Resolution.
@@ -280,6 +285,7 @@ Before you make a decision, you must map the narrative arc.
 5. Rate the resolution strength from 0-10.
 6. Rate the continuity_score from 0-10 (how stable is the narrative thread?).
 7. Provide a continuity_reason explaining the score.
+8. Mark the core_idea_source as "CLIP_ONLY" or "WINDOW_DEPENDENT".
 
 Return JSON ONLY in this exact format:
 {
@@ -292,6 +298,7 @@ Return JSON ONLY in this exact format:
       "development_summary": "Explains that engineers naturally want to build, but that ignores the real bottleneck.",
       "idea_resolution": "Customer acquisition is the actual cost and challenge of startups.",
       "idea_keywords": ["product", "engineers", "cost", "acquisition"],
+      "core_idea_source": "CLIP_ONLY",
       "resolution_strength": 9,
       "continuity_score": 8,
       "continuity_reason": "all segments discuss the cost and challenge of building a startup",
@@ -449,6 +456,7 @@ Return JSON ONLY in this exact format:
                     cid = str(report.get("candidate_id", ""))
                     meta = batch_meta.get(cid, {})
                     reason = str(report.get("rejection_reason", "none"))
+                    c_source = str(report.get("core_idea_source", "UNKNOWN"))
                     
                     log.info("\n[SURGEON_FORENSIC_CANDIDATE]")
                     log.info(f"candidate_id={cid}")
@@ -460,6 +468,7 @@ Return JSON ONLY in this exact format:
                     log.info(f"context_tokens={meta.get('context_tokens', 0)}")
                     log.info(f"candidate_tokens={meta.get('candidate_tokens', 0)}")
                     log.info(f"prompt_tokens={pt_per_cand}")
+                    log.info(f"core_idea_source={c_source}")
                     log.info(f"decision={dec}")
                     if dec in ["REJECT", "KEEP"]:
                         log.info(f"rejection_reason={reason}")

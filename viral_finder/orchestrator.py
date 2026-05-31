@@ -3345,6 +3345,7 @@ def orchestrate(path: str,
                                     d_s = str(surgeon.get("development_summary", "none"))
                                     i_r = str(surgeon.get("idea_resolution", "none"))
                                     i_k = surgeon.get("idea_keywords", [])
+                                    c_source = str(surgeon.get("core_idea_source", "UNKNOWN"))
                                     
                                     try:
                                         c_score = float(surgeon.get("continuity_score", 0))
@@ -3367,6 +3368,7 @@ def orchestrate(path: str,
                                         log.info(f"CURRENT_END_TEXT={old_end_text}")
                                         log.info(f"PROPOSED_PAYOFF_TEXT={new_end_text}")
                                         log.info(f"core_idea_identified={c_i_i}")
+                                        log.info(f"core_idea_source={c_source}")
                                         log.info(f"development_summary={d_s}")
                                         log.info(f"idea_resolution={i_r}")
                                         log.info(f"idea_keywords={i_k}")
