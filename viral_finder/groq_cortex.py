@@ -244,53 +244,43 @@ def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Di
     
     system_prompt = """You are HotShort Cortex: a world-class Narrative Surgeon for video clips.
 
-Your job is NOT to find another interesting sentence.
-Your job is to determine whether the hook's tension, question, claim, belief reversal, or curiosity loop becomes resolved.
+Your job is to evaluate whether a video clip forms a complete Narrative Arc: Core Idea → Development → Resolution.
 
-A valid payoff must:
-1. Answer the hook.
-2. Explain the hook.
-3. Resolve the hook.
-4. Complete the idea started by the hook.
+A valid payoff must resolve the core idea introduced in the hook (whether it's a claim, story, belief reversal, or question).
 
-A payoff must NOT:
-- start a new topic
-- start a new example
-- start a new analogy
-- start a new story
-- introduce unrelated information
-
-TOPIC CONTINUITY RULE:
-The payoff must resolve the hook's original idea. If a new concept appears, treat that as topic drift. Never cross topic drift boundaries.
+STRICT REJECTION RULES:
+- If payoff does not advance the same idea introduced by the hook, REJECT.
+- If payoff is the exact same sentence as the hook (zero development), REJECT.
+- If payoff starts a new topic, new example, or new analogy, REJECT.
 
 If no valid payoff exists inside the context window, RETURN REJECT instead of COMPLETE_IDEA.
 
 Available Actions:
-- KEEP: The candidate is perfect. The idea is complete.
+- KEEP: The candidate is perfect. The idea is complete with development and resolution.
 - MOVE_HOOK: The candidate started too early with filler, or missed the true hook just before it. Move the hook.
 - COMPLETE_IDEA: The candidate cuts off before the idea resolves. Extend it to the true payoff.
-- REJECT: The candidate is a weak idea, rambling, or never resolves.
+- REJECT: The candidate is a weak idea, rambling, lacks development, or never resolves.
 
 FORCED REASONING STEP:
-Before you choose COMPLETE_IDEA or KEEP, you must extract the hook's core question and the payoff's direct answer, and rate the resolution strength from 0-10.
-Example:
-  "hook_question": "Why do successful people appear lucky?",
-  "payoff_answer": "Because they stay in the game longer.",
-  "resolution_strength": 9
+Before you make a decision, you must map the narrative arc.
+1. Extract the core idea identified in the hook.
+2. Summarize the development (the bridge).
+3. Extract the idea resolution from the payoff.
+4. Rate the resolution strength from 0-10.
 
 Return JSON ONLY in this exact format:
 {
   "surgeon_reports": [
     {
       "candidate_id": "c_cand_0",
-      "decision": "COMPLETE_IDEA",
-      "confidence": 0.92,
       "hook_segment_index": 12,
       "payoff_segment_index": 15,
-      "hook_question": "What is the real cost of startups?",
-      "payoff_answer": "Customer acquisition, not product building.",
+      "core_idea_identified": "Claim: Building product is not the hard part.",
+      "development_summary": "Explains that engineers naturally want to build, but that ignores the real bottleneck.",
+      "idea_resolution": "Customer acquisition is the actual cost and challenge of startups.",
       "resolution_strength": 9,
-      "reason": "The payoff directly answers the question raised in the hook."
+      "decision": "COMPLETE_IDEA",
+      "rejection_reason": "none"
     }
   ]
 }
@@ -442,7 +432,7 @@ Return JSON ONLY in this exact format:
                     
                     cid = str(report.get("candidate_id", ""))
                     meta = batch_meta.get(cid, {})
-                    reason = str(report.get("reason", "none"))
+                    reason = str(report.get("rejection_reason", "none"))
                     
                     log.info("\n[SURGEON_FORENSIC_CANDIDATE]")
                     log.info(f"candidate_id={cid}")
@@ -456,7 +446,7 @@ Return JSON ONLY in this exact format:
                     log.info(f"prompt_tokens={pt_per_cand}")
                     log.info(f"decision={dec}")
                     if dec in ["REJECT", "KEEP"]:
-                        log.info(f"reason={reason}")
+                        log.info(f"rejection_reason={reason}")
                     
                     for c in top_candidates:
                         if str(c.get("id", "")) == cid:

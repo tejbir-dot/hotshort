@@ -3341,8 +3341,9 @@ def orchestrate(path: str,
                                     new_end_text = str(full_transcript[payoff_idx].get("text", "")).strip()
                                     cid = c.get("id", c.get("cid", "?"))
                                     
-                                    h_q = str(surgeon.get("hook_question", "none"))
-                                    p_a = str(surgeon.get("payoff_answer", "none"))
+                                    c_i_i = str(surgeon.get("core_idea_identified", "none"))
+                                    d_s = str(surgeon.get("development_summary", "none"))
+                                    i_r = str(surgeon.get("idea_resolution", "none"))
                                     try:
                                         r_s = float(surgeon.get("resolution_strength", 0))
                                     except ValueError:
@@ -3356,8 +3357,9 @@ def orchestrate(path: str,
                                         log.info(f"HOOK_TEXT={hook_text}")
                                         log.info(f"CURRENT_END_TEXT={old_end_text}")
                                         log.info(f"PROPOSED_PAYOFF_TEXT={new_end_text}")
-                                        log.info(f"hook_question={h_q}")
-                                        log.info(f"payoff_answer={p_a}")
+                                        log.info(f"core_idea_identified={c_i_i}")
+                                        log.info(f"development_summary={d_s}")
+                                        log.info(f"idea_resolution={i_r}")
                                         log.info(f"resolution_strength={r_s}\n")
                                             
         elif is_groq_enabled() and not _groq_api_key:
