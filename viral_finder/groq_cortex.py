@@ -260,6 +260,9 @@ A payoff must NOT:
 - start a new story
 - introduce unrelated information
 
+TOPIC CONTINUITY RULE:
+The payoff must resolve the hook's original idea. If a new concept appears, treat that as topic drift. Never cross topic drift boundaries.
+
 If no valid payoff exists inside the context window, RETURN REJECT instead of COMPLETE_IDEA.
 
 Available Actions:
