@@ -3211,6 +3211,26 @@ def orchestrate(path: str,
                 log.info("[GROQ_CORTEX] Skipping candidate-review Cortex because transcript-first Moment Director already discovered moments.")
             else:
                 _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
+                
+                # EXPERIMENT: Reduce Groq Surgeon Input Pool
+                pool_before_len = len(_pool)
+                groq_pool_limit = int(os.getenv("HS_GROQ_POOL_LIMIT", "10"))
+                
+                lowest_score_sent = 0.0
+                highest_score_rejected = 0.0
+                
+                if len(_pool) > groq_pool_limit:
+                    highest_score_rejected = float(_pool[groq_pool_limit].get("viral_score", _pool[groq_pool_limit].get("score", 0)) or 0)
+                    _pool = _pool[:groq_pool_limit]
+                    
+                if _pool:
+                    lowest_score_sent = float(_pool[-1].get("viral_score", _pool[-1].get("score", 0)) or 0)
+                    
+                log.info("\n[GROQ_POOL_TEST]")
+                log.info(f"pool_before={pool_before_len}")
+                log.info(f"pool_after={len(_pool)}")
+                log.info(f"lowest_score_sent={lowest_score_sent}")
+                log.info(f"highest_score_rejected={highest_score_rejected}\n")
                 if not _pool:
                     log.info("[GROQ_CORTEX] Skipping — empty candidate pool.")
                 else:
