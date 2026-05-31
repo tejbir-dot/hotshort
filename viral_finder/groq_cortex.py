@@ -320,6 +320,7 @@ Return JSON ONLY in this exact format:
         log.info(f"[SURGEON_BATCH]\nbatch={batch_idx+1}\ncount={len(batch)}")
         
         groq_input = []
+        batch_meta = {}
         for c in batch:
             s0 = float(c.get("start", 0.0))
             e0 = float(c.get("end", s0))
@@ -340,6 +341,21 @@ Return JSON ONLY in this exact format:
                 "candidate_id": str(c["id"]),
                 "transcript_window": "\n".join(window_text)
             })
+            
+            cand_text = str(c.get("text", ""))
+            cand_tokens = len(cand_text.split())
+            ctx_tokens = len(" ".join(window_text).split())
+            words = cand_text.split()
+            
+            batch_meta[str(c["id"])] = {
+                "duration": max(0.0, e0 - s0),
+                "hook_text": " ".join(words[:12]) if words else "",
+                "payoff_text": " ".join(words[-12:]) if words else "",
+                "arc_score": float(c.get("scores", {}).get("curiosity", c.get("curiosity", 0.0))),
+                "final_score": float(c.get("viral_score", c.get("score", 0.0))),
+                "candidate_tokens": cand_tokens,
+                "context_tokens": ctx_tokens
+            }
 
         payload = {
             "model": _get_groq_model(),
@@ -379,13 +395,32 @@ Return JSON ONLY in this exact format:
                 audit_data["input_tokens"] += usage.get("prompt_tokens", 0)
                 audit_data["output_tokens"] += usage.get("completion_tokens", 0)
                 
+                pt_per_cand = usage.get("prompt_tokens", 0) // len(batch) if len(batch) else 0
+                
                 for report in parsed.get("surgeon_reports", []):
                     dec = report.get("decision", "REJECT")
                     audit_data["decisions"][dec] = audit_data["decisions"].get(dec, 0) + 1
                     
-                    cid = report.get("candidate_id")
+                    cid = str(report.get("candidate_id", ""))
+                    meta = batch_meta.get(cid, {})
+                    reason = str(report.get("reason", "none"))
+                    
+                    log.info("\n[SURGEON_FORENSIC_CANDIDATE]")
+                    log.info(f"candidate_id={cid}")
+                    log.info(f"duration={round(meta.get('duration', 0.0), 2)}")
+                    log.info(f"hook_text={meta.get('hook_text', '')}")
+                    log.info(f"payoff_text={meta.get('payoff_text', '')}")
+                    log.info(f"arc_score={round(meta.get('arc_score', 0.0), 4)}")
+                    log.info(f"final_score={round(meta.get('final_score', 0.0), 4)}")
+                    log.info(f"context_tokens={meta.get('context_tokens', 0)}")
+                    log.info(f"candidate_tokens={meta.get('candidate_tokens', 0)}")
+                    log.info(f"prompt_tokens={pt_per_cand}")
+                    log.info(f"decision={dec}")
+                    if dec in ["REJECT", "KEEP"]:
+                        log.info(f"reason={reason}")
+                    
                     for c in top_candidates:
-                        if c.get("id") == cid:
+                        if str(c.get("id", "")) == cid:
                             c["groq_surgeon"] = report
                             break
                             
