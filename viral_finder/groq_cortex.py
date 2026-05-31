@@ -337,11 +337,6 @@ Return JSON ONLY in this exact format:
                 text = str(full_transcript[j].get("text", "")).strip()
                 window_text.append(f"[{j}] {text}")
                 
-            groq_input.append({
-                "candidate_id": str(c["id"]),
-                "transcript_window": "\n".join(window_text)
-            })
-            
             cand_text = str(c.get("text", "")).strip()
             
             # Rebuild full assembled clip text from full_transcript just to be sure
@@ -372,14 +367,18 @@ Return JSON ONLY in this exact format:
             log.info(f"window_text_length={win_len}")
             log.info(f"window_text={win_text_joined}\n")
             
-            # The current groq_input ONLY contains transcript_window. 
-            # We are verifying what is inside groq_input vs rebuilt_clip_text
-            # If the rebuilt_clip_text is very small, we might have an issue.
-            # (Note: we are explicitly NOT modifying groq_input here as per instructions)
+            payload_text = rebuilt_clip_text
+            payload_text_length = len(payload_text)
             
-            # But let's check cand_text vs rebuilt_clip_text to see if `text` is just a seed
-            if len(cand_text) < (full_clip_len * 0.5) and full_clip_len > 0:
-                log.warning(f"[PAYLOAD_BUG_DETECTED] cand_text length ({len(cand_text)}) is < 50% of assembled clip length ({full_clip_len})!")
+            log.info(f"[PAYLOAD_FIX_VERIFY] payload_text_length={payload_text_length} full_clip_text_length={full_clip_len}")
+            if full_clip_len > 0:
+                assert payload_text_length >= (0.90 * full_clip_len), "Payload text length is less than 90% of full clip text!"
+            
+            groq_input.append({
+                "candidate_id": str(c["id"]),
+                "current_clip_text": payload_text,
+                "transcript_window": "\n".join(window_text)
+            })
             
             cand_tokens = len(cand_text.split())
             ctx_tokens = len(win_text_joined.split())
