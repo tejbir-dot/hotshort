@@ -342,15 +342,52 @@ Return JSON ONLY in this exact format:
                 "transcript_window": "\n".join(window_text)
             })
             
-            cand_text = str(c.get("text", ""))
+            cand_text = str(c.get("text", "")).strip()
+            
+            # Rebuild full assembled clip text from full_transcript just to be sure
+            rebuilt_clip_text = " ".join(
+                str(full_transcript[j].get("text", "")).strip() 
+                for j in range(s_idx, min(e_idx + 1, len(full_transcript)))
+            ).strip()
+            
+            if not rebuilt_clip_text:
+                rebuilt_clip_text = cand_text
+            
+            words = rebuilt_clip_text.split()
+            hook_t = " ".join(words[:12]) if words else ""
+            payoff_t = " ".join(words[-12:]) if words else ""
+            build_t = " ".join(words[12:-12]) if len(words) > 24 else (" ".join(words[12:]) if len(words) > 12 else "")
+            
+            full_clip_len = len(rebuilt_clip_text)
+            win_text_joined = "\n".join(window_text)
+            win_len = len(win_text_joined)
+            
+            log.info("\n[FORENSIC_PAYLOAD_DIAGNOSTIC]")
+            log.info(f"candidate_id={str(c['id'])}")
+            log.info(f"hook_text={hook_t}")
+            log.info(f"build_text={build_t}")
+            log.info(f"payoff_text={payoff_t}")
+            log.info(f"full_clip_text_length={full_clip_len}")
+            log.info(f"full_clip_text={rebuilt_clip_text}")
+            log.info(f"window_text_length={win_len}")
+            log.info(f"window_text={win_text_joined}\n")
+            
+            # The current groq_input ONLY contains transcript_window. 
+            # We are verifying what is inside groq_input vs rebuilt_clip_text
+            # If the rebuilt_clip_text is very small, we might have an issue.
+            # (Note: we are explicitly NOT modifying groq_input here as per instructions)
+            
+            # But let's check cand_text vs rebuilt_clip_text to see if `text` is just a seed
+            if len(cand_text) < (full_clip_len * 0.5) and full_clip_len > 0:
+                log.warning(f"[PAYLOAD_BUG_DETECTED] cand_text length ({len(cand_text)}) is < 50% of assembled clip length ({full_clip_len})!")
+            
             cand_tokens = len(cand_text.split())
-            ctx_tokens = len(" ".join(window_text).split())
-            words = cand_text.split()
+            ctx_tokens = len(win_text_joined.split())
             
             batch_meta[str(c["id"])] = {
                 "duration": max(0.0, e0 - s0),
-                "hook_text": " ".join(words[:12]) if words else "",
-                "payoff_text": " ".join(words[-12:]) if words else "",
+                "hook_text": hook_t,
+                "payoff_text": payoff_t,
                 "arc_score": float(c.get("scores", {}).get("curiosity", c.get("curiosity", 0.0))),
                 "final_score": float(c.get("viral_score", c.get("score", 0.0))),
                 "candidate_tokens": cand_tokens,
