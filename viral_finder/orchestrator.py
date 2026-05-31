@@ -3345,6 +3345,14 @@ def orchestrate(path: str,
                                     d_s = str(surgeon.get("development_summary", "none"))
                                     i_r = str(surgeon.get("idea_resolution", "none"))
                                     i_k = surgeon.get("idea_keywords", [])
+                                    
+                                    try:
+                                        c_score = float(surgeon.get("continuity_score", 0))
+                                    except ValueError:
+                                        c_score = 0.0
+                                        
+                                    c_reason = str(surgeon.get("continuity_reason", "none"))
+                                    
                                     try:
                                         r_s = float(surgeon.get("resolution_strength", 0))
                                     except ValueError:
@@ -3362,6 +3370,8 @@ def orchestrate(path: str,
                                         log.info(f"development_summary={d_s}")
                                         log.info(f"idea_resolution={i_r}")
                                         log.info(f"idea_keywords={i_k}")
+                                        log.info(f"continuity_score={c_score}")
+                                        log.info(f"continuity_reason={c_reason}")
                                         log.info(f"resolution_strength={r_s}\n")
                                             
         elif is_groq_enabled() and not _groq_api_key:

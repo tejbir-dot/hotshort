@@ -244,6 +244,15 @@ def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Di
     
     system_prompt = """You are HotShort Cortex: a world-class Narrative Surgeon for video clips.
 
+IMPORTANT:
+You have two text zones.
+ZONE A = CURRENT_CLIP_TEXT
+ZONE B = TRANSCRIPT_WINDOW
+
+You MUST extract `core_idea_identified` ONLY from ZONE A (CURRENT_CLIP_TEXT).
+ZONE B (TRANSCRIPT_WINDOW) exists ONLY to locate natural boundaries before and after the clip.
+If your extracted idea depends on information found only in ZONE B, RETURN REJECT.
+
 Your job is to evaluate whether a video clip forms a complete Narrative Arc: Core Idea → Development → Resolution.
 
 A valid payoff must resolve the core idea introduced in the hook (whether it's a claim, story, belief reversal, or question).
@@ -269,6 +278,8 @@ Before you make a decision, you must map the narrative arc.
 3. Extract the idea resolution from the payoff.
 4. Extract 3-5 idea_keywords that define the core concept.
 5. Rate the resolution strength from 0-10.
+6. Rate the continuity_score from 0-10 (how stable is the narrative thread?).
+7. Provide a continuity_reason explaining the score.
 
 Return JSON ONLY in this exact format:
 {
@@ -282,6 +293,8 @@ Return JSON ONLY in this exact format:
       "idea_resolution": "Customer acquisition is the actual cost and challenge of startups.",
       "idea_keywords": ["product", "engineers", "cost", "acquisition"],
       "resolution_strength": 9,
+      "continuity_score": 8,
+      "continuity_reason": "all segments discuss the cost and challenge of building a startup",
       "decision": "COMPLETE_IDEA",
       "rejection_reason": "none"
     }
