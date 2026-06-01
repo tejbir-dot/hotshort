@@ -1111,6 +1111,7 @@ Transcript:
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
                 parsed = parse_groq_json_safely(content)
+                num_parsed = len(parsed.get("segments", []))
                 
                 for seg in parsed.get("segments", []):
                     try:
@@ -1121,10 +1122,23 @@ Transcript:
                     except Exception:
                         pass
                 
+                log.info("\n[NARRATIVE_TRACE]")
+                log.info(f"raw_response_length={len(content)}")
+                log.info(f"parsed_roles={num_parsed}")
+                log.info(f"master_roles_map_size={len(master_roles_map)}")
+                log.info(f"fallback_reason=NONE\n")
+                
                 batch_success = True
                 break  # break retry loop on success
                 
             except Exception as e:
+                fallback_reason = str(e)
+                log.info("\n[NARRATIVE_TRACE]")
+                log.info(f"raw_response_length=FAIL")
+                log.info(f"parsed_roles=0")
+                log.info(f"master_roles_map_size={len(master_roles_map)}")
+                log.info(f"fallback_reason={fallback_reason}\n")
+                
                 if attempt < max_retries - 1:
                     log.warning(f"[GROQ_NARRATIVE] Batch {batch_idx+1} Attempt {attempt+1} failed: {e}. Retrying in 5s...")
                     import time

@@ -263,6 +263,20 @@ def dedupe_by_overlap(clips, overlap_threshold=0.75):
             ratio = overlap_ratio(clip_start, clip_end, ex_start, ex_end)
             if ratio > overlap_threshold:
                 is_duplicate = True
+                
+                cid_clip = clip.get('cid', clip.get('id', '?'))
+                cid_existing = existing.get('cid', existing.get('id', '?'))
+                score_clip = float(clip.get("arc_score", clip.get("viral_score", 0.0)) or 0.0)
+                score_existing = float(existing.get("arc_score", existing.get("viral_score", 0.0)) or 0.0)
+                
+                import logging
+                l_log = logging.getLogger("orchestrator")
+                l_log.info("\n[DEDUP_TRACE]")
+                l_log.info(f"candidate_id={cid_clip}")
+                l_log.info(f"overlapped_with={cid_existing}")
+                l_log.info(f"score_comparison={score_clip} vs {score_existing}")
+                l_log.info(f"drop_reason=Overlap ratio {ratio:.2f} > threshold {overlap_threshold}\n")
+                
                 break
         
         if not is_duplicate:
