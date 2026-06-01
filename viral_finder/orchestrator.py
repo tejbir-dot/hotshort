@@ -3244,8 +3244,9 @@ def orchestrate(path: str,
                     
                     keep_count = 0
                     move_hook_count = 0
-                    complete_idea_count = 0
+                    extend_right_count = 0
                     reject_count = 0
+                    rejection_types = {}
                     
                     for c in groq_result:
                         surgeon = c.get("groq_surgeon")
@@ -3253,14 +3254,20 @@ def orchestrate(path: str,
                             dec = surgeon.get("decision", "")
                             if dec == "KEEP": keep_count += 1
                             elif dec == "MOVE_HOOK": move_hook_count += 1
-                            elif dec == "COMPLETE_IDEA": complete_idea_count += 1
-                            elif dec == "REJECT": reject_count += 1
+                            elif dec == "EXTEND_RIGHT": extend_right_count += 1
+                            elif dec == "REJECT": 
+                                reject_count += 1
+                                rej_type = surgeon.get("rejection_type", "NONE")
+                                rejection_types[rej_type] = rejection_types.get(rej_type, 0) + 1
                             
                     log.info("\n[SURGEON_RESPONSE]")
                     log.info(f"keep={keep_count}")
                     log.info(f"move_hook={move_hook_count}")
-                    log.info(f"complete_idea={complete_idea_count}")
-                    log.info(f"reject={reject_count}\n")
+                    log.info(f"extend_right={extend_right_count}")
+                    log.info(f"reject={reject_count}")
+                    for rt, count in rejection_types.items():
+                        log.info(f"  {rt.lower()}={count}")
+                    log.info("\n")
                     
                     log.info("[GROQ_SURGEON] Phase 2: MOVE_HOOK execution active.")
                     for c in groq_result:
@@ -3322,7 +3329,7 @@ def orchestrate(path: str,
                                     else:
                                         log.info(f"[HOOK_REPAIR_BLOCKED] cid={cid} conf={conf} dist={move_distance}s old_text='{old_text}' new_text='{new_text}'")
                                             
-                            elif dec == "COMPLETE_IDEA":
+                            elif dec == "EXTEND_RIGHT":
                                 try:
                                     payoff_idx = int(surgeon.get("payoff_segment_index", -1))
                                 except ValueError:
@@ -3374,14 +3381,17 @@ def orchestrate(path: str,
                                     except ValueError:
                                         r_s = 0.0
                                         
-                                    log.info(f"[SURGEON_COMPLETE_IDEA_EVAL] cid={cid} r_s={r_s} required=8 payoff_idx={payoff_idx} valid_bounds={0 <= payoff_idx < len(full_transcript)}")
+                                    proposed_quote = str(surgeon.get("proposed_payoff_quote", "none"))
+                                    
+                                    log.info(f"[SURGEON_EXTEND_RIGHT_EVAL] cid={cid} r_s={r_s} required=8 payoff_idx={payoff_idx} valid_bounds={0 <= payoff_idx < len(full_transcript)}")
                                     
                                     if r_s >= 8 and 0 <= payoff_idx < len(full_transcript):
-                                        log.info("\n[COMPLETE_IDEA_PREVIEW]")
+                                        log.info("\n[EXTEND_RIGHT_PREVIEW]")
                                         log.info(f"candidate_id={cid}")
                                         log.info(f"HOOK_TEXT={hook_text}")
                                         log.info(f"CURRENT_END_TEXT={old_end_text}")
                                         log.info(f"PROPOSED_PAYOFF_TEXT={new_end_text}")
+                                        log.info(f"PROPOSED_PAYOFF_QUOTE={proposed_quote}")
                                         log.info(f"hook_idea={h_i}")
                                         log.info(f"core_idea_source={c_source}")
                                         log.info(f"development_summary={d_s}")
@@ -3393,53 +3403,8 @@ def orchestrate(path: str,
                                         log.info(f"continuity_reason={c_reason}")
                                         log.info(f"resolution_strength={r_s}\n")
                                         
-                            elif dec == "REJECT":
-                                rep_type = str(surgeon.get("repairability_type", "NONE"))
-                                if rep_type in ["EXTEND_RIGHT", "MOVE_HOOK", "BOTH"]:
-                                    try:
-                                        p_idx = int(surgeon.get("potential_resolution_index", -1))
-                                    except ValueError:
-                                        p_idx = -1
-                                        
-                                    try:
-                                        rep_conf = float(surgeon.get("repair_confidence", 0.0))
-                                    except ValueError:
-                                        rep_conf = 0.0
-                                        
-                                    if 0 <= p_idx < len(full_transcript):
-                                        orig_start = float(c.get("start", 0.0))
-                                        orig_end = float(c.get("end", 0.0))
-                                        
-                                        orig_hook = ""
-                                        for seg in full_transcript:
-                                            ss = float(seg.get("start", 0.0))
-                                            ee = float(seg.get("end", ss))
-                                            if ss <= orig_start <= max(ss, ee):
-                                                orig_hook = str(seg.get("text", "")).strip()
-                                                break
-                                                
-                                        res_seg = full_transcript[p_idx]
-                                        res_text = str(res_seg.get("text", "")).strip()
-                                        res_ts = float(res_seg.get("start", orig_end))
-                                        
-                                        dist = 0.0
-                                        if rep_type == "EXTEND_RIGHT" or rep_type == "BOTH":
-                                            dist = round(res_ts - orig_end, 1)
-                                        elif rep_type == "MOVE_HOOK":
-                                            dist = round(res_ts - orig_start, 1)
                                             
-                                        dist_str = f"+{dist}s" if dist > 0 else f"{dist}s"
-                                            
-                                        cid = c.get("id", c.get("cid", "?"))
-                                        
-                                        log.info("\n[REPAIR_OPPORTUNITY]")
-                                        log.info(f"candidate_id={cid}")
-                                        log.info(f"repair_type={rep_type}")
-                                        log.info(f"hook={orig_hook}")
-                                        log.info(f"resolution={res_text}")
-                                        log.info(f"distance={dist_str}")
-                                        log.info(f"confidence={rep_conf}\n")
-                                            
+
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:

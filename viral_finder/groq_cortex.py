@@ -268,13 +268,38 @@ STRICT REJECTION RULES:
 - If payoff starts a new topic, new example, or new analogy, REJECT.
 - The payoff must resolve the SAME keywords. If more than 50% of the payoff discussion moves to a different idea cluster, REJECT.
 
-If no valid payoff exists inside the context window, RETURN REJECT instead of COMPLETE_IDEA.
+If no valid payoff exists inside the context window, DO NOT REJECT merely because the payoff is missing. First search ZONE B.
+If a resolution exists: EXTEND_RIGHT.
+If no resolution exists: NO_RESOLUTION_FOUND.
+
+Only REJECT when:
+- hook and payoff are same (zero development)
+- topic drift
+- no narrative development
 
 Available Actions:
 - KEEP: The candidate is perfect. The idea is complete with development and resolution.
 - MOVE_HOOK: The candidate started too early with filler, or missed the true hook just before it. Move the hook.
-- COMPLETE_IDEA: The candidate cuts off before the idea resolves. Extend it to the true payoff.
-- REJECT: The candidate is a weak idea, rambling, lacks development, or never resolves.
+- EXTEND_RIGHT: The idea resolves, but the resolution is located later in ZONE B.
+- REJECT: The candidate fails due to one of the strict rejection rules.
+
+EXTEND_RIGHT VALIDITY RULES:
+- The hook idea remains the active narrative thread.
+- The proposed payoff resolves that same idea.
+- The payoff sentence exists in the transcript window.
+- No topic transition occurs before the payoff.
+
+ANTI-HALLUCINATION RULE:
+A resolution must be supported by exact transcript evidence.
+If proposing EXTEND_RIGHT, the proposed payoff sentence must be quoted verbatim from the transcript window in `proposed_payoff_quote`.
+Never summarize, invent, infer, or paraphrase a payoff.
+Discover it. Do not create it.
+
+If you choose REJECT, you MUST provide a `rejection_type`. Valid types are:
+- NO_RESOLUTION_FOUND
+- TOPIC_DRIFT
+- ZERO_DEVELOPMENT
+- NONE (if decision is not REJECT)
 
 FORCED REASONING STEP (SHADOW MODE - Narrative Reasoning Audit):
 Before you make a decision, you must map the narrative arc.
@@ -288,13 +313,6 @@ Before you make a decision, you must map the narrative arc.
 7. Rate the continuity_score from 0-10 (how stable is the narrative thread?).
 8. Provide a continuity_reason explaining the score.
 9. Mark the core_idea_source as "CLIP_ONLY" or "WINDOW_DEPENDENT".
-
-REPAIR OPPORTUNITY AUDIT:
-DO NOT decide whether the clip should be repaired. Only report whether a repair opportunity exists in ZONE B. You are an auditor, not an editor.
-If a valid payoff resolution exists later in ZONE B but not in ZONE A, report repairability_type = "EXTEND_RIGHT" and provide the potential_resolution_index.
-If a better hook exists earlier in ZONE B, report repairability_type = "MOVE_HOOK" and provide the potential_resolution_index.
-If both exist, report "BOTH".
-If no repair is possible, report "NONE".
 
 Return JSON ONLY in this exact format:
 {
@@ -313,11 +331,10 @@ Return JSON ONLY in this exact format:
       "resolution_strength": 9,
       "continuity_score": 8,
       "continuity_reason": "all segments discuss the cost and challenge of building a startup",
-      "decision": "COMPLETE_IDEA",
+      "decision": "EXTEND_RIGHT",
+      "rejection_type": "NONE",
       "rejection_reason": "none",
-      "repairability_type": "EXTEND_RIGHT",
-      "potential_resolution_index": 22,
-      "repair_confidence": 0.91
+      "proposed_payoff_quote": "Customer acquisition is the actual cost and challenge of startups."
     }
   ]
 }
@@ -488,21 +505,8 @@ Return JSON ONLY in this exact format:
                     if dec in ["REJECT", "KEEP"]:
                         log.info(f"rejection_reason={reason}")
                         
-                    repair_type = "NONE"
-                    if dec == "MOVE_HOOK":
-                        repair_type = "MOVE_HOOK"
-                    elif dec == "COMPLETE_IDEA":
-                        payoff_idx = int(report.get("payoff_segment_index", -1))
-                        original_end_idx = meta.get("original_end_idx", -1)
-                        if payoff_idx > original_end_idx:
-                            repair_type = "EXTEND_RIGHT"
-                        elif payoff_idx < original_end_idx and payoff_idx != -1:
-                            repair_type = "TRIM_RIGHT"
-                            
-                    if dec != "REJECT":
-                        log.info("\n[REPAIR_AUDIT]")
-                        log.info(f"candidate_id={cid}")
-                        log.info(f"repair_type={repair_type}")
+                    rej_type = str(report.get("rejection_type", "NONE"))
+                    log.info(f"rejection_type={rej_type}")
                     
                     for c in top_candidates:
                         if str(c.get("id", "")) == cid:
