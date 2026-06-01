@@ -406,7 +406,8 @@ Return JSON ONLY in this exact format:
                 "arc_score": float(c.get("scores", {}).get("curiosity", c.get("curiosity", 0.0))),
                 "final_score": float(c.get("viral_score", c.get("score", 0.0))),
                 "candidate_tokens": cand_tokens,
-                "context_tokens": ctx_tokens
+                "context_tokens": ctx_tokens,
+                "original_end_idx": e_idx
             }
 
         payload = {
@@ -472,6 +473,22 @@ Return JSON ONLY in this exact format:
                     log.info(f"decision={dec}")
                     if dec in ["REJECT", "KEEP"]:
                         log.info(f"rejection_reason={reason}")
+                        
+                    repair_type = "NONE"
+                    if dec == "MOVE_HOOK":
+                        repair_type = "MOVE_HOOK"
+                    elif dec == "COMPLETE_IDEA":
+                        payoff_idx = int(report.get("payoff_segment_index", -1))
+                        original_end_idx = meta.get("original_end_idx", -1)
+                        if payoff_idx > original_end_idx:
+                            repair_type = "EXTEND_RIGHT"
+                        elif payoff_idx < original_end_idx and payoff_idx != -1:
+                            repair_type = "TRIM_RIGHT"
+                            
+                    if dec != "REJECT":
+                        log.info("\n[REPAIR_AUDIT]")
+                        log.info(f"candidate_id={cid}")
+                        log.info(f"repair_type={repair_type}")
                     
                     for c in top_candidates:
                         if str(c.get("id", "")) == cid:
