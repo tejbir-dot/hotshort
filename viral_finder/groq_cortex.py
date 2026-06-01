@@ -1110,7 +1110,7 @@ Transcript:
                 response.raise_for_status()
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
-                parsed = json.loads(content)
+                parsed = parse_groq_json_safely(content)
                 
                 for seg in parsed.get("segments", []):
                     try:
