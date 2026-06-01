@@ -2209,6 +2209,8 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
 
         # BUILD + PAYOFF: forward O(n) pass with bounded horizon.
         j = hook_idx
+        candidate_payoffs = []
+        
         while j < len(transcript):
             seg = transcript[j]
             seg_s, seg_e = _seg_bounds(seg)
@@ -2242,15 +2244,42 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             if build_duration < 6.0:
                 j += 1
                 continue
+                
             if (j - hook_idx >= 2) and (
                 (ending_strength > 0.3) or
                 (payoff_resolution > 0.35) or
                 punch
             ):
-                payoff_idx = j
-                arc_end = max(arc_end, seg_e)
-                break
+                candidate_payoffs.append({
+                    "idx": j,
+                    "end_ts": seg_e,
+                    "text": seg_text,
+                    "score": ending_strength + payoff_resolution + (0.1 if punch else 0.0),
+                    "payoff_res": payoff_resolution,
+                    "end_str": ending_strength
+                })
             j += 1
+
+        if candidate_payoffs:
+            first_payoff_idx = candidate_payoffs[0]["idx"]
+            # Sort by score descending and pick the best
+            candidate_payoffs.sort(key=lambda x: x["score"], reverse=True)
+            best_payoff = candidate_payoffs[0]
+            
+            payoff_idx = best_payoff["idx"]
+            arc_end = max(arc_end, best_payoff["end_ts"])
+            
+            # [ARC_END_TRACE] FORENSIC LOGGING
+            cid = c.get("cid", c.get("id", "?"))
+            preview_texts = [str(transcript[k].get("text", "")) for k in range(payoff_idx + 1, min(payoff_idx + 6, len(transcript)))]
+            stronger_found = best_payoff["idx"] != first_payoff_idx
+            
+            log.info("\n[ARC_END_TRACE]")
+            log.info(f"candidate_id={cid}")
+            log.info(f"chosen_payoff_segment={best_payoff['text']}")
+            log.info(f"chosen_reason=Highest score {best_payoff['score']:.2f} (res={best_payoff['payoff_res']:.2f}, end={best_payoff['end_str']:.2f}) out of {len(candidate_payoffs)} candidates")
+            log.info(f"next_5_segments_after_payoff={' | '.join(preview_texts)}")
+            log.info(f"stronger_payoff_found={stronger_found}\n")
 
         if payoff_idx == hook_idx:
             payoff_idx = None
