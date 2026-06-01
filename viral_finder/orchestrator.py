@@ -2250,17 +2250,27 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
                 (payoff_resolution > 0.35) or
                 punch
             ):
+                emotional_resolution_bonus = 0.0
+                emo_words = ["i'm rich", "finally", "i won", "i escaped", "i made it", "i was free"]
+                if any(w in seg_text.lower() for w in emo_words):
+                    emotional_resolution_bonus = 0.15
+                    
                 candidate_payoffs.append({
                     "idx": j,
                     "end_ts": seg_e,
                     "text": seg_text,
-                    "score": ending_strength + payoff_resolution + (0.1 if punch else 0.0),
+                    "score": ending_strength + payoff_resolution + (0.1 if punch else 0.0) + emotional_resolution_bonus,
                     "payoff_res": payoff_resolution,
                     "end_str": ending_strength
                 })
             j += 1
 
         if candidate_payoffs:
+            cid = c.get("cid", c.get("id", "?"))
+            log.info(f"\n[PAYOFF_CANDIDATE_TABLE] candidate_id={cid}")
+            for p in candidate_payoffs:
+                log.info(f"idx={p['idx']} score={p['score']:.2f} text=\"{p['text']}\"")
+                
             first_payoff_idx = candidate_payoffs[0]["idx"]
             # Sort by score descending and pick the best
             candidate_payoffs.sort(key=lambda x: x["score"], reverse=True)
