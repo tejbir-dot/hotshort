@@ -264,7 +264,7 @@ A valid payoff must resolve the core idea introduced in the hook (whether it's a
 
 STRICT REJECTION RULES:
 - If payoff does not advance the same idea introduced by the hook, REJECT.
-- If payoff is the exact same sentence as the hook (zero development), REJECT.
+- If hook and payoff express essentially the same statement with no meaningful progression (zero development), REJECT.
 - If payoff starts a new topic, new example, or new analogy, REJECT.
 - The payoff must resolve the SAME keywords. If more than 50% of the payoff discussion moves to a different idea cluster, REJECT.
 
@@ -276,16 +276,17 @@ Available Actions:
 - COMPLETE_IDEA: The candidate cuts off before the idea resolves. Extend it to the true payoff.
 - REJECT: The candidate is a weak idea, rambling, lacks development, or never resolves.
 
-FORCED REASONING STEP:
+FORCED REASONING STEP (SHADOW MODE - Narrative Reasoning Audit):
 Before you make a decision, you must map the narrative arc.
-1. Extract the core idea identified in the hook.
-2. Summarize the development (the bridge).
-3. Extract the idea resolution from the payoff.
-4. Extract 3-5 idea_keywords that define the core concept.
-5. Rate the resolution strength from 0-10.
-6. Rate the continuity_score from 0-10 (how stable is the narrative thread?).
-7. Provide a continuity_reason explaining the score.
-8. Mark the core_idea_source as "CLIP_ONLY" or "WINDOW_DEPENDENT".
+1. Extract the hook_idea (One sentence describing the core idea introduced by the hook).
+2. Summarize the development_summary (One sentence describing how the idea develops between hook and payoff). Return "NONE" if hook and payoff express essentially the same statement with no meaningful progression.
+3. Extract the payoff_idea (One sentence describing the final resolved idea).
+4. Evaluate same_idea (boolean). This should only be TRUE if the payoff resolves the exact same idea introduced by the hook.
+5. Extract 3-5 idea_keywords that define the core concept.
+6. Rate the resolution_strength from 0-10.
+7. Rate the continuity_score from 0-10 (how stable is the narrative thread?).
+8. Provide a continuity_reason explaining the score.
+9. Mark the core_idea_source as "CLIP_ONLY" or "WINDOW_DEPENDENT".
 
 REPAIR OPPORTUNITY AUDIT:
 DO NOT decide whether the clip should be repaired. Only report whether a repair opportunity exists in ZONE B. You are an auditor, not an editor.
@@ -301,9 +302,10 @@ Return JSON ONLY in this exact format:
       "candidate_id": "c_cand_0",
       "hook_segment_index": 12,
       "payoff_segment_index": 15,
-      "core_idea_identified": "Claim: Building product is not the hard part.",
+      "hook_idea": "Claim: Building product is not the hard part.",
       "development_summary": "Explains that engineers naturally want to build, but that ignores the real bottleneck.",
-      "idea_resolution": "Customer acquisition is the actual cost and challenge of startups.",
+      "payoff_idea": "Customer acquisition is the actual cost and challenge of startups.",
+      "same_idea": true,
       "idea_keywords": ["product", "engineers", "cost", "acquisition"],
       "core_idea_source": "CLIP_ONLY",
       "resolution_strength": 9,
