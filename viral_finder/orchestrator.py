@@ -3280,9 +3280,11 @@ def orchestrate(path: str,
                                     
                                 log.info(f"[SURGEON_MOVE_HOOK_EVAL] cid={c.get('cid', '?')} conf={conf} required=0.75 hook_idx={hook_idx} valid_bounds={0 <= hook_idx < len(full_transcript)}")
                                 
-                                if conf >= 0.75 and 0 <= hook_idx < len(full_transcript):
+                                if 0 <= hook_idx < len(full_transcript):
                                     old_start = float(c.get("start", 0.0))
                                     new_start = float(full_transcript[hook_idx].get("start", 0.0))
+                                    
+                                    move_distance = abs(old_start - new_start)
                                     
                                     old_text = ""
                                     for seg in full_transcript:
@@ -3295,22 +3297,30 @@ def orchestrate(path: str,
                                     new_text = str(full_transcript[hook_idx].get("text", "")).strip()
                                     cid = c.get("id", c.get("cid", "?"))
                                     
-                                    log.info("\n[HOOK_REPAIR]")
-                                    log.info(f"candidate_id={cid}")
-                                    log.info(f"old_start={old_start}")
-                                    log.info(f"new_start={new_start}")
-                                    log.info(f"old_hook_text={old_text}")
-                                    log.info(f"new_hook_text={new_text}")
-                                    log.info(f"confidence={conf}\n")
+                                    if (conf >= 0.75 
+                                        and move_distance <= 8.0 
+                                        and new_text != old_text 
+                                        and len(new_text.split()) >= 4):
+                                        
+                                        log.info("\n[HOOK_REPAIR]")
+                                        log.info(f"candidate_id={cid}")
+                                        log.info(f"old_start={old_start}")
+                                        log.info(f"new_start={new_start}")
+                                        log.info(f"old_hook_text={old_text}")
+                                        log.info(f"new_hook_text={new_text}")
+                                        log.info(f"confidence={conf}\n")
                                     
-                                    c["start"] = new_start
-                                    
-                                    # The candidates in groq_result are copies of final_candidates
-                                    # We must write the repaired boundary back to the original objects
-                                    for fc in final_candidates:
-                                        if fc.get("cid") == cid and cid != "?":
-                                            fc["start"] = new_start
-                                            break
+                                        
+                                        c["start"] = new_start
+                                        
+                                        # The candidates in groq_result are copies of final_candidates
+                                        # We must write the repaired boundary back to the original objects
+                                        for fc in final_candidates:
+                                            if fc.get("cid") == cid and cid != "?":
+                                                fc["start"] = new_start
+                                                break
+                                    else:
+                                        log.info(f"[HOOK_REPAIR_BLOCKED] cid={cid} conf={conf} dist={move_distance}s old_text='{old_text}' new_text='{new_text}'")
                                             
                             elif dec == "COMPLETE_IDEA":
                                 try:
