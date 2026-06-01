@@ -46,6 +46,9 @@ if os.path.exists(_worker_env):
     load_dotenv(_worker_env, override=True)
     print(f"[LOCAL_WORKER] Overrode env with .env.worker", flush=True)
 
+# Force-enable narrative roles for local testing
+os.environ["HS_GROQ_NARRATIVE_ROLES"] = "1"
+
 
 # ── Config ────────────────────────────────────────────────────────────────────
 RAILWAY_URL   = os.getenv("RAILWAY_URL", "").rstrip("/")
@@ -110,10 +113,10 @@ def _print_startup_banner():
     print(f"  [LOCAL_WORKER] FFmpeg GPU = {ffmpeg_nvenc} (h264_nvenc)", flush=True)
     print(f"  [LOCAL_WORKER] Poll every = {POLL_INTERVAL}s", flush=True)
 
-    if not cuda_available:
+    if whisper_device == "cpu":
         print("", flush=True)
-        print("  ⚠️  WARNING: CUDA not available — worker will use CPU.", flush=True)
-        print("     Set WHISPER_DEVICE=cpu to suppress this warning.", flush=True)
+        print("  ⚠️  WARNING: Worker will use CPU for transcription.", flush=True)
+        print("     Set WHISPER_DEVICE=cuda to force GPU if you have an NVIDIA card.", flush=True)
         print("     Transcription will be SLOW without GPU.", flush=True)
 
     print("", flush=True)
