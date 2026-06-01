@@ -280,8 +280,9 @@ FORCED REASONING STEP (SHADOW MODE - Narrative Reasoning Audit):
 Before you make a decision, you must map the narrative arc.
 1. Extract the hook_idea (One sentence describing the core idea introduced by the hook).
 2. Summarize the development_summary (One sentence describing how the idea develops between hook and payoff). Return "NONE" if hook and payoff express essentially the same statement with no meaningful progression.
-3. Extract the payoff_idea (One sentence describing the final resolved idea).
-4. Evaluate same_idea (boolean). This should only be TRUE if the payoff resolves the exact same idea introduced by the hook.
+3. Rate the development_score from 0-10 (how much meaningful progression happens between hook and payoff). If development_summary is "NONE", this MUST be 0.
+4. Extract the payoff_idea (One sentence describing the final resolved idea).
+5. Evaluate same_idea (boolean). This should only be TRUE if the payoff resolves the exact same idea introduced by the hook.
 5. Extract 3-5 idea_keywords that define the core concept.
 6. Rate the resolution_strength from 0-10.
 7. Rate the continuity_score from 0-10 (how stable is the narrative thread?).
@@ -304,6 +305,7 @@ Return JSON ONLY in this exact format:
       "payoff_segment_index": 15,
       "hook_idea": "Claim: Building product is not the hard part.",
       "development_summary": "Explains that engineers naturally want to build, but that ignores the real bottleneck.",
+      "development_score": 8,
       "payoff_idea": "Customer acquisition is the actual cost and challenge of startups.",
       "same_idea": true,
       "idea_keywords": ["product", "engineers", "cost", "acquisition"],

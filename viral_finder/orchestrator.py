@@ -3343,6 +3343,10 @@ def orchestrate(path: str,
                                     
                                     h_i = str(surgeon.get("hook_idea", "none"))
                                     d_s = str(surgeon.get("development_summary", "none"))
+                                    try:
+                                        d_score = float(surgeon.get("development_score", 0))
+                                    except ValueError:
+                                        d_score = 0.0
                                     p_i = str(surgeon.get("payoff_idea", "none"))
                                     s_i = surgeon.get("same_idea", False)
                                     i_k = surgeon.get("idea_keywords", [])
@@ -3371,6 +3375,7 @@ def orchestrate(path: str,
                                         log.info(f"hook_idea={h_i}")
                                         log.info(f"core_idea_source={c_source}")
                                         log.info(f"development_summary={d_s}")
+                                        log.info(f"development_score={d_score}")
                                         log.info(f"payoff_idea={p_i}")
                                         log.info(f"same_idea={s_i}")
                                         log.info(f"idea_keywords={i_k}")
