@@ -2127,7 +2127,7 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         return
 
     min_clip = 15.0
-    base_max_clip = 40.0
+    base_max_clip = 60.0  # Increased from 40s to 60s to scan deeper for the true payoff
     lookback_s = 7.0
     out: List[Dict[str, Any]] = []
     complete_count = 0
@@ -2245,6 +2245,9 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
                 j += 1
                 continue
                 
+            # Small duration penalty for payoffs that are extremely far away, unless they are very strong
+            time_decay = max(0.0, (seg_e - arc_start - 30.0) * 0.01) if (seg_e - arc_start) > 30.0 else 0.0
+            
             if (j - hook_idx >= 2) and (
                 (ending_strength > 0.3) or
                 (payoff_resolution > 0.35) or
@@ -2259,7 +2262,7 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
                     "idx": j,
                     "end_ts": seg_e,
                     "text": seg_text,
-                    "score": ending_strength + payoff_resolution + (0.1 if punch else 0.0) + emotional_resolution_bonus,
+                    "score": ending_strength + payoff_resolution + (0.1 if punch else 0.0) + emotional_resolution_bonus - time_decay,
                     "payoff_res": payoff_resolution,
                     "end_str": ending_strength
                 })
