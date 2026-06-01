@@ -3375,6 +3375,53 @@ def orchestrate(path: str,
                                         log.info(f"continuity_score={c_score}")
                                         log.info(f"continuity_reason={c_reason}")
                                         log.info(f"resolution_strength={r_s}\n")
+                                        
+                            elif dec == "REJECT":
+                                rep_type = str(surgeon.get("repairability_type", "NONE"))
+                                if rep_type in ["EXTEND_RIGHT", "MOVE_HOOK", "BOTH"]:
+                                    try:
+                                        p_idx = int(surgeon.get("potential_resolution_index", -1))
+                                    except ValueError:
+                                        p_idx = -1
+                                        
+                                    try:
+                                        rep_conf = float(surgeon.get("repair_confidence", 0.0))
+                                    except ValueError:
+                                        rep_conf = 0.0
+                                        
+                                    if 0 <= p_idx < len(full_transcript):
+                                        orig_start = float(c.get("start", 0.0))
+                                        orig_end = float(c.get("end", 0.0))
+                                        
+                                        orig_hook = ""
+                                        for seg in full_transcript:
+                                            ss = float(seg.get("start", 0.0))
+                                            ee = float(seg.get("end", ss))
+                                            if ss <= orig_start <= max(ss, ee):
+                                                orig_hook = str(seg.get("text", "")).strip()
+                                                break
+                                                
+                                        res_seg = full_transcript[p_idx]
+                                        res_text = str(res_seg.get("text", "")).strip()
+                                        res_ts = float(res_seg.get("start", orig_end))
+                                        
+                                        dist = 0.0
+                                        if rep_type == "EXTEND_RIGHT" or rep_type == "BOTH":
+                                            dist = round(res_ts - orig_end, 1)
+                                        elif rep_type == "MOVE_HOOK":
+                                            dist = round(res_ts - orig_start, 1)
+                                            
+                                        dist_str = f"+{dist}s" if dist > 0 else f"{dist}s"
+                                            
+                                        cid = c.get("id", c.get("cid", "?"))
+                                        
+                                        log.info("\n[REPAIR_OPPORTUNITY]")
+                                        log.info(f"candidate_id={cid}")
+                                        log.info(f"repair_type={rep_type}")
+                                        log.info(f"hook={orig_hook}")
+                                        log.info(f"resolution={res_text}")
+                                        log.info(f"distance={dist_str}")
+                                        log.info(f"confidence={rep_conf}\n")
                                             
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")

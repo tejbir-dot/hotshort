@@ -287,6 +287,13 @@ Before you make a decision, you must map the narrative arc.
 7. Provide a continuity_reason explaining the score.
 8. Mark the core_idea_source as "CLIP_ONLY" or "WINDOW_DEPENDENT".
 
+REPAIR OPPORTUNITY AUDIT:
+DO NOT decide whether the clip should be repaired. Only report whether a repair opportunity exists in ZONE B. You are an auditor, not an editor.
+If a valid payoff resolution exists later in ZONE B but not in ZONE A, report repairability_type = "EXTEND_RIGHT" and provide the potential_resolution_index.
+If a better hook exists earlier in ZONE B, report repairability_type = "MOVE_HOOK" and provide the potential_resolution_index.
+If both exist, report "BOTH".
+If no repair is possible, report "NONE".
+
 Return JSON ONLY in this exact format:
 {
   "surgeon_reports": [
@@ -303,7 +310,10 @@ Return JSON ONLY in this exact format:
       "continuity_score": 8,
       "continuity_reason": "all segments discuss the cost and challenge of building a startup",
       "decision": "COMPLETE_IDEA",
-      "rejection_reason": "none"
+      "rejection_reason": "none",
+      "repairability_type": "EXTEND_RIGHT",
+      "potential_resolution_index": 22,
+      "repair_confidence": 0.91
     }
   ]
 }
