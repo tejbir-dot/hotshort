@@ -3242,9 +3242,21 @@ def orchestrate(path: str,
                     
                     groq_result = review_candidates_with_groq(_pool, full_transcript)
                     
+                    import re
+                    def _check_quote_valid(q, segments):
+                        if not q or q.lower() == "none": return False
+                        clean_q = re.sub(r'[^a-z0-9]', '', q.lower())
+                        if len(clean_q) < 10: return False
+                        full_t = "".join([s.get("text", "") for s in segments])
+                        clean_t = re.sub(r'[^a-z0-9]', '', full_t.lower())
+                        return clean_q in clean_t
+                        
+                    
                     keep_count = 0
                     move_hook_count = 0
                     extend_right_count = 0
+                    extend_right_valid = 0
+                    extend_right_invalid = 0
                     reject_count = 0
                     rejection_types = {}
                     
@@ -3254,7 +3266,13 @@ def orchestrate(path: str,
                             dec = surgeon.get("decision", "")
                             if dec == "KEEP": keep_count += 1
                             elif dec == "MOVE_HOOK": move_hook_count += 1
-                            elif dec == "EXTEND_RIGHT": extend_right_count += 1
+                            elif dec == "EXTEND_RIGHT": 
+                                extend_right_count += 1
+                                pq = surgeon.get("proposed_payoff_quote", "")
+                                if _check_quote_valid(pq, full_transcript):
+                                    extend_right_valid += 1
+                                else:
+                                    extend_right_invalid += 1
                             elif dec == "REJECT": 
                                 reject_count += 1
                                 rej_type = surgeon.get("rejection_type", "NONE")
@@ -3267,7 +3285,13 @@ def orchestrate(path: str,
                     log.info(f"reject={reject_count}")
                     for rt, count in rejection_types.items():
                         log.info(f"  {rt.lower()}={count}")
-                    log.info("\n")
+                        
+                    log.info("\n[EXTEND_RIGHT_AUDIT]")
+                    log.info(f"total={extend_right_count}")
+                    log.info(f"valid_quote={extend_right_valid}")
+                    log.info(f"invalid_quote={extend_right_invalid}")
+                    acc = int((extend_right_valid / extend_right_count * 100) if extend_right_count > 0 else 0)
+                    log.info(f"accuracy={acc}%\n")
                     
                     log.info("[GROQ_SURGEON] Phase 2: MOVE_HOOK execution active.")
                     for c in groq_result:
