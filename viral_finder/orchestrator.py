@@ -2627,6 +2627,10 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             log.info(f"chosen_reason=Highest score {best_payoff['score']:.2f} (res={best_payoff['payoff_res']:.2f}, end={best_payoff['end_str']:.2f}) out of {len(candidate_payoffs)} candidates")
             log.info(f"next_5_segments_after_payoff={' | '.join(preview_texts)}")
             log.info(f"stronger_payoff_found={stronger_found}\n")
+            
+            c["locked_payoff_idx"] = best_payoff["idx"]
+            c["locked_payoff_time"] = best_payoff["end_ts"]
+            c["locked_payoff_text"] = best_payoff["text"]
 
         if payoff_idx == hook_idx:
             payoff_idx = None
@@ -2978,6 +2982,27 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
         print(f"[PATTERN] clip={int(clip_idx)} patterns={patterns}")
 
         c["start"] = round(float(s), 2)
+        
+        # Payoff Boundary Lock (Experiment Mode)
+        locked_payoff_time = c.get("locked_payoff_time")
+        locked_payoff_text = c.get("locked_payoff_text")
+        
+        if os.environ.get("HS_EXPERIMENT_MODE") == "1" and locked_payoff_time is not None:
+            final_end_cap = float(locked_payoff_time) + 2.0
+            new_e = min(float(e), final_end_cap)
+            
+            cid = c.get("cid", c.get("id", "?"))
+            final_segs = sorted(_segments_in_window(s, new_e), key=lambda x: float(x.get("start", 0.0) or 0.0))
+            final_text = final_segs[-1].get("text", "") if final_segs else ""
+            
+            log.info("\n[PAYOFF_LIFECYCLE]")
+            log.info(f"candidate_id={cid}")
+            log.info(f"assembler_payoff_text=\"{locked_payoff_text}\"")
+            log.info(f"final_payoff_text=\"{final_text}\"")
+            log.info(f"changed={locked_payoff_text != final_text}\n")
+            
+            e = new_e
+            
         c["end"] = round(float(e), 2)
         c["duration"] = round(float(duration), 2)
         c["editor_score"] = round(float(editor_score), 4)
