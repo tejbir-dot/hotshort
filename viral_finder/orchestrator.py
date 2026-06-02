@@ -3447,8 +3447,8 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
                 new_score = float(new_c.get("arc_score", 0.0))
                 
                 log.info(f"\\n[EXPERIMENT_COMPARE] candidate_id={cid}")
-                log.info(f"OLD_PAYOFF: \\"{old_text[:80]}...\\"")
-                log.info(f"NEW_PAYOFF: \\"{new_text[:80]}...\\"")
+                log.info(f'OLD_PAYOFF: "{old_text[:80]}..."')
+                log.info(f'NEW_PAYOFF: "{new_text[:80]}..."')
                 log.info(f"OLD_DURATION: {old_dur:.1f}s")
                 log.info(f"NEW_DURATION: {new_dur:.1f}s")
                 log.info(f"OLD_SCORE: {old_score:.3f}")
