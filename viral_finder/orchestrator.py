@@ -2578,7 +2578,10 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 elif groq_role == "HOOK":
                     groq_bonus = -0.20
                     
-                final_score = legacy_score + groq_bonus + release_bonus + climax_bonus - escalation_penalty
+                word_count = len(seg_text.split())
+                short_penalty = 0.40 if word_count < 4 else 0.0
+                
+                final_score = legacy_score + groq_bonus + release_bonus + climax_bonus - escalation_penalty - short_penalty
                     
                 candidate_payoffs.append({
                     "idx": j,
@@ -2865,7 +2868,8 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
 
         # 1) Context padding
         s = max(0.0, s - pre_pad)
-        e = e + post_pad
+        if os.environ.get("HS_EXPERIMENT_MODE") != "1":
+            e = e + post_pad
 
         # 2) Sentence boundary correction
         prev_seg = _find_prev_seg(s)
