@@ -1341,7 +1341,7 @@ def _run_narrative_intelligence(ctx: PipelineContext) -> None:
                 role_paths.append(r)
 
     groq_roles_map = {}
-    if os.environ.get("HS_GROQ_NARRATIVE_ROLES") == "1":
+    if os.environ.get("HS_GROQ_NARRATIVE_ROLES") == "1" and os.environ.get("HS_SUBTRACTION_MODE") != "1":
         try:
             from viral_finder.groq_cortex import analyze_narrative_roles
             groq_roles_map = analyze_narrative_roles(ctx.transcript or [])
