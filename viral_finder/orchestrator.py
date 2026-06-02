@@ -2255,21 +2255,38 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             # Small duration penalty for payoffs that are extremely far away, unless they are very strong
             time_decay = max(0.0, (seg_e - arc_start - 30.0) * 0.01) if (seg_e - arc_start) > 30.0 else 0.0
             
+            groq_role = seg.get("groq_role", "BUILD")
+            
             if (j - hook_idx >= 2) and (
                 (ending_strength > 0.3) or
                 (payoff_resolution > 0.35) or
-                punch
+                punch or
+                (groq_role == "PAYOFF")
             ):
                 emotional_resolution_bonus = 0.0
                 emo_words = ["i'm rich", "finally", "i won", "i escaped", "i made it", "i was free"]
                 if any(w in seg_text.lower() for w in emo_words):
                     emotional_resolution_bonus = 0.15
                     
+                legacy_score = ending_strength + payoff_resolution + (0.1 if punch else 0.0) + emotional_resolution_bonus - time_decay
+                
+                groq_bonus = 0.0
+                if groq_role == "PAYOFF":
+                    groq_bonus = 0.15
+                elif groq_role == "LESSON":
+                    groq_bonus = 0.08
+                elif groq_role == "HOOK":
+                    groq_bonus = -0.10
+                    
+                final_score = legacy_score + groq_bonus
+                    
                 candidate_payoffs.append({
                     "idx": j,
                     "end_ts": seg_e,
                     "text": seg_text,
-                    "score": ending_strength + payoff_resolution + (0.1 if punch else 0.0) + emotional_resolution_bonus - time_decay,
+                    "legacy_score": legacy_score,
+                    "groq_role": groq_role,
+                    "score": final_score,
                     "payoff_res": payoff_resolution,
                     "end_str": ending_strength
                 })
@@ -2277,9 +2294,9 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
 
         if candidate_payoffs:
             cid = c.get("cid", c.get("id", "?"))
-            log.info(f"\n[PAYOFF_CANDIDATE_TABLE] candidate_id={cid}")
+            log.info(f"\n[PAYOFF_COMPETITION] candidate_id={cid}")
             for p in candidate_payoffs:
-                log.info(f"idx={p['idx']} score={p['score']:.2f} text=\"{p['text']}\"")
+                log.info(f"{p['idx']}\ntext=\"{p['text']}\"\nlegacy={p['legacy_score']:.2f}\ngroq={p['groq_role']}\nfinal={p['score']:.2f}\n")
                 
             first_payoff_idx = candidate_payoffs[0]["idx"]
             # Sort by score descending and pick the best
