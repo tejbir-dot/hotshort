@@ -46,8 +46,6 @@ if os.path.exists(_worker_env):
     load_dotenv(_worker_env, override=True)
     print(f"[LOCAL_WORKER] Overrode env with .env.worker", flush=True)
 
-# Force-enable narrative roles for local testing
-os.environ["HS_GROQ_NARRATIVE_ROLES"] = "1"
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
