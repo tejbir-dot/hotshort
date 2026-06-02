@@ -2525,19 +2525,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                     punch = False
             ending_strength = _clamp01(seg_scores.get("ending_strength", nar.get("ending_strength", 0.0)))
             payoff_resolution = _clamp01(seg_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
-            if payoff_resolution > 0.6:
-                if max_clip != 50.0:
-                    import logging
-                    logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=max_clip_50 candidate={c.get('cid', '?')} trigger_segment={j} payoff_resolution={payoff_resolution:.2f} max_clip_before={max_clip:.1f} max_clip_after=50.0\n")
-                max_clip = 50.0
-                
             build_duration = seg_e - hook_end
-            if build_duration < 6.0:
-                if (ending_strength > 0.3) or (payoff_resolution > 0.35) or punch:
-                    import logging
-                    logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=build_duration_6 candidate={c.get('cid', '?')} build_duration={build_duration:.1f} payoff_score={max(ending_strength, payoff_resolution):.2f} text=\"{seg_text}\" dropped=yes\n")
-                j += 1
-                continue
                 
             # Small duration penalty for payoffs that are extremely far away, unless they are very strong
             time_decay = max(0.0, (seg_e - arc_start - 30.0) * 0.01) if (seg_e - arc_start) > 30.0 else 0.0
