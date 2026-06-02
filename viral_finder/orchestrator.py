@@ -2498,6 +2498,14 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         j = hook_idx
         candidate_payoffs = []
         
+        # Pre-calculate max_scan_idx for Climax Bonus
+        max_scan_idx = hook_idx
+        for tmp_j in range(hook_idx, len(transcript)):
+            tmp_seg_s, tmp_seg_e = _seg_bounds(transcript[tmp_j])
+            if (tmp_seg_e - arc_start) > max_clip:
+                break
+            max_scan_idx = tmp_j
+        
         while j < len(transcript):
             seg = transcript[j]
             seg_s, seg_e = _seg_bounds(seg)
@@ -2538,12 +2546,29 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 punch or
                 (groq_role == "PAYOFF")
             ):
-                emotional_resolution_bonus = 0.0
-                emo_words = ["i'm rich", "finally", "i won", "i escaped", "i made it", "i was free"]
-                if any(w in seg_text.lower() for w in emo_words):
-                    emotional_resolution_bonus = 0.15
+                climax_bonus = 0.0
+                if max_scan_idx > hook_idx:
+                    position_ratio = (j - hook_idx) / max(1.0, float(max_scan_idx - hook_idx))
+                    climax_bonus = position_ratio * 0.15
                     
-                legacy_score = ending_strength + payoff_resolution + (0.1 if punch else 0.0) + emotional_resolution_bonus - time_decay
+                RELEASE_WORDS = [
+                    "rich", "finally", "sold", "won", "freedom", "profit", 
+                    "million", "success", "done", "paid"
+                ]
+                ESCALATION_WORDS = [
+                    "negative", "debt", "lost", "refund", "hospital", 
+                    "bankrupt", "problem", "stuck"
+                ]
+                
+                release_bonus = 0.0
+                if any(w in seg_text.lower() for w in RELEASE_WORDS):
+                    release_bonus = 0.30
+                    
+                escalation_penalty = 0.0
+                if any(w in seg_text.lower() for w in ESCALATION_WORDS):
+                    escalation_penalty = 0.25
+
+                legacy_score = ending_strength + payoff_resolution + (0.1 if punch else 0.0) - time_decay
                 
                 groq_bonus = 0.0
                 if groq_role == "PAYOFF":
@@ -2553,7 +2578,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 elif groq_role == "HOOK":
                     groq_bonus = -0.20
                     
-                final_score = legacy_score + groq_bonus
+                final_score = legacy_score + groq_bonus + release_bonus + climax_bonus - escalation_penalty
                     
                 candidate_payoffs.append({
                     "idx": j,
