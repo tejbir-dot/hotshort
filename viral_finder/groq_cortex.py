@@ -465,9 +465,16 @@ Return JSON ONLY in this exact format:
                 audit_data["total_latency_ms"] += (latency * 1000)
                 
                 if response.status_code == 429:
-                    log.warning(f"[GROQ_SURGEON] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping 45s...")
-                    import time
-                    time.sleep(45)
+                    retry_after = response.headers.get("x-ratelimit-reset-tokens") or response.headers.get("Retry-After")
+                    sleep_s = float(2 ** (attempt + 1))  # 2, 4, 8
+                    if retry_after:
+                        try:
+                            sleep_s = min(float(retry_after), 15.0)
+                        except ValueError:
+                            pass
+                    sleep_s = min(sleep_s, 15.0)
+                    log.warning(f"[GROQ_SURGEON] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping {sleep_s:.1f}s...")
+                    time.sleep(sleep_s)
                     continue
                     
                 response.raise_for_status()
@@ -1027,7 +1034,7 @@ def analyze_narrative_roles(transcript_segments: List[Dict]) -> Dict[int, str]:
     if not api_key:
         return {}
 
-    BATCH_SIZE = 40
+    BATCH_SIZE = 30
     master_roles_map = {}
     
     total_segments = len(transcript_segments)
@@ -1102,9 +1109,16 @@ Transcript:
                 )
                 
                 if response.status_code == 429:
-                    log.warning(f"[GROQ_NARRATIVE] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping 45s...")
-                    import time
-                    time.sleep(45)
+                    retry_after = response.headers.get("x-ratelimit-reset-tokens") or response.headers.get("Retry-After")
+                    sleep_s = float(2 ** (attempt + 1))  # 2, 4, 8
+                    if retry_after:
+                        try:
+                            sleep_s = min(float(retry_after), 15.0)
+                        except ValueError:
+                            pass
+                    sleep_s = min(sleep_s, 15.0)
+                    log.warning(f"[GROQ_NARRATIVE] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping {sleep_s:.1f}s...")
+                    time.sleep(sleep_s)
                     continue
                     
                 response.raise_for_status()

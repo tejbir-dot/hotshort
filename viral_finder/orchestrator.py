@@ -2574,7 +2574,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 if groq_role == "PAYOFF":
                     groq_bonus = 0.60
                 elif groq_role == "LESSON":
-                    groq_bonus = 0.30
+                    groq_bonus = 0.10
                 elif groq_role == "HOOK":
                     groq_bonus = -0.20
                     
@@ -2586,6 +2586,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                     "text": seg_text,
                     "legacy_score": legacy_score,
                     "groq_role": groq_role,
+                    "groq_bonus": groq_bonus,
                     "score": final_score,
                     "payoff_res": payoff_resolution,
                     "end_str": ending_strength
@@ -2596,7 +2597,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             cid = c.get("cid", c.get("id", "?"))
             log.info(f"\n[PAYOFF_COMPETITION] candidate_id={cid}")
             for p in candidate_payoffs:
-                log.info(f"{p['idx']}\ntext=\"{p['text']}\"\nlegacy={p['legacy_score']:.2f}\ngroq={p['groq_role']}\nfinal={p['score']:.2f}\n")
+                log.info(f"{p['idx']}\ntext=\"{p['text']}\"\nlegacy={p['legacy_score']:.2f}\ngroq={p['groq_role']}\nrole_weight={p['groq_bonus']:.2f}\nfinal={p['score']:.2f}\n")
                 
             first_payoff_idx = candidate_payoffs[0]["idx"]
             # Sort by score descending and pick the best
