@@ -2127,6 +2127,293 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         return
 
     min_clip = 15.0
+    base_max_clip = 40.0
+    lookback_s = 7.0
+    out: List[Dict[str, Any]] = []
+    complete_count = 0
+
+    def _seg_bounds(seg: Dict[str, Any]) -> tuple[float, float]:
+        ss = float(seg.get("start", 0.0) or 0.0)
+        ee = float(seg.get("end", ss) or ss)
+        return ss, max(ss, ee)
+
+    def _find_seg_index(ts: float) -> int:
+        target = float(ts or 0.0)
+        for i, seg in enumerate(transcript):
+            s, e = _seg_bounds(seg)
+            if s <= target <= e:
+                return i
+        return max(0, min(len(transcript) - 1, 0 if not transcript else int(min(range(len(transcript)), key=lambda j: abs(_seg_bounds(transcript[j])[0] - target)))))
+
+    for cand in ranked:
+        c = dict(cand or {})
+        s0 = float(c.get("start", 0.0) or 0.0)
+        e0 = float(c.get("end", s0) or s0)
+        if e0 <= s0:
+            out.append(c)
+            continue
+
+        nar = (c.get("signals", {}) or {}).get("narrative", {}) or {}
+        psych = (c.get("signals", {}) or {}).get("psychology", {}) or {}
+        sem = (c.get("signals", {}) or {}).get("semantic", {}) or {}
+        candidate_curiosity_peak = _clamp01(psych.get("curiosity_peak", psych.get("curiosity", 0.0)))
+        candidate_semantic_quality = _clamp01(sem.get("semantic_quality", c.get("confidence", 0.0)))
+
+        start_idx = _find_seg_index(s0)
+        hook_idx = start_idx
+        hook_found = False
+
+        # HOOK: scan around candidate onset.
+        hook_scan_end = min(len(transcript), start_idx + 8)
+        why_selected = "fallback to candidate onset (default)"
+        final_hook_score = 0.0
+        best_segment_idx = start_idx
+        best_score = -1.0
+        best_reason = why_selected
+        
+        for j in range(max(0, start_idx - 2), hook_scan_end):
+            seg_s, seg_e = _seg_bounds(transcript[j])
+            seg_scores = compute_quality_scores(transcript, seg_s, seg_e) if compute_quality_scores else {}
+            hook_score = _clamp01(seg_scores.get("hook_score", nar.get("hook_score", 0.0)))
+            pattern_break = _clamp01(seg_scores.get("pattern_break_score", nar.get("pattern_break_score", 0.0)))
+            
+            # Compute candidate strength
+            score = max(hook_score, pattern_break)
+            
+            if score > best_score:
+                best_score = score
+                best_segment_idx = j
+                if hook_score >= pattern_break:
+                    best_reason = f"strongest hook_score in window ({hook_score:.3f})"
+                else:
+                    best_reason = f"strongest pattern_break in window ({pattern_break:.3f})"
+                    
+        if best_score > 0.0:
+            hook_idx = best_segment_idx
+            hook_found = True
+            final_hook_score = best_score
+            why_selected = best_reason
+
+        hook_seg = transcript[hook_idx]
+        hook_start, hook_end = _seg_bounds(hook_seg)
+        arc_start = hook_start
+        # Backward expansion: include short setup context immediately before hook.
+        for seg in reversed(transcript[:hook_idx]):
+            prev_s, prev_e = _seg_bounds(seg)
+            if prev_e < hook_start and (hook_start - prev_e) < lookback_s:
+                arc_start = min(arc_start, prev_s)
+                break
+        arc_end = max(hook_end, e0)
+        payoff_idx = None
+        max_clip = base_max_clip
+
+        # BUILD + PAYOFF: forward O(n) pass with bounded horizon.
+        j = hook_idx
+        while j < len(transcript):
+            seg = transcript[j]
+            seg_s, seg_e = _seg_bounds(seg)
+            if seg_s < arc_start:
+                j += 1
+                continue
+            if (seg_e - arc_start) > max_clip:
+                break
+
+            seg_scores = compute_quality_scores(transcript, arc_start, seg_e) if compute_quality_scores else {}
+            open_loop = _clamp01(seg_scores.get("open_loop_score", nar.get("open_loop_score", 0.0)))
+            info_density = _clamp01(seg_scores.get("information_density_score", nar.get("information_density_score", 0.0)))
+            semantic_quality = _clamp01(seg_scores.get("semantic_quality", 0.0))
+            build_ok = (open_loop > 0.0) or (info_density > 0.1) or (semantic_quality > 0.4)
+
+            if build_ok:
+                arc_end = max(arc_end, seg_e)
+
+            seg_text = str(seg.get("text", "") or "")
+            punch = False
+            if _detect_message_punch:
+                try:
+                    punch = bool(_detect_message_punch(seg_s, seg_e, seg_text, transcript, float(c.get("viral_score", c.get("score_enriched", 0.0)) or 0.0)))
+                except Exception:
+                    punch = False
+            ending_strength = _clamp01(seg_scores.get("ending_strength", nar.get("ending_strength", 0.0)))
+            payoff_resolution = _clamp01(seg_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
+            if payoff_resolution > 0.6:
+                max_clip = 50.0
+            build_duration = seg_e - hook_end
+            if build_duration < 6.0:
+                j += 1
+                continue
+            if (j - hook_idx >= 2) and (
+                (ending_strength > 0.3) or
+                (payoff_resolution > 0.35) or
+                punch
+            ):
+                payoff_idx = j
+                arc_end = max(arc_end, seg_e)
+                break
+            j += 1
+
+        if payoff_idx == hook_idx:
+            payoff_idx = None
+
+        # ---- INSIGHT TAIL EXTENSION (safe) ----
+        tail_limit = min((payoff_idx + 3) if payoff_idx is not None else (hook_idx + 3), len(transcript))
+        for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), tail_limit):
+            seg_s, seg_e = _seg_bounds(transcript[k])
+            seg_text = str(transcript[k].get("text", "") or "")
+            seg_scores = compute_quality_scores(transcript, arc_start, seg_e) if compute_quality_scores else {}
+            info_density = _clamp01(seg_scores.get("information_density_score", 0.0))
+            semantic_quality = _clamp01(seg_scores.get("semantic_quality", 0.0))
+            # Extend only if explanation/insight continues.
+            if info_density > 0.12 or semantic_quality > 0.55:
+                arc_end = max(arc_end, seg_e)
+            else:
+                break
+
+        # Enforce min duration by extending forward.
+        if (arc_end - arc_start) < min_clip:
+            for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), len(transcript)):
+                _, seg_e = _seg_bounds(transcript[k])
+                arc_end = max(arc_end, seg_e)
+                if (arc_end - arc_start) >= min_clip:
+                    break
+
+        # Clamp and complete trailing sentence.
+        # Avoid abrupt starts by keeping a small amount of pre-hook context.
+        arc_start = max(0.0, arc_start - 1.5)
+        arc_end = min(arc_end, arc_start + max_clip)
+        arc_end = max(arc_end, arc_start + min_clip)
+        if (arc_end - arc_start) < 18.0:
+            arc_end = min(arc_start + 22.0, arc_start + max_clip)
+        arc_end = extend_until_sentence_complete(arc_start, arc_end, transcript, max_extend=4.0)
+        arc_end = min(arc_end, arc_start + max_clip)
+
+        arc_scores = compute_quality_scores(transcript, arc_start, arc_end) if compute_quality_scores else {}
+        open_loop_tail = _clamp01(arc_scores.get("open_loop_score", 0.0))
+        if open_loop_tail > 0.5:
+            arc_end = min(arc_end + 6.0, arc_start + max_clip)
+            arc_scores = compute_quality_scores(transcript, arc_start, arc_end) if compute_quality_scores else {}
+        hook_score = _clamp01(arc_scores.get("hook_score", nar.get("hook_score", 0.0)))
+        payoff_resolution = _clamp01(arc_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
+        tension_gradient = _clamp01(psych.get("tension_gradient", 0.0))
+        info_density = _clamp01(arc_scores.get("information_density_score", nar.get("information_density_score", 0.0)))
+        rewatch = _clamp01(arc_scores.get("rewatch_score", nar.get("rewatch_score", 0.0)))
+        arc_score = _clamp01(
+            (0.30 * hook_score)
+            + (0.30 * payoff_resolution)
+            + (0.20 * tension_gradient)
+            + (0.10 * info_density)
+            + (0.10 * rewatch)
+        )
+        if str(nar.get("trigger_type", "") or "") == "belief_reversal":
+            arc_score = _clamp01(arc_score * 1.2)
+        arc_complete = bool(hook_found and (payoff_idx is not None))
+        if arc_complete:
+            complete_count += 1
+            arc_score = _clamp01(arc_score * 1.35)
+        
+        # ≡ƒöÑ DURATION SWEET SPOT BONUS - Strongly prefer 12-25s (TikTok range)
+        duration = arc_end - arc_start
+        ideal_duration = 18.0
+        if 12.0 <= duration <= 25.0:
+            # Maximum preference at 18s, soft decay at edges
+            duration_bonus = max(0.0, 1.0 - (abs(duration - ideal_duration) / ideal_duration))
+            arc_score = _clamp01(arc_score + (duration_bonus * 0.10))  # +0.10 max bonus
+
+        payoff_seg = transcript[payoff_idx] if payoff_idx is not None else transcript[min(len(transcript) - 1, hook_idx)]
+        p_s, p_e = _seg_bounds(payoff_seg)
+        print(f"[ARC] hook_idx={hook_idx} payoff_idx={payoff_idx} duration={arc_end - arc_start:.1f}s")
+        c["start"] = round(float(arc_start), 2)
+        c["end"] = round(float(max(arc_start + 0.01, arc_end)), 2)
+        c["duration"] = round(float(c["end"] - c["start"]), 2)
+        c["hook_segment"] = {
+            "idx": int(hook_idx),
+            "start": round(float(hook_start), 2),
+            "end": round(float(hook_end), 2),
+            "text": str(hook_seg.get("text", "") or ""),
+        }
+        c["payoff_segment"] = {
+            "idx": int(payoff_idx if payoff_idx is not None else hook_idx),
+            "start": round(float(p_s), 2),
+            "end": round(float(p_e), 2),
+            "text": str(payoff_seg.get("text", "") or ""),
+        }
+        c["arc_complete"] = arc_complete
+        c["arc_score"] = round(float(arc_score), 4)
+        c["viral_score"] = round(float(arc_score), 4)
+        c["provenance"] = {"stage": "L10_ARC_ASSEMBLER"}
+        c["hook_selection_trace"] = {
+            "text": str(hook_seg.get("text", "") or ""),
+            "score": round(float(final_hook_score), 4),
+            "reason": why_selected
+        }
+        out.append(c)
+
+    out = sorted(
+        out,
+        key=lambda x: (
+            _rank_score(x, "arc_score", "viral_score", "score_enriched", "score"),
+            _rank_score(x, "viral_score", "score_enriched", "score"),
+            _rank_score(x, "score_enriched", "score"),
+        ),
+        reverse=True,
+    )
+    # ∩┐╜ SMART DEDUPLICATION: Uses overlap-ratio based detection instead of strict time tolerance
+    # Fixes duplicate_arcs from overlapping hooks (e.g. hooks 56-59 on same payoff 63)
+    out = dedupe_by_overlap(out, overlap_threshold=0.75)
+    ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
+    ctx.ranked_output = list(ctx.final_candidates)
+    log.info("[ORCH-ARC] assembled=%d complete=%d input=%d", len(ctx.ranked_output), complete_count, len(ranked))
+
+    from viral_finder.system_observer import get_observer
+    obs = get_observer()
+    obs.log_stage(
+        "ARC_ASSEMBLER",
+        input_count=len(ranked),
+        output_count=len(ctx.ranked_output),
+        wall_time=time.time() - t0
+    )
+    # Trace candidates
+    output_dict = {c.get("cid"): c for c in ctx.ranked_output if c.get("cid")}
+    for c in ranked:
+        cid = c.get("cid")
+        if cid:
+            if cid in output_dict:
+                out_cand = output_dict[cid]
+                obs.modify_candidate(
+                    cid,
+                    "arc_assembler",
+                    {
+                        "start": out_cand.get("start"),
+                        "end": out_cand.get("end"),
+                        "scores": {"arc_score": out_cand.get("arc_score")}
+                    }
+                )
+            else:
+                obs.reject_candidate(cid, "arc_assembler", "dropped_during_overlap_deduplication_or_top_k_limit")
+
+    _record_stage(
+        ctx,
+        "L10_ARC_ASSEMBLER",
+        input=len(ranked),
+        arcs=len(ctx.ranked_output),
+        complete=complete_count,
+        origins=dict(sorted(Counter(_candidate_origin(c) for c in ctx.ranked_output).items())),
+        avg_arc_duration=round(sum(float(c.get("duration", 0.0) or 0.0) for c in ctx.ranked_output) / float(max(1, len(ctx.ranked_output))), 3),
+        wall_s=round(time.time() - t0, 3),
+    )
+
+
+
+
+def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
+    t0 = time.time()
+    transcript = list(ctx.transcript or [])
+    ranked = list(ctx.ranked_output or ctx.final_candidates or [])
+    if (not transcript) or (not ranked):
+        _record_stage(ctx, "L10_ARC_ASSEMBLER", input=len(ranked), arcs=0, complete=0, wall_s=round(time.time() - t0, 3))
+        return
+
+    min_clip = 5.0
     base_max_clip = 60.0  # Increased from 40s to 60s to scan deeper for the true payoff
     lookback_s = 7.0
     out: List[Dict[str, Any]] = []
@@ -3132,7 +3419,45 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
 
     if trace:
         trace.enter("L11_ARC_ASSEMBLER")
-    _run_arc_assembler(ctx)
+    if os.environ.get("HS_EXPERIMENT_MODE") == "1":
+        import copy
+        ctx_legacy = copy.deepcopy(ctx)
+        ctx_v2 = copy.deepcopy(ctx)
+        
+        _run_arc_assembler(ctx_legacy)
+        _run_arc_assembler_v2(ctx_v2)
+        
+        # EXPERIMENT_COMPARE Telemetry
+        legacy_arcs = {c.get("cid", c.get("id", "")): c for c in ctx_legacy.final_candidates or []}
+        v2_arcs = {c.get("cid", c.get("id", "")): c for c in ctx_v2.final_candidates or []}
+        
+        all_cids = set(list(legacy_arcs.keys()) + list(v2_arcs.keys()))
+        log.info(f"\\n{'='*50}\\n[EXPERIMENT_MODE_RESULTS]\\n{'='*50}")
+        for cid in all_cids:
+            old_c = legacy_arcs.get(cid)
+            new_c = v2_arcs.get(cid)
+            if old_c and new_c:
+                old_text = str(old_c.get("text", "")).replace("\\n", " ")
+                new_text = str(new_c.get("text", "")).replace("\\n", " ")
+                
+                old_dur = float(old_c.get("end", 0.0)) - float(old_c.get("start", 0.0))
+                new_dur = float(new_c.get("end", 0.0)) - float(new_c.get("start", 0.0))
+                
+                old_score = float(old_c.get("arc_score", 0.0))
+                new_score = float(new_c.get("arc_score", 0.0))
+                
+                log.info(f"\\n[EXPERIMENT_COMPARE] candidate_id={cid}")
+                log.info(f"OLD_PAYOFF: \\"{old_text[:80]}...\\"")
+                log.info(f"NEW_PAYOFF: \\"{new_text[:80]}...\\"")
+                log.info(f"OLD_DURATION: {old_dur:.1f}s")
+                log.info(f"NEW_DURATION: {new_dur:.1f}s")
+                log.info(f"OLD_SCORE: {old_score:.3f}")
+                log.info(f"NEW_SCORE: {new_score:.3f}\\n")
+                
+        ctx.final_candidates = ctx_legacy.final_candidates
+        ctx.ranked_output = ctx_legacy.ranked_output
+    else:
+        _run_arc_assembler(ctx)
     print("STAGE OK: arc assembler")
     if trace:
         trace.exit("L11_ARC_ASSEMBLER", {"final": len(ctx.ranked_output or [])})
