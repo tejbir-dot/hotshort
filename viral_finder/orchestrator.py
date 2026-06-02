@@ -2547,11 +2547,11 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 
                 groq_bonus = 0.0
                 if groq_role == "PAYOFF":
-                    groq_bonus = 0.15
+                    groq_bonus = 0.60
                 elif groq_role == "LESSON":
-                    groq_bonus = 0.08
+                    groq_bonus = 0.30
                 elif groq_role == "HOOK":
-                    groq_bonus = -0.10
+                    groq_bonus = -0.20
                     
                 final_score = legacy_score + groq_bonus
                     
