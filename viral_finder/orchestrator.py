@@ -2239,9 +2239,16 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             ending_strength = _clamp01(seg_scores.get("ending_strength", nar.get("ending_strength", 0.0)))
             payoff_resolution = _clamp01(seg_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
             if payoff_resolution > 0.6:
+                if max_clip != 50.0:
+                    import logging
+                    logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=max_clip_50 candidate={c.get('cid', '?')} trigger_segment={j} payoff_resolution={payoff_resolution:.2f} max_clip_before={max_clip:.1f} max_clip_after=50.0\n")
                 max_clip = 50.0
+                
             build_duration = seg_e - hook_end
             if build_duration < 6.0:
+                if (ending_strength > 0.3) or (payoff_resolution > 0.35) or punch:
+                    import logging
+                    logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=build_duration_6 candidate={c.get('cid', '?')} build_duration={build_duration:.1f} payoff_score={max(ending_strength, payoff_resolution):.2f} text=\"{seg_text}\" dropped=yes\n")
                 j += 1
                 continue
                 
@@ -2313,6 +2320,8 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
 
         # Enforce min duration by extending forward.
         if (arc_end - arc_start) < min_clip:
+            import logging
+            logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=min_clip_15 candidate={c.get('cid', '?')} natural_duration={arc_end - arc_start:.1f} forced_extension=yes\n")
             for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), len(transcript)):
                 _, seg_e = _seg_bounds(transcript[k])
                 arc_end = max(arc_end, seg_e)
@@ -2402,7 +2411,13 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
     # � SMART DEDUPLICATION: Uses overlap-ratio based detection instead of strict time tolerance
     # Fixes duplicate_arcs from overlapping hooks (e.g. hooks 56-59 on same payoff 63)
     out = dedupe_by_overlap(out, overlap_threshold=0.75)
-    ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
+    
+    top_k_limit = max(1, int(ctx.top_k or 1))
+    if len(out) > top_k_limit:
+        import logging
+        logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=top_k_{top_k_limit} survived_candidates={len(out)} kept={top_k_limit} discarded={len(out) - top_k_limit}\n")
+        
+    ctx.final_candidates = list(out[:top_k_limit])
     ctx.ranked_output = list(ctx.final_candidates)
     log.info("[ORCH-ARC] assembled=%d complete=%d input=%d", len(ctx.ranked_output), complete_count, len(ranked))
 
