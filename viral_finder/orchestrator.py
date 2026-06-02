@@ -2568,7 +2568,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 if any(w in seg_text.lower() for w in ESCALATION_WORDS):
                     escalation_penalty = 0.25
 
-                legacy_score = ending_strength + payoff_resolution + (0.1 if punch else 0.0) - time_decay
+                legacy_score = (ending_strength + payoff_resolution + (0.1 if punch else 0.0)) / 2.0 - time_decay
                 
                 groq_bonus = 0.0
                 if groq_role == "PAYOFF":
@@ -2600,6 +2600,12 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 log.info(f"{p['idx']}\ntext=\"{p['text']}\"\nlegacy={p['legacy_score']:.2f}\ngroq={p['groq_role']}\nrole_weight={p['groq_bonus']:.2f}\nfinal={p['score']:.2f}\n")
                 
             first_payoff_idx = candidate_payoffs[0]["idx"]
+            
+            # Protected PAYOFF Lane: If any segment is tagged as PAYOFF, discard all non-PAYOFF competitors
+            has_payoff = any(p["groq_role"] == "PAYOFF" for p in candidate_payoffs)
+            if has_payoff:
+                candidate_payoffs = [p for p in candidate_payoffs if p["groq_role"] == "PAYOFF"]
+                
             # Sort by score descending and pick the best
             candidate_payoffs.sort(key=lambda x: x["score"], reverse=True)
             best_payoff = candidate_payoffs[0]

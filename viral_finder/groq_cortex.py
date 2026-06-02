@@ -1072,7 +1072,7 @@ Valid roles:
 2. STORY: A personal anecdote, example, or narrative progression.
 3. PROOF: Data, evidence, or logical justification for a claim.
 4. LESSON: The core teaching, framework, or actionable takeaway.
-5. PAYOFF: The final satisfying conclusion, punchline, or "aha!" moment.
+5. PAYOFF: The final resolution, result, outcome, or consequence. NOT emotion, not hustle, not tension.
 6. BUILD: General context or setup that doesn't fit the above.
 
 OUTPUT JSON ONLY.
