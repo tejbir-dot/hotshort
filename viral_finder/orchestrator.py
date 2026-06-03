@@ -1341,7 +1341,7 @@ def _run_narrative_intelligence(ctx: PipelineContext) -> None:
                 role_paths.append(r)
 
     groq_roles_map = {}
-    if os.environ.get("HS_GROQ_NARRATIVE_ROLES", "0") == "1" and os.environ.get("HS_SUBTRACTION_MODE") != "1":
+    if os.environ.get("HS_GROQ_NARRATIVE_ROLES", "0") == "1":
         try:
             from viral_finder.groq_cortex import analyze_narrative_roles
             groq_roles_map = analyze_narrative_roles(ctx.transcript or [])
@@ -2414,7 +2414,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         return
 
     min_clip = 5.0
-    base_max_clip = 60.0  # Increased from 40s to 60s to scan deeper for the true payoff
+    base_max_clip = 90.0  # Increased from 60s to 90s to scan deeper for the true payoff (P1 Fix)
     lookback_s = 7.0
     out: List[Dict[str, Any]] = []
     complete_count = 0
@@ -2515,7 +2515,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             if (seg_e - arc_start) > max_clip:
                 break
 
-            seg_scores = compute_quality_scores(transcript, arc_start, seg_e) if compute_quality_scores else {}
+            seg_scores = compute_quality_scores(transcript, arc_start, seg_e, debug=True) if compute_quality_scores else {}
             open_loop = _clamp01(seg_scores.get("open_loop_score", nar.get("open_loop_score", 0.0)))
             info_density = _clamp01(seg_scores.get("information_density_score", nar.get("information_density_score", 0.0)))
             semantic_quality = _clamp01(seg_scores.get("semantic_quality", 0.0))
@@ -2533,6 +2533,9 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                     punch = False
             ending_strength = _clamp01(seg_scores.get("ending_strength", nar.get("ending_strength", 0.0)))
             payoff_resolution = _clamp01(seg_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
+            end_breakdown = seg_scores.get("ending_strength_breakdown", {})
+            payoff_breakdown = seg_scores.get("payoff_resolution_breakdown", {})
+            
             build_duration = seg_e - hook_end
                 
             # Small duration penalty for payoffs that are extremely far away, unless they are very strong
@@ -2592,7 +2595,9 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                     "groq_bonus": groq_bonus,
                     "score": final_score,
                     "payoff_res": payoff_resolution,
-                    "end_str": ending_strength
+                    "end_str": ending_strength,
+                    "end_breakdown": end_breakdown,
+                    "payoff_breakdown": payoff_breakdown
                 })
             j += 1
 
@@ -2600,7 +2605,18 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             cid = c.get("cid", c.get("id", "?"))
             log.info(f"\n[PAYOFF_COMPETITION] candidate_id={cid}")
             for p in candidate_payoffs:
-                log.info(f"{p['idx']}\ntext=\"{p['text']}\"\nlegacy={p['legacy_score']:.2f}\ngroq={p['groq_role']}\nrole_weight={p['groq_bonus']:.2f}\nfinal={p['score']:.2f}\n")
+                log.info(f"{p['idx']}\ntext=\"{p['text']}\"\nlegacy={p['legacy_score']:.2f}\ngroq={p['groq_role']}\nrole_weight={p['groq_bonus']:.2f}\nfinal={p['score']:.2f}")
+                
+                def fmt_bd(k, v):
+                    if isinstance(v, (int, float)):
+                        return f"{k}=+{v:.2f}" if v > 0 else f"{k}={v:.2f}"
+                    return f"{k}='{v}'"
+                
+                end_str_components = ", ".join(fmt_bd(k, v) for k, v in p.get('end_breakdown', {}).items())
+                payoff_res_components = ", ".join(fmt_bd(k, v) for k, v in p.get('payoff_breakdown', {}).items())
+                
+                log.info(f"ending_strength={p['end_str']:.2f} ({end_str_components})")
+                log.info(f"payoff_resolution={p['payoff_res']:.2f} ({payoff_res_components})\n")
                 
             first_payoff_idx = candidate_payoffs[0]["idx"]
             
@@ -2866,6 +2882,8 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
         c = dict(clip or {})
         s = float(c.get("start", 0.0) or 0.0)
         e = float(c.get("end", s) or s)
+        orig_s = s
+        orig_e = e
         if e <= s:
             out.append(c)
             continue
@@ -3098,6 +3116,19 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
                     float(c.get("final_score", 0.0) or 0.0),
                 )
                 continue
+        cid = c.get("cid")
+        if cid:
+            changes = {}
+            if abs(c["start"] - orig_s) > 0.05:
+                changes["start"] = c["start"]
+            if abs(c["end"] - orig_e) > 0.05:
+                changes["end"] = c["end"]
+            if changes:
+                from viral_finder.system_observer import get_observer
+                try:
+                    get_observer().modify_candidate(cid, "editor_refiner", changes)
+                except Exception:
+                    pass
         out.append(c)
 
     out = sorted(
@@ -3572,7 +3603,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     cqs_cache_reset()
     _record_stage(ctx, "SUMMARY", wall_s=round(time.time() - t0, 3), final=len(out), rejected=len(ctx.rejected_candidates), cqs_cache=_cqs_stats)
     if trace:
-        trace.render()
+        pass
     
     from viral_finder.system_observer import get_observer
     try:
@@ -3672,7 +3703,15 @@ def orchestrate(path: str,
             if has_tf_moments:
                 log.info("[GROQ_CORTEX] Skipping candidate-review Cortex because transcript-first Moment Director already discovered moments.")
             else:
-                _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
+                _experiment_mode = os.environ.get("HS_EXPERIMENT_MODE", "0") == "1"
+                if _experiment_mode:
+                    # [EXPERIMENT FIX] Send arc-assembled final_candidates to Surgeon
+                    # so it sees correct 90s boundaries, not pre-assembly 6s fragments.
+                    # Without this, EXTEND_RIGHT fires on wrong clips and CID matching fails.
+                    _pool = list(final_candidates)
+                    log.info("[GROQ_POOL_FIX] experiment_mode=1 → using final_candidates (arc-assembled) for Surgeon input")
+                else:
+                    _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
                 
                 # EXPERIMENT: Reduce Groq Surgeon Input Pool
                 pool_before_len = len(_pool)
@@ -3811,6 +3850,11 @@ def orchestrate(path: str,
                                         for fc in final_candidates:
                                             if fc.get("cid") == cid and cid != "?":
                                                 fc["start"] = new_start
+                                                from viral_finder.system_observer import get_observer
+                                                try:
+                                                    get_observer().modify_candidate(cid, "surgeon_cortex", {"start": new_start})
+                                                except Exception:
+                                                    pass
                                                 break
                                     else:
                                         log.info(f"[HOOK_REPAIR_BLOCKED] cid={cid} conf={conf} dist={move_distance}s old_text='{old_text}' new_text='{new_text}'")
@@ -3889,7 +3933,28 @@ def orchestrate(path: str,
                                         log.info(f"continuity_reason={c_reason}")
                                         log.info(f"resolution_strength={r_s}\n")
                                         
-                                            
+                                        # 🚨 INJECTING MISSING STATE UPDATE 🚨
+                                        old_end = float(c.get("end", 0.0))
+                                        new_end = float(full_transcript[payoff_idx].get("end", 0.0))
+                                        
+                                        # Never shrink the boundary if it was already extended (e.g. by 90s experiment)
+                                        c["end"] = max(old_end, new_end)
+                                        
+                                        for fc in final_candidates:
+                                            if fc.get("cid") == cid and cid != "?":
+                                                fc["end"] = max(old_end, new_end)
+                                                from viral_finder.system_observer import get_observer
+                                                try:
+                                                    get_observer().modify_candidate(cid, "surgeon_cortex", {"end": max(old_end, new_end)})
+                                                except Exception:
+                                                    pass
+                                                break
+                                                
+                                        log.info(
+                                            f"[EXTEND_RIGHT_APPLIED] "
+                                            f"cid={cid} old_end={old_end:.2f} "
+                                            f"new_end={new_end:.2f}\n"
+                                        )
 
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
@@ -3932,6 +3997,13 @@ def orchestrate(path: str,
             log.info(f"    selected_hook_score={trace.get('score', 0.0)}")
             log.info(f"    why_selected={trace.get('reason', 'N/A')}")
             log.info(f"    selected_hook_text='{trace.get('text', '')}'\n")
+
+    from viral_finder.system_observer import get_observer
+    try:
+        xray_report = get_observer().render_report()
+        log.info(xray_report)
+    except Exception as exc:
+        log.warning(f"[ORCH] Error rendering system observer: {exc}")
 
     return final_candidates
 # -------------------------

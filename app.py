@@ -2327,6 +2327,14 @@ def get_free_status(user):
                 "claimed_clip_ids": []
             }
         
+        if os.environ.get("HS_UNLIMITED_MODE", "1").strip() == "1":
+            return {
+                "is_paid": True,
+                "free_clips_used": 0,
+                "free_clips_left": 9999,
+                "claimed_clip_ids": []
+            }
+        
         # Check if user has paid plan
         is_paid = (
             user.plan_type in ("starter", "pro", "industry", "creator") and

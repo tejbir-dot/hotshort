@@ -398,6 +398,7 @@ _RE_MANY_FILLERS = re.compile(r"\b(um+|uh+|like|you know|sort of|kind of)\b", re
 _RE_CTA_HEAVY = re.compile(r"\b(subscribe|follow|like this|comment below|share this|link in bio)\b", re.IGNORECASE)
 _RE_CTA_VIRAL = re.compile(r"\b(tag someone|comment if|follow for more|tag a friend|share with|send this to)\b", re.IGNORECASE)
 _RE_ADVICE = re.compile(r"\b(remember|don't|do this|stop|start|try|make sure|you need to|you have to)\b", re.IGNORECASE)
+_RE_ADVICE_V2 = re.compile(r"\b(remember|do this|stop|try|make sure)\b", re.IGNORECASE)
 _RE_UNIVERSAL = re.compile(r"\b(everyone|nobody|always|never|most people|all of us)\b", re.IGNORECASE)
 _RE_CREDIBILITY = re.compile(r"\b(for example|for instance|because|proof|results?|numbers?|data|study)\b", re.IGNORECASE)
 _RE_EMOTION_WORDS = re.compile(r"\b(shocked|mind blown|crazy|insane|literally|unbelievable|amazing|wow|incredible|insanely|ridiculous|wild|blew my mind|can't believe)\b", re.IGNORECASE)
@@ -508,6 +509,27 @@ _PAYOFF_PHRASES = (
     # Devanagari
     "इसलिए", "यही वजह है", "यही राज़ है", "तो बात ये है",
     "मतलब ये है", "सीधी बात", "सच ये है", "असल में",
+    "यही कारण है", "तो समझो", "अब समझे",
+)
+
+_PAYOFF_PHRASES_V2 = (
+    # English
+    "that's the secret", "that's why", "that's the difference",
+    "this is why", "and that's how", "that's what most people miss", "that's the key",
+    "that's the real reason", "and there you have it",
+    "so that's", "that's exactly", "there's your answer",
+    "so the lesson is", "and here's what changed",
+    "that's the breakthrough", "at the end of the day", "the bottom line is",
+    "that one decision made all the difference",
+    "and that's when everything changed", "the best part is", "and now you know",
+    # Hinglish romanized
+    "isliye", "yahi wajah hai", "yahi raaz hai",
+    "matlab ye hai", "seedhi baat",
+    "yahi karan hai", "sach baat ye hai", "to samjho",
+    "sabse badi seekh", "ye hai asli raaz", "ab samjhe",
+    # Devanagari
+    "इसलिए", "यही वजह है", "यही राज़ है",
+    "मतलब ये है", "सीधी बात", 
     "यही कारण है", "तो समझो", "अब समझे",
 )
 
@@ -906,7 +928,7 @@ def compute_pattern_break_score(transcript: list, clip_start: float, look_s: flo
     return _clamp01(score)
 
 
-def compute_ending_strength(transcript: list, clip_end: float, look_s: float = 4.0) -> float:
+def compute_ending_strength(transcript: list, clip_end: float, look_s: float = 4.0, debug: bool = False):
     """
     Ending payoff check: last ~4 seconds should land a punch/advice/closure.
     Penalize trailing off / mid-segment cuts / topic shifts.
@@ -915,12 +937,21 @@ def compute_ending_strength(transcript: list, clip_end: float, look_s: float = 4
     start_t = max(0.0, end_t - float(look_s))
     text, _ = transcript_text_window(transcript, start_t, end_t)
     if not text:
-        return 0.0
+        return (0.0, {}) if debug else 0.0
 
     raw = text.strip()
     t = raw.lower()
 
-    advice = bool(re.search(r"\b(remember|don't|do this|stop|start|try|make sure|you need to|you have to)\b", t))
+    fix_v2 = os.environ.get("HS_PAYOFF_SCORE_FIX_V2") == "1"
+    subtraction_mode = os.environ.get("HS_SUBTRACTION_MODE") == "1"
+    
+    if fix_v2:
+        advice = bool(_RE_ADVICE_V2.search(t))
+    else:
+        advice = bool(re.search(r"\b(remember|don't|do this|stop|start|try|make sure|you need to|you have to)\b", t))
+        
+    if subtraction_mode:
+        advice = False
     closure = any(p in t for p in _CLOSURE_PHRASES)
     ends_with_punct = raw.rstrip().endswith((".", "!", "?"))
 
@@ -934,24 +965,32 @@ def compute_ending_strength(transcript: list, clip_end: float, look_s: float = 4
                 break
 
     score = 0.0
+    breakdown = {}
     if advice:
         score += 0.45
+        breakdown["advice"] = 0.45
     if closure:
         score += 0.35
+        breakdown["closure"] = 0.35
     if ends_with_punct:
         score += 0.20
+        breakdown["punct"] = 0.20
 
     if cut_mid_segment:
         score -= 0.35
+        breakdown["cut_mid_segment"] = -0.35
     if _RE_TOPIC_SHIFT.search(raw):
         score -= 0.20
+        breakdown["topic_shift"] = -0.20
     if (not ends_with_punct) and _RE_TRAIL_OFF.search(raw):
         score -= 0.30
+        breakdown["trail_off"] = -0.30
 
-    return _clamp01(score)
+    final_score = _clamp01(score)
+    return (final_score, breakdown) if debug else final_score
 
 
-def compute_payoff_resolution_score(transcript: list, clip_start: float, clip_end: float, tail_look_s: float = 6.0) -> float:
+def compute_payoff_resolution_score(transcript: list, clip_start: float, clip_end: float, tail_look_s: float = 6.0, debug: bool = False):
     """
     Payoff quality near the ending:
     prefers clips where setup (question/tension) resolves with a clear, complete takeaway.
@@ -961,86 +1000,176 @@ def compute_payoff_resolution_score(transcript: list, clip_start: float, clip_en
     s = float(clip_start or 0.0)
     e = float(clip_end or (s + 0.01))
     if e <= s:
-        return 0.0
+        return (0.0, {}) if debug else 0.0
 
     full_text, _ = transcript_text_window(transcript, s, e)
     tail_text, _ = transcript_text_window(transcript, max(s, e - float(tail_look_s)), e)
     if not full_text or not tail_text:
-        return 0.0
+        return (0.0, {}) if debug else 0.0
 
     full_low = full_text.lower().strip()
     tail_raw = tail_text.strip()
     tail_low = tail_raw.lower()
 
-    setup_question = ("?" in full_low) or bool(_RE_QUESTION_WORDS.search(full_low)) or any(p in full_low for p in _TENSION_PHRASES)
-    answerish_tail = bool(_RE_ANSWERISH.search(tail_low))
+    fix_v2 = os.environ.get("HS_PAYOFF_SCORE_FIX_V2") == "1"
+    
+    # Detailed telemetry for setup_question
+    setup_question = False
+    setup_reason = ""
+    
+    if "?" in full_low:
+        setup_question = True
+        setup_reason = "found '?' in full text"
+    else:
+        q_match = _RE_QUESTION_WORDS.search(full_low)
+        if q_match:
+            setup_question = True
+            setup_reason = f"question_word: {q_match.group(0)}"
+        else:
+            for p in _TENSION_PHRASES:
+                if p in full_low:
+                    setup_question = True
+                    setup_reason = f"tension_phrase: {p}"
+                    break
+                    
+    # Detailed telemetry for answerish
+    ans_match = _RE_ANSWERISH.search(tail_low)
+    answerish_tail = bool(ans_match)
+    answerish_reason = ans_match.group(0) if ans_match else ""
+    
     closure_tail = any(p in tail_low for p in _CLOSURE_PHRASES)
-    advice_tail = bool(_RE_ADVICE.search(tail_low))
+    
+    advice_match_str = ""
+    subtraction_mode = os.environ.get("HS_SUBTRACTION_MODE") == "1"
+    
+    if fix_v2:
+        advice_match = _RE_ADVICE_V2.search(tail_low)
+        advice_tail = bool(advice_match)
+        advice_match_str = advice_match.group(0) if advice_match else ""
+        has_payoff_phrase = any(p in tail_low for p in _PAYOFF_PHRASES_V2)
+    else:
+        advice_match = _RE_ADVICE.search(tail_low)
+        advice_tail = bool(advice_match)
+        advice_match_str = advice_match.group(0) if advice_match else ""
+        has_payoff_phrase = any(p in tail_low for p in _PAYOFF_PHRASES)
+        
+    if subtraction_mode:
+        advice_tail = False
+        
     ends_with_punct = tail_raw.rstrip().endswith((".", "!", "?"))
     has_credibility = bool(_RE_CREDIBILITY.search(tail_low)) or bool(_RE_NUMERIC.search(tail_low))
     
-    # 🔥 NEW: Semantic payoff phrase detection (+0.35 boost)
-    has_payoff_phrase = any(p in tail_low for p in _PAYOFF_PHRASES)
     viral_rhetoric = detect_viral_rhetorical_structure(full_text)
-    
-    # 💫 EMOTIONAL ENDINGS: Strong emotional words increase rewatch potential
     has_emotion_words = bool(_RE_EMOTION_WORDS.search(tail_low))
     
-    # 🎬 VIRAL ENDING PATTERNS: Specific ending structures that drive shares
-    is_wait_ending = bool(_RE_VIRAL_ENDING_WAIT.search(tail_low))
+    if fix_v2:
+        is_wait_ending = False
+        is_dark_humor_ending = False
+    else:
+        is_wait_ending = bool(_RE_VIRAL_ENDING_WAIT.search(tail_low))
+        is_dark_humor_ending = bool(_RE_VIRAL_ENDING_DARK.search(tail_low))
+        
     is_list_ending = bool(_RE_VIRAL_ENDING_LIST.search(tail_low))
-    is_dark_humor_ending = bool(_RE_VIRAL_ENDING_DARK.search(tail_low))
     
     # 📢 CONTEXT-AWARE CTA: Beneficial CTAs like "tag a friend" boost viral potential
     has_viral_cta = bool(_RE_CTA_VIRAL.search(tail_low))
     has_heavy_cta = bool(_RE_CTA_HEAVY.search(tail_low))
 
+    # =========================================================
+    # THE 4 SURGICAL KILLS (Gated by Subtraction Mode)
+    # =========================================================
+    if subtraction_mode:
+        # Kill #1 & #2: Destroy the Answerish / Setup Question combinatorial blob
+        answerish_tail = False
+        setup_question = False
+        
+        # Kill #3: Destroy the Dark Ending & Wait hook patterns inside payoff
+        is_dark_humor_ending = False
+        is_wait_ending = False
+        
+        # Kill #4 (NEW DISCOVERY): Stop rewarding "because/for example" as credibility in payoff
+        has_credibility = False
+        
+        # Kill #3: Remove fake payoff phrases from scoring
+        fake_phrases = ["the reality is", "here's the thing", "you want to know the crazy part", "the truth is"]
+        if fix_v2:
+            has_payoff_phrase = any(p in tail_low for p in _PAYOFF_PHRASES_V2 if p not in fake_phrases)
+        else:
+            has_payoff_phrase = any(p in tail_low for p in _PAYOFF_PHRASES if p not in fake_phrases)
+
     score = 0.0
-    if setup_question and answerish_tail:
+    breakdown = {}
+    if setup_question and answerish_tail and not fix_v2 and not subtraction_mode:
         score += 0.42
+        breakdown["setup_question_and_answerish"] = 0.42
     elif answerish_tail:
         score += 0.24
+        breakdown["answerish"] = 0.24
+        if fix_v2:
+            breakdown["DEBUG_answerish_match"] = answerish_reason
+            if setup_question:
+                breakdown["DEBUG_DISABLED_setup_question"] = setup_reason
+        elif subtraction_mode and setup_question:
+            breakdown["DEBUG_DISABLED_setup_question"] = setup_reason
     if closure_tail:
         score += 0.24
+        breakdown["closure"] = 0.24
     if advice_tail:
         score += 0.14
+        breakdown["advice"] = 0.14
+        if fix_v2 and advice_match_str:
+            breakdown["DEBUG_advice_match"] = advice_match_str
     if ends_with_punct:
         score += 0.10
+        breakdown["punct"] = 0.10
     if has_credibility:
         score += 0.10
+        breakdown["credibility"] = 0.10
     
     # 🔥 PAYOFF PHRASE BONUS: +0.35 for semantic payoff markers
     if has_payoff_phrase:
-        score += 0.35
+        score += 0.10
+        breakdown["payoff_phrase"] = 0.10
     
     # 🚀 VIRAL RHETORIC BONUS: Structural patterns boost payoff score
     if viral_rhetoric > 0.0:
-        score += (0.25 * viral_rhetoric)
+        val = 0.25 * viral_rhetoric
+        score += val
+        breakdown["viral_rhetoric"] = val
     
     # 💫 EMOTIONAL ENDINGS: +0.15 for strong emotional language (increases rewatch)
     if has_emotion_words:
         score += 0.15
+        breakdown["emotion_words"] = 0.15
     
     # 🎬 VIRAL ENDING PATTERNS: +0.12 for each pattern (suspense, lists, humor)
     if is_wait_ending:
         score += 0.12
+        breakdown["wait_ending"] = 0.12
     if is_list_ending:
         score += 0.12
+        breakdown["list_ending"] = 0.12
     if is_dark_humor_ending:
         score += 0.12
+        breakdown["dark_humor_ending"] = 0.12
     
     # 📢 CONTEXT-AWARE CTA: Viral CTAs boost (+0.18), traditional CTAs might penalize
     if has_viral_cta:
         score += 0.18  # Boost for engagement-driving CTAs like "tag someone"
+        breakdown["viral_cta"] = 0.18
     elif has_heavy_cta:
         score -= 0.10  # Light penalty for traditional subscription-focused CTAs
+        breakdown["heavy_cta"] = -0.10
 
     if _RE_TRAIL_OFF.search(tail_raw) and not ends_with_punct:
         score -= 0.24
+        breakdown["trail_off"] = -0.24
     if _RE_TOPIC_SHIFT.search(tail_low):
         score -= 0.20
+        breakdown["topic_shift"] = -0.20
 
-    return _clamp01(score)
+    final_score = _clamp01(score)
+    return (final_score, breakdown) if debug else final_score
 
 
 def compute_rewatch_score(transcript: list, clip_start: float, clip_end: float) -> float:
@@ -1178,7 +1307,7 @@ def detect_viral_rhetorical_structure(text: str) -> float:
     return _clamp01(score)
 
 
-def compute_quality_scores(transcript: list, clip_start: float, clip_end: float) -> dict:
+def compute_quality_scores(transcript: list, clip_start: float, clip_end: float, debug: bool = False) -> dict:
     """
     Compute (hook_score, open_loop_score, ending_strength, duration_score, final_score).
     Designed to be used for ranking/curation only (no hard filtering).
@@ -1190,10 +1319,12 @@ def compute_quality_scores(transcript: list, clip_start: float, clip_end: float)
 
     # ── Cache lookup ────────────────────────────────────────────────────────
     cache_key = _cqs_cache_key(transcript, clip_start, clip_end)
-    cached = _CQS_CACHE.get(cache_key)
-    if cached is not None:
-        _CQS_HITS += 1
-        return cached
+    # Don't use cache if debug is requested, because the cache might not have breakdowns
+    if not debug:
+        cached = _CQS_CACHE.get(cache_key)
+        if cached is not None:
+            _CQS_HITS += 1
+            return cached
     _CQS_MISSES += 1
     # ────────────────────────────────────────────────────────────────────────
 
@@ -1204,8 +1335,15 @@ def compute_quality_scores(transcript: list, clip_start: float, clip_end: float)
     hook = compute_hook_score(transcript, s, look_s=4.0)
     open_loop = compute_open_loop_score(transcript, s, look_s=8.0)
     pattern_break = compute_pattern_break_score(transcript, s, look_s=6.0)
-    ending = compute_ending_strength(transcript, e, look_s=4.0)
-    payoff_resolution = compute_payoff_resolution_score(transcript, s, e, tail_look_s=6.0)
+    
+    if debug:
+        ending, end_breakdown = compute_ending_strength(transcript, e, look_s=4.0, debug=True)
+        payoff_resolution, payoff_breakdown = compute_payoff_resolution_score(transcript, s, e, tail_look_s=6.0, debug=True)
+    else:
+        ending = compute_ending_strength(transcript, e, look_s=4.0)
+        payoff_resolution = compute_payoff_resolution_score(transcript, s, e, tail_look_s=6.0)
+        end_breakdown, payoff_breakdown = {}, {}
+        
     rewatch = compute_rewatch_score(transcript, s, e)
     info_density = compute_information_density_score(transcript, s, e)
     dur_score = compute_duration_score(d, hook_score=hook)
@@ -1240,6 +1378,10 @@ def compute_quality_scores(transcript: list, clip_start: float, clip_end: float)
         "duration_score": round(dur_score, 4),
         "final_score": round(final, 4),
     }
+    
+    if debug:
+        result["ending_strength_breakdown"] = end_breakdown
+        result["payoff_resolution_breakdown"] = payoff_breakdown
 
     # ── Store in cache ──────────────────────────────────────────────────────
     _CQS_CACHE[cache_key] = result
