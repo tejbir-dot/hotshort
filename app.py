@@ -2319,19 +2319,20 @@ def get_free_status(user):
     from datetime import timedelta
     
     try:
-        if not user or getattr(user, "is_anonymous", False):
-            return {
-                "is_paid": False,
-                "free_clips_used": 0,
-                "free_clips_left": 0,
-                "claimed_clip_ids": []
-            }
-        
+        # Move UNLIMITED check to the very top so local/dev environments never see pricing, even if anonymous
         if os.environ.get("HS_UNLIMITED_MODE", "1").strip() == "1":
             return {
                 "is_paid": True,
                 "free_clips_used": 0,
                 "free_clips_left": 9999,
+                "claimed_clip_ids": []
+            }
+            
+        if not user or getattr(user, "is_anonymous", False):
+            return {
+                "is_paid": False,
+                "free_clips_used": 0,
+                "free_clips_left": 0,
                 "claimed_clip_ids": []
             }
         

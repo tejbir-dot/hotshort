@@ -155,28 +155,23 @@ def score_energy(video_path: str, segments: list[tuple[float, float]], scenes: l
         
         energy_score = (0.4 * motion_score) + (0.3 * speech_density) + (0.2 * semantic_strength) + (0.1 * scene_change_rate)
         
-        if energy_score >= 0.3:
-            ranked.append({
-                "start": start,
-                "end": end,
-                "score": energy_score,
-                "duration": duration,
-                "zoom": zoom_trigger,
-                "transition": transition_type
-            })
+        # Keep all segments to prevent blind cutting
+        ranked.append({
+            "start": start,
+            "end": end,
+            "score": energy_score,
+            "duration": duration,
+            "zoom": zoom_trigger,
+            "transition": transition_type
+        })
         
-    ranked.sort(key=lambda x: x["score"], reverse=True)
+    # We no longer sort by score here, we'll sort chronologically in choose_best_segments
     return ranked
 
 def choose_best_segments(ranked_segments: list[dict], target_duration: float = 15.0) -> list[dict]:
-    selected = []
-    current_duration = 0.0
-    for seg in ranked_segments:
-        if current_duration + seg["duration"] <= target_duration + 2.0:
-            selected.append(seg)
-            current_duration += seg["duration"]
-        if current_duration >= target_duration:
-            break
+    # The user explicitly requested to NOT cut clips blindly to meet a target duration (e.g. 24s/29s).
+    # We just return all valid non-silent segments in chronological order.
+    selected = list(ranked_segments)
     selected.sort(key=lambda x: x["start"])
     return selected
 
