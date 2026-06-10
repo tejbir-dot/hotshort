@@ -32,16 +32,20 @@ from dotenv import load_dotenv
 # ── Load local env ────────────────────────────────────────────────────────────
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-# Load .env.worker (worker-specific config) first, then fall back to .env
-_worker_env = os.path.join(BASE_DIR, ".env.worker")
-_default_env = os.path.join(BASE_DIR, ".env")
-
 # Always load .env first for global configs
+_default_env = os.path.join(BASE_DIR, ".env")
 if os.path.exists(_default_env):
     load_dotenv(_default_env)
     print(f"[LOCAL_WORKER] Loaded env from .env", flush=True)
 
-# Then override with .env.worker if present
+# Then override with .env.local if present
+_local_env = os.path.join(BASE_DIR, ".env.local")
+if os.path.exists(_local_env):
+    load_dotenv(_local_env, override=True)
+    print(f"[LOCAL_WORKER] Overrode env with .env.local", flush=True)
+
+# Finally override with .env.worker if present
+_worker_env = os.path.join(BASE_DIR, ".env.worker")
 if os.path.exists(_worker_env):
     load_dotenv(_worker_env, override=True)
     print(f"[LOCAL_WORKER] Overrode env with .env.worker", flush=True)
@@ -217,6 +221,310 @@ def _upload_clip_to_cloudinary(local_path: str) -> str | None:
         return None
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# RapidAPI YouTube Downloader  (youtube-media-downloader.p.rapidapi.com)
+# Strategy: fetch 720p video-only + best m4a audio → FFmpeg merge for sync
+# ──────────────────────────────────────────────────────────────────────────────
+
+_RAPID_DL_HOST = "youtube-media-downloader.p.rapidapi.com"
+
+
+def _extract_video_id(youtube_url: str) -> str:
+    """
+    Robustly extract YouTube video ID from any URL variant:
+      https://youtu.be/VIDEO_ID
+      https://www.youtube.com/watch?v=VIDEO_ID
+      https://youtube.com/shorts/VIDEO_ID
+      https://m.youtube.com/watch?v=VIDEO_ID&...
+    """
+    import re
+    patterns = [
+        r"(?:v=|/v/|youtu\.be/|/embed/|/shorts/)([A-Za-z0-9_-]{11})",
+    ]
+    for pat in patterns:
+        m = re.search(pat, youtube_url)
+        if m:
+            return m.group(1)
+    raise ValueError(f"Cannot extract video ID from URL: {youtube_url}")
+
+
+def _rapidapi_fetch_streams(video_id: str) -> dict:
+    """
+    Call /v2/video/details to get all available stream URLs.
+    Returns the raw API response dict.
+    """
+    api_key = os.environ.get("RAPIDAPI_KEY", "")
+    if not api_key:
+        raise RuntimeError("RAPIDAPI_KEY env var is not set")
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-rapidapi-host": _RAPID_DL_HOST,
+        "x-rapidapi-key": api_key,
+    }
+    resp = requests.get(
+        f"https://{_RAPID_DL_HOST}/v2/video/details",
+        params={"videoId": video_id},
+        headers=headers,
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"RapidAPI /v2/video/details returned {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    if data.get("errorId") and data["errorId"] not in ("Error.None", "", None, "None", "Success"):
+        raise RuntimeError(f"RapidAPI error: {data.get('errorId')} — {data.get('errorMessage', '')}")
+    return data
+
+
+def _pick_best_streams(data: dict) -> tuple:
+    """
+    Choose the best video stream + best audio stream.
+
+    Priority for VIDEO (no audio):
+      720p mp4  >  720p webm  >  480p mp4  >  360p mp4
+    Priority for AUDIO:
+      m4a  >  weba (highest bitrate wins)
+
+    Special case: if 360p mp4 with hasAudio=True exists AND no separate audio
+    stream found, return (360p_stream, None) to signal single-file download.
+
+    Returns: (video_stream_dict, audio_stream_dict_or_None)
+    """
+    videos = data.get("videos", {})
+    video_items = videos if isinstance(videos, list) else videos.get("items", [])
+
+    audios = data.get("audios", {})
+    audio_items = audios if isinstance(audios, list) else audios.get("items", [])
+
+    # ── Pick video stream ──────────────────────────────────────────────────────
+    # Prefer 720p mp4 without audio (clean video-only for merge)
+    target_heights = [720, 480, 360]
+    video_stream = None
+    for height in target_heights:
+        # First try: exact height, mp4, no audio
+        for v in video_items:
+            if (v.get("height") == height
+                    and v.get("extension") == "mp4"
+                    and not v.get("hasAudio", True)
+                    and v.get("url")):
+                video_stream = v
+                break
+        if video_stream:
+            break
+        # Second try: any ext at that height, no audio
+        for v in video_items:
+            if (v.get("height") == height
+                    and not v.get("hasAudio", True)
+                    and v.get("url")):
+                video_stream = v
+                break
+        if video_stream:
+            break
+
+    # Fallback: 360p mp4 WITH audio baked in (single-file, no merge needed)
+    if not video_stream:
+        for v in video_items:
+            if (v.get("height") == 360
+                    and v.get("extension") == "mp4"
+                    and v.get("hasAudio")
+                    and v.get("url")):
+                print("[LOCAL_WORKER] No video-only stream found — using 360p+audio single file", flush=True)
+                return v, None  # single-file path, skip merge
+
+    if not video_stream:
+        raise RuntimeError("No suitable video stream found from RapidAPI")
+
+    # ── Pick audio stream ──────────────────────────────────────────────────────
+    # Prefer m4a (AAC container, direct copy in mp4), then weba
+    audio_stream = None
+    for ext_pref in ("m4a", "weba"):
+        candidates = [a for a in audio_items if a.get("extension") == ext_pref and a.get("url")]
+        if candidates:
+            # Pick largest size = highest quality
+            audio_stream = max(candidates, key=lambda a: a.get("size", 0))
+            break
+
+    if not audio_stream:
+        raise RuntimeError("No suitable audio stream found from RapidAPI")
+
+    return video_stream, audio_stream
+
+
+def _stream_download(url: str, dest_path: str, label: str):
+    """
+    Download a stream URL to dest_path using parallel chunked downloading.
+    Bypasses YouTube's per-connection bandwidth throttling (which causes slow DLs).
+    """
+    import concurrent.futures
+    import threading
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://www.youtube.com/",
+        "Origin": "https://www.youtube.com",
+    }
+    
+    # Get total file size
+    resp = requests.get(url, headers=headers, stream=True, timeout=20)
+    if resp.status_code not in (200, 206):
+        raise RuntimeError(f"{label} download failed: HTTP {resp.status_code}")
+        
+    total = int(resp.headers.get("Content-Length", 0))
+    if total == 0 or resp.headers.get("Accept-Ranges") != "bytes":
+        # Fallback to normal download if server doesn't support ranges
+        with open(dest_path, "wb") as fh:
+            for chunk in resp.iter_content(chunk_size=512 * 1024):
+                if chunk:
+                    fh.write(chunk)
+        print(f"[LOCAL_WORKER] {label}: done", flush=True)
+        return
+        
+    resp.close()
+
+    chunk_size = 2 * 1024 * 1024  # 2MB chunks
+    chunks = [(i, min(i + chunk_size - 1, total - 1)) for i in range(0, total, chunk_size)]
+    downloaded = 0
+    last_pct = -1
+    lock = threading.Lock()
+
+    # Pre-allocate file
+    with open(dest_path, "wb") as f:
+        f.truncate(total)
+
+    with open(dest_path, "r+b") as fh:
+        def download_chunk(start, end):
+            nonlocal downloaded, last_pct
+            for attempt in range(3):
+                try:
+                    range_headers = headers.copy()
+                    range_headers["Range"] = f"bytes={start}-{end}"
+                    r = requests.get(url, headers=range_headers, timeout=30)
+                    r.raise_for_status()
+                    data = r.content
+                    with lock:
+                        fh.seek(start)
+                        fh.write(data)
+                        downloaded += len(data)
+                        pct = int(downloaded / total * 100)
+                        if pct - last_pct >= 20:
+                            print(f"[LOCAL_WORKER] {label}: {pct}% ({downloaded // (1024*1024)}MB)", flush=True)
+                            last_pct = pct
+                    return True
+                except Exception:
+                    time.sleep(1)
+            raise RuntimeError(f"Failed to download chunk {start}-{end}")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(download_chunk, s, e) for s, e in chunks]
+            for f in concurrent.futures.as_completed(futures):
+                f.result()  # raise if chunk failed
+
+    size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+    print(f"[LOCAL_WORKER] {label}: done ({size_mb:.1f} MB)", flush=True)
+
+
+def _ffmpeg_merge_video_audio(video_path: str, audio_path: str, output_path: str):
+    """
+    Merge a video-only stream + audio-only stream into a single mp4.
+
+    Key flags for PERFECT sync:
+      -map 0:v:0        → take video track from first input (video file)
+      -map 1:a:0        → take audio track from second input (audio file)
+      -c:v copy         → NO video re-encode — preserves exact frame timing
+      -c:a aac          → transcode audio to AAC (mp4 container requirement)
+      -af aresample=async=1:min_hard_comp=0.100000:first_pts=0
+                        → fix any PTS gaps / drift — keeps audio locked to video
+      -movflags +faststart → moov atom at front (better for streaming)
+      -avoid_negative_ts make_zero → clamp any negative timestamps to 0
+    """
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,           # input 0: video-only
+        "-i", audio_path,           # input 1: audio-only
+        "-map", "0:v:0",            # explicit: take video stream from file 0
+        "-map", "1:a:0",            # explicit: take audio stream from file 1
+        "-c:v", "copy",             # video: no re-encode (frame-perfect)
+        "-c:a", "aac",              # audio: encode to AAC (mp4 compatible)
+        "-b:a", "192k",             # audio bitrate
+        "-af", "aresample=async=1:min_hard_comp=0.100000:first_pts=0",  # sync fix
+        "-avoid_negative_ts", "make_zero",
+        "-movflags", "+faststart",
+        output_path,
+    ]
+    print("[LOCAL_WORKER] FFmpeg merge: video + audio → final mp4", flush=True)
+    result = subprocess.run(cmd, capture_output=True, timeout=300)
+    if result.returncode != 0:
+        err = result.stderr.decode("utf-8", errors="replace")[-800:]
+        raise RuntimeError(f"FFmpeg merge failed:\n{err}")
+    size_mb = os.path.getsize(output_path) / (1024 * 1024)
+    print(f"[LOCAL_WORKER] Merge complete: {size_mb:.1f} MB -> {output_path}", flush=True)
+
+
+def _download_via_api(youtube_url: str, dest_path: str):
+    """
+    Download a YouTube video to dest_path using youtube-media-downloader RapidAPI.
+
+    Flow:
+      1. Extract video ID from URL
+      2. Fetch all available streams via /v2/video/details
+      3. Pick best 720p video-only stream + best m4a audio stream
+      4. Download both to temp files
+      5. FFmpeg merge → dest_path (perfect audio/video sync)
+
+    Falls back to 360p+audio single file if no separate streams available.
+    """
+    # ── 1. Extract video ID ────────────────────────────────────────────────────
+    video_id = _extract_video_id(youtube_url)
+    print(f"[LOCAL_WORKER] RapidAPI download: videoId={video_id}", flush=True)
+
+    # ── 2. Fetch stream info ───────────────────────────────────────────────────
+    print("[LOCAL_WORKER] Fetching stream URLs from RapidAPI...", flush=True)
+    data = _rapidapi_fetch_streams(video_id)
+    title = data.get("title", "unknown")[:60]
+    duration = data.get("lengthSeconds", "?")
+    print(f"[LOCAL_WORKER] Title: {title} | Duration: {duration}s", flush=True)
+
+    # ── 3. Pick streams ────────────────────────────────────────────────────────
+    video_stream, audio_stream = _pick_best_streams(data)
+    v_quality = video_stream.get("quality", "?")
+    v_size_mb = round(video_stream.get("size", 0) / 1024 / 1024, 1)
+    print(f"[LOCAL_WORKER] Video stream: {v_quality} {video_stream.get('extension')} ({v_size_mb} MB)", flush=True)
+
+    tmp_dir = os.path.dirname(dest_path)
+
+    # ── 4a. Single-file path (360p with audio) ─────────────────────────────────
+    if audio_stream is None:
+        print("[LOCAL_WORKER] Single-file download (360p+audio, no merge needed)", flush=True)
+        _stream_download(video_stream["url"], dest_path, "360p+audio")
+        return
+
+    # ── 4b. Separate video + audio download ────────────────────────────────────
+    a_size_mb = round(audio_stream.get("size", 0) / 1024 / 1024, 1)
+    print(f"[LOCAL_WORKER] Audio stream: {audio_stream.get('extension')} ({a_size_mb} MB)", flush=True)
+
+    video_tmp  = os.path.join(tmp_dir, f"_raw_video_{video_id}.{video_stream.get('extension','mp4')}")
+    audio_tmp  = os.path.join(tmp_dir, f"_raw_audio_{video_id}.{audio_stream.get('extension','m4a')}")
+
+    print("[LOCAL_WORKER] Downloading video stream...", flush=True)
+    _stream_download(video_stream["url"], video_tmp, "video")
+
+    print("[LOCAL_WORKER] Downloading audio stream...", flush=True)
+    _stream_download(audio_stream["url"], audio_tmp, "audio")
+
+    # ── 5. FFmpeg merge ────────────────────────────────────────────────────────
+    _ffmpeg_merge_video_audio(video_tmp, audio_tmp, dest_path)
+
+    # Cleanup temp streams
+    for p in (video_tmp, audio_tmp):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Core processing pipeline
 # ══════════════════════════════════════════════════════════════════════════════
@@ -231,25 +539,11 @@ def _process_job(job: dict, cloudinary_ok: bool):
     with tempfile.TemporaryDirectory() as tmp:
         video_path = os.path.join(tmp, "video.mp4")
 
-        # ── Step 1: Download via yt-dlp (residential IP = no YouTube block) ──
-        print(f"[LOCAL_WORKER] Downloading video...", flush=True)
-        cookies_path = os.path.join(BASE_DIR, "cookies.txt")
-        ydl_opts = [
-            "yt-dlp",
-            "-f", "best[ext=mp4]/best",
-            "--merge-output-format", "mp4",
-            "-o", video_path,
-            "--quiet",
-            "--no-warnings",
-        ]
-        if os.path.exists(cookies_path):
-            ydl_opts += ["--cookies", cookies_path]
-        ydl_opts.append(youtube_url)
-
-        result = subprocess.run(ydl_opts, capture_output=True, timeout=300)
-        if result.returncode != 0:
-            err = result.stderr.decode("utf-8", errors="ignore")[-500:]
-            raise RuntimeError(f"yt-dlp failed: {err}")
+        # ── Step 1: Download via RapidAPI (youtube-media-downloader) ────────────
+        # yt-dlp is NOT used — doesn't work on cloud/Railway deployments.
+        # Instead: fetch 720p video-only + m4a audio separately, FFmpeg merge.
+        print(f"[LOCAL_WORKER] Downloading video via RapidAPI...", flush=True)
+        _download_via_api(youtube_url, video_path)
 
         if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
             raise RuntimeError("Downloaded file is missing or too small")

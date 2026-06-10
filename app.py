@@ -25,6 +25,9 @@ from dotenv import load_dotenv
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
+_local_env = os.path.join(BASE_DIR, ".env.local")
+if os.path.exists(_local_env):
+    load_dotenv(dotenv_path=_local_env, override=True)
 
 groq_present = "GROQ_API_KEY" in os.environ and bool(os.environ["GROQ_API_KEY"].strip())
 print(f"GROQ_API_KEY present={str(groq_present).lower()}", flush=True)
@@ -358,19 +361,16 @@ def _orchestrate_via_local_gpu(youtube_url: str, job_id: str | None = None, time
 
 
 def _download_via_api(youtube_url):
-    print(f"[INFO] Bypassing Google CDN... Requesting Proxy MP4 link for: {youtube_url}", flush=True)
+    clean_url = youtube_url.split("?si=")[0].split("&si=")[0]
+    print(f"[INFO] Bypassing Google CDN... Requesting Proxy MP4 link for: {clean_url}", flush=True)
     
     # 1. Start the proxy download job
     api_url = "https://youtube-info-download-api.p.rapidapi.com/ajax/download.php"
     
     querystring = {
-        "format": "720", 
-        "add_info": "0",
-        "url": youtube_url,
+        "format": "720",
+        "url": clean_url,
         "audio_quality": "128",
-        "allow_extended_duration": "false",
-        "no_merge": "false",
-        "audio_language": "en"
     }
     
     headers = {
@@ -381,7 +381,11 @@ def _download_via_api(youtube_url):
     
     try:
         response = requests.get(api_url, headers=headers, params=querystring, timeout=30)
-        response.raise_for_status()
+        if response.status_code != 200:
+            print(f"[INFO] RapidAPI Error Status: {response.status_code}", flush=True)
+            print(f"[INFO] RapidAPI Error Body: {response.text}", flush=True)
+            raise RuntimeError(f"RapidAPI failed: {response.text}")
+            
         data = response.json()
         
         progress_url = data.get("progress_url")
@@ -3718,7 +3722,7 @@ def results(job_id):
                 # Create proper ViralClip object from simple data
                 clip = ViralClip(
                     clip_id=simple_clip.get("clip_id") or simple_clip.get("job_id") or f"clip_{idx}",
-                    title=simple_clip.get("title", f"Viral Clip #{idx}"),
+                    title=explanation.get("hook") or simple_clip.get("title") or f"Viral Clip #{idx}",
                     clip_url=resolved_url,
                     platform_variants={
                         "youtube_shorts": resolved_url,
