@@ -516,7 +516,7 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
     print(f"[LOCAL_WORKER] Downloading via yt-dlp to {dest_path}", flush=True)
     cmd = [
         "yt-dlp",
-        "--format", "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best",
+        "--format", "bestvideo[ext=mp4][vcodec*=avc][height<=720]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best",
         "--merge-output-format", "mp4",
         "--output", dest_path,
         youtube_url
@@ -623,8 +623,11 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 # Outro: scale to match
                 "[2:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
                 "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[outro_v];"
+                # Resample audio to 44.1kHz Stereo to prevent sample rate/channel layout concat failures
+                "[0:a]aresample=44100,aformat=channel_layouts=stereo[main_a_res];"
+                "[2:a]aresample=44100,aformat=channel_layouts=stereo[outro_a_res];"
                 # Concat main + outro
-                "[main_v][0:a][outro_v][2:a]concat=n=2:v=1:a=1[v][a]"
+                "[main_v][main_a_res][outro_v][outro_a_res]concat=n=2:v=1:a=1[v][a]"
             )
             cmd = [
                 "ffmpeg", "-y",
@@ -637,6 +640,9 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "-c:v", "h264_nvenc",
                 "-preset", "p4",
                 "-b:v", "5M",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-movflags", "+faststart",
                 output_path
             ]
         else:
@@ -660,6 +666,7 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "-preset", "p4",
                 "-b:v", "5M",
                 "-c:a", "copy",
+                "-movflags", "+faststart",
                 output_path
             ]
 
@@ -749,10 +756,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
         def _process_single_clip(i: int, clip: dict) -> dict:
             start = float(clip.get("start", 0))
             end   = float(clip.get("end", start + 30))
-            # NOTE: No temp cut file! We pass -ss/-to directly to WCE/branding.
-            # This eliminates 1 full encode pass (~15-20s) per clip.
-            # raw_path is only used if WCE/branding fails as emergency fallback.
+            # Restored ultra-fast stream copy extraction step. 
+            # enhance_pretrimmed_clip requires a PRE-TRIMMED clip because its fade/trim logic
+            # operates on clip-relative timestamps (0 to duration).
             raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-ss", str(start), "-to", str(end),
+                    "-i", video_path, "-c", "copy", "-avoid_negative_ts", "make_zero", raw_path
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+            except Exception as e:
+                print(f"[LOCAL_WORKER] FFmpeg extract failed for clip {i}: {e}")
+
 
             clip_res = {**clip, "clip_url": None, "error": None}
 
@@ -787,10 +802,10 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         enhance_audio=_wce_enabled,
                         target_ratio="9:16",
                     )
-                    # Pass -ss/-to + full video directly — WCE handles the cut internally.
-                    # This skips the temp cut encode entirely.
+                    # Pass the pre-trimmed clip! WCE logic is clip-relative.
                     edit_result = editor.enhance_pretrimmed_clip(
-                        input_path=video_path,   # ← full video, no temp cut
+                        input_path=raw_path,   # ← Pre-trimmed clip
+
                         output_path=edited_path,
                         source_start=start,
                         source_end=end,
