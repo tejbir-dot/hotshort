@@ -196,6 +196,10 @@ class ClipEditConfig:
     filler_gap_threshold_s: float = 0.9
     max_caption_words: int = 7
     generate_ab_suggestions: bool = True
+    # ── Format detection & speaker tracking ────────────────────────────────────
+    enable_format_detection: bool = True   # detect podcast/monologue/motion_graphic
+    podcast_crop_mode: str = "active"      # "active" = jump to speaker | "wide" = keep both in frame
+    speaker_aware_captions: bool = True    # align captions to active speaker side
 
 
 @dataclass
@@ -203,6 +207,17 @@ class CaptionSegment:
     start: float
     end: float
     text: str
+    speaker_side: str = "center"  # "left" | "center" | "right" — drives \an ASS alignment
+
+
+@dataclass
+class VideoFormat:
+    """Result of single-pass video analysis. Drives crop expression and caption alignment."""
+    format_type: str                        # "monologue" | "podcast" | "motion_graphic" | "fast_cuts"
+    face_count_avg: float                   # average faces per sampled frame
+    speaker_positions: List[float]          # normalized X for each detected speaker cluster
+    face_switch_rate: float                 # face-position transitions per second
+    samples: List[Tuple[float, List[float]]] = field(default_factory=list)  # (t_sec, [face_x, ...])
 
 
 @dataclass
@@ -331,40 +346,61 @@ class ClipEditor:
             "aac",
             "-b:a",
             _get_export_audio_bitrate(),
-            "-movflags",
-            "+faststart",
             output_path,
         ]
         self._run(cmd, timeout_s=timeout_s)
 
-    def _detect_primary_focus_x(self, clip_path: str) -> Union[float, str]:
+    def _ema_smooth(self, points, alpha=0.25):
+        """EMA smoothing - cinema-grade easing. alpha=0.25 = conservative, no jitter."""
+        if not points:
+            return []
+        result = [(points[0][0], _clamp(points[0][1], 0.10, 0.90))]
+        for i in range(1, len(points)):
+            t, x = points[i]
+            new_x = _clamp(alpha * x + (1.0 - alpha) * result[-1][1], 0.10, 0.90)
+            result.append((t, new_x))
+        return result
+
+    def _analyze_video_format(self, clip_path):
+        """Single-pass video format classifier. 15 frame samples, one OpenCV scan.
+        Returns VideoFormat: monologue | podcast | motion_graphic | fast_cuts.
+        Speed: ~0.3s on a typical 30s clip.
+        """
+        _null = VideoFormat(
+            format_type="monologue", face_count_avg=1.0,
+            speaker_positions=[0.5], face_switch_rate=0.0, samples=[],
+        )
         if cv2 is None:
-            return 0.5
+            return _null
+
         cap = cv2.VideoCapture(clip_path)
         if not cap.isOpened():
-            return 0.5
+            return _null
+
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1000.0
-        
-        # Sample across the entire clip (aim for ~15-20 samples)
-        step = max(1, int(total_frames / 18))
-        
-        frame_i = 0
-        samples_time_x = []
+        step = max(1, int(total_frames / 15))
 
         face_detector = None
         if mp is not None:
             try:
-                face_detector = mp.solutions.face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.5)
+                face_detector = mp.solutions.face_detection.FaceDetection(
+                    model_selection=1, min_detection_confidence=0.45
+                )
             except Exception:
                 face_detector = None
 
         cascade = None
         if face_detector is None:
             try:
-                cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+                cascade = cv2.CascadeClassifier(
+                    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+                )
             except Exception:
-                cascade = None
+                pass
+
+        samples = []
+        frame_i = 0
 
         try:
             while True:
@@ -379,25 +415,23 @@ class ClipEditor:
                     frame_i += 1
                     continue
 
-                centers = []
+                face_xs = []
                 if face_detector is not None:
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     res = face_detector.process(rgb)
                     for det in (res.detections or []):
                         bbox = det.location_data.relative_bounding_box
-                        cx = _clamp(bbox.xmin + (bbox.width / 2.0), 0.0, 1.0)
-                        centers.append(cx)
+                        cx = _clamp(bbox.xmin + bbox.width / 2.0, 0.0, 1.0)
+                        face_xs.append(cx)
                 elif cascade is not None:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(36, 36))
+                    faces = cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
                     for x, y, fw, fh in faces:
-                        centers.append(_clamp((x + (fw / 2.0)) / float(w), 0.0, 1.0))
+                        face_xs.append(_clamp((x + fw / 2.0) / float(w), 0.0, 1.0))
 
-                t_sec = frame_i / fps
-                if centers:
-                    samples_time_x.append((t_sec, float(statistics.median(centers))))
+                samples.append((frame_i / fps, face_xs))
                 frame_i += 1
-                if len(samples_time_x) >= 25:
+                if len(samples) >= 15:
                     break
         finally:
             cap.release()
@@ -407,51 +441,136 @@ class ClipEditor:
                 except Exception:
                     pass
 
-        if not samples_time_x:
+        if not samples:
+            return _null
+
+        face_counts = [len(s[1]) for s in samples]
+        avg_faces = sum(face_counts) / len(face_counts)
+        all_xs = [x for _, faces in samples for x in faces]
+
+        if avg_faces < 0.25 or not all_xs:
+            log.info("[WCE-FORMAT] classified=motion_graphic")
+            return VideoFormat(
+                format_type="motion_graphic", face_count_avg=avg_faces,
+                speaker_positions=[0.5], face_switch_rate=0.0, samples=samples,
+            )
+
+        left_xs  = [x for x in all_xs if x < 0.45]
+        right_xs = [x for x in all_xs if x > 0.55]
+        is_bimodal = len(left_xs) >= 2 and len(right_xs) >= 2
+
+        if is_bimodal or avg_faces >= 1.4:
+            lc = (sum(left_xs) / len(left_xs)) if left_xs else 0.25
+            rc = (sum(right_xs) / len(right_xs)) if right_xs else 0.75
+            spk_positions = [round(lc, 3), round(rc, 3)] if is_bimodal else [0.5]
+            single_sides = [
+                "L" if faces[0] < 0.5 else "R"
+                for _, faces in samples if len(faces) == 1
+            ]
+            switches = sum(1 for i in range(1, len(single_sides)) if single_sides[i] != single_sides[i - 1])
+            clip_dur = max(1.0, samples[-1][0] - samples[0][0])
+            log.info(
+                "[WCE-FORMAT] classified=podcast left=%.2f right=%.2f switches/s=%.2f"
+                % (lc, rc, switches / clip_dur)
+            )
+            return VideoFormat(
+                format_type="podcast", face_count_avg=avg_faces,
+                speaker_positions=spk_positions, face_switch_rate=switches / clip_dur, samples=samples,
+            )
+
+        single_xs = [faces[0] for _, faces in samples if len(faces) == 1]
+        if len(single_xs) < 3:
+            return _null
+
+        variance = statistics.variance(single_xs)
+        median_x = _clamp(float(statistics.median(single_xs)), 0.15, 0.85)
+        log.info("[WCE-FORMAT] single-face variance=%.4f median_x=%.3f" % (variance, median_x))
+
+        if variance > 0.07:
+            log.info("[WCE-FORMAT] classified=fast_cuts")
+            return VideoFormat(
+                format_type="fast_cuts", face_count_avg=avg_faces,
+                speaker_positions=[0.5], face_switch_rate=0.0, samples=samples,
+            )
+
+        log.info("[WCE-FORMAT] classified=monologue")
+        return VideoFormat(
+            format_type="monologue", face_count_avg=avg_faces,
+            speaker_positions=[median_x], face_switch_rate=0.0, samples=samples,
+        )
+
+    def _get_crop_expression(self, video_fmt, transcript_window, config):
+        """VideoFormat -> FFmpeg crop_x expression.
+        monologue: EMA lerp (smooth, stable).
+        podcast active: hard jump at transcript boundaries (instant speaker switch).
+        motion_graphic / fast_cuts: fixed 0.5.
+        """
+        fmt = video_fmt.format_type
+
+        if fmt in ("motion_graphic", "fast_cuts"):
             return 0.5
-            
-        x_vals = [s[1] for s in samples_time_x]
-        if len(x_vals) < 3:
-            return _clamp(float(statistics.median(x_vals)), 0.15, 0.85)
-            
-        variance = statistics.variance(x_vals)
-        median_x = float(statistics.median(x_vals))
-        
-        log.info(f"[WCE-VISUAL] Face Tracking Variance: {variance:.4f} (median: {median_x:.2f})")
-        
-        if variance < 0.005:
-            # Low variance -> Lock crop
-            log.info("[WCE-VISUAL] Face tracking mode: STATIC LOCK (low variance)")
-            return _clamp(median_x, 0.15, 0.85)
-        elif variance > 0.08:
-            # Chaotic movement -> Center crop fallback
-            log.info("[WCE-VISUAL] Face tracking mode: CENTER FALLBACK (chaotic movement)")
-            return 0.5
-        else:
-            # Moderate movement -> Smooth moving crop using FFmpeg lerp
-            log.info("[WCE-VISUAL] Face tracking mode: SMOOTH DYNAMIC (moderate movement)")
-            
-            # Smooth out points with a basic moving average
-            smoothed_points = []
-            for i in range(len(samples_time_x)):
-                start_i = max(0, i-1)
-                end_i = min(len(samples_time_x), i+2)
-                avg_x = sum(s[1] for s in samples_time_x[start_i:end_i]) / (end_i - start_i)
-                avg_x = _clamp(avg_x, 0.15, 0.85)
-                smoothed_points.append((samples_time_x[i][0], avg_x))
-                
-            # Build FFmpeg expression
-            expr = str(round(smoothed_points[-1][1], 3))
-            for i in range(len(smoothed_points)-2, -1, -1):
-                t1, x1 = smoothed_points[i]
-                t2, x2 = smoothed_points[i+1]
-                dt = t2 - t1
-                if dt <= 0: continue
-                x1, x2 = round(x1, 3), round(x2, 3)
-                lerp_str = f"lerp({x1},{x2},(t-{t1})/{dt})"
-                expr = f"if(lt(t,{t2}),{lerp_str},{expr})"
-                
+
+        if fmt == "monologue":
+            timed_pts = [(t, faces[0]) for t, faces in video_fmt.samples if len(faces) == 1]
+            if not timed_pts:
+                pos = video_fmt.speaker_positions[0] if video_fmt.speaker_positions else 0.5
+                return _clamp(pos, 0.15, 0.85)
+            smoothed = self._ema_smooth(timed_pts)
+            x_vals = [x for _, x in smoothed]
+            variance = statistics.variance(x_vals) if len(x_vals) >= 2 else 0.0
+            if variance < 0.006:
+                log.info("[WCE-VISUAL] mode=STATIC_LOCK")
+                return _clamp(float(statistics.median(x_vals)), 0.15, 0.85)
+            log.info("[WCE-VISUAL] mode=EMA_SMOOTH_DYNAMIC")
+            expr = str(round(smoothed[-1][1], 3))
+            for i in range(len(smoothed) - 2, -1, -1):
+                t1, x1 = smoothed[i]
+                t2, x2 = smoothed[i + 1]
+                dt = round(t2 - t1, 4)
+                if dt <= 0:
+                    continue
+                lerp_str = "lerp(%s,%s,(t-%s)/%s)" % (round(x1, 3), round(x2, 3), round(t1, 3), dt)
+                expr = "if(lt(t,%s),%s,%s)" % (round(t2, 3), lerp_str, expr)
             return expr
+
+        if fmt == "podcast" and config.podcast_crop_mode == "active":
+            spk = video_fmt.speaker_positions
+            if len(spk) < 2:
+                return _clamp(spk[0] if spk else 0.5, 0.15, 0.85)
+            left_x, right_x = sorted(spk[:2])
+            assignments = []
+            for seg in transcript_window:
+                t_start = _safe_float(seg.get("start"), 0.0)
+                closest_faces = []
+                best_dt = float("inf")
+                for t_samp, faces in video_fmt.samples:
+                    dt = abs(t_samp - t_start)
+                    if dt < best_dt:
+                        best_dt = dt
+                        closest_faces = faces
+                if len(closest_faces) == 1:
+                    spk_x = left_x if closest_faces[0] < 0.5 else right_x
+                elif len(closest_faces) >= 2:
+                    prev = assignments[-1][1] if assignments else left_x
+                    spk_x = right_x if prev == left_x else left_x
+                else:
+                    spk_x = assignments[-1][1] if assignments else left_x
+                assignments.append((t_start, spk_x))
+            if not assignments:
+                return left_x
+            log.info("[WCE-FORMAT] podcast jump-cut assignments=%d" % len(assignments))
+            expr = str(round(assignments[-1][1], 3))
+            for i in range(len(assignments) - 2, -1, -1):
+                t_cut = round(assignments[i + 1][0], 3)
+                crop_x = round(assignments[i][1], 3)
+                expr = "if(lt(t,%s),%s,%s)" % (t_cut, crop_x, expr)
+            return expr
+
+        return _clamp(
+            float(statistics.median(video_fmt.speaker_positions)) if video_fmt.speaker_positions else 0.5,
+            0.15, 0.85,
+        )
+
 
     def _is_boring_monologue(self, transcript_window: List[Dict[str, Any]]) -> bool:
         if not transcript_window:
@@ -662,6 +781,7 @@ class ClipEditor:
         trim_out: float,
         config: ClipEditConfig,
         ramp_window: float,
+        video_fmt: "VideoFormat" = None,
     ) -> List[CaptionSegment]:
         if not transcript_window:
             return []
@@ -691,7 +811,23 @@ class ClipEditor:
                 c_s = rel_start + (i * chunk_dur)
                 c_e = rel_start + ((i + 1) * chunk_dur)
                 c_txt = self._decorate_caption(chunk, config.add_emojis)
-                cap_segments.append(CaptionSegment(start=c_s, end=c_e, text=c_txt))
+                # Speaker-side assignment: map caption time to active speaker cluster
+                seg_side = "center"
+                if config.speaker_aware_captions and video_fmt is not None and len(video_fmt.speaker_positions) >= 2:
+                    spk = sorted(video_fmt.speaker_positions[:2])
+                    # Find which speaker cluster was visible closest to caption start
+                    closest_faces = []
+                    best_dt = float("inf")
+                    for t_samp, faces in video_fmt.samples:
+                        dt = abs(t_samp - c_s)
+                        if dt < best_dt:
+                            best_dt = dt
+                            closest_faces = faces
+                    if len(closest_faces) == 1:
+                        seg_side = "left" if closest_faces[0] < 0.5 else "right"
+                    elif len(closest_faces) >= 2:
+                        seg_side = "left" if (sum(closest_faces) / len(closest_faces)) < 0.5 else "right"
+                cap_segments.append(CaptionSegment(start=c_s, end=c_e, text=c_txt, speaker_side=seg_side))
         return cap_segments
 
     def _extract_hashtags(self, transcript_window: List[Dict[str, Any]], limit: int = 4) -> str:
@@ -819,11 +955,12 @@ class ClipEditor:
             shadow_size = "3"
 
         # ── Speaker-aware caption positioning ──────────────────────────────
-        # ─ Speaker-aware logic disabled. Always use uniform bottom-center ─
+        # Global style baseline = bottom-center (alignment=2). Per-event \an tags
+        # override alignment for individual captions when speaker_side is set.
         # Alignment codes in ASS: 1=bottom-left, 2=bottom-center, 3=bottom-right
         caption_alignment = 2
         margin_l, margin_r, margin_v = 40, 40, 250
-        log.info("[WCE-CAPTION] speaker-aware disabled → forced bottom-center (alignment=2) to guarantee alignment")
+        log.info("[WCE-CAPTION] per-event speaker-side \\an alignment: ACTIVE")
 
         header = [
             "[Script Info]",
@@ -872,11 +1009,13 @@ class ClipEditor:
                     if ghost_after:
                         parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_after))
                     line_text = " ".join(parts)
-                    events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{line_text}")
+                    an_tag = {"left": "{\\an1}", "right": "{\\an3}"}.get(getattr(seg, "speaker_side", "center"), "")
+                    events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
             else:
                 # Single-word segment — just highlight it
                 highlighted_text = self._highlight_text(escaped_text)
-                events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{highlighted_text}")
+                an_tag = {"left": "{\\an1}", "right": "{\\an3}"}.get(getattr(seg, "speaker_side", "center"), "")
+                events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{an_tag}{highlighted_text}")
 
         if hook_line:
             hook_text = self._format_hook_line(hook_line)
@@ -1087,15 +1226,29 @@ class ClipEditor:
             work_meta = self._probe_video(work_b)
             t_reframe += time.perf_counter() - t0
 
-            if cfg.enable_active_speaker:
+            video_fmt = None
+            if cfg.enable_active_speaker and cfg.enable_format_detection:
                 t0 = time.perf_counter()
-                focus_x = self._detect_primary_focus_x(work_b)
+                video_fmt = self._analyze_video_format(work_b)
                 t_face += time.perf_counter() - t0
-            else:
-                focus_x = 0.5
+                metadata["video_format"] = video_fmt.format_type
+                metadata["speaker_positions"] = video_fmt.speaker_positions
+                log.info(
+                    "[WCE-FORMAT] format=%s avg_faces=%.2f speakers=%s",
+                    video_fmt.format_type, video_fmt.face_count_avg, video_fmt.speaker_positions,
+                )
+            elif cfg.enable_active_speaker:
+                # Legacy: no format detection, use monologue mode only
+                t0 = time.perf_counter()
+                video_fmt = self._analyze_video_format(work_b)
+                t_face += time.perf_counter() - t0
 
             t0 = time.perf_counter()
             target_wh = self._resolve_ratio(cfg.target_ratio)
+            if video_fmt is not None:
+                focus_x = self._get_crop_expression(video_fmt, transcript_window, cfg)
+            else:
+                focus_x = 0.5
             vf = self._build_reframe_filter(work_meta, target_wh, focus_x, cfg, boring_mode)
             t_reframe += time.perf_counter() - t0
             af = self._build_audio_filter(cfg)
@@ -1109,6 +1262,7 @@ class ClipEditor:
                     trim_out=trim_out,
                     config=cfg,
                     ramp_window=ramp_window,
+                    video_fmt=video_fmt,
                 )
             vf_render = vf
             
@@ -1170,12 +1324,14 @@ class ClipEditor:
             
             has_any_overlay = (cfg.add_captions and captions) or (cfg.add_dynamic_overlays and hook_line) or (cfg.add_cta and cta_line)
             
-            # Derive speaker side for caption positioning
-            if isinstance(focus_x, str):
-                speaker_side = "center"
-            elif focus_x < 0.42:
+            # Derive global speaker_side for hook/CTA positioning (captions use per-event side)
+            if video_fmt is not None and video_fmt.format_type == "podcast" and len(video_fmt.speaker_positions) >= 1:
+                # Podcast: use the position of the first detected cluster
+                dom_x = video_fmt.speaker_positions[0]
+                speaker_side = "left" if dom_x < 0.45 else ("right" if dom_x > 0.55 else "center")
+            elif isinstance(focus_x, float) and focus_x < 0.42:
                 speaker_side = "left"
-            elif focus_x > 0.58:
+            elif isinstance(focus_x, float) and focus_x > 0.58:
                 speaker_side = "right"
             else:
                 speaker_side = "center"
@@ -1248,8 +1404,6 @@ class ClipEditor:
                     crf=int(cfg.quality_crf if cfg.preserve_quality else 24),
                     preset=cfg.quality_preset if cfg.preserve_quality else "veryfast",
                 ),
-                "-movflags",
-                "+faststart",
             ])
             if bool(work_meta.get("has_audio")):
                 cmd += ["-af", af, "-c:a", "aac", "-b:a", _get_export_audio_bitrate()]
