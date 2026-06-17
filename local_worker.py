@@ -281,7 +281,13 @@ def _pick_best_streams(data: dict) -> tuple:
     Choose the best video stream + best audio stream.
 
     Priority for VIDEO (no audio):
-      720p mp4  >  720p webm  >  480p mp4  >  360p mp4
+      720p H264 mp4  >  720p any mp4  >  480p H264  >  480p mp4  >  360p mp4
+
+    H264 (avc1) is STRONGLY preferred over AV1 because:
+      - H264 has NVDEC hardware decode path on GPU (AV1 does NOT)
+      - AV1 forces CPU software decode, which dominates render time
+      - H264 decode: ~1-4s. AV1 software decode: ~15-20s per clip.
+
     Priority for AUDIO:
       m4a  >  weba (highest bitrate wins)
 
@@ -297,29 +303,52 @@ def _pick_best_streams(data: dict) -> tuple:
     audio_items = audios if isinstance(audios, list) else audios.get("items", [])
 
     # ── Pick video stream ──────────────────────────────────────────────────────
-    # Prefer 720p mp4 without audio (clean video-only for merge)
+    # Strongly prefer H264 (avc1) over AV1 — H264 has NVDEC GPU path, AV1 does not.
     target_heights = [720, 480, 360]
     video_stream = None
+
+    # Pass 1: Look for H264 mp4 across all heights first (Best for GPU)
     for height in target_heights:
-        # First try: exact height, mp4, no audio
         for v in video_items:
+            codec = (v.get("codec") or v.get("mimeType") or "").lower()
+            is_h264 = "avc" in codec or "h264" in codec
             if (v.get("height") == height
                     and v.get("extension") == "mp4"
+                    and is_h264
                     and not v.get("hasAudio", True)
                     and v.get("url")):
                 video_stream = v
+                print(f"[LOCAL_WORKER] Selected H264 stream: {height}p (NVDEC capable)", flush=True)
                 break
         if video_stream:
             break
-        # Second try: any ext at that height, no audio
-        for v in video_items:
-            if (v.get("height") == height
-                    and not v.get("hasAudio", True)
-                    and v.get("url")):
-                video_stream = v
+
+    # Pass 2: If no H264 found, fallback to any mp4 (might be AV1)
+    if not video_stream:
+        for height in target_heights:
+            for v in video_items:
+                if (v.get("height") == height
+                        and v.get("extension") == "mp4"
+                        and not v.get("hasAudio", True)
+                        and v.get("url")):
+                    video_stream = v
+                    codec = (v.get("codec") or v.get("mimeType") or "unknown").lower()
+                    print(f"[LOCAL_WORKER] Selected {height}p stream codec={codec} (H264 not available)", flush=True)
+                    break
+            if video_stream:
                 break
-        if video_stream:
-            break
+
+    # Pass 3: Last resort, any extension
+    if not video_stream:
+        for height in target_heights:
+            for v in video_items:
+                if (v.get("height") == height
+                        and not v.get("hasAudio", True)
+                        and v.get("url")):
+                    video_stream = v
+                    break
+            if video_stream:
+                break
 
     # Fallback: 360p mp4 WITH audio baked in (single-file, no merge needed)
     if not video_stream:
@@ -340,8 +369,23 @@ def _pick_best_streams(data: dict) -> tuple:
     for ext_pref in ("m4a", "weba"):
         candidates = [a for a in audio_items if a.get("extension") == ext_pref and a.get("url")]
         if candidates:
-            # Pick largest size = highest quality
-            audio_stream = max(candidates, key=lambda a: a.get("size", 0))
+            # Sort by size (highest quality)
+            candidates.sort(key=lambda a: a.get("size", 0), reverse=True)
+            
+            # 1. Prefer explicitly marked 'original' tracks
+            original_candidates = [c for c in candidates if "acont%3Doriginal" in c.get("url", "") or "acont=original" in c.get("url", "")]
+            if original_candidates:
+                audio_stream = original_candidates[0]
+                break
+                
+            # 2. Avoid explicitly marked 'dubbed' tracks
+            non_dubbed = [c for c in candidates if "acont%3Ddubbed" not in c.get("url", "") and "acont=dubbed" not in c.get("url", "")]
+            if non_dubbed:
+                audio_stream = non_dubbed[0]
+                break
+                
+            # 3. Fallback to largest size
+            audio_stream = candidates[0]
             break
 
     if not audio_stream:
@@ -443,16 +487,15 @@ def _ffmpeg_merge_video_audio(video_path: str, audio_path: str, output_path: str
     """
     cmd = [
         "ffmpeg", "-y",
+        "-threads", "16",           # [OPTIMIZATION] Max parallel threads for reading/writing/audio-encoding
         "-i", video_path,           # input 0: video-only
         "-i", audio_path,           # input 1: audio-only
         "-map", "0:v:0",            # explicit: take video stream from file 0
         "-map", "1:a:0",            # explicit: take audio stream from file 1
-        "-c:v", "copy",             # video: no re-encode (frame-perfect)
-        "-c:a", "aac",              # audio: encode to AAC (mp4 compatible)
-        "-b:a", "192k",             # audio bitrate
-        "-af", "aresample=async=1:min_hard_comp=0.100000:first_pts=0",  # sync fix
+        "-c:v", "copy",             # video: no re-encode (frame-perfect, fastest)
+        "-c:a", "copy",             # audio: no re-encode (instantaneous, 100% original quality)
         "-avoid_negative_ts", "make_zero",
-        "-movflags", "+faststart",
+        # "-movflags", "+faststart",  # [OPTIMIZATION] REMOVED! This caused a massive I/O delay at the end
         output_path,
     ]
     print("[LOCAL_WORKER] FFmpeg merge: video + audio → final mp4", flush=True)
@@ -462,6 +505,29 @@ def _ffmpeg_merge_video_audio(video_path: str, audio_path: str, output_path: str
         raise RuntimeError(f"FFmpeg merge failed:\n{err}")
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
     print(f"[LOCAL_WORKER] Merge complete: {size_mb:.1f} MB -> {output_path}", flush=True)
+
+
+def _download_via_ytdlp(youtube_url: str, dest_path: str):
+    """
+    Download using local yt-dlp if RapidAPI hits a quota limit (429).
+    Uses format string that prefers 720p mp4 + m4a audio.
+    """
+    import subprocess
+    print(f"[LOCAL_WORKER] Downloading via yt-dlp to {dest_path}", flush=True)
+    cmd = [
+        "yt-dlp",
+        "--format", "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best",
+        "--merge-output-format", "mp4",
+        "--output", dest_path,
+        youtube_url
+    ]
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
+        err = result.stderr.decode("utf-8", errors="replace")
+        raise RuntimeError(f"yt-dlp failed: {err}")
+        
+    if not os.path.exists(dest_path) or os.path.getsize(dest_path) < 1000:
+        raise RuntimeError("yt-dlp completed but output file is missing or empty.")
 
 
 def _download_via_api(youtube_url: str, dest_path: str):
@@ -529,21 +595,103 @@ def _download_via_api(youtube_url: str, dest_path: str):
 # Core processing pipeline
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
+    """
+    Apply cinematic blur background + watermark + outro in a SINGLE FFmpeg pass.
+
+    OPTIMIZATION: Previously this was 2 separate NVENC encodes (watermark then outro concat).
+    Now merged into 1 filtergraph — saves 1 full GPU encode (~15-20s) per clip.
+    """
+    outro_path = os.path.join(BASE_DIR, "static", "branding", "outro.mp4")
+    watermark_path = os.path.join(BASE_DIR, "static", "branding", "logo.png")
+    has_outro = os.path.exists(outro_path) and os.path.getsize(outro_path) > 1000
+
+    try:
+        print(f"[LOCAL_WORKER] Branding (single pass): blur+watermark{'+ outro' if has_outro else ''}", flush=True)
+
+        if has_outro:
+            # ── SINGLE PASS: blur + watermark + outro concat ───────────────────
+            filter_complex = (
+                # Main clip: cinematic blur bg + centered video
+                "[0:v]split=2[blur][vid];"
+                "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40[bg];"
+                "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
+                # Watermark overlay
+                "[1:v]scale=180:-1,format=rgba,colorchannelmixer=aa=0.8[wm];"
+                "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30[main_v];"
+                # Outro: scale to match
+                "[2:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
+                "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[outro_v];"
+                # Concat main + outro
+                "[main_v][0:a][outro_v][2:a]concat=n=2:v=1:a=1[v][a]"
+            )
+            cmd = [
+                "ffmpeg", "-y",
+                "-hwaccel", "auto",
+                "-i", input_path,        # 0: main clip
+                "-i", watermark_path,    # 1: logo.png
+                "-i", outro_path,        # 2: outro.mp4
+                "-filter_complex", filter_complex,
+                "-map", "[v]", "-map", "[a]",
+                "-c:v", "h264_nvenc",
+                "-preset", "p4",
+                "-b:v", "5M",
+                output_path
+            ]
+        else:
+            # ── NO OUTRO: blur + watermark only (single pass) ──────────────────
+            print(f"[LOCAL_WORKER] WARNING: Outro not found at {outro_path}. Watermark only.", flush=True)
+            filter_complex = (
+                "[0:v]split=2[blur][vid];"
+                "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40[bg];"
+                "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
+                "[1:v]scale=180:-1,format=rgba,colorchannelmixer=aa=0.8[wm];"
+                "[merged][wm]overlay=W-w-50:H-h-250"
+            )
+            cmd = [
+                "ffmpeg", "-y",
+                "-hwaccel", "auto",
+                "-i", input_path,
+                "-i", watermark_path,
+                "-filter_complex", filter_complex,
+                "-c:v", "h264_nvenc",
+                "-preset", "p4",
+                "-b:v", "5M",
+                "-c:a", "copy",
+                output_path
+            ]
+
+        result = subprocess.run(cmd, capture_output=True, timeout=300)
+        if result.returncode != 0:
+            print(f"[LOCAL_WORKER] Branding failed: {result.stderr.decode('utf-8', errors='ignore')[-500:]}", flush=True)
+            return False
+
+        return True
+
+    except Exception as e:
+        print(f"[LOCAL_WORKER] Error in distribution branding: {e}", flush=True)
+        return False
+
+
 def _process_job(job: dict, cloudinary_ok: bool):
     job_id      = job["job_id"]
     youtube_url = job.get("youtube_url") or job.get("video_url", "")
-    is_free     = job.get("is_free_user", False)
+    is_free     = False if os.getenv("HS_UNLIMITED_MODE", "0") == "1" else job.get("is_free_user", False)
 
     print(f"[LOCAL_WORKER] 🎬 Processing job {job_id}: {youtube_url[:80]}", flush=True)
 
     with tempfile.TemporaryDirectory() as tmp:
         video_path = os.path.join(tmp, "video.mp4")
 
-        # ── Step 1: Download via RapidAPI (youtube-media-downloader) ────────────
-        # yt-dlp is NOT used — doesn't work on cloud/Railway deployments.
-        # Instead: fetch 720p video-only + m4a audio separately, FFmpeg merge.
-        print(f"[LOCAL_WORKER] Downloading video via RapidAPI...", flush=True)
-        _download_via_api(youtube_url, video_path)
+        # ── Step 1: Download via RapidAPI or fallback to yt-dlp ────────────
+        print(f"[LOCAL_WORKER] Downloading video...", flush=True)
+        try:
+            _download_via_api(youtube_url, video_path)
+        except Exception as e:
+            print(f"[LOCAL_WORKER] RapidAPI failed ({e}), falling back to yt-dlp...", flush=True)
+            _download_via_ytdlp(youtube_url, video_path)
 
         if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
             raise RuntimeError("Downloaded file is missing or too small")
@@ -579,7 +727,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
         _editor_cls = None
         _config_cls = None
         _wce_enabled = os.getenv("HS_WORKER_EDITOR_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
-        if _wce_enabled:
+        _caption_enabled = os.getenv("HS_CAPTION_WORKER_ENABLED", "0").strip().lower() not in ("0", "false", "no", "off")
+        if _wce_enabled or _caption_enabled:
             try:
                 from effects.world_class_editor import ClipEditor, ClipEditConfig
                 _editor_cls = ClipEditor
@@ -596,27 +745,16 @@ def _process_job(job: dict, cloudinary_ok: bool):
         os.makedirs(_editor_work_dir, exist_ok=True)
 
         processed_clips = []
-        for i, clip in enumerate(clips):
+        
+        def _process_single_clip(i: int, clip: dict) -> dict:
             start = float(clip.get("start", 0))
             end   = float(clip.get("end", start + 30))
+            # NOTE: No temp cut file! We pass -ss/-to directly to WCE/branding.
+            # This eliminates 1 full encode pass (~15-20s) per clip.
+            # raw_path is only used if WCE/branding fails as emergency fallback.
             raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
 
-            # Raw ffmpeg cut
-            cut_res = subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-ss", str(start), "-to", str(end),
-                    "-i", video_path,
-                    "-c", "copy",
-                    "-avoid_negative_ts", "make_zero",
-                    raw_path,
-                ],
-                capture_output=True, timeout=120
-            )
-            if cut_res.returncode != 0:
-                print(f"[LOCAL_WORKER] ffmpeg cut failed for clip {i}", flush=True)
-                processed_clips.append({**clip, "clip_url": None, "error": "ffmpeg_failed"})
-                continue
+            clip_res = {**clip, "clip_url": None, "error": None}
 
             # Apply editor if available
             final_path = raw_path
@@ -640,17 +778,19 @@ def _process_job(job: dict, cloudinary_ok: bool):
 
                     editor = _editor_cls(work_dir=_editor_work_dir)
                     cfg = _config_cls(
-                        add_captions=True,
-                        add_dynamic_overlays=True,
-                        add_cta=True,
-                        add_hashtags=True,
-                        add_emojis=True,
-                        enhance_visuals=True,
-                        enhance_audio=True,
+                        add_captions=_caption_enabled or _wce_enabled,
+                        add_dynamic_overlays=_wce_enabled,
+                        add_cta=_wce_enabled,
+                        add_hashtags=_wce_enabled,
+                        add_emojis=_caption_enabled or _wce_enabled,
+                        enhance_visuals=_wce_enabled,
+                        enhance_audio=_wce_enabled,
                         target_ratio="9:16",
                     )
+                    # Pass -ss/-to + full video directly — WCE handles the cut internally.
+                    # This skips the temp cut encode entirely.
                     edit_result = editor.enhance_pretrimmed_clip(
-                        input_path=raw_path,
+                        input_path=video_path,   # ← full video, no temp cut
                         output_path=edited_path,
                         source_start=start,
                         source_end=end,
@@ -660,13 +800,35 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         is_free=clip.get("is_free", False) or is_free,
                         cortex_hints=cortex_hints,
                     )
+                    
                     if edit_result and os.path.exists(edit_result.output_path):
-                        final_path = edit_result.output_path
-                        print(f"[LOCAL_WORKER] Editor done clip {i} (score={edit_result.engagement_score:.1f})", flush=True)
+                        print(f"[LOCAL_WORKER] Captions added to clip {i}, now applying distribution branding...", flush=True)
+                        branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
+                        if _apply_distribution_branding(edit_result.output_path, branded_path):
+                            if os.path.exists(branded_path):
+                                final_path = branded_path
+                        else:
+                            final_path = edit_result.output_path
                     else:
-                        print(f"[LOCAL_WORKER] Editor output missing clip {i}, using raw", flush=True)
+                        print(f"[LOCAL_WORKER] Editor output missing clip {i}, using raw and branding", flush=True)
+                        branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
+                        if _apply_distribution_branding(raw_path, branded_path):
+                            if os.path.exists(branded_path):
+                                final_path = branded_path
                 except Exception as edit_err:
                     print(f"[LOCAL_WORKER] Editor error clip {i}: {edit_err}", flush=True)
+                    branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
+                    if _apply_distribution_branding(raw_path, branded_path):
+                        if os.path.exists(branded_path):
+                            final_path = branded_path
+            else:
+                print(f"[LOCAL_WORKER] WCE disabled, applying distribution branding (watermark+outro) to clip {i}", flush=True)
+                branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
+                if _apply_distribution_branding(raw_path, branded_path):
+                    if os.path.exists(branded_path):
+                        final_path = branded_path
+                else:
+                    print(f"[LOCAL_WORKER] Distribution branding failed for clip {i}, using raw", flush=True)
 
             # Upload to Cloudinary
             clip_url = None
@@ -679,8 +841,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
             else:
                 print(f"[LOCAL_WORKER] Cloudinary not configured — clip {i} has no URL", flush=True)
 
-            processed_clips.append({**clip, "clip_url": clip_url})
+            clip_res["clip_url"] = clip_url
+            return clip_res
 
+        import concurrent.futures
+        # Use 3 concurrent workers for FFmpeg NVENC (Consumer GPUs usually cap around 3-5 concurrent streams)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            future_to_i = {executor.submit(_process_single_clip, i, clip): i for i, clip in enumerate(clips)}
+            for future in concurrent.futures.as_completed(future_to_i):
+                processed_clips.append(future.result())
+
+        # Sort back to original order since futures finish randomly
+        processed_clips.sort(key=lambda x: x.get("start", 0))
         return processed_clips
 
 

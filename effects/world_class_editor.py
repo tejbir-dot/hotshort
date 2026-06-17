@@ -9,7 +9,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
     import cv2
@@ -337,16 +337,20 @@ class ClipEditor:
         ]
         self._run(cmd, timeout_s=timeout_s)
 
-    def _detect_primary_focus_x(self, clip_path: str) -> float:
+    def _detect_primary_focus_x(self, clip_path: str) -> Union[float, str]:
         if cv2 is None:
             return 0.5
         cap = cv2.VideoCapture(clip_path)
         if not cap.isOpened():
             return 0.5
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-        step = max(1, int(round(fps * 1.2)))
+        total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1000.0
+        
+        # Sample across the entire clip (aim for ~15-20 samples)
+        step = max(1, int(total_frames / 18))
+        
         frame_i = 0
-        samples = []
+        samples_time_x = []
 
         face_detector = None
         if mp is not None:
@@ -389,10 +393,11 @@ class ClipEditor:
                     for x, y, fw, fh in faces:
                         centers.append(_clamp((x + (fw / 2.0)) / float(w), 0.0, 1.0))
 
+                t_sec = frame_i / fps
                 if centers:
-                    samples.append(float(statistics.median(centers)))
+                    samples_time_x.append((t_sec, float(statistics.median(centers))))
                 frame_i += 1
-                if len(samples) >= 24:
+                if len(samples_time_x) >= 25:
                     break
         finally:
             cap.release()
@@ -402,9 +407,51 @@ class ClipEditor:
                 except Exception:
                     pass
 
-        if not samples:
+        if not samples_time_x:
             return 0.5
-        return _clamp(float(statistics.median(samples)), 0.15, 0.85)
+            
+        x_vals = [s[1] for s in samples_time_x]
+        if len(x_vals) < 3:
+            return _clamp(float(statistics.median(x_vals)), 0.15, 0.85)
+            
+        variance = statistics.variance(x_vals)
+        median_x = float(statistics.median(x_vals))
+        
+        log.info(f"[WCE-VISUAL] Face Tracking Variance: {variance:.4f} (median: {median_x:.2f})")
+        
+        if variance < 0.005:
+            # Low variance -> Lock crop
+            log.info("[WCE-VISUAL] Face tracking mode: STATIC LOCK (low variance)")
+            return _clamp(median_x, 0.15, 0.85)
+        elif variance > 0.08:
+            # Chaotic movement -> Center crop fallback
+            log.info("[WCE-VISUAL] Face tracking mode: CENTER FALLBACK (chaotic movement)")
+            return 0.5
+        else:
+            # Moderate movement -> Smooth moving crop using FFmpeg lerp
+            log.info("[WCE-VISUAL] Face tracking mode: SMOOTH DYNAMIC (moderate movement)")
+            
+            # Smooth out points with a basic moving average
+            smoothed_points = []
+            for i in range(len(samples_time_x)):
+                start_i = max(0, i-1)
+                end_i = min(len(samples_time_x), i+2)
+                avg_x = sum(s[1] for s in samples_time_x[start_i:end_i]) / (end_i - start_i)
+                avg_x = _clamp(avg_x, 0.15, 0.85)
+                smoothed_points.append((samples_time_x[i][0], avg_x))
+                
+            # Build FFmpeg expression
+            expr = str(round(smoothed_points[-1][1], 3))
+            for i in range(len(smoothed_points)-2, -1, -1):
+                t1, x1 = smoothed_points[i]
+                t2, x2 = smoothed_points[i+1]
+                dt = t2 - t1
+                if dt <= 0: continue
+                x1, x2 = round(x1, 3), round(x2, 3)
+                lerp_str = f"lerp({x1},{x2},(t-{t1})/{dt})"
+                expr = f"if(lt(t,{t2}),{lerp_str},{expr})"
+                
+            return expr
 
     def _is_boring_monologue(self, transcript_window: List[Dict[str, Any]]) -> bool:
         if not transcript_window:
@@ -420,7 +467,7 @@ class ClipEditor:
         avg_seg = (sum(durations) / len(durations)) if durations else 0.0
         return lexical_diversity < 0.34 and questions == 0 and exclaims <= 1 and avg_seg > 2.8
 
-    def _build_reframe_filter(self, meta: Dict[str, Any], target_wh: Tuple[int, int], focus_x: float, config: ClipEditConfig, boring_mode: bool) -> str:
+    def _build_reframe_filter(self, meta: Dict[str, Any], target_wh: Tuple[int, int], focus_x: Union[float, str], config: ClipEditConfig, boring_mode: bool) -> str:
         src_w = max(1, int(meta.get("width", 1920)))
         src_h = max(1, int(meta.get("height", 1080)))
         dst_w, dst_h = target_wh
@@ -430,25 +477,39 @@ class ClipEditor:
         if src_ar >= dst_ar:
             crop_h = src_h
             crop_w = max(2, int(round(src_h * dst_ar)))
-            x_center = src_w * _clamp(focus_x, 0.0, 1.0)
-            crop_x = int(round(_clamp(x_center - (crop_w / 2.0), 0.0, src_w - crop_w)))
-            crop_y = 0
+            if isinstance(focus_x, str):
+                # Dynamic expression
+                raw_x = f"max(0,min({src_w}-{crop_w},{src_w}*({focus_x})-({crop_w}/2.0)))"
+                crop_x = raw_x.replace(",", "\\,")
+            else:
+                x_center = src_w * _clamp(float(focus_x), 0.0, 1.0)
+                crop_x = str(int(round(_clamp(x_center - (crop_w / 2.0), 0.0, src_w - crop_w))))
+            crop_y = "0"
         else:
             crop_w = src_w
             crop_h = max(2, int(round(src_w / dst_ar)))
-            crop_x = 0
-            crop_y = int(round((src_h - crop_h) / 2.0))
+            crop_x = "0"
+            crop_y = str(int(round((src_h - crop_h) / 2.0)))
 
         vf_parts = [f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}", f"scale={dst_w}:{dst_h}:flags=lanczos"]
         
-        # 2. PIXEL CLARITY / SHARPNESS
-        # scale to 1080x1920 using lanczos, unsharp mild, contrast/saturation slight boost, denoise very light.
-        vf_parts.append("unsharp=5:5:0.8:3:3:0.4")
-        vf_parts.append("eq=contrast=1.06:saturation=1.08:brightness=0.01")
-        vf_parts.append("hqdn3d=1.2:1.2:3:3")
+        # 2. PIXEL CLARITY / SHARPNESS (Premium Cinematic Look)
+        # We removed hqdn3d and unsharp as they are massive CPU bottlenecks.
+        # Only keeping lightweight EQ for punchy colors.
+        vf_parts.append("eq=contrast=1.10:saturation=1.15:brightness=0.02:gamma=0.95")
+        
+        # 3. WATERMARK
+        if os.getenv("HS_WATERMARK_ENABLED", "1") == "1":
+            text = os.getenv("HS_WATERMARK_TEXT", "HOTSHORT")
+            # Burn watermark lightly into the top-right corner
+            vf_parts.append(f"drawtext=text='{text}':fontcolor=white@0.25:fontsize=H/35:x=W-tw-40:y=40:fontfile=C\\\\:/Windows/Fonts/segoeui.ttf")
 
-        log.info(f"[WCE-VISUAL] face_detected=True crop={crop_x},{crop_y},{crop_w},{crop_h}")
-        log.info("[WCE-VISUAL] clarity_filters=enabled")
+        if isinstance(focus_x, str):
+            log.info(f"[WCE-VISUAL] face_detected=True crop=DYNAMIC,{crop_y},{crop_w},{crop_h}")
+        else:
+            log.info(f"[WCE-VISUAL] face_detected=True crop={crop_x},{crop_y},{crop_w},{crop_h}")
+            
+        log.info("[WCE-VISUAL] clarity_filters=fast_eq_only")
 
         # NOTE: format=yuv420p is intentionally NOT appended here.
         # It must come AFTER the subtitles filter so libass can do
@@ -718,6 +779,7 @@ class ClipEditor:
         cta_line: Optional[str],
         hashtags_line: Optional[str],
         subtitle_style: str = "classic",
+        speaker_side: str = "center",  # "left", "right", or "center"
     ) -> None:
         style_val = str(subtitle_style or "classic").lower().strip()
         
@@ -756,6 +818,13 @@ class ClipEditor:
             border_size = "3"
             shadow_size = "3"
 
+        # ── Speaker-aware caption positioning ──────────────────────────────
+        # ─ Speaker-aware logic disabled. Always use uniform bottom-center ─
+        # Alignment codes in ASS: 1=bottom-left, 2=bottom-center, 3=bottom-right
+        caption_alignment = 2
+        margin_l, margin_r, margin_v = 40, 40, 250
+        log.info("[WCE-CAPTION] speaker-aware disabled → forced bottom-center (alignment=2) to guarantee alignment")
+
         header = [
             "[Script Info]",
             "ScriptType: v4.00+",
@@ -765,28 +834,54 @@ class ClipEditor:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            f"Style: Caption,Montserrat,65,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,400,1",
+            f"Style: Caption,Montserrat,80,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             f"Style: Hook,Montserrat,75,{hook_color},&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
-            f"Style: Highlight,Montserrat,70,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,400,1",
-            f"Style: Danger,Montserrat,70,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,400,1",
-            f"Style: Success,Montserrat,70,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},2,20,20,400,1",
+            f"Style: Highlight,Montserrat,80,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Danger,Montserrat,80,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Success,Montserrat,80,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             f"Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
+            # KaraokeWord: slightly smaller, used for the inactive (ghost) state of karaoke
+            f"Style: KaraokeGhost,Montserrat,80,&H80FFFFFF,&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
         ]
-        log.info("[WCE-VISUAL] caption_safe_zone=lower_third")
+        log.info("[WCE-VISUAL] caption_safe_zone=speaker_aware")
         events = []
         for seg in captions:
             if seg.end <= seg.start:
                 continue
             escaped_text = _ass_escape(seg.text)
-            highlighted_text = self._highlight_text(escaped_text)
-            events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{highlighted_text}")
+            # ── Word-by-word karaoke highlight ──────────────────────────────
+            # Each word in the segment lights up in gold for its proportional
+            # time slice. The rest of the line shows as the ghost (dim) style.
+            words = seg.text.split()
+            if len(words) > 1:
+                word_dur = (seg.end - seg.start) / len(words)
+                for wi, word in enumerate(words):
+                    w_start = seg.start + wi * word_dur
+                    w_end   = seg.start + (wi + 1) * word_dur
+                    # Build line: ghost words + {\rHighlight}active_word{\r} + ghost words
+                    ghost_before = " ".join(words[:wi])
+                    active = _ass_escape(word)
+                    ghost_after  = " ".join(words[wi + 1:])
+                    parts = []
+                    if ghost_before:
+                        parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_before))
+                    parts.append("{\\rHighlight}" + active + "{\\r}")
+                    if ghost_after:
+                        parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_after))
+                    line_text = " ".join(parts)
+                    events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{line_text}")
+            else:
+                # Single-word segment — just highlight it
+                highlighted_text = self._highlight_text(escaped_text)
+                events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{highlighted_text}")
+
         if hook_line:
             hook_text = self._format_hook_line(hook_line)
             if hook_text:
-                hook_end = min(duration, 2.2)
+                hook_end = min(duration, 4.0)  # Extended from 2.2s → 4s so viewers can read it
                 events.append(f"Dialogue: 1,{_ass_time(0.08)},{_ass_time(hook_end)},Hook,,0,0,0,,{_ass_escape(hook_text)}")
         if hashtags_line:
             start = max(0.0, duration - 3.8)
@@ -1075,6 +1170,16 @@ class ClipEditor:
             
             has_any_overlay = (cfg.add_captions and captions) or (cfg.add_dynamic_overlays and hook_line) or (cfg.add_cta and cta_line)
             
+            # Derive speaker side for caption positioning
+            if isinstance(focus_x, str):
+                speaker_side = "center"
+            elif focus_x < 0.42:
+                speaker_side = "left"
+            elif focus_x > 0.58:
+                speaker_side = "right"
+            else:
+                speaker_side = "center"
+
             if has_any_overlay:
                 ass_path = os.path.join(self.work_dir, f"wc_subs_{uuid.uuid4().hex}.ass")
                 tmp_files.append(ass_path)
@@ -1088,6 +1193,7 @@ class ClipEditor:
                     cta_line=cta_line if cfg.add_cta else None,
                     hashtags_line=hashtags_line,
                     subtitle_style=subtitle_style,
+                    speaker_side=speaker_side,
                 )
                 fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
                 ass_esc = _ffmpeg_filter_path(ass_path)
@@ -1158,7 +1264,7 @@ class ClipEditor:
             score = self._estimate_engagement(captions, transcript_window, boring_mode=boring_mode, has_hook=has_hook)
             metadata["engagement_score"] = round(score, 2)
             metadata["captions_count"] = len(captions)
-            metadata["focus_x"] = round(focus_x, 3)
+            metadata["focus_x"] = "dynamic" if isinstance(focus_x, str) else round(focus_x, 3)
             metadata["platform_variants"] = self._variant_suggestions(score, cfg.target_ratio) if cfg.generate_ab_suggestions else []
             if profile_enabled:
                 total_s = max(0.0, time.perf_counter() - t_total)
