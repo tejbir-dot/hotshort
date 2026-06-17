@@ -109,10 +109,12 @@ except Exception:
 try:
     from utils.narrative_intelligence import compute_quality_scores
     from utils.narrative_intelligence import cqs_cache_reset, cqs_cache_stats
+    from utils.narrative_intelligence import compute_hook_resolution_bonus
 except Exception:
     compute_quality_scores = None
     cqs_cache_reset = lambda: {}
     cqs_cache_stats = lambda: {}
+    compute_hook_resolution_bonus = None
 try:
     from utils.narrative_intelligence import detect_message_punch as _detect_message_punch
 except Exception:
@@ -236,12 +238,12 @@ def overlap_ratio(a_start, a_end, b_start, b_end):
         return 0.0
 
 
-def dedupe_by_overlap(clips, overlap_threshold=0.75):
+def dedupe_by_overlap(clips, overlap_threshold=0.40):
     """
     🚀 Smart deduplication based on clip overlap ratio (IoU).
     Removes clips that overlap > threshold with higher-scored clips.
     
-    Example: If clips 15.8-40.5 and 16.2-40.2 overlap > 75%, keep only the best-scored one.
+    Example: If clips 15.8-40.5 and 16.2-40.2 overlap > 40%, keep only the best-scored one.
     """
     if not clips:
         return []
@@ -622,7 +624,18 @@ def _ensure_cache_dir():
 
 
 def _cache_key_for_path(path: str) -> str:
-    return hashlib.sha1(path.encode('utf-8')).hexdigest()
+    """Key by file CONTENT (first 4 MB), not path string.
+    Falls back to path-hash if file is unreadable (URL, missing, etc.).
+    This ensures the same video always hits cache even when delivered via
+    different temp paths or after a rename.
+    """
+    try:
+        with open(path, 'rb') as _f:
+            sample = _f.read(4 * 1024 * 1024)  # first 4 MB is enough to be unique
+        return hashlib.sha1(sample).hexdigest()
+    except Exception:
+        # Remote URL or unreadable path — fall back to hashing the path string
+        return hashlib.sha1(path.encode('utf-8')).hexdigest()
 
 
 def _load_cached_transcript(path: str) -> Optional[List[Dict]]:
@@ -1542,6 +1555,21 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
     hook_threshold = _env_float("HS_ORCH_GLOBAL_HOOK_THRESHOLD", 0.45)
     dedupe_tol = _env_float("HS_ORCH_GLOBAL_HOOK_DEDUPE_S", 2.0)
     hooks: List[Dict[str, Any]] = []
+    # STORY THREADS: the first stateful narrative primitive in HotShort.
+    # Each StoryThread holds one open narrative contract (hook → payoff).
+    # Before emitting a new candidate, we ask every active thread:
+    #   "Does this segment continue you?"
+    # If yes → suppress new candidate (same story, let existing arc grow).
+    # If no  → create new thread (genuinely new story).
+    # Threads expire when resolved OR when > horizon_s seconds old.
+    _arc_horizon_s = _env_float("HS_HOOK_MEMORY_HORIZON_S", 120.0)
+    _story_continuity_threshold = _env_float("HS_HOOK_STORY_CONTINUITY_THR", 0.30)
+    _StoryThread = None
+    try:
+        from utils.narrative_intelligence import StoryThread as _StoryThread
+    except Exception:
+        pass
+    active_story_threads: List[Any] = []   # List[StoryThread]
 
     def _curiosity_peak_for_window(s: float, e: float) -> float:
         curve = ctx.curiosity_curve or []
@@ -1595,20 +1623,150 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
             + (0.10 * curiosity_peak)
             + (0.10 * rewatch_score)
         )
+        
+        # --- Strict Hook Quality Gate ---
+        _words = seg_text.lower().split()
+        _is_garbage = False
+        
+        if len(_words) < 6:
+            _is_garbage = True
+            
+        _first_word = _words[0].strip(".,!?\"'") if _words else ""
+        _reject_starts = {"and", "but", "so", "because", "well", "sure", "oh", "like", "yeah", "yes", "no"}
+        if _first_word in _reject_starts:
+            # Only allow if it's a strong question like "But what if...?"
+            if not ("what" in _words or "how" in _words or "?" in seg_text):
+                _is_garbage = True
+                
+        if _is_garbage:
+            # Drop unless the neural engine is absolutely certain it's a pattern break
+            if hook_strength < 0.65 and pattern_break_score < 0.70:
+                continue
+
         if hook_strength > hook_threshold or pattern_break_score > 0.40 or curiosity_peak > 0.45:
-            payload = {
-                "start": round(seg_start, 2),
-                "end": round(seg_end, 2),
-                "text": seg_text,
-                "score": round(float(hook_strength), 4),
-                "hook_seed": True,
-                "hook_strength": round(float(hook_strength), 4),
-                "semantic_quality": round(float(semantic_quality), 4),
-                "provenance": "L6B_GLOBAL_HOOK_HUNTER",
-            }
-            hooks.append(payload)
-            if debug_enabled and (len(hooks) <= 8 or hook_strength >= 0.65):
-                log.info('[HOOK] idx=%d strength=%.2f text="%s"', idx, hook_strength, seg_text[:120])
+
+            # ── STORY MEMORY CHECK ──────────────────────────────────────────────
+            # Ask every active StoryThread: "does this segment continue you?"
+            # If any thread claims it: suppress as new hook, let arc grow.
+            # A thread only claims a segment if:
+            #   1. It is not expired (resolved or > horizon_s old)
+            #   2. compute_hook_resolution_bonus >= threshold
+            _continuing_existing_arc = False
+            if active_story_threads and compute_hook_resolution_bonus:
+                # Prune expired threads first (resolved or timed out)
+                _active_next = []
+                for t in active_story_threads:
+                    if t.is_expired(seg_start, _arc_horizon_s):
+                        log.info("[STORY_THREAD_EXPIRED] %r", t)
+                    else:
+                        _active_next.append(t)
+                active_story_threads = _active_next
+
+                for _thread in active_story_threads:
+                    _continuity = _thread.does_segment_continue(
+                        seg_text, compute_hook_resolution_bonus, _story_continuity_threshold
+                    )
+                    if _continuity >= _story_continuity_threshold:
+                        _continuing_existing_arc = True
+                        log.info("[STORY_THREAD_CONTINUED] seg=%d '%.50s' continues %r", idx, seg_text, _thread)
+                        _thread.add_development_point(seg_text, seg_start, _continuity)
+                        log.info(
+                            "[HOOK_SUPPRESSED_BY_MEMORY]\n"
+                            "segment_text: %s\n"
+                            "continuity_score: %.2f\n"
+                            "thread_id: %s\n"
+                            "thread_start: %.1f",
+                            seg_text, _continuity, id(_thread), _thread.start_s
+                        )
+                        ctx.hooks_suppressed += 1
+                        if _thread.trace_id:
+                            ctx.trace_suppressed_child(
+                                trace_id=_thread.trace_id,
+                                start=seg_start,
+                                text=seg_text,
+                                score=hook_strength,
+                                reason=f"continuity={_continuity:.2f}"
+                            )
+                            ctx.trace_event(
+                                trace_id=_thread.trace_id,
+                                stage="STORY_MEMORY",
+                                event="SUPPRESSED_CHILD",
+                                changed=True,
+                                impact="CRITICAL",
+                                before={"suppressed_children_count": len(ctx.trace_logs.get(_thread.trace_id, {}).get("suppressed_children", [])) - 1},
+                                after={"suppressed_children_count": len(ctx.trace_logs.get(_thread.trace_id, {}).get("suppressed_children", [])), "suppressed_text": seg_text}
+                            )
+                            ctx.trace_state(_thread.trace_id, "CONTINUED")
+                        break
+            # ────────────────────────────────────────────────────────────────────
+
+            if not _continuing_existing_arc:
+                import uuid
+                trace_id = str(uuid.uuid4())
+                payload = {
+                    "start": round(seg_start, 2),
+                    "end": round(seg_end, 2),
+                    "text": seg_text,
+                    "score": round(float(hook_strength), 4),
+                    "hook_seed": True,
+                    "hook_strength": round(float(hook_strength), 4),
+                    "semantic_quality": round(float(semantic_quality), 4),
+                    "provenance": "L6B_GLOBAL_HOOK_HUNTER",
+                    "trace_id": trace_id
+                }
+                hooks.append(payload)
+                if os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
+                    if trace_id not in ctx.trace_logs:
+                        ctx.trace_logs[trace_id] = {
+                            "identity": {},
+                            "state_history": [],
+                            "suppressed_children": [],
+                            "events": []
+                        }
+                    ctx.trace_logs[trace_id]["identity"] = {
+                        "hook": seg_text,
+                        "start": round(seg_start, 2),
+                        "birth_reason": {
+                            "hook_score": round(hook_score, 4),
+                            "pattern_break": round(pattern_break_score, 4),
+                            "open_loop": round(open_loop_score, 4),
+                            "curiosity_peak": round(curiosity_peak, 4),
+                            "hook_strength": round(hook_strength, 4)
+                        },
+                        "state": "OPEN"
+                    }
+                    ctx.trace_state(trace_id, "OPEN")
+                    ctx.trace_event(
+                        trace_id=trace_id,
+                        stage="HOOK_HUNTER",
+                        event="CREATED",
+                        changed=True,
+                        impact="HIGH",
+                        after={
+                            "hook": seg_text,
+                            "start": round(seg_start, 2)
+                        }
+                    )
+                # Open a new StoryThread for this hook
+                if _StoryThread:
+                    _new_thread = _StoryThread(
+                        hook_text=seg_text, start_s=seg_start, start_idx=idx, trace_id=trace_id
+                    )
+                    
+                    # Infer Promise and Narrative Debt
+                    from utils.narrative_intelligence import infer_narrative_promise_and_debt, build_contract
+                    promise, debt, promise_type = infer_narrative_promise_and_debt(seg_text)
+                    _new_thread.promise = promise
+                    _new_thread.narrative_debt = debt
+                    _new_thread.promise_type = promise_type
+                    _new_thread.contract = build_contract(promise_type, seg_text)
+                    
+                    active_story_threads.append(_new_thread)
+                    ctx.candidate_threads[trace_id] = _new_thread
+                    log.info("[STORY_THREAD_CREATED] %r", _new_thread)
+                    log.info("[NEW_HOOK_ALLOWED] seg=%d text='%.50s'", idx, seg_text)
+                if debug_enabled and (len(hooks) <= 8 or hook_strength >= 0.65):
+                    log.info('[HOOK] idx=%d strength=%.2f text="%s"', idx, hook_strength, seg_text[:120])
 
     hooks = sorted(hooks, key=lambda x: float(x.get("hook_strength", x.get("score", 0.0)) or 0.0), reverse=True)[:max_global_hooks]
     injected: List[Dict[str, Any]] = []
@@ -2026,6 +2184,23 @@ def _run_ranking(ctx: PipelineContext) -> None:
         cand["ranking_payoff_gate"] = round(float(blended_payoff), 4)
         cand["low_motion_talk"] = low_motion_talk
 
+    # ── Hook-origin floor boost ──────────────────────────────────────────────
+    # Hook Hunter clips are injected AFTER semantic scoring, so they carry
+    # semantic=0 / engagement=0 / curiosity=0 → base_viral_score ≈ 0.
+    # Without a floor they always rank last and get cut before arc assembly.
+    # Grant them a minimum viral_score equal to their raw hook_score so they
+    # compete fairly with strict candidates.
+    for cand in (ctx.enriched_candidates or []):
+        if _candidate_origin(cand) == "hook":
+            raw_hook = float(cand.get("score", 0.0) or 0.0)
+            # Floor = 40% of raw hook score (keeps them below strong strict candidates)
+            hook_floor = raw_hook * 0.40
+            if cand.get("viral_score", 0.0) < hook_floor:
+                cand["viral_score"] = round(hook_floor, 4)
+                log.debug("[HOOK-FLOOR] cid=%s viral_score boosted to %.4f (hook_score=%.3f)",
+                          cand.get("cid", "?"), hook_floor, raw_hook)
+    # ────────────────────────────────────────────────────────────────────────
+
     ranked = sorted(
         (ctx.enriched_candidates or []),
         key=lambda x: (
@@ -2040,7 +2215,8 @@ def _run_ranking(ctx: PipelineContext) -> None:
         ),
         reverse=True,
     )
-    ranked = dedupe_by_overlap(ranked, overlap_threshold=0.75)
+
+    ranked = dedupe_by_overlap(ranked, overlap_threshold=0.40)
     min_gap = float(os.getenv("HS_ORCH_DIVERSITY_MIN_START_GAP", "3.0") or 3.0)
     if rank_and_diversify:
         final = rank_and_diversify(ranked, top_k=int(ctx.top_k), min_start_gap=min_gap)
@@ -2203,7 +2379,10 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             if prev_e < hook_start and (hook_start - prev_e) < lookback_s:
                 arc_start = min(arc_start, prev_s)
                 break
-        arc_end = max(hook_end, e0)
+        
+        # FIX: Do not start arc_end at e0 (candidate generation bound).
+        # This was preventing the ArcAssembler from shrinking bloated clips!
+        arc_end = hook_end
         payoff_idx = None
         max_clip = base_max_clip
 
@@ -2348,6 +2527,49 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         }
         out.append(c)
 
+        if os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
+            tid = c.get("trace_id", c.get("id"))
+            if tid:
+                ctx.trace_state(tid, "EXPANDED")
+                ctx.trace_event(
+                    trace_id=tid,
+                    stage="ARC_ASSEMBLER",
+                    event="EXPANDED",
+                    changed=(round(float(arc_end), 2) != round(e0, 2) or round(float(arc_start), 2) != round(s0, 2)),
+                    impact="HIGH" if (round(float(arc_end), 2) != round(e0, 2)) else "LOW",
+                    before={"start": round(s0, 2), "end": round(e0, 2)},
+                    after={"start": round(float(arc_start), 2), "end": round(float(arc_end), 2)}
+                )
+                if payoff_idx is not None:
+                    ctx.trace_state(tid, "PAYOFF_FOUND")
+                    ctx.trace_event(
+                        trace_id=tid,
+                        stage="PAYOFF_SELECTION",
+                        event="PAYOFF_SELECTED",
+                        changed=True,
+                        impact="HIGH",
+                        after={"payoff_idx": payoff_idx, "payoff_text": str(payoff_seg.get("text", "") or "")}
+                    )
+                
+                # [GOVERNOR TELEMETRY PHASE 1]
+                if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
+                    st = ctx.candidate_threads[tid]
+                    st.propose_boundary(
+                        stage="ARC_ASSEMBLER",
+                        before_start=round(s0, 2),
+                        before_end=round(e0, 2),
+                        after_start=round(float(arc_start), 2),
+                        after_end=round(float(arc_end), 2),
+                        reason="payoff_found" if payoff_idx is not None else "horizon_expansion",
+                        confidence=0.85
+                    )
+                    if payoff_idx is not None:
+                        st.propose_state(
+                            stage="ARC_ASSEMBLER",
+                            state="PAYOFF_CANDIDATE",
+                            reason="payoff_found",
+                            confidence=0.85
+                        )
     out = sorted(
         out,
         key=lambda x: (
@@ -2359,7 +2581,7 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
     )
     # ∩┐╜ SMART DEDUPLICATION: Uses overlap-ratio based detection instead of strict time tolerance
     # Fixes duplicate_arcs from overlapping hooks (e.g. hooks 56-59 on same payoff 63)
-    out = dedupe_by_overlap(out, overlap_threshold=0.75)
+    out = dedupe_by_overlap(out, overlap_threshold=0.40)
     ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
     ctx.ranked_output = list(ctx.final_candidates)
     log.info("[ORCH-ARC] assembled=%d complete=%d input=%d", len(ctx.ranked_output), complete_count, len(ranked))
@@ -2414,7 +2636,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         return
 
     min_clip = 5.0
-    base_max_clip = 90.0  # Increased from 60s to 90s to scan deeper for the true payoff (P1 Fix)
+    base_max_clip = 60.0  # Reduced back from 90s to 60s (P2 Fix for messy clips)
     lookback_s = 7.0
     out: List[Dict[str, Any]] = []
     complete_count = 0
@@ -2432,13 +2654,14 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 return i
         return max(0, min(len(transcript) - 1, 0 if not transcript else int(min(range(len(transcript)), key=lambda j: abs(_seg_bounds(transcript[j])[0] - target)))))
 
-    for cand in ranked:
+    import concurrent.futures as _cf
+
+    def _assemble_one(cand):
         c = dict(cand or {})
         s0 = float(c.get("start", 0.0) or 0.0)
         e0 = float(c.get("end", s0) or s0)
         if e0 <= s0:
-            out.append(c)
-            continue
+            return c
 
         nar = (c.get("signals", {}) or {}).get("narrative", {}) or {}
         psych = (c.get("signals", {}) or {}).get("psychology", {}) or {}
@@ -2446,40 +2669,22 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         candidate_curiosity_peak = _clamp01(psych.get("curiosity_peak", psych.get("curiosity", 0.0)))
         candidate_semantic_quality = _clamp01(sem.get("semantic_quality", c.get("confidence", 0.0)))
 
-        start_idx = _find_seg_index(s0)
-        hook_idx = start_idx
-        hook_found = False
-
-        # HOOK: scan around candidate onset.
-        hook_scan_end = min(len(transcript), start_idx + 8)
-        why_selected = "fallback to candidate onset (default)"
-        final_hook_score = 0.0
-        best_segment_idx = start_idx
-        best_score = -1.0
-        best_reason = why_selected
-        
-        for j in range(max(0, start_idx - 2), hook_scan_end):
-            seg_s, seg_e = _seg_bounds(transcript[j])
-            seg_scores = compute_quality_scores(transcript, seg_s, seg_e) if compute_quality_scores else {}
-            hook_score = _clamp01(seg_scores.get("hook_score", nar.get("hook_score", 0.0)))
-            pattern_break = _clamp01(seg_scores.get("pattern_break_score", nar.get("pattern_break_score", 0.0)))
+        # Trust candidate metadata first
+        if c.get("hook_segment"):
+            hook_idx = int(c["hook_segment"].get("idx", _find_seg_index(s0)))
+            hook_seg = transcript[hook_idx]
+            final_hook_score = float(c["hook_segment"].get("score", c.get("hook_strength", 0.0)))
+        elif c.get("hook_idx") is not None:
+            hook_idx = int(c["hook_idx"])
+            hook_seg = transcript[hook_idx]
+            final_hook_score = float(c.get("hook_strength", 0.0))
+        else:
+            hook_idx = _find_seg_index(s0)
+            hook_seg = transcript[hook_idx]
+            final_hook_score = float(c.get("hook_strength", 0.0))
             
-            # Compute candidate strength
-            score = max(hook_score, pattern_break)
-            
-            if score > best_score:
-                best_score = score
-                best_segment_idx = j
-                if hook_score >= pattern_break:
-                    best_reason = f"strongest hook_score in window ({hook_score:.3f})"
-                else:
-                    best_reason = f"strongest pattern_break in window ({pattern_break:.3f})"
-                    
-        if best_score > 0.0:
-            hook_idx = best_segment_idx
-            hook_found = True
-            final_hook_score = best_score
-            why_selected = best_reason
+        hook_found = True
+        why_selected = "trusted candidate onset (Hook Hunter)"
 
         hook_seg = transcript[hook_idx]
         hook_start, hook_end = _seg_bounds(hook_seg)
@@ -2490,165 +2695,116 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             if prev_e < hook_start and (hook_start - prev_e) < lookback_s:
                 arc_start = min(arc_start, prev_s)
                 break
-        arc_end = max(hook_end, e0)
+        
+        # FIX: Do not start arc_end at e0 (candidate generation bound). 
+        # This was preventing the ArcAssembler from shrinking bloated 90s clips!
+        arc_end = hook_end
         payoff_idx = None
         max_clip = base_max_clip
 
-        # BUILD + PAYOFF: forward O(n) pass with bounded horizon.
-        j = hook_idx
-        candidate_payoffs = []
-        
-        # Pre-calculate max_scan_idx for Climax Bonus
-        max_scan_idx = hook_idx
+        # BUILD + PAYOFF: Payoff Engine V1 (Narrative Resolver)
+        candidate_window = []
         for tmp_j in range(hook_idx, len(transcript)):
             tmp_seg_s, tmp_seg_e = _seg_bounds(transcript[tmp_j])
             if (tmp_seg_e - arc_start) > max_clip:
                 break
-            max_scan_idx = tmp_j
-        
-        while j < len(transcript):
-            seg = transcript[j]
-            seg_s, seg_e = _seg_bounds(seg)
-            if seg_s < arc_start:
-                j += 1
-                continue
-            if (seg_e - arc_start) > max_clip:
-                break
+            candidate_window.append({
+                "idx": tmp_j,
+                "start": tmp_seg_s,
+                "end": tmp_seg_e,
+                "text": str(transcript[tmp_j].get("text", "") or "")
+            })
 
-            seg_scores = compute_quality_scores(transcript, arc_start, seg_e, debug=True) if compute_quality_scores else {}
-            open_loop = _clamp01(seg_scores.get("open_loop_score", nar.get("open_loop_score", 0.0)))
-            info_density = _clamp01(seg_scores.get("information_density_score", nar.get("information_density_score", 0.0)))
-            semantic_quality = _clamp01(seg_scores.get("semantic_quality", 0.0))
-            build_ok = (open_loop > 0.0) or (info_density > 0.1) or (semantic_quality > 0.4)
+        payoff_idx = None
+        best_payoff = None
 
-            if build_ok:
-                arc_end = max(arc_end, seg_e)
+        tid = c.get("trace_id", c.get("id", "unknown"))
+        st = None
+        if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
+            st = ctx.candidate_threads[tid]
 
-            seg_text = str(seg.get("text", "") or "")
-            punch = False
-            if _detect_message_punch:
+        # ------------------------------------------------------------------
+        # PAYOFF RESOLUTION: Three-tier resolver always runs if we have a window.
+        # PayoffEngine via StoryThread is used if available (st != None);
+        # otherwise we fall back directly to PayoffResolver (Tier1 + Tier2).
+        # This fixes the dead-code bug where st was always None.
+        # ------------------------------------------------------------------
+        if candidate_window:
+            # --- Path A: StoryThread-backed PayoffEngine (full scoring) ---
+            if st:
                 try:
-                    punch = bool(_detect_message_punch(seg_s, seg_e, seg_text, transcript, float(c.get("viral_score", c.get("score_enriched", 0.0)) or 0.0)))
-                except Exception:
-                    punch = False
-            ending_strength = _clamp01(seg_scores.get("ending_strength", nar.get("ending_strength", 0.0)))
-            payoff_resolution = _clamp01(seg_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
-            end_breakdown = seg_scores.get("ending_strength_breakdown", {})
-            payoff_breakdown = seg_scores.get("payoff_resolution_breakdown", {})
-            
-            build_duration = seg_e - hook_end
-                
-            # Small duration penalty for payoffs that are extremely far away, unless they are very strong
-            time_decay = max(0.0, (seg_e - arc_start - 30.0) * 0.01) if (seg_e - arc_start) > 30.0 else 0.0
-            
-            groq_role = seg.get("groq_role", "BUILD")
-            
-            if (j - hook_idx >= 2) and (
-                (ending_strength > 0.3) or
-                (payoff_resolution > 0.35) or
-                punch or
-                (groq_role == "PAYOFF")
-            ):
-                climax_bonus = 0.0
-                if max_scan_idx > hook_idx:
-                    position_ratio = (j - hook_idx) / max(1.0, float(max_scan_idx - hook_idx))
-                    climax_bonus = position_ratio * 0.15
-                    
-                RELEASE_WORDS = [
-                    "rich", "finally", "sold", "won", "freedom", "profit", 
-                    "million", "success", "done", "paid"
-                ]
-                ESCALATION_WORDS = [
-                    "negative", "debt", "lost", "refund", "hospital", 
-                    "bankrupt", "problem", "stuck"
-                ]
-                
-                release_bonus = 0.0
-                if any(w in seg_text.lower() for w in RELEASE_WORDS):
-                    release_bonus = 0.30
-                    
-                escalation_penalty = 0.0
-                if any(w in seg_text.lower() for w in ESCALATION_WORDS):
-                    escalation_penalty = 0.25
+                    from utils.payoff_engine import PayoffEngine
+                    engine = PayoffEngine()
+                    result = engine.resolve(st, transcript, transcript[hook_idx], candidate_window)
 
-                legacy_score = (ending_strength + payoff_resolution + (0.1 if punch else 0.0)) / 2.0 - time_decay
-                
-                groq_bonus = 0.0
-                if groq_role == "PAYOFF":
-                    groq_bonus = 0.60
-                elif groq_role == "LESSON":
-                    groq_bonus = 0.10
-                elif groq_role == "HOOK":
-                    groq_bonus = -0.20
-                    
-                word_count = len(seg_text.split())
-                short_penalty = 0.40 if word_count < 4 else 0.0
-                
-                final_score = legacy_score + groq_bonus + release_bonus + climax_bonus - escalation_penalty - short_penalty
-                    
-                candidate_payoffs.append({
-                    "idx": j,
-                    "end_ts": seg_e,
-                    "text": seg_text,
-                    "legacy_score": legacy_score,
-                    "groq_role": groq_role,
-                    "groq_bonus": groq_bonus,
-                    "score": final_score,
-                    "payoff_res": payoff_resolution,
-                    "end_str": ending_strength,
-                    "end_breakdown": end_breakdown,
-                    "payoff_breakdown": payoff_breakdown
-                })
-            j += 1
+                    if result.get("winner") and result.get("state") in ("RESOLVED", "CONTINUED"):
+                        best_payoff = result["winner"]
+                        payoff_idx = best_payoff.get("idxs", [best_payoff.get("idx")])[-1]
+                        arc_end = max(arc_end, best_payoff["end"])
 
-        if candidate_payoffs:
-            cid = c.get("cid", c.get("id", "?"))
-            log.info(f"\n[PAYOFF_COMPETITION] candidate_id={cid}")
-            for p in candidate_payoffs:
-                log.info(f"{p['idx']}\ntext=\"{p['text']}\"\nlegacy={p['legacy_score']:.2f}\ngroq={p['groq_role']}\nrole_weight={p['groq_bonus']:.2f}\nfinal={p['score']:.2f}")
-                
-                def fmt_bd(k, v):
-                    if isinstance(v, (int, float)):
-                        return f"{k}=+{v:.2f}" if v > 0 else f"{k}={v:.2f}"
-                    return f"{k}='{v}'"
-                
-                end_str_components = ", ".join(fmt_bd(k, v) for k, v in p.get('end_breakdown', {}).items())
-                payoff_res_components = ", ".join(fmt_bd(k, v) for k, v in p.get('payoff_breakdown', {}).items())
-                
-                log.info(f"ending_strength={p['end_str']:.2f} ({end_str_components})")
-                log.info(f"payoff_resolution={p['payoff_res']:.2f} ({payoff_res_components})\n")
-                
-            first_payoff_idx = candidate_payoffs[0]["idx"]
-            
-            # Protected PAYOFF Lane: If any segment is tagged as PAYOFF, discard all non-PAYOFF competitors
-            has_payoff = any(p["groq_role"] == "PAYOFF" for p in candidate_payoffs)
-            if has_payoff:
-                candidate_payoffs = [p for p in candidate_payoffs if p["groq_role"] == "PAYOFF"]
-                
-            # Sort by score descending and pick the best
-            candidate_payoffs.sort(key=lambda x: x["score"], reverse=True)
-            best_payoff = candidate_payoffs[0]
-            
-            payoff_idx = best_payoff["idx"]
-            arc_end = max(arc_end, best_payoff["end_ts"])
-            
-            # [ARC_END_TRACE] FORENSIC LOGGING
-            cid = c.get("cid", c.get("id", "?"))
-            preview_texts = [str(transcript[k].get("text", "")) for k in range(payoff_idx + 1, min(payoff_idx + 6, len(transcript)))]
-            stronger_found = best_payoff["idx"] != first_payoff_idx
-            
-            log.info("\n[ARC_END_TRACE]")
-            log.info(f"candidate_id={cid}")
-            log.info(f"chosen_payoff_segment={best_payoff['text']}")
-            log.info(f"chosen_reason=Highest score {best_payoff['score']:.2f} (res={best_payoff['payoff_res']:.2f}, end={best_payoff['end_str']:.2f}) out of {len(candidate_payoffs)} candidates")
-            log.info(f"next_5_segments_after_payoff={' | '.join(preview_texts)}")
-            log.info(f"stronger_payoff_found={stronger_found}\n")
-            
-            c["locked_payoff_idx"] = best_payoff["idx"]
-            c["locked_payoff_time"] = best_payoff["end_ts"]
-            c["locked_payoff_text"] = best_payoff["text"]
+                        c["locked_payoff_idx"] = payoff_idx
+                        c["locked_payoff_time"] = best_payoff["end"]
+                        c["locked_payoff_text"] = best_payoff["text"]
+                        c["payoff_engine_score"] = best_payoff.get("final_score", 0.0)
 
-        if payoff_idx == hook_idx:
+                        import logging
+                        logging.getLogger("orchestrator").info(
+                            f"\n[PAYOFF_ENGINE] SUCCESS! cid={c.get('cid', c.get('id', 'unk'))}\n"
+                            f"  Hook: {transcript[hook_idx].get('text')}\n"
+                            f"  Winner: {best_payoff['text']}\n"
+                            f"  Engine Score: {best_payoff.get('final_score', 0.0):.3f} (debt: {best_payoff.get('debt_match', 0.0):.2f})"
+                        )
+                except Exception as _pe_exc:
+                    import logging
+                    logging.getLogger("orchestrator").warning("[PAYOFF_ENGINE] failed: %s", _pe_exc)
+
+            # --- Path B: Direct PayoffResolver (structural/embedding, no StoryThread needed) ---
+            if best_payoff is None:
+                try:
+                    from utils.payoff_resolver import PayoffResolver
+                    _resolver = PayoffResolver()
+                    hook_text_val = str(transcript[hook_idx].get("text", "") or "")
+                    hook_start_val = float(transcript[hook_idx].get("start", 0) or 0)
+                    resolver_seg = _resolver.find(
+                        hook_text=hook_text_val,
+                        hook_start_s=hook_start_val,
+                        candidate_window=candidate_window,
+                        full_transcript=list(transcript),
+                        thread_id=str(c.get("cid", c.get("id", "unknown"))),
+                        run_tier3=(float(c.get("hook_strength", 0.0) or 0.0) >= 0.45),
+                    )
+                    if resolver_seg:
+                        tier = resolver_seg.get("tier", "?")
+                        tier_score = resolver_seg.get(
+                            f"tier{tier}_score",
+                            resolver_seg.get("tier1_score", resolver_seg.get("tier2_score", 0.5)),
+                        )
+                        best_payoff = resolver_seg
+                        payoff_idx = resolver_seg.get("idx")
+                        arc_end = max(arc_end, float(resolver_seg.get("end", arc_end)))
+
+                        c["locked_payoff_idx"] = payoff_idx
+                        c["locked_payoff_time"] = resolver_seg.get("end")
+                        c["locked_payoff_text"] = resolver_seg.get("text", "")
+                        c["payoff_source"] = f"TIER{tier}"
+
+                        import logging
+                        _log_orch = logging.getLogger("orchestrator")
+                        _log_orch.info(
+                            f"\n[PAYOFF_SOURCE]\ncid={c.get('cid', c.get('id', 'unk'))}\nsource=TIER{tier}\n"
+                            f"  Hook: {hook_text_val[:80]}\n"
+                            f"  Payoff: {resolver_seg.get('text', '')[:80]}\n"
+                            f"  Score: {tier_score:.2f}  arc_end: {arc_end:.1f}s"
+                        )
+                except Exception as _res_exc:
+                    import logging
+                    logging.getLogger("orchestrator").warning("[PAYOFF_RESOLVER] failed: %s", _res_exc)
+
+
+        # Preserving payoff_idx even if it equals hook_idx.
+        # A 1-sentence hook that delivers its own punchline is a valid zero-duration arc.
+        if payoff_idx is not None and payoff_idx < hook_idx:
+            # Only clear if it hallucinates backwards
             payoff_idx = None
 
         # ---- INSIGHT TAIL EXTENSION (safe) ----
@@ -2680,8 +2836,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         arc_start = max(0.0, arc_start - 1.5)
         arc_end = min(arc_end, arc_start + max_clip)
         arc_end = max(arc_end, arc_start + min_clip)
-        if (arc_end - arc_start) < 18.0:
-            arc_end = min(arc_start + 22.0, arc_start + max_clip)
+        # Removed legacy 18s->22s fallback padding to respect narrative bounds
         arc_end = extend_until_sentence_complete(arc_start, arc_end, transcript, max_extend=4.0)
         arc_end = min(arc_end, arc_start + max_clip)
 
@@ -2691,7 +2846,15 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             arc_end = min(arc_end + 6.0, arc_start + max_clip)
             arc_scores = compute_quality_scores(transcript, arc_start, arc_end) if compute_quality_scores else {}
         hook_score = _clamp01(arc_scores.get("hook_score", nar.get("hook_score", 0.0)))
-        payoff_resolution = _clamp01(arc_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
+        
+        legacy_payoff_resolution = _clamp01(arc_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
+        engine_score = c.get("payoff_engine_score", 0.0)
+        
+        if engine_score > 0.0:
+            payoff_resolution = engine_score
+        else:
+            payoff_resolution = legacy_payoff_resolution
+            
         tension_gradient = _clamp01(psych.get("tension_gradient", 0.0))
         info_density = _clamp01(arc_scores.get("information_density_score", nar.get("information_density_score", 0.0)))
         rewatch = _clamp01(arc_scores.get("rewatch_score", nar.get("rewatch_score", 0.0)))
@@ -2706,16 +2869,15 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             arc_score = _clamp01(arc_score * 1.2)
         arc_complete = bool(hook_found and (payoff_idx is not None))
         if arc_complete:
-            complete_count += 1
             arc_score = _clamp01(arc_score * 1.35)
         
-        # 🔥 DURATION SWEET SPOT BONUS - Strongly prefer 12-25s (TikTok range)
+        # 🔥 NARRATIVE DURATION SWEET SPOT BONUS - Strongly prefer 60-90s (Long Arc range)
         duration = arc_end - arc_start
-        ideal_duration = 18.0
-        if 12.0 <= duration <= 25.0:
-            # Maximum preference at 18s, soft decay at edges
+        ideal_duration = 75.0
+        if 40.0 <= duration <= 120.0:
+            # Maximum preference at 75s, soft decay at edges
             duration_bonus = max(0.0, 1.0 - (abs(duration - ideal_duration) / ideal_duration))
-            arc_score = _clamp01(arc_score + (duration_bonus * 0.10))  # +0.10 max bonus
+            arc_score = _clamp01(arc_score + (duration_bonus * 0.15))  # +0.15 max bonus
 
         payoff_seg = transcript[payoff_idx] if payoff_idx is not None else transcript[min(len(transcript) - 1, hook_idx)]
         p_s, p_e = _seg_bounds(payoff_seg)
@@ -2744,7 +2906,74 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             "score": round(float(final_hook_score), 4),
             "reason": why_selected
         }
-        out.append(c)
+        
+        tid = c.get("trace_id", c.get("id"))
+        if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
+            st = ctx.candidate_threads[tid]
+            st.propose_boundary(
+                stage="ARC_ASSEMBLER",
+                before_start=round(s0, 2),
+                before_end=round(e0, 2),
+                after_start=round(float(arc_start), 2),
+                after_end=round(float(arc_end), 2),
+                reason="payoff_found" if payoff_idx is not None else "horizon_expired",
+                confidence=round(float(arc_score), 4)
+            )
+            if payoff_idx is not None:
+                st.propose_state("ARC_ASSEMBLER", "PAYOFF_CANDIDATE", "Payoff selected by Arc Assembler", round(float(arc_score), 4))
+                if st.state not in ["RESOLVED", "CONTINUED"]:
+                    st.state = "PAYOFF_CANDIDATE"
+                    st.payoff_candidate = str(payoff_seg.get("text", "") or "")
+                # DO NOT overwrite st.resolution_score. The PayoffEngine already set it natively based on the narrative contract.
+                st.add_history("ARC_ASSEMBLER", "PAYOFF_CANDIDATE", "Payoff selected by Arc Assembler", round(float(arc_score), 4))
+            else:
+                st.propose_state("ARC_ASSEMBLER", "OPEN", "No payoff found within horizon", 0.0)
+                st.add_history("ARC_ASSEMBLER", "SEARCH_FAILED", "No payoff found within horizon", 0.0)
+
+        if os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
+            tid = c.get("trace_id")
+            if tid:
+                ctx.trace_state(tid, "EXPANDED")
+                ctx.trace_event(
+                    trace_id=tid,
+                    stage="ARC_ASSEMBLER",
+                    event="EXPANDED",
+                    changed=(round(float(arc_end), 2) != round(e0, 2) or round(float(arc_start), 2) != round(s0, 2)),
+                    impact="HIGH" if (round(float(arc_end), 2) != round(e0, 2)) else "LOW",
+                    before={"start": round(s0, 2), "end": round(e0, 2)},
+                    after={"start": round(float(arc_start), 2), "end": round(float(arc_end), 2)}
+                )
+                if payoff_idx is not None:
+                    ctx.trace_state(tid, "PAYOFF_FOUND")
+                    ctx.trace_event(
+                        trace_id=tid,
+                        stage="PAYOFF_SELECTION",
+                        event="PAYOFF_SELECTED",
+                        changed=True,
+                        impact="HIGH",
+                        after={"payoff_idx": payoff_idx, "payoff_text": str(payoff_seg.get("text", "") or "")}
+                    )
+
+        assert int(c["hook_segment"]["idx"]) == int(hook_idx), f"ARC_ASSEMBLER_HOOK_MUTATION: {c['hook_segment']['idx']} != {hook_idx}"
+        return c
+
+    # --- Run all candidates in parallel (Tier2 embeddings are the bottleneck) ---
+    MAX_ARC_WORKERS = min(8, max(1, len(ranked)))
+    with _cf.ThreadPoolExecutor(max_workers=MAX_ARC_WORKERS) as _pool:
+        _futures = [_pool.submit(_assemble_one, cand) for cand in ranked]
+        out = []
+        for _fut in _cf.as_completed(_futures):
+            try:
+                _result = _fut.result()
+                if _result is not None:
+                    out.append(_result)
+            except AssertionError:
+                raise
+            except Exception as _arc_exc:
+                import logging
+                logging.getLogger("orchestrator").warning("[ARC_ASSEMBLER] parallel worker failed: %s", _arc_exc)
+
+    complete_count = sum(1 for c in out if c.get("arc_complete"))
 
     out = sorted(
         out,
@@ -2757,7 +2986,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
     )
     # � SMART DEDUPLICATION: Uses overlap-ratio based detection instead of strict time tolerance
     # Fixes duplicate_arcs from overlapping hooks (e.g. hooks 56-59 on same payoff 63)
-    out = dedupe_by_overlap(out, overlap_threshold=0.75)
+    out = dedupe_by_overlap(out, overlap_threshold=0.40)
     
     top_k_limit = max(1, int(ctx.top_k or 1))
     if len(out) > top_k_limit:
@@ -2818,7 +3047,7 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
     pre_pad = 1.2
     post_pad = 1.5
     pre_hook_context = 1.2
-    ideal_len = 22.0
+    ideal_len = 75.0
     max_silence_gap = 1.5
     out: List[Dict[str, Any]] = []
     rejected_final: List[Dict[str, Any]] = []
@@ -2888,29 +3117,29 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
             out.append(c)
             continue
 
+        # [EXPERIMENT V1] Check StoryThread Governor
+        is_resolved = False
+        tid = c.get("trace_id")
+        if tid and tid in ctx.candidate_threads:
+            st = ctx.candidate_threads[tid]
+            if st.state in ("RESOLVED", "CONTINUED"):
+                is_resolved = True
+
         # 1) Context padding
         s = max(0.0, s - pre_pad)
-        if os.environ.get("HS_EXPERIMENT_MODE") != "1":
+        if os.environ.get("HS_EXPERIMENT_MODE") != "1" and not is_resolved:
             e = e + post_pad
 
-        # 2) Sentence boundary correction
-        prev_seg = _find_prev_seg(s)
-        if prev_seg:
-            prev_text = str(prev_seg.get("text", "") or "").strip()
-            _, prev_end = _seg_bounds(prev_seg)
-            if prev_text.endswith((".", "?", "!")):
-                s = max(s, prev_end)
+        if not is_resolved:
+            # 2) Sentence boundary correction
+            prev_seg = _find_prev_seg(s)
+            if prev_seg:
+                prev_text = str(prev_seg.get("text", "") or "").strip()
+                _, prev_end = _seg_bounds(prev_seg)
+                if prev_text.endswith((".", "?", "!")):
+                    s = max(s, prev_end)
 
-        # 3) Silence trim (cut at first large internal gap)
-        segs = sorted(_segments_in_window(s, e), key=lambda x: float(x.get("start", 0.0) or 0.0))
-        if len(segs) >= 2:
-            for i in range(len(segs) - 1):
-                _, a_e = _seg_bounds(segs[i])
-                b_s, _ = _seg_bounds(segs[i + 1])
-                gap = b_s - a_e
-                if gap > max_silence_gap and (a_e - s) >= 15.0:
-                    e = a_e
-                    break
+            # 3) REMOVED: Aggressive Silence Trim. It was destroying payoffs by cutting clips at 15s.
 
         # 5) Transition spike guard
         if _motion_spike_at(s) > 0.6:
@@ -2930,14 +3159,21 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
         energy_boost = _clamp01(eng.get("energy", eng.get("classic", 0.0)))
         duration_score = _clamp01(1.0 - (abs(duration - ideal_len) / ideal_len))
 
-        # Hook optimizer: ensure hook lands in first 0-3s where possible.
-        hook_seg, hook_strength = _best_hook_segment_in_window(s, e, nar, psych)
+        # Hook optimizer: respect Arc Assembler's choice first
+        if "hook_segment" in c and c["hook_segment"]:
+            hook_seg = c["hook_segment"]
+            hook_strength = _clamp01(float(c.get("hook_strength", c.get("hook_score", 0.0)) or 0.0))
+        else:
+            hook_seg, hook_strength = _best_hook_segment_in_window(s, e, nar, psych)
+            
         hook_offset = 0.0
         if hook_seg:
             hs, he = _seg_bounds(hook_seg)
             hook_offset = max(0.0, hs - s)
             # Weak-hook recovery: search forward for stronger pattern-break in window.
-            if hook_strength < 0.15:
+            _prov = c.get("provenance", {})
+            _is_assembled = (_prov.get("stage") == "L10_ARC_ASSEMBLER") if isinstance(_prov, dict) else (_prov == "L10_ARC_ASSEMBLER")
+            if hook_strength < 0.15 and not _is_assembled:
                 for seg in sorted(_segments_in_window(s, e), key=lambda x: float(x.get("start", 0.0) or 0.0)):
                     ss, ee = _seg_bounds(seg)
                     q = compute_quality_scores(transcript, ss, ee) if compute_quality_scores else {}
@@ -2948,7 +3184,8 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
                         hook_offset = max(0.0, hs - s)
                         break
             # Reposition start if hook appears late.
-            if hook_offset > 3.0:
+            # [DRAGON SLAIN] Disabled aggressive trimming that was destroying Arc Assembler build-ups
+            if hook_offset > 999.0: # Was 3.0
                 s = max(0.0, max(hs - pre_hook_context, s))
                 hook_offset = max(0.0, hs - s)
             # Hook context padding (final guard)
@@ -3004,8 +3241,13 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
         # Payoff Boundary Lock (Experiment Mode)
         locked_payoff_time = c.get("locked_payoff_time")
         locked_payoff_text = c.get("locked_payoff_text")
+        tid = c.get("trace_id", c.get("id"))
         
-        if os.environ.get("HS_EXPERIMENT_MODE") == "1" and locked_payoff_time is not None:
+        is_resolved = False
+        if tid and tid in ctx.candidate_threads:
+            is_resolved = (ctx.candidate_threads[tid].state in ("RESOLVED", "CONTINUED"))
+        
+        if os.environ.get("HS_EXPERIMENT_MODE") == "1" and locked_payoff_time is not None and is_resolved:
             final_end_cap = float(locked_payoff_time) + 2.0
             new_e = min(float(e), final_end_cap)
             
@@ -3022,12 +3264,25 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
             e = new_e
             
         c["end"] = round(float(e), 2)
+        
+        if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
+            st = ctx.candidate_threads[tid]
+            st.propose_boundary(
+                stage="EDITOR_REFINER",
+                before_start=round(orig_s, 2),
+                before_end=round(orig_e, 2),
+                after_start=round(float(s), 2),
+                after_end=round(float(e), 2),
+                reason="silence_trim_and_pad",
+                confidence=1.0
+            )
+
         c["duration"] = round(float(duration), 2)
         c["editor_score"] = round(float(editor_score), 4)
         c["final_score"] = round(float(final_score), 4)
         c["hook_score"] = round(float(hook_metric), 4)
         c["open_loop_score"] = round(float(open_loop_metric), 4)
-        c["payoff_score"] = round(float(payoff_metric), 4)
+        c["payoff_score"] = round(float(c.get("payoff_engine_score", payoff_metric) or payoff_metric), 4)
         c["build_text"] = build_text
         c["hook_offset"] = round(float(hook_offset), 3)
         c["hook_strength"] = round(float(hook_strength), 4)
@@ -3069,7 +3324,7 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
             float(final_score),
             float(hook_metric),
             float(open_loop_metric),
-            float(payoff_metric),
+            float(c["payoff_score"]),
             float(_clamp01(sem.get("impact", 0.0))),
             float(_clamp01(sem.get("meaning", 0.0))),
             float(_clamp01(sem.get("novelty", 0.0))),
@@ -3129,6 +3384,30 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
                     get_observer().modify_candidate(cid, "editor_refiner", changes)
                 except Exception:
                     pass
+
+        if os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
+            tid = c.get("trace_id")
+            if tid:
+                # [EXPERIMENT V1] Write findings to Governor memory
+                if tid in ctx.candidate_threads:
+                    st = ctx.candidate_threads[tid]
+                    st.add_history(
+                        "EDITOR_REFINER", 
+                        "REFINED_BOUNDARIES", 
+                        f"Set final bounds to {c['start']}-{c['end']}s", 
+                        float(c.get("viral_score", 0.0))
+                    )
+                    
+                ctx.trace_state(tid, "EDITOR_REFINED")
+                ctx.trace_event(
+                    trace_id=tid,
+                    stage="EDITOR_REFINER",
+                    event="REFINED",
+                    changed=(round(float(c["start"]), 2) != round(orig_s, 2) or round(float(c["end"]), 2) != round(orig_e, 2)),
+                    impact="MEDIUM" if (round(float(c["end"]), 2) != round(orig_e, 2) or round(float(c["start"]), 2) != round(orig_s, 2)) else "LOW",
+                    before={"start": round(orig_s, 2), "end": round(orig_e, 2)},
+                    after={"start": round(float(c["start"]), 2), "end": round(float(c["end"]), 2)}
+                )
         out.append(c)
 
     out = sorted(
@@ -3140,7 +3419,7 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
         ),
         reverse=True,
     )
-    out = dedupe_by_overlap(out, overlap_threshold=0.75)
+    out = dedupe_by_overlap(out, overlap_threshold=0.40)
     ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
     ctx.ranked_output = list(ctx.final_candidates)
 
@@ -3534,8 +3813,10 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
                 log.info(f"OLD_SCORE: {old_score:.3f}")
                 log.info(f"NEW_SCORE: {new_score:.3f}\\n")
                 
-        ctx.final_candidates = ctx_legacy.final_candidates
-        ctx.ranked_output = ctx_legacy.ranked_output
+        ctx.final_candidates = ctx_v2.final_candidates
+        ctx.ranked_output = ctx_v2.ranked_output
+        if hasattr(ctx_v2, "candidate_threads"):
+            ctx.candidate_threads = ctx_v2.candidate_threads
     else:
         _run_arc_assembler(ctx)
     print("STAGE OK: arc assembler")
@@ -3619,7 +3900,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         xray_report = "[XRAY FAILED]"
 
     print("TOTAL PROCESS TIME:", time.time() - start)
-    return out, _groq_pool, has_tf_moments, getattr(ctx, "transcript", [])
+    return out, _groq_pool, has_tf_moments, getattr(ctx, "transcript", []), ctx
 
 
 def orchestrate(path: str,
@@ -3650,6 +3931,7 @@ def orchestrate(path: str,
 
     has_tf_moments = False
     full_transcript = []
+    ctx = None
     if mode == "staged":
         try:
             _staged_result = _run_staged_pipeline(
@@ -3660,7 +3942,9 @@ def orchestrate(path: str,
                 allow_fallback=allow_fallback,
             )
             if isinstance(_staged_result, tuple):
-                if len(_staged_result) == 4:
+                if len(_staged_result) == 5:
+                    final_candidates, _groq_pool, has_tf_moments, full_transcript, ctx = _staged_result
+                elif len(_staged_result) == 4:
                     final_candidates, _groq_pool, has_tf_moments, full_transcript = _staged_result
                 elif len(_staged_result) == 3:
                     final_candidates, _groq_pool, has_tf_moments = _staged_result
@@ -3741,7 +4025,7 @@ def orchestrate(path: str,
                         len(_pool), len(final_candidates), len(_groq_pool),
                     )
                     
-                    groq_result = review_candidates_with_groq(_pool, full_transcript)
+                    groq_result = review_candidates_with_groq(_pool, full_transcript, ctx.candidate_threads)
                     
                     import re
                     def _check_quote_valid(q, segments):
@@ -3899,6 +4183,7 @@ def orchestrate(path: str,
                                     i_k = surgeon.get("idea_keywords", [])
                                     c_source = str(surgeon.get("core_idea_source", "UNKNOWN"))
                                     
+                                    
                                     try:
                                         c_score = float(surgeon.get("continuity_score", 0))
                                     except ValueError:
@@ -3940,9 +4225,35 @@ def orchestrate(path: str,
                                         # Never shrink the boundary if it was already extended (e.g. by 90s experiment)
                                         c["end"] = max(old_end, new_end)
                                         
+                                        tid = c.get("trace_id", c.get("id"))
+                                        if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
+                                            st = ctx.candidate_threads[tid]
+                                            st.propose_boundary(
+                                                stage="GROQ_SURGEON",
+                                                before_start=float(c.get("start", 0.0)),
+                                                before_end=round(old_end, 2),
+                                                after_start=float(c.get("start", 0.0)),
+                                                after_end=round(float(max(old_end, new_end)), 2),
+                                                reason="extend_right",
+                                                confidence=0.9
+                                            )
+                                        
                                         for fc in final_candidates:
                                             if fc.get("cid") == cid and cid != "?":
                                                 fc["end"] = max(old_end, new_end)
+                                                if os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
+                                                    tid = fc.get("trace_id")
+                                                    if tid:
+                                                        ctx.trace_state(tid, "SURGEON_VALIDATED")
+                                                        ctx.trace_event(
+                                                            trace_id=tid,
+                                                            stage="GROQ_SURGEON",
+                                                            event="EXTEND_RIGHT",
+                                                            changed=(round(max(old_end, new_end), 2) != round(old_end, 2)),
+                                                            impact="CRITICAL" if (round(max(old_end, new_end), 2) != round(old_end, 2)) else "LOW",
+                                                            before={"end": round(old_end, 2)},
+                                                            after={"end": round(max(old_end, new_end), 2)}
+                                                        )
                                                 from viral_finder.system_observer import get_observer
                                                 try:
                                                     get_observer().modify_candidate(cid, "surgeon_cortex", {"end": max(old_end, new_end)})
@@ -3954,6 +4265,18 @@ def orchestrate(path: str,
                                             f"[EXTEND_RIGHT_APPLIED] "
                                             f"cid={cid} old_end={old_end:.2f} "
                                             f"new_end={new_end:.2f}\n"
+                                        )
+                            elif dec == "KEEP":
+                                if os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
+                                    tid = c.get("trace_id")
+                                    if tid:
+                                        ctx.trace_state(tid, "SURGEON_VALIDATED")
+                                        ctx.trace_event(
+                                            trace_id=tid,
+                                            stage="GROQ_SURGEON",
+                                            event="KEEP",
+                                            changed=False,
+                                            impact="LOW"
                                         )
 
         elif is_groq_enabled() and not _groq_api_key:
@@ -3986,6 +4309,15 @@ def orchestrate(path: str,
     log.info(f"final_candidates={len(final_candidates)}")
     log.info(f"runtime_seconds={round(time.time() - start_time, 2)}\n")
 
+    if ctx:
+        log.info("\n[PIPELINE_ACCOUNTING]")
+        log.info(f"Hooks Created = {len(ctx.raw_candidates) + ctx.hooks_suppressed}")
+        log.info(f"Hooks Suppressed = {ctx.hooks_suppressed}")
+        log.info(f"Candidates Created = {len(ctx.raw_candidates)}")
+        log.info(f"Arc Assembler Inputs = {len(ctx.enriched_candidates) if ctx.enriched_candidates else len(ctx.raw_candidates)}")
+        log.info(f"Surgeon Inputs = {len(ctx.validated_candidates) if ctx.validated_candidates else len(ctx.raw_candidates)}")
+        log.info(f"Final Clips = {len(final_candidates)}\n")
+
     for i, c in enumerate(final_candidates):
         source = "groq_transcript_first" if c.get("groq_moment") else "candidate_generation"
         log.info(f"CLIP {i+1}: source={source} hook_score={c.get('hook_score', 0.0)} payoff_score={c.get('payoff_score', 0.0)} duration={c.get('duration', 0.0)} final_score={c.get('final_score', 0.0)}")
@@ -3998,12 +4330,143 @@ def orchestrate(path: str,
             log.info(f"    why_selected={trace.get('reason', 'N/A')}")
             log.info(f"    selected_hook_text='{trace.get('text', '')}'\n")
 
+    if ctx and os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
+        log.info("\n" + "=" * 50)
+        log.info("NARRATIVE OBSERVATORY: STORY TRACE REPORT")
+        log.info("=" * 50)
+        for i, c in enumerate(final_candidates):
+            tid = c.get("trace_id")
+            if not tid or tid not in ctx.trace_logs:
+                continue
+            ctx.trace_state(tid, "FINALIZED")
+            t_obj = ctx.trace_logs[tid]
+            ident = t_obj.get("identity", {})
+            hist = t_obj.get("state_history", [])
+            kids = t_obj.get("suppressed_children", [])
+            evts = t_obj.get("events", [])
+
+            log.info(f"\nSTORY #{i+1} [Trace ID: {tid}]")
+            log.info("-" * 40)
+            log.info("WHO AM I?")
+            log.info(f"  Hook: '{ident.get('hook', 'N/A')}'")
+            log.info(f"  Start: {ident.get('start', 'N/A')}s")
+            log.info(f"  End: {c.get('end')}s")
+            log.info(f"  State: {ident.get('state', 'N/A')}")
+            br = ident.get("birth_reason", {})
+            if br:
+                log.info("  Birth Heuristics:")
+                for k, v in br.items():
+                    log.info(f"    {k}: {v}")
+            log.info("-" * 40)
+            log.info(f"STATE HISTORY: {' -> '.join(hist)}")
+            log.info("-" * 40)
+            if kids:
+                log.info(f"SUPPRESSED CHILDREN ({len(kids)} absorbed):")
+                for ki, kid in enumerate(kids):
+                    log.info(f"  {ki+1}. Start: {kid.get('start')}s | Score: {kid.get('score')} | Reason: {kid.get('reason')}")
+                    log.info(f"     Text: '{kid.get('text')}'")
+            else:
+                log.info("SUPPRESSED CHILDREN: None (0 absorbed)")
+            log.info("-" * 40)
+            log.info("PIPELINE EVENTS:")
+            for ev in evts:
+                changed_indicator = " [MUTATED]" if ev.get("changed") else ""
+                log.info(f"  [{ev.get('stage')}] {ev.get('event')}{changed_indicator} (Impact: {ev.get('impact')})")
+                if ev.get("before"):
+                    log.info(f"     Before: {ev.get('before')}")
+                if ev.get("after"):
+                    log.info(f"     After:  {ev.get('after')}")
+            log.info("-" * 40)
+            
+            # Dynamic natural language explanation based on events
+            explanations = []
+            has_hh = any(e.get("stage") == "HOOK_HUNTER" for e in evts)
+            has_sm = any(e.get("stage") == "STORY_MEMORY" for e in evts)
+            has_aa = any(e.get("stage") == "ARC_ASSEMBLER" for e in evts)
+            has_po = any(e.get("stage") == "PAYOFF_SELECTION" for e in evts)
+            has_gs = any(e.get("stage") == "GROQ_SURGEON" for e in evts)
+            has_er = any(e.get("stage") == "EDITOR_REFINER" for e in evts)
+
+            if has_hh:
+                explanations.append("Hook Hunter created it")
+            if has_sm and kids:
+                explanations.append(f"Story memory absorbed {len(kids)} fragment{'s' if len(kids) > 1 else ''}")
+            if has_aa:
+                # Find assembler delta
+                aa_ev = next((e for e in evts if e.get("stage") == "ARC_ASSEMBLER"), None)
+                if aa_ev and aa_ev.get("changed"):
+                    before_dur = aa_ev["before"].get("end", 0) - aa_ev["before"].get("start", 0)
+                    after_dur = aa_ev["after"].get("end", 0) - aa_ev["after"].get("start", 0)
+                    diff = round(after_dur - before_dur, 2)
+                    if diff > 0:
+                        explanations.append(f"Arc Assembler expanded it by {diff}s")
+                    else:
+                        explanations.append("Arc Assembler assembled the boundaries")
+                else:
+                    explanations.append("Arc Assembler locked the narrative setup")
+            if has_po:
+                po_ev = next((e for e in evts if e.get("stage") == "PAYOFF_SELECTION"), None)
+                if po_ev:
+                    explanations.append(f"Payoff selected segment {po_ev['after'].get('payoff_idx')}")
+            if has_gs:
+                gs_ev = next((e for e in evts if e.get("stage") == "GROQ_SURGEON" and e.get("event") in ("MOVE_HOOK", "EXTEND_RIGHT")), None)
+                if gs_ev:
+                    explanations.append(f"Groq Surgeon validated and modified the boundaries ({gs_ev.get('event')})")
+                else:
+                    explanations.append("Groq Surgeon validated it without edits")
+            if has_er:
+                er_ev = next((e for e in evts if e.get("stage") == "EDITOR_REFINER"), None)
+                if er_ev and er_ev.get("changed"):
+                    explanations.append("Editor Refiner padded and korrected sentence alignment")
+
+            log.info("FINAL ANSWER")
+            log.info(f"  This clip exists because " + ", ".join(explanations) + ".")
+            log.info("=" * 50)
+
     from viral_finder.system_observer import get_observer
     try:
         xray_report = get_observer().render_report()
         log.info(xray_report)
     except Exception as exc:
         log.warning(f"[ORCH] Error rendering system observer: {exc}")
+
+    # -------------------------------------------------------------------------
+    # GOVERNOR TELEMETRY BLOCK (PHASE 1)
+    # -------------------------------------------------------------------------
+    log.info("\n" + "="*60)
+    log.info("GOVERNOR TELEMETRY: PROPOSAL HISTORY (PHASE 1)")
+    log.info("="*60)
+    if ctx and hasattr(ctx, "candidate_threads"):
+        for i, c in enumerate(final_candidates):
+            tid = c.get("trace_id", c.get("id"))
+            if not tid or tid not in ctx.candidate_threads:
+                continue
+            
+            st = ctx.candidate_threads[tid]
+            proposals = st.proposals
+            
+            log.info(f"\nCLIP {c.get('cid', tid)}")
+            log.info("-" * 40)
+            
+            for stage in ["ARC_ASSEMBLER", "EDITOR_REFINER", "GROQ_SURGEON"]:
+                stage_props = proposals.get(stage, [])
+                for prop in stage_props:
+                    if prop.get("type") == "boundary":
+                        bs, be = prop["before"]["start"], prop["before"]["end"]
+                        ast, ae = prop["after"]["start"], prop["after"]["end"]
+                        log.info(f"{stage} PROPOSED")
+                        log.info(f"  before: {bs} -> {be}")
+                        log.info(f"  after:  {ast} -> {ae}")
+                        log.info(f"  reason: {prop.get('reason')}")
+                        log.info(f"  confidence: {prop.get('confidence')}\n")
+                        
+            log.info("FINAL OUTPUT")
+            log.info(f"  start={c.get('start')}")
+            log.info(f"  end={c.get('end')}")
+            log.info("-" * 40)
+    else:
+        log.info("No StoryThread proposals found in this run.")
+    log.info("="*60 + "\n")
 
     return final_candidates
 # -------------------------
