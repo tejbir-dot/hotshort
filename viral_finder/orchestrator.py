@@ -2485,7 +2485,10 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         )
         if str(nar.get("trigger_type", "") or "") == "belief_reversal":
             arc_score = _clamp01(arc_score * 1.2)
-        arc_complete = bool(hook_found and (payoff_idx is not None))
+        payoff_source = str(c.get("payoff_source", ""))
+        payoff_score_val = c.get("payoff_engine_score", 0.0)
+        is_strong_payoff = (payoff_score_val >= 0.55) or (payoff_source in ["TIER1", "TIER3"])
+        arc_complete = bool(hook_found and (payoff_idx is not None) and is_strong_payoff)
         if arc_complete:
             complete_count += 1
             arc_score = _clamp01(arc_score * 1.35)
@@ -2746,6 +2749,8 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                         c["locked_payoff_time"] = best_payoff["end"]
                         c["locked_payoff_text"] = best_payoff["text"]
                         c["payoff_engine_score"] = best_payoff.get("final_score", 0.0)
+                        if "tier3_title" in best_payoff:
+                            c["clip_title"] = best_payoff["tier3_title"]
 
                         import logging
                         logging.getLogger("orchestrator").info(
@@ -2771,7 +2776,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                         candidate_window=candidate_window,
                         full_transcript=list(transcript),
                         thread_id=str(c.get("cid", c.get("id", "unknown"))),
-                        run_tier3=(float(c.get("hook_strength", 0.0) or 0.0) >= 0.45),
+                        run_tier3=True,
                     )
                     if resolver_seg:
                         tier = resolver_seg.get("tier", "?")
@@ -2787,6 +2792,9 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                         c["locked_payoff_time"] = resolver_seg.get("end")
                         c["locked_payoff_text"] = resolver_seg.get("text", "")
                         c["payoff_source"] = f"TIER{tier}"
+                        c["payoff_engine_score"] = tier_score
+                        if "tier3_title" in resolver_seg:
+                            c["clip_title"] = resolver_seg["tier3_title"]
 
                         import logging
                         _log_orch = logging.getLogger("orchestrator")
@@ -2867,7 +2875,10 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         )
         if str(nar.get("trigger_type", "") or "") == "belief_reversal":
             arc_score = _clamp01(arc_score * 1.2)
-        arc_complete = bool(hook_found and (payoff_idx is not None))
+        payoff_source = str(c.get("payoff_source", ""))
+        payoff_score_val = c.get("payoff_engine_score", 0.0)
+        is_strong_payoff = (payoff_score_val >= 0.55) or (payoff_source in ["TIER1", "TIER3"])
+        arc_complete = bool(hook_found and (payoff_idx is not None) and is_strong_payoff)
         if arc_complete:
             arc_score = _clamp01(arc_score * 1.35)
         
