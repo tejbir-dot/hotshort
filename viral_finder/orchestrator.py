@@ -2487,7 +2487,7 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             arc_score = _clamp01(arc_score * 1.2)
         payoff_source = str(c.get("payoff_source", ""))
         payoff_score_val = c.get("payoff_engine_score", 0.0)
-        is_strong_payoff = (payoff_score_val >= 0.55) or (payoff_source in ["TIER1", "TIER3"])
+        is_strong_payoff = (payoff_score_val >= 0.55) or (payoff_source in ["TIER1"])
         arc_complete = bool(hook_found and (payoff_idx is not None) and is_strong_payoff)
         if arc_complete:
             complete_count += 1
@@ -2877,7 +2877,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             arc_score = _clamp01(arc_score * 1.2)
         payoff_source = str(c.get("payoff_source", ""))
         payoff_score_val = c.get("payoff_engine_score", 0.0)
-        is_strong_payoff = (payoff_score_val >= 0.55) or (payoff_source in ["TIER1", "TIER3"])
+        is_strong_payoff = (payoff_score_val >= 0.55) or (payoff_source in ["TIER1"])
         arc_complete = bool(hook_found and (payoff_idx is not None) and is_strong_payoff)
         if arc_complete:
             arc_score = _clamp01(arc_score * 1.35)
