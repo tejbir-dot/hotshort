@@ -3,106 +3,66 @@
 import { motion } from "framer-motion";
 
 const rings = [
-  { size: 170, duration: 55, reverse: false, opacity: 0.55, strokeW: 1.5, glow: 6 },
-  { size: 240, duration: 75, reverse: true,  opacity: 0.42, strokeW: 1.2, glow: 5 },
-  { size: 320, duration: 100, reverse: false, opacity: 0.28, strokeW: 1.0, glow: 4 },
-  { size: 415, duration: 140, reverse: true,  opacity: 0.18, strokeW: 0.8, glow: 3 },
-  { size: 520, duration: 190, reverse: false, opacity: 0.10, strokeW: 0.6, glow: 2 },
+  { size: 180, duration: 40, reverse: false, opacity: 1 },
+  { size: 260, duration: 55, reverse: true,  opacity: 0.8 },
+  { size: 350, duration: 75, reverse: false, opacity: 0.6 },
+  { size: 450, duration: 100, reverse: true,  opacity: 0.4 },
+  { size: 560, duration: 140, reverse: false, opacity: 0.25 },
 ];
-
-// A fast glimmer arc that orbits each ring
-const GlimmerArc = ({ size, duration, index }: { size: number; duration: number; index: number }) => (
-  <motion.circle
-    cx={size / 2}
-    cy={size / 2}
-    r={size / 2 - 2}
-    fill="none"
-    stroke="rgba(246,196,83,0.9)"
-    strokeWidth={2.5 - index * 0.3}
-    strokeDasharray={`${24 + index * 6} ${size * 3}`}
-    strokeLinecap="round"
-    animate={{ rotate: 360 }}
-    transition={{
-      duration: 6 + index * 1.5,
-      repeat: Infinity,
-      ease: "linear",
-    }}
-    style={{
-      transformOrigin: "50% 50%",
-      filter: `drop-shadow(0 0 ${8 - index}px rgba(246,196,83,1)) drop-shadow(0 0 ${20 - index * 2}px rgba(246,196,83,0.6))`,
-    }}
-  />
-);
 
 export default function ReactorRings() {
   return (
-    <>
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
       {rings.map((ring, index) => (
-        <motion.svg
+        <div
           key={index}
-          animate={{ rotate: ring.reverse ? -360 : 360 }}
-          transition={{ duration: ring.duration, ease: "linear", repeat: Infinity }}
-          className="absolute overflow-visible"
-          width={ring.size}
-          height={ring.size}
-          viewBox={`0 0 ${ring.size} ${ring.size}`}
-          style={{ willChange: "transform" }}
+          className="absolute rounded-full"
+          style={{
+            width: ring.size,
+            height: ring.size,
+            border: "1px solid rgba(120, 160, 255, 0.15)",
+            background: "rgba(10, 15, 30, 0.2)",
+            boxShadow: `
+              inset 0 0 20px rgba(20, 40, 100, 0.3),
+              inset 0 0 5px rgba(255, 255, 255, 0.05),
+              0 0 15px rgba(0, 0, 0, 0.5)
+            `,
+            backdropFilter: "blur(4px)",
+            opacity: ring.opacity,
+          }}
         >
-          {/* Outer glow ring */}
-          <circle
-            cx={ring.size / 2}
-            cy={ring.size / 2}
-            r={ring.size / 2 - 2}
-            fill="none"
-            stroke={`rgba(100,150,255,${ring.opacity * 0.3})`}
-            strokeWidth={ring.strokeW * 5}
-            filter={`blur(${ring.glow + 4}px)`}
-          />
-
-          {/* Main ring — solid, metallic blue-gold */}
-          <circle
-            cx={ring.size / 2}
-            cy={ring.size / 2}
-            r={ring.size / 2 - 2}
-            fill="none"
-            stroke={`rgba(180,200,255,${ring.opacity})`}
-            strokeWidth={ring.strokeW}
+          {/* Inner Golden Shine Arc */}
+          <motion.div
+            className="absolute inset-0 rounded-full"
+            animate={{ rotate: ring.reverse ? -360 : 360 }}
+            transition={{ duration: ring.duration, ease: "linear", repeat: Infinity }}
             style={{
-              filter: `drop-shadow(0 0 ${ring.glow}px rgba(150,180,255,0.6))`,
+              background: "conic-gradient(from 0deg, transparent 0%, transparent 80%, rgba(246,196,83,0.15) 90%, rgba(246,196,83,0.8) 100%)",
+              WebkitMask: "radial-gradient(circle, transparent 48%, black 50%)",
+              mask: "radial-gradient(circle, transparent 48%, black 50%)",
             }}
           />
 
-          {/* Inner thin accent */}
-          <circle
-            cx={ring.size / 2}
-            cy={ring.size / 2}
-            r={ring.size / 2 - 8}
-            fill="none"
-            stroke={`rgba(246,196,83,${ring.opacity * 0.35})`}
-            strokeWidth={0.5}
-          />
-
-          {/* Glimmer arc */}
-          <GlimmerArc size={ring.size} duration={ring.duration} index={index} />
-
-          {/* Small orbital nodes at key positions */}
-          {[0, 72, 144, 216, 288].slice(0, 3 + index).map((deg) => {
-            const r = ring.size / 2 - 2;
-            const x = ring.size / 2 + r * Math.cos((deg * Math.PI) / 180);
-            const y = ring.size / 2 + r * Math.sin((deg * Math.PI) / 180);
-            return (
-              <g key={deg}>
-                <circle cx={x} cy={y} r={3.5 - index * 0.4} fill="rgba(246,196,83,0.9)"
-                  style={{ filter: "drop-shadow(0 0 6px rgba(246,196,83,1))" }}
-                />
-                <circle cx={x} cy={y} r={9 - index} fill="none"
-                  stroke="rgba(246,196,83,0.2)" strokeWidth="0.8"
-                />
-              </g>
-            );
-          })}
-        </motion.svg>
+          {/* Core Glint on the track */}
+          <motion.div
+            className="absolute inset-0"
+            animate={{ rotate: ring.reverse ? -360 : 360 }}
+            transition={{ duration: ring.duration, ease: "linear", repeat: Infinity }}
+          >
+            <div
+              className="absolute rounded-full bg-[#ffe08a]"
+              style={{
+                width: 4,
+                height: 4,
+                top: -2,
+                left: "50%",
+                transform: "translateX(-50%)",
+                boxShadow: "0 0 10px rgba(246,196,83,1), 0 0 20px rgba(246,196,83,0.8)",
+              }}
+            />
+          </motion.div>
+        </div>
       ))}
-    </>
+    </div>
   );
 }

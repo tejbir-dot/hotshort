@@ -4,6 +4,7 @@ import Background from "../background/Background";
 import ParticleField from "../particles/ParticleField";
 import ReactorCore from "../reactor/ReactorCore";
 import NeuralGraph from "../graph/NeuralGraph";
+import SidePanels from "./SidePanels";
 
 export default function Dashboard() {
   return (
@@ -14,15 +15,18 @@ export default function Dashboard() {
       {/* Floating particles */}
       <ParticleField />
 
-      {/* Neural Graph — connections, packets, scanner, glow, ripples */}
+      {/* Neural Graph - connections, packets, scanner, glow, ripples */}
       <div className="absolute inset-0 flex items-center justify-center">
         <NeuralGraph />
       </div>
 
-      {/* Reactor Core — center orb, rings, glow, pulse */}
+      {/* Reactor Core - center orb, rings, glow, pulse */}
       <div className="absolute inset-0 flex items-center justify-center">
         <ReactorCore />
       </div>
+
+      {/* 3D Glassmorphic Side Panels */}
+      <SidePanels />
 
       {/* Ambient Light */}
       <div
