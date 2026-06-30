@@ -51,7 +51,9 @@ export default function NeuralGraph() {
       container.style.transform = `translate(${cam.x.toFixed(2)}px, ${cam.y.toFixed(2)}px) scale(${cam.scale.toFixed(5)})`;
     });
 
-    return () => unsub();
+    return () => {
+      unsub();
+    };
   }, []);
 
   // Boot idle neural activity on mount

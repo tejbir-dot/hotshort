@@ -23,7 +23,9 @@ export default function ScannerLayer() {
       );
     });
 
-    return () => unsub();
+    return () => {
+      unsub();
+    };
   }, []);
 
   const beamPath = `M ${CENTER} ${CENTER} L ${CENTER} ${CENTER - ORBIT_RADIUS - 40}`;
