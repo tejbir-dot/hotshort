@@ -57,7 +57,7 @@ export default function OrbitSystem() {
       {nodes.map((node) => (
         <OrbitNode
           key={node.label}
-          radius={270}
+          radius={410}
           angle={node.angle}
           label={node.label}
           icon={node.icon}
