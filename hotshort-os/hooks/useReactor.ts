@@ -11,7 +11,10 @@ export default function useReactor() {
   );
 
   useEffect(() => {
-    return reactorEngine.subscribe(setState);
+    const unsubscribe = reactorEngine.subscribe(setState);
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   return {

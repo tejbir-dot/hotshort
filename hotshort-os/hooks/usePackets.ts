@@ -11,7 +11,10 @@ export default function usePackets() {
   );
 
   useEffect(() => {
-    return packetEngine.subscribe(setPackets);
+    const unsubscribe = packetEngine.subscribe(setPackets);
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   return {
