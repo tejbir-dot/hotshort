@@ -115,3 +115,380 @@ Just atmosphere.
 
 Commit
 feat(core): initialize HotShort OS foundation
+
+
+
+# SPRINT 3 — Neural Graph Engine (Production Quality)
+
+You are the lead graphics engineer for HotShort OS.
+
+DO NOT redesign the project.
+
+Continue from the existing architecture.
+
+Current architecture already exists:
+
+- AnimationClock
+- EventBus
+- ReactorEngine
+- PacketEngine
+- PacketScheduler
+- NeuralFlowEngine
+- NodeRegistry
+- GraphLayout
+- FlowField
+- PathFinder
+- Reactor Components
+- Orbit Components
+
+Keep everything compatible.
+
+--------------------------------------------
+
+MISSION
+
+Transform the current UI into a cinematic living AI operating system.
+
+This should no longer feel like React components.
+
+It should feel like the inside of an artificial intelligence.
+
+Apple Vision Pro quality.
+
+Tesla quality.
+
+FUI (Futuristic User Interface).
+
+Every animation must represent real computation.
+
+No decorative animations.
+
+--------------------------------------------
+
+BUILD
+
+Neural Graph Engine
+
+Files
+
+engine/
+
+GraphRenderer.ts
+
+ConnectionRenderer.ts
+
+PacketRendererV2.ts
+
+RippleEngine.ts
+
+NodeAnimationEngine.ts
+
+ScannerEngine.ts
+
+CameraEngine.ts
+
+GlowEngine.ts
+
+FlowRenderer.ts
+
+components/
+
+graph/
+
+NeuralGraph.tsx
+
+ConnectionLayer.tsx
+
+PacketLayer.tsx
+
+ScannerLayer.tsx
+
+GlowLayer.tsx
+
+RippleLayer.tsx
+
+FocusLayer.tsx
+
+--------------------------------------------
+
+VISUAL GOALS
+
+Connections should no longer be straight.
+
+Use cubic bezier curves.
+
+Packets travel naturally.
+
+Acceleration.
+
+Deceleration.
+
+Curvature.
+
+Magnetic movement.
+
+Every packet has:
+
+velocity
+
+heading
+
+tail
+
+glow
+
+trail
+
+impact flash
+
+arrival pulse
+
+Packets should look alive.
+
+Not dots.
+
+--------------------------------------------
+
+NODES
+
+Each node has four states
+
+Idle
+
+Thinking
+
+Processing
+
+Success
+
+Each state changes
+
+Glow
+
+Scale
+
+Color
+
+Energy
+
+Ring intensity
+
+Particles
+
+No CSS animations.
+
+Everything driven from engines.
+
+--------------------------------------------
+
+SCANNER
+
+Create rotating scanner beam.
+
+Soft.
+
+Glass.
+
+Bloom.
+
+Not harsh.
+
+Scanner occasionally highlights active nodes.
+
+--------------------------------------------
+
+ENERGY
+
+Energy propagates.
+
+Example
+
+HOOK_FOUND
+
+↓
+
+Semantic flashes
+
+↓
+
+Packet launches
+
+↓
+
+Hook Hunter lights
+
+↓
+
+Golden ripple expands
+
+↓
+
+Ranking lights
+
+↓
+
+Editor lights
+
+↓
+
+Renderer lights
+
+↓
+
+Core breathes
+
+Everything reacts together.
+
+--------------------------------------------
+
+PACKETS
+
+Replace current packets.
+
+Requirements
+
+Bezier movement
+
+Velocity
+
+Rotation
+
+Tail
+
+Glow
+
+Trail
+
+Arrival flash
+
+Collision safe
+
+Multiple packets simultaneously
+
+Thousands supported
+
+GPU friendly
+
+--------------------------------------------
+
+CAMERA
+
+Very subtle.
+
+Tiny drift.
+
+Tiny breathing.
+
+Tiny zoom.
+
+Never obvious.
+
+Feels alive.
+
+--------------------------------------------
+
+BACKGROUND
+
+Deep space.
+
+Grid.
+
+Noise.
+
+Floating dust.
+
+Moving volumetric glow.
+
+Parallax.
+
+Very subtle.
+
+Premium.
+
+--------------------------------------------
+
+PERFORMANCE
+
+60 FPS
+
+No unnecessary React rerenders.
+
+Use requestAnimationFrame.
+
+Use shared engine state.
+
+Canvas where appropriate.
+
+SVG only where beneficial.
+
+No duplicated calculations.
+
+--------------------------------------------
+
+DESIGN
+
+Minimal.
+
+Premium.
+
+Elegant.
+
+Gold
+
+White
+
+Deep blue
+
+Purple
+
+Almost black background.
+
+Glass.
+
+Soft bloom.
+
+Thin lines.
+
+High contrast.
+
+--------------------------------------------
+
+DO NOT
+
+❌ Add charts
+
+❌ Add cards
+
+❌ Add SaaS widgets
+
+❌ Add admin panels
+
+❌ Add random animations
+
+❌ Add fake loading
+
+❌ Break existing architecture
+
+--------------------------------------------
+
+SUCCESS
+
+When the app starts,
+
+the user should feel they are watching
+
+a living artificial intelligence
+
+continuously thinking,
+
+routing information,
+
+making decisions,
+
+and transforming data into intelligence.
+
+The result should be visually comparable to high-end sci-fi interfaces while remaining clean, elegant, and believable.
+
+Implement production-quality code only.
+
+Commit incrementally after each subsystem.
