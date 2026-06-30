@@ -1,0 +1,117 @@
+Create this.
+
+hotshort-os
+
+app/
+
+components/
+
+components/background
+
+components/reactor
+
+components/orbit
+
+components/particles
+
+components/panels
+
+components/ui
+
+engine/
+
+hooks/
+
+lib/
+
+types/
+
+styles/
+
+public/
+Create these files
+app/layout.tsx
+
+app/page.tsx
+
+app/globals.css
+
+components/ui/Dashboard.tsx
+
+components/background/Background.tsx
+
+components/reactor/ReactorCore.tsx
+
+components/orbit/OrbitSystem.tsx
+
+components/particles/ParticleField.tsx
+
+lib/constants.ts
+constants.ts
+export const COLORS = {
+
+background:"#04060B",
+
+gold:"#F6C453",
+
+goldLight:"#FFE08A",
+
+purple:"#755BFF",
+
+blue:"#59B7FF"
+
+}
+
+export const REACTOR_SIZE=220
+
+export const ORBIT_SIZE=540
+
+export const PARTICLE_COUNT=180
+page.tsx
+import Dashboard from "@/components/ui/Dashboard";
+
+export default function Home() {
+
+return <Dashboard/>
+
+}
+Dashboard
+
+Dashboard should ONLY assemble.
+
+Never contain logic.
+
+<Background/>
+
+<ParticleField/>
+
+<OrbitSystem/>
+
+<ReactorCore/>
+
+Nothing else.
+
+First Screenshot Goal
+
+When you run
+
+pnpm dev
+
+you should already see
+
+           ☀
+
+      ○ ○ ○ ○ ○
+
+      particles
+
+premium background
+
+No text.
+
+No buttons.
+
+Just atmosphere.
+
+Commit
+feat(core): initialize HotShort OS foundation

@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+:root {
+  --background: #04060b;
+  --foreground: #f8fafc;
+
+  --gold: #f6c453;
+  --gold-light: #ffe08a;
+  --gold-dark: #b8831c;
+
+  --blue: #59b7ff;
+  --purple: #755bff;
+
+  --glass: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  --grid: rgba(255, 255, 255, 0.03);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Inter, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+
+  background:
+    radial-gradient(circle at center,
+      rgba(246,196,83,.08),
+      transparent 38%),
+    radial-gradient(circle at top,
+      rgba(117,91,255,.08),
+      transparent 55%),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+
+  background-size:
+    100% 100%,
+    100% 100%,
+    80px 80px,
+    80px 80px;
+
+  pointer-events: none;
+  z-index: -2;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+
+  background:
+    radial-gradient(circle,
+      rgba(255,255,255,.015) 1px,
+      transparent 1px);
+
+  background-size: 4px 4px;
+  opacity: .4;
+
+  pointer-events: none;
+  z-index: -1;
+}
+
+#__next,
+main {
+  width: 100%;
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.12);
+  border-radius: 999px;
+}
