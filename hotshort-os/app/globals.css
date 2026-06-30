@@ -1,7 +1,7 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 :root {
-  --background: #04060b;
+  --background: #060A14;
   --foreground: #f8fafc;
 
   --gold: #f6c453;
@@ -11,10 +11,10 @@
   --blue: #59b7ff;
   --purple: #755bff;
 
-  --glass: rgba(255, 255, 255, 0.04);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.06);
 
-  --grid: rgba(255, 255, 255, 0.03);
+  --grid: rgba(255, 255, 255, 0.018);
 }
 
 * {
@@ -44,17 +44,21 @@ body {
   position: relative;
 }
 
+/* Deep space background — dark navy with subtle blue depth */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
 
   background:
-    radial-gradient(circle at center,
-      rgba(246,196,83,.08),
-      transparent 38%),
-    radial-gradient(circle at top,
-      rgba(117,91,255,.08),
+    radial-gradient(ellipse 80% 60% at 50% 40%,
+      rgba(30, 58, 120, 0.22),
+      transparent 70%),
+    radial-gradient(ellipse 60% 40% at 80% 10%,
+      rgba(117, 91, 255, 0.06),
+      transparent 55%),
+    radial-gradient(ellipse 50% 30% at 20% 80%,
+      rgba(30, 58, 120, 0.08),
       transparent 55%),
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
@@ -62,26 +66,25 @@ body::before {
   background-size:
     100% 100%,
     100% 100%,
-    80px 80px,
-    80px 80px;
+    100% 100%,
+    90px 90px,
+    90px 90px;
 
   pointer-events: none;
   z-index: -2;
 }
 
+/* Subtle noise/grain */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
-
   background:
     radial-gradient(circle,
-      rgba(255,255,255,.015) 1px,
+      rgba(255,255,255,.012) 1px,
       transparent 1px);
-
-  background-size: 4px 4px;
-  opacity: .4;
-
+  background-size: 3px 3px;
+  opacity: .35;
   pointer-events: none;
   z-index: -1;
 }
