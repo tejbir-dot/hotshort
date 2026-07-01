@@ -40,3 +40,4 @@ class PipelineContext:
     vad_signals: Dict[str, Any] = field(default_factory=dict)
     transcription_engine: str = "unknown"
     transcription_config: Dict[str, Any] = field(default_factory=dict)
+    trace_logs: Dict[str, Any] = field(default_factory=dict)
