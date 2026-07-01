@@ -41,3 +41,17 @@ class PipelineContext:
     transcription_engine: str = "unknown"
     transcription_config: Dict[str, Any] = field(default_factory=dict)
     trace_logs: Dict[str, Any] = field(default_factory=dict)
+
+    def trace_state(self, trace_id: str, state: str) -> None:
+        if trace_id in self.trace_logs:
+            self.trace_logs[trace_id].setdefault("state_history", []).append(state)
+
+    def trace_event(self, trace_id: str, stage: str, event: str, changed: bool, before: Any = None, after: Any = None) -> None:
+        if trace_id in self.trace_logs:
+            self.trace_logs[trace_id].setdefault("events", []).append({
+                "stage": stage,
+                "event": event,
+                "changed": changed,
+                "before": before,
+                "after": after
+            })
