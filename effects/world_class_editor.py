@@ -946,17 +946,28 @@ class ClipEditor:
 
             # ── State initialisation ─────────────────────────────────────────────
             SPLIT_MIN_GAP = float(os.environ.get("HS_SPLIT_MIN_GAP", str(config.split_min_gap_ratio)))
+            # ── Speed optimisation constants ──────────────────────────────────────
+            # Analyse 1 in every DETECT_EVERY_N frames (face positions don't change
+            # fast enough to need per-frame detection at 30fps).
+            DETECT_EVERY_N = int(os.environ.get("HS_DETECT_EVERY_N", "3"))    # 3x speedup
+            # Downscale to this width before running MediaPipe / haarcascade.
+            # Detection is then scaled back to full coords.  4x fewer pixels = ~2-3x faster.
+            DETECT_WIDTH   = int(os.environ.get("HS_DETECT_WIDTH",  "640"))
             frame_stats = []
             prev_gray = None
             frame_idx = 0
-            # Bug fix: default was "SPLIT" — when valid_count=0, HOLD resolves to SPLIT,
-            # causing wrong split layout for the entire clip. SOLO_LEFT is the safe default.
             last_mode = "SOLO_LEFT"
             ema_mouth_left = 0.0
             ema_mouth_right = 0.0
             smoothed_left_x = frame_width * 0.25
             smoothed_right_x = frame_width * 0.75
             smoothed_solo_x = frame_width * 0.5
+            # Carry-forward: last valid detection result (reused on skipped frames)
+            _last_raw_faces: list = []
+
+            # Pre-compute downscale ratio for detection
+            _detect_scale = DETECT_WIDTH / max(1, frame_width)   # e.g. 640/1280 = 0.5
+            _detect_h = int(frame_height * _detect_scale)
 
             # ── Per-frame analysis loop ──────────────────────────────────────────
             while True:
@@ -968,35 +979,51 @@ class ClipEditor:
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 t = frame_idx / fps
 
-                # 1. Detect raw faces — FaceMesh (preferred) or haarcascade fallback
-                raw_faces = []
-                if active_detector:
-                    res = active_detector.process(rgb)
-                    if res and res.multi_face_landmarks:
-                        for lm in res.multi_face_landmarks:
-                            xs = [p.x for p in lm.landmark]
-                            ys = [p.y for p in lm.landmark]
-                            raw_faces.append({
-                                'x': min(xs) * frame_width,
-                                'y': min(ys) * frame_height,
-                                'w': (max(xs) - min(xs)) * frame_width,
-                                'h': (max(ys) - min(ys)) * frame_height,
-                            })
-                elif _podcast_cascade is not None:
-                    # Haarcascade fallback (relaxed params — Step 3 fix)
-                    _faces_hc = _podcast_cascade.detectMultiScale(
-                        gray,
-                        scaleFactor=1.05,   # finer scale (was 1.1)
-                        minNeighbors=3,     # easier to detect (was 6)
-                        minSize=(40, 40),   # smaller minimum (was 80,80)
-                        flags=cv2.CASCADE_SCALE_IMAGE,
-                    )
-                    if len(_faces_hc):
-                        for _x, _y, _fw, _fh in _faces_hc:
-                            raw_faces.append({
-                                'x': float(_x), 'y': float(_y),
-                                'w': float(_fw), 'h': float(_fh),
-                            })
+                # 1. Detect raw faces — only on every Nth frame (3x faster)
+                raw_faces: list
+                if frame_idx % DETECT_EVERY_N == 0:
+                    # Downscale frame for faster detection
+                    if _detect_scale < 0.99:
+                        small_rgb = cv2.resize(rgb, (DETECT_WIDTH, _detect_h), interpolation=cv2.INTER_LINEAR)
+                    else:
+                        small_rgb = rgb
+
+                    raw_faces = []
+                    if active_detector:
+                        res = active_detector.process(small_rgb)
+                        if res and res.multi_face_landmarks:
+                            for lm in res.multi_face_landmarks:
+                                xs = [p.x for p in lm.landmark]
+                                ys = [p.y for p in lm.landmark]
+                                # Scale coords back to original frame size
+                                raw_faces.append({
+                                    'x': min(xs) * frame_width,
+                                    'y': min(ys) * frame_height,
+                                    'w': (max(xs) - min(xs)) * frame_width,
+                                    'h': (max(ys) - min(ys)) * frame_height,
+                                })
+                    elif _podcast_cascade is not None:
+                        small_gray = cv2.cvtColor(small_rgb, cv2.COLOR_RGB2GRAY)
+                        _faces_hc = _podcast_cascade.detectMultiScale(
+                            small_gray,
+                            scaleFactor=1.05,
+                            minNeighbors=3,
+                            minSize=(int(40 * _detect_scale), int(40 * _detect_scale)),
+                            flags=cv2.CASCADE_SCALE_IMAGE,
+                        )
+                        if len(_faces_hc):
+                            inv = 1.0 / _detect_scale
+                            for _x, _y, _fw, _fh in _faces_hc:
+                                raw_faces.append({
+                                    'x': float(_x) * inv, 'y': float(_y) * inv,
+                                    'w': float(_fw) * inv, 'h': float(_fh) * inv,
+                                })
+
+                    _last_raw_faces = raw_faces  # cache for skipped frames
+                else:
+                    # Skipped frame — carry forward last known detections (near-zero cost)
+                    raw_faces = _last_raw_faces
+
 
                 # ── [FACE_DEBUG] Step-1 diagnostic ──────────────────────────────
                 if frame_idx % 25 == 0:
