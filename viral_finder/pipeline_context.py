@@ -41,6 +41,8 @@ class PipelineContext:
     transcription_engine: str = "unknown"
     transcription_config: Dict[str, Any] = field(default_factory=dict)
     trace_logs: Dict[str, Any] = field(default_factory=dict)
+    hooks_suppressed: int = 0
+    candidate_threads: Dict[str, Any] = field(default_factory=dict)
 
     def trace_state(self, trace_id: str, state: str) -> None:
         if trace_id in self.trace_logs:
@@ -57,3 +59,12 @@ class PipelineContext:
             }
             payload.update(kwargs)
             self.trace_logs[trace_id].setdefault("events", []).append(payload)
+
+    def trace_suppressed_child(self, trace_id: str, start: float, text: str, score: float, reason: str = "") -> None:
+        if trace_id in self.trace_logs:
+            self.trace_logs[trace_id].setdefault("suppressed_children", []).append({
+                "start": round(start, 2),
+                "text": text,
+                "score": round(score, 4),
+                "reason": reason
+            })
