@@ -46,12 +46,14 @@ class PipelineContext:
         if trace_id in self.trace_logs:
             self.trace_logs[trace_id].setdefault("state_history", []).append(state)
 
-    def trace_event(self, trace_id: str, stage: str, event: str, changed: bool, before: Any = None, after: Any = None) -> None:
+    def trace_event(self, trace_id: str, stage: str, event: str, changed: bool, before: Any = None, after: Any = None, **kwargs) -> None:
         if trace_id in self.trace_logs:
-            self.trace_logs[trace_id].setdefault("events", []).append({
+            payload = {
                 "stage": stage,
                 "event": event,
                 "changed": changed,
                 "before": before,
                 "after": after
-            })
+            }
+            payload.update(kwargs)
+            self.trace_logs[trace_id].setdefault("events", []).append(payload)
