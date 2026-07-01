@@ -37,11 +37,13 @@
     --gold-100: #ffcf80;
     --gold-200: #ffb347;
     --bg-dark: #0b0b0b;
-    --panel: rgba(255,255,255,0.03);
+    --panel: rgba(255, 255, 255, 0.03);
   }
 
-  * { box-sizing: border-box; }
-  
+  * {
+    box-sizing: border-box;
+  }
+
   body {
     background: var(--bg-dark) !important;
   }
@@ -67,19 +69,24 @@
     filter: blur(160px);
     mix-blend-mode: screen;
     opacity: 0.55;
-    background: conic-gradient(
-      from 0deg,
-      rgba(255,200,100,0.14),
-      rgba(255,240,190,0.18),
-      rgba(255,210,120,0.12),
-      rgba(255,225,150,0.12)
-    );
+    background: conic-gradient(from 0deg,
+        rgba(255, 200, 100, 0.14),
+        rgba(255, 240, 190, 0.18),
+        rgba(255, 210, 120, 0.12),
+        rgba(255, 225, 150, 0.12));
     animation: glossySpin 14s linear infinite;
   }
 
-  .glossy-bg::after { transform: rotate(180deg); animation-delay: -7s; }
-  
-  @keyframes glossySpin { to { transform: rotate(360deg); } }
+  .glossy-bg::after {
+    transform: rotate(180deg);
+    animation-delay: -7s;
+  }
+
+  @keyframes glossySpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
   body.dashboard-aurora::before {
     content: "";
@@ -110,15 +117,34 @@
   }
 
   @keyframes dashboardAuroraFill {
-    0% { filter: hue-rotate(0deg) blur(12px); opacity: 0.42; }
-    50% { filter: hue-rotate(35deg) blur(18px); opacity: 0.62; }
-    100% { filter: hue-rotate(0deg) blur(12px); opacity: 0.42; }
+    0% {
+      filter: hue-rotate(0deg) blur(12px);
+      opacity: 0.42;
+    }
+
+    50% {
+      filter: hue-rotate(35deg) blur(18px);
+      opacity: 0.62;
+    }
+
+    100% {
+      filter: hue-rotate(0deg) blur(12px);
+      opacity: 0.42;
+    }
   }
 
   @keyframes dashboardAuroraSweep {
-    from { transform: rotate(0deg) scale(1); }
-    50% { transform: rotate(180deg) scale(1.04); }
-    to { transform: rotate(360deg) scale(1); }
+    from {
+      transform: rotate(0deg) scale(1);
+    }
+
+    50% {
+      transform: rotate(180deg) scale(1.04);
+    }
+
+    to {
+      transform: rotate(360deg) scale(1);
+    }
   }
 
   /* Page wrapper */
@@ -182,8 +208,8 @@
     width: 420px;
     padding: 14px 20px !important;
     border-radius: 10px !important;
-    border: 1px solid rgba(255,200,100,0.25) !important;
-    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255, 200, 100, 0.25) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
     backdrop-filter: blur(12px) !important;
     color: white !important;
     font-size: 0.95rem;
@@ -191,22 +217,22 @@
   }
 
   .input-bar input::placeholder {
-    color: rgba(255,230,200,0.5);
+    color: rgba(255, 230, 200, 0.5);
   }
 
   .input-bar input:focus {
     outline: none !important;
-    background: rgba(255,255,255,0.08) !important;
-    border-color: rgba(255,200,100,0.5) !important;
-    box-shadow: 0 0 0 2px rgba(255,200,120,0.35),
-                0 0 40px rgba(255,200,120,0.25) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 200, 100, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(255, 200, 120, 0.35),
+      0 0 40px rgba(255, 200, 120, 0.25) !important;
     transform: translateY(-2px);
   }
 
   .input-bar button {
     padding: 14px 36px !important;
     border-radius: 12px !important;
-    border: 1px solid rgba(255,180,100,0.30) !important;
+    border: 1px solid rgba(255, 180, 100, 0.30) !important;
     background: linear-gradient(135deg, #f7b046 0%, #fdda8a 100%) !important;
     font-weight: 700 !important;
     font-size: 0.95rem;
@@ -248,10 +274,12 @@
   /* Loader enhancement */
   #loader {
     display: none !important;
+    margin-top: 40px;
+    text-align: center;
   }
 
   #loader.active {
-    display: grid !important;
+    display: block !important;
   }
 
   .loader-visual {
@@ -263,11 +291,11 @@
     background:
       radial-gradient(circle at 50% 20%, rgba(255, 190, 95, 0.14), transparent 52%),
       radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.08), transparent 56%),
-      linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015));
+      linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
     border: 1px solid rgba(255, 215, 170, 0.12);
     box-shadow:
       0 20px 60px rgba(0, 0, 0, 0.42),
-      inset 0 1px 0 rgba(255,255,255,0.05);
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
     overflow: hidden;
   }
 
@@ -291,9 +319,7 @@
     border-radius: 22px;
     mix-blend-mode: screen;
     filter:
-      saturate(1.04)
-      contrast(1.06)
-      drop-shadow(0 0 22px rgba(255, 196, 112, 0.12));
+      saturate(1.04) contrast(1.06) drop-shadow(0 0 22px rgba(255, 196, 112, 0.12));
   }
 
   .wave {
@@ -303,12 +329,10 @@
     height: 8px;
     margin: 0 auto 18px;
     border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      rgba(255, 194, 94, 0.16),
-      rgba(255, 244, 210, 0.92),
-      rgba(255, 194, 94, 0.16)
-    );
+    background: linear-gradient(90deg,
+        rgba(255, 194, 94, 0.16),
+        rgba(255, 244, 210, 0.92),
+        rgba(255, 194, 94, 0.16));
     background-size: 240% 100%;
     animation: waveMove 1.6s ease-in-out infinite;
     box-shadow:
@@ -320,28 +344,41 @@
     content: "";
     position: absolute;
     inset: -40% -18%;
-    background: linear-gradient(
-      115deg,
-      transparent 20%,
-      rgba(255, 255, 255, 0.04) 34%,
-      rgba(255, 255, 255, 0.88) 50%,
-      rgba(255, 237, 188, 0.72) 58%,
-      transparent 74%
-    );
+    background: linear-gradient(115deg,
+        transparent 20%,
+        rgba(255, 255, 255, 0.04) 34%,
+        rgba(255, 255, 255, 0.88) 50%,
+        rgba(255, 237, 188, 0.72) 58%,
+        transparent 74%);
     filter: blur(1px);
     transform: translateX(-65%);
     animation: waveShimmer 1.45s ease-in-out infinite;
   }
 
   @keyframes waveMove {
-    0% { background-position: 0% 0; }
-    100% { background-position: 200% 0; }
+    0% {
+      background-position: 0% 0;
+    }
+
+    100% {
+      background-position: 200% 0;
+    }
   }
 
   @keyframes waveShimmer {
-    0% { transform: translateX(-68%); opacity: 0.2; }
-    45% { opacity: 1; }
-    100% { transform: translateX(72%); opacity: 0.18; }
+    0% {
+      transform: translateX(-68%);
+      opacity: 0.2;
+    }
+
+    45% {
+      opacity: 1;
+    }
+
+    100% {
+      transform: translateX(72%);
+      opacity: 0.18;
+    }
   }
 
   #loaderText {
@@ -369,11 +406,11 @@
     color: rgba(255, 235, 214, 0.68);
     letter-spacing: 0.01em;
   }
-  
+
   /* AI Thinking Pulse */
   .input-bar button.thinking {
     animation: thinkingPulse 1.6s ease-in-out infinite;
-    box-shadow: 0 12px 36px rgba(255, 180, 70, 0.45), 0 0 30px rgba(255,200,120,0.12);
+    box-shadow: 0 12px 36px rgba(255, 180, 70, 0.45), 0 0 30px rgba(255, 200, 120, 0.12);
     transform: translateY(-1px);
     cursor: wait;
     opacity: 0.98;
@@ -387,31 +424,51 @@
     inset: -16%;
     border-radius: inherit;
     pointer-events: none;
-    background: linear-gradient(
-      18deg,
-      rgba(255, 186, 63, 0.34),
-      rgba(86, 184, 255, 0.34),
-      rgba(187, 97, 255, 0.34)
-    );
+    background: linear-gradient(18deg,
+        rgba(255, 186, 63, 0.34),
+        rgba(86, 184, 255, 0.34),
+        rgba(187, 97, 255, 0.34));
     filter: blur(8px);
     animation: dashboardButtonAurora 1.8s ease-in-out infinite;
   }
 
   @keyframes thinkingPulse {
-    0% { box-shadow: 0 8px 20px rgba(255,180,70,0.15); transform: translateY(0); }
-    50% { box-shadow: 0 20px 50px rgba(255,180,70,0.32); transform: translateY(-2px); }
-    100% { box-shadow: 0 8px 20px rgba(255,180,70,0.15); transform: translateY(0); }
+    0% {
+      box-shadow: 0 8px 20px rgba(255, 180, 70, 0.15);
+      transform: translateY(0);
+    }
+
+    50% {
+      box-shadow: 0 20px 50px rgba(255, 180, 70, 0.32);
+      transform: translateY(-2px);
+    }
+
+    100% {
+      box-shadow: 0 8px 20px rgba(255, 180, 70, 0.15);
+      transform: translateY(0);
+    }
   }
 
   @keyframes dashboardButtonAurora {
-    0% { transform: translateX(-45%) rotate(0deg); opacity: 0.34; }
-    50% { transform: translateX(45%) rotate(2deg); opacity: 0.54; }
-    100% { transform: translateX(-45%) rotate(0deg); opacity: 0.34; }
+    0% {
+      transform: translateX(-45%) rotate(0deg);
+      opacity: 0.34;
+    }
+
+    50% {
+      transform: translateX(45%) rotate(2deg);
+      opacity: 0.54;
+    }
+
+    100% {
+      transform: translateX(-45%) rotate(0deg);
+      opacity: 0.34;
+    }
   }
 
   /* Loader subtle thinking enhancement */
   #loader.thinking .wave {
-    box-shadow: 0 0 30px rgba(255,215,160,0.55);
+    box-shadow: 0 0 30px rgba(255, 215, 160, 0.55);
     animation-duration: 1.2s;
   }
 
@@ -420,7 +477,7 @@
     box-shadow:
       0 24px 70px rgba(0, 0, 0, 0.5),
       0 0 42px rgba(255, 191, 82, 0.12),
-      inset 0 1px 0 rgba(255,255,255,0.05);
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
   }
 
@@ -490,37 +547,33 @@
 
   .hs-ring-gold {
     background:
-      conic-gradient(
-        from 0deg,
+      conic-gradient(from 0deg,
         rgba(247, 201, 72, 0.00),
         rgba(247, 201, 72, 0.12),
         rgba(247, 201, 72, 0.98),
         rgba(247, 201, 72, 0.22),
-        rgba(247, 201, 72, 0.00)
-      );
+        rgba(247, 201, 72, 0.00));
     filter: blur(1px) drop-shadow(0 0 26px rgba(247, 201, 72, 0.45));
     animation: hs-rotate 7s linear infinite;
     opacity: 0.92;
     -webkit-mask: radial-gradient(circle, transparent 55%, #000 57%);
-            mask: radial-gradient(circle, transparent 55%, #000 57%);
+    mask: radial-gradient(circle, transparent 55%, #000 57%);
   }
 
   .hs-ring-purple {
     inset: 10px;
     background:
-      conic-gradient(
-        from 180deg,
+      conic-gradient(from 180deg,
         rgba(176, 92, 255, 0.00),
         rgba(176, 92, 255, 0.14),
         rgba(176, 92, 255, 0.92),
         rgba(176, 92, 255, 0.18),
-        rgba(176, 92, 255, 0.00)
-      );
+        rgba(176, 92, 255, 0.00));
     filter: blur(2px) drop-shadow(0 0 28px rgba(176, 92, 255, 0.42));
     animation: hs-rotate-reverse 9s linear infinite;
     opacity: 0.90;
     -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%);
-            mask: radial-gradient(circle, transparent 58%, #000 60%);
+    mask: radial-gradient(circle, transparent 58%, #000 60%);
   }
 
   .hs-orb-halo {
@@ -543,7 +596,7 @@
     padding: 18px 18px 16px;
     text-align: center;
     border-radius: 26px;
-    background: radial-gradient(circle at top, rgba(255,255,255,0.05), rgba(0,0,0,0.0) 58%);
+    background: radial-gradient(circle at top, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.0) 58%);
   }
 
   .hs-orb-icon {
@@ -615,8 +668,8 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
     box-shadow: 0 0 0 0 rgba(176, 92, 255, 0.0);
     position: relative;
   }
@@ -669,8 +722,8 @@
     padding: 18px 18px 16px;
     border-radius: 22px;
     background: var(--hs-card);
-    border: 1px solid rgba(255,255,255,0.06);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .hs-progress-head {
@@ -687,9 +740,9 @@
   .hs-progress-track {
     height: 10px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.08);
+    background: rgba(255, 255, 255, 0.08);
     overflow: hidden;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.35);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
   }
 
   .hs-progress-fill {
@@ -708,44 +761,92 @@
   }
 
   @keyframes hs-rotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   @keyframes hs-rotate-reverse {
-    from { transform: rotate(360deg); }
-    to { transform: rotate(0deg); }
+    from {
+      transform: rotate(360deg);
+    }
+
+    to {
+      transform: rotate(0deg);
+    }
   }
 
   @keyframes hs-pulse {
-    0%, 100% { transform: scale(1); opacity: 0.78; }
-    50% { transform: scale(1.02); opacity: 1; }
+
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.78;
+    }
+
+    50% {
+      transform: scale(1.02);
+      opacity: 1;
+    }
   }
 
   @keyframes hs-dot-breathe {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.08); }
+
+    0%,
+    100% {
+      transform: scale(1);
+    }
+
+    50% {
+      transform: scale(1.08);
+    }
   }
 
   @keyframes hs-dot-ring {
-    0% { transform: scale(0.75); opacity: 0.95; }
-    100% { transform: scale(1.65); opacity: 0; }
+    0% {
+      transform: scale(0.75);
+      opacity: 0.95;
+    }
+
+    100% {
+      transform: scale(1.65);
+      opacity: 0;
+    }
   }
 
   @keyframes hs-icon-breathe {
-    0%, 100% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-1px) scale(1.03); }
+
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+
+    50% {
+      transform: translateY(-1px) scale(1.03);
+    }
   }
 
   @keyframes hs-progress-glow {
-    0%, 100% { filter: brightness(1); }
-    50% { filter: brightness(1.08); }
+
+    0%,
+    100% {
+      filter: brightness(1);
+    }
+
+    50% {
+      filter: brightness(1.08);
+    }
   }
 
   @media (max-width: 900px) {
     .hs-stage-row {
       grid-template-columns: 1fr 1fr;
     }
+
     .hs-orb-center {
       width: 76%;
     }
@@ -772,6 +873,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+
     .hs-ring-gold,
     .hs-ring-purple,
     .hs-orb-halo,
@@ -847,54 +949,26 @@
 <div class="glossy-bg"></div>
 
 <section class="hero">
-  <div
-    id="dashboardContext"
-    data-user-id="{{ current_user.id }}"
-    data-template-id="{{ template_id|default('') }}"
-    hidden
-  ></div>
+  <div id="dashboardContext" data-user-id="{{ current_user.id }}" data-template-id="{{ template_id|default('') }}"
+    hidden></div>
   <h1>🎬 AI That Turns Videos Into Viral Moments ⚡</h1>
   <p>Paste a YouTube link (fast import) or upload video. We analyze and generate viral clips automatically.</p>
 
   <div class="input-bar">
-    <input id="yt" type="text" placeholder="Paste YouTube link (fast import) or upload video" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <input id="yt" type="text" placeholder="Paste YouTube link (fast import) or upload video" autocomplete="off"
+      autocapitalize="off" spellcheck="false" />
     <button id="analyzeBtn">✨ Analyze</button>
   </div>
 
-  <!-- HOTSHORT AURORA LOADER -->
-  <div id="loader" class="hs-analyze-overlay" style="display: none;" aria-hidden="true">
-    <div class="hs-analyze-shell">
-      <div class="hs-analyze-orb">
-        <div class="hs-orb-halo"></div>
-        <div class="hs-orb-ring hs-ring-gold"></div>
-        <div class="hs-orb-ring hs-ring-purple"></div>
-        <div class="hs-orb-center">
-          <div class="hs-orb-icon">✨</div>
-          <div class="hs-orb-title">Analyzing</div>
-          <div class="hs-orb-copy">Signal emerging from noise.<br>Hooks and structure are being assembled.</div>
-          <div class="hs-orb-percent">0%</div>
-        </div>
-      </div>
-      
-      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 20px;">
-        <div class="hs-stage-row">
-          <div class="hs-stage-node hs-active"></div>
-          <div style="color: var(--hs-gold); font-size: 14px; font-weight: 600;">Extracting Audio & Vision</div>
-        </div>
-        <div class="hs-stage-row">
-          <div class="hs-stage-node"></div>
-          <div style="color: var(--hs-muted); font-size: 14px;">Running Neural Director (FaceMesh)</div>
-        </div>
-        <div class="hs-stage-row">
-          <div class="hs-stage-node"></div>
-          <div style="color: var(--hs-muted); font-size: 14px;">Generating Dynamic Captions</div>
-        </div>
-        <div class="hs-stage-row">
-          <div class="hs-stage-node"></div>
-          <div style="color: var(--hs-muted); font-size: 14px;">Rendering Final Clips</div>
-        </div>
-      </div>
+  <div id="loader" class="loader" aria-hidden="true">
+    <p class="loader-caption">HotShort Intelligence</p>
+    <div class="loader-visual">
+      <img class="loader-animation" src="{{ url_for('static', filename='media/hotshort-thinking.gif') }}"
+        alt="HotShort AI analyzing video structure" />
     </div>
+    <div class="wave"></div>
+    <p id="loaderText">Analyzing video… this may take 30-60 seconds</p>
+    <p class="loader-subtext">Signal emerging from noise. Hooks, insights, and structure are being assembled.</p>
   </div>
 </section>
 
@@ -902,7 +976,8 @@
 
 
 <section class="hero" style="padding-top: 20px !important;">
-  <div id="myExportsPanel" style="max-width: 800px; margin: 0 auto; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,200,100,0.1); backdrop-filter: blur(10px);">
+  <div id="myExportsPanel"
+    style="max-width: 800px; margin: 0 auto; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,200,100,0.1); backdrop-filter: blur(10px);">
     <h3 style="color: var(--gold-100); margin-bottom: 20px; text-align: left;">🗂️ My Exports</h3>
     <table style="width: 100%; color: white; text-align: left; border-collapse: collapse;">
       <thead>
@@ -915,25 +990,28 @@
         </tr>
       </thead>
       <tbody id="exportsTableBody">
-        <tr><td colspan="5" style="padding: 10px; text-align: center; color: rgba(255,255,255,0.5);">Loading exports...</td></tr>
+        <tr>
+          <td colspan="5" style="padding: 10px; text-align: center; color: rgba(255,255,255,0.5);">Loading exports...
+          </td>
+        </tr>
       </tbody>
     </table>
   </div>
 </section>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
+  document.addEventListener("DOMContentLoaded", function () {
     fetch('/api/exports')
-        .then(response => response.json())
-        .then(data => {
-            const tbody = document.getElementById('exportsTableBody');
-            if(data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="padding: 10px; text-align: center; color: rgba(255,255,255,0.5);">No exports yet. Start creating!</td></tr>';
-                return;
-            }
-            let html = '';
-            data.forEach(exp => {
-                html += `
+      .then(response => response.json())
+      .then(data => {
+        const tbody = document.getElementById('exportsTableBody');
+        if (data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="padding: 10px; text-align: center; color: rgba(255,255,255,0.5);">No exports yet. Start creating!</td></tr>';
+          return;
+        }
+        let html = '';
+        data.forEach(exp => {
+          html += `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                     <td style="padding: 10px;">${exp.clip_name}</td>
                     <td style="padding: 10px; text-transform: capitalize;">${exp.platform_format}</td>
@@ -944,11 +1022,11 @@ document.addEventListener("DOMContentLoaded", function () {
                     </td>
                 </tr>
                 `;
-            });
-            tbody.innerHTML = html;
-        })
-        .catch(err => console.error(err));
-});
+        });
+        tbody.innerHTML = html;
+      })
+      .catch(err => console.error(err));
+  });
 </script>
 
 {% include "pricing_modal.html" %}
