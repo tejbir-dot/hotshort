@@ -248,12 +248,10 @@
   /* Loader enhancement */
   #loader {
     display: none !important;
-    margin-top: 40px;
-    text-align: center;
   }
 
   #loader.active {
-    display: block !important;
+    display: grid !important;
   }
 
   .loader-visual {
@@ -863,18 +861,40 @@
     <button id="analyzeBtn">✨ Analyze</button>
   </div>
 
-  <div id="loader" class="loader" aria-hidden="true">
-    <p class="loader-caption">HotShort Intelligence</p>
-    <div class="loader-visual">
-      <img
-        class="loader-animation"
-        src="{{ url_for('static', filename='media/hotshort-thinking.gif') }}"
-        alt="HotShort AI analyzing video structure"
-      />
+  <!-- HOTSHORT AURORA LOADER -->
+  <div id="loader" class="hs-analyze-overlay" style="display: none;" aria-hidden="true">
+    <div class="hs-analyze-shell">
+      <div class="hs-analyze-orb">
+        <div class="hs-orb-halo"></div>
+        <div class="hs-orb-ring hs-ring-gold"></div>
+        <div class="hs-orb-ring hs-ring-purple"></div>
+        <div class="hs-orb-center">
+          <div class="hs-orb-icon">✨</div>
+          <div class="hs-orb-title">Analyzing</div>
+          <div class="hs-orb-copy">Signal emerging from noise.<br>Hooks and structure are being assembled.</div>
+          <div class="hs-orb-percent">0%</div>
+        </div>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 20px;">
+        <div class="hs-stage-row">
+          <div class="hs-stage-node hs-active"></div>
+          <div style="color: var(--hs-gold); font-size: 14px; font-weight: 600;">Extracting Audio & Vision</div>
+        </div>
+        <div class="hs-stage-row">
+          <div class="hs-stage-node"></div>
+          <div style="color: var(--hs-muted); font-size: 14px;">Running Neural Director (FaceMesh)</div>
+        </div>
+        <div class="hs-stage-row">
+          <div class="hs-stage-node"></div>
+          <div style="color: var(--hs-muted); font-size: 14px;">Generating Dynamic Captions</div>
+        </div>
+        <div class="hs-stage-row">
+          <div class="hs-stage-node"></div>
+          <div style="color: var(--hs-muted); font-size: 14px;">Rendering Final Clips</div>
+        </div>
+      </div>
     </div>
-    <div class="wave"></div>
-    <p id="loaderText">Analyzing video… this may take 30-60 seconds</p>
-    <p class="loader-subtext">Signal emerging from noise. Hooks, insights, and structure are being assembled.</p>
   </div>
 </section>
 
