@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}HotShort OS · HotShort Studio{% endblock %}
+{% block title %}Dashboard · HotShort Studio{% endblock %}
 
 {% block content %}
 <script>
@@ -31,7 +31,7 @@
 </script>
 <style>
   /* =====================================
-     ELITE HOTSHORT OS: Glassy & Animated
+     ELITE DASHBOARD: Glassy & Animated
      ===================================== */
   :root {
     --gold-100: #ffcf80;
@@ -864,20 +864,17 @@
   </div>
 
   <div id="loader" class="loader" aria-hidden="true">
-    <p class="loader-caption" style="margin-bottom: 20px;">HotShort Intelligence Engine</p>
-    
-    <!-- Connected to Next.js HotShort OS -->
-    <div class="loader-visual" style="width: 100%; max-width: 1100px; height: 600px; border-radius: 20px; overflow: hidden; margin: 0 auto; padding: 0; border: 1px solid rgba(255, 215, 170, 0.2);">
-      <iframe 
-        src="http://localhost:3000" 
-        style="width: 100%; height: 100%; border: none; background: #04060B;"
-        title="HotShort OS Dashboard"
-      ></iframe>
+    <p class="loader-caption">HotShort Intelligence</p>
+    <div class="loader-visual">
+      <img
+        class="loader-animation"
+        src="{{ url_for('static', filename='media/hotshort-thinking.gif') }}"
+        alt="HotShort AI analyzing video structure"
+      />
     </div>
-    
-    <div class="wave" style="margin-top: 15px;"></div>
-    <p id="loaderText" style="margin-top: 20px;">Engaging Neural Engines… this may take 30-60 seconds</p>
-    <p class="loader-subtext">Cognition, routing, and narrative logic are processing your video.</p>
+    <div class="wave"></div>
+    <p id="loaderText">Analyzing video… this may take 30-60 seconds</p>
+    <p class="loader-subtext">Signal emerging from noise. Hooks, insights, and structure are being assembled.</p>
   </div>
 </section>
 
