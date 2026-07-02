@@ -97,11 +97,29 @@ _STRONG_CLAIM_HI = (
     "simple baat",
 )
 
+_PAYOFF = (
+    "in conclusion",
+    "so basically",
+    "the point is",
+    "at the end of the day",
+    "what this means is",
+    "to summarize",
+)
+
+_PAYOFF_HI = (
+    "iska matlab ye hai",
+    "to aakhir mein",
+    "kul milakar",
+    "baat ye hai ki",
+    "iska nateeja",
+)
+
 _TRIGGER_MAP = {
     "belief_reversal":    _BELIEF_REVERSAL    + _BELIEF_REVERSAL_HI,
     "secret_revelation":  _SECRET_REVELATION  + _SECRET_REVELATION_HI,
     "mistake_explanation":_MISTAKE_EXPLANATION + _MISTAKE_EXPLANATION_HI,
     "strong_claim":       _STRONG_CLAIM       + _STRONG_CLAIM_HI,
+    "payoff":             _PAYOFF             + _PAYOFF_HI,
 }
 
 # Contrast markers — English + Hindi Devanagari + Hinglish romanized
@@ -230,11 +248,13 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
             transcript_text += f"[{s.get('start', 0):.1f}-{s.get('end', 0):.1f}] {s.get('text', '')}\n"
             
         prompt = f"""You are an expert AI editor analyzing a video transcript.
-Find "Narrative Triggers" in the text. Narrative Triggers are moments where the speaker:
+Find "Narrative Triggers" in the text. Narrative Triggers include both semantic and structural moments where the speaker:
 1. "belief_reversal": Challenges a common belief ("most people think... but actually")
 2. "secret_revelation": Reveals a secret ("the real reason is", "nobody tells you this")
 3. "mistake_explanation": Explains a mistake ("everyone does this wrong", "biggest mistake")
 4. "strong_claim": Makes a strong definitive claim ("the reality is", "the problem is")
+5. "payoff": The punchline, reward, or main takeaway ("so basically", "the point is")
+6. "complete_thought": A cohesive thought from start to finish that can stand alone.
 
 The transcript is in English, Hindi, or Hinglish.
 Identify the exact timestamps where these triggers occur.

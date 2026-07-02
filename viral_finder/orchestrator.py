@@ -1912,9 +1912,24 @@ def _run_enrichment(ctx: PipelineContext) -> None:
         insight_count = _estimate_insight_count(str(cand.get("text", "") or ""))
         trigger_conf = max([float(t.get("confidence", 0.0) or 0.0) for t in overlapping_triggers], default=0.0)
         trigger_types = [str(t.get("type", "")) for t in overlapping_triggers if t.get("type")]
-        trigger_density = float(len(overlapping_triggers)) / max(1.0, duration_s / 6.0)
+        
+        weighted_triggers = 0.0
+        trigger_bonus = 0.0
+        for t_type in trigger_types:
+            if t_type == "complete_thought":
+                weighted_triggers += 2.0
+                trigger_bonus = max(trigger_bonus, 0.4)
+            elif t_type == "payoff":
+                weighted_triggers += 1.8
+                trigger_bonus = max(trigger_bonus, 0.3)
+            elif t_type == "belief_reversal":
+                weighted_triggers += 1.0
+                trigger_bonus = max(trigger_bonus, 0.2)
+            else:
+                weighted_triggers += 1.0
+                
+        trigger_density = float(weighted_triggers) / max(1.0, duration_s / 6.0)
         trigger_density = _clamp01(trigger_density)
-        trigger_bonus = 0.2 if "belief_reversal" in trigger_types else 0.0
         narrative_density = _clamp01(narrative_scores.get("information_density_score", 0.0))
         viral_density = _clamp01(
             min(1.0, (float(insight_count) / max(1.0, duration_s)) * 0.65 + (narrative_density * 0.35))
@@ -2159,7 +2174,8 @@ def _run_ranking(ctx: PipelineContext) -> None:
         trigger_density = _clamp01(nar.get("trigger_density", 0.0))
         trigger_score = _clamp01(nar.get("trigger_score", 0.0))
         trigger_type = str(nar.get("trigger_type", "") or "")
-        narrative_score = _clamp01((0.55 * trigger_score) + (0.45 * trigger_density) + (0.2 if trigger_type == "belief_reversal" else 0.0))
+        _t_bonus = 0.3 if trigger_type in ("complete_thought", "payoff") else (0.2 if trigger_type == "belief_reversal" else 0.0)
+        narrative_score = _clamp01((0.55 * trigger_score) + (0.45 * trigger_density) + _t_bonus)
         payoff_confidence = _clamp01(psych.get("payoff_confidence", cand.get("payoff_confidence", 0.0)))
         explanation_strength = _semantic_explanation_strength(cand)
         low_motion_talk = bool(
@@ -2483,7 +2499,7 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             + (0.10 * info_density)
             + (0.10 * rewatch)
         )
-        if str(nar.get("trigger_type", "") or "") == "belief_reversal":
+        if str(nar.get("trigger_type", "") or "") in ("belief_reversal", "complete_thought", "payoff"):
             arc_score = _clamp01(arc_score * 1.2)
         payoff_source = str(c.get("payoff_source", ""))
         payoff_score_val = c.get("payoff_engine_score", 0.0)
@@ -2873,7 +2889,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             + (0.10 * info_density)
             + (0.10 * rewatch)
         )
-        if str(nar.get("trigger_type", "") or "") == "belief_reversal":
+        if str(nar.get("trigger_type", "") or "") in ("belief_reversal", "complete_thought", "payoff"):
             arc_score = _clamp01(arc_score * 1.2)
         payoff_source = str(c.get("payoff_source", ""))
         payoff_score_val = c.get("payoff_engine_score", 0.0)
@@ -3110,7 +3126,7 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
                 (hook_score > 0.25)
                 or (pattern_break > 0.3)
                 or (curiosity_peak > 0.3)
-                or (trigger_type == "belief_reversal")
+                or (trigger_type in ("belief_reversal", "complete_thought", "payoff"))
             )
             strength = _clamp01((0.45 * hook_score) + (0.35 * pattern_break) + (0.20 * curiosity_peak))
             if qualifies and (strength >= best_strength):
@@ -3566,6 +3582,8 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
                 "belief_reversal": tdist.get("belief_reversal", 0),
                 "secret_revelation": tdist.get("secret_revelation", 0),
                 "mistake_explanation": tdist.get("mistake_explanation", 0),
+                "payoff": tdist.get("payoff", 0),
+                "complete_thought": tdist.get("complete_thought", 0),
                 "strong_claim": tdist.get("strong_claim", 0),
             },
         )
