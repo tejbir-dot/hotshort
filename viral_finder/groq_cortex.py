@@ -206,7 +206,7 @@ def merge_groq_results_with_candidates(validated_clips: list, original_candidate
         
     return merged
 
-def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Dict]) -> List[Dict]:
+def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Dict], candidate_threads: Optional[Dict] = None) -> List[Dict]:
     if not is_groq_enabled() or not full_transcript:
         return candidates
 
@@ -288,6 +288,10 @@ EXTEND_RIGHT VALIDITY RULES:
 - The proposed payoff resolves that same idea.
 - The payoff sentence exists in the transcript window.
 - No topic transition occurs before the payoff.
+
+REPAIR RULE FOR SHORT CLIPS:
+If the candidate clip's duration is strictly LESS THAN 35 seconds, it is highly likely that it was cut too short and lacks a proper development/payoff.
+For any clip < 35 seconds, you MUST attempt to repair it by choosing EXTEND_RIGHT and finding the rest of the idea in ZONE B. Only use REJECT if the idea is completely abandoned in the transcript.
 
 ANTI-HALLUCINATION RULE:
 A resolution must be supported by exact transcript evidence.
