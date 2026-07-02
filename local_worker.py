@@ -513,11 +513,15 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
     Uses format string that prefers 720p mp4 + m4a audio.
     """
     import subprocess
+    import sys
     print(f"[LOCAL_WORKER] Downloading via yt-dlp to {dest_path}", flush=True)
     cmd = [
-        "yt-dlp",
+        sys.executable, "-m", "yt_dlp",
+        "--js-runtimes", "nodejs",          # Use Node.js v24 (installed) instead of deno
         "--format", "bestvideo[ext=mp4][vcodec*=avc][height<=720]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best",
         "--merge-output-format", "mp4",
+        "--retries", "3",
+        "--no-warnings",
         "--output", dest_path,
         youtube_url
     ]
