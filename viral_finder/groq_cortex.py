@@ -493,11 +493,19 @@ Return JSON ONLY in this exact format:
                 pt_per_cand = usage.get("prompt_tokens", 0) // len(batch) if len(batch) else 0
                 
                 for report in parsed.get("surgeon_reports", []):
-                    dec = report.get("decision", "REJECT")
-                    audit_data["decisions"][dec] = audit_data["decisions"].get(dec, 0) + 1
-                    
                     cid = str(report.get("candidate_id", ""))
                     meta = batch_meta.get(cid, {})
+                    dec = report.get("decision", "REJECT")
+                    
+                    # Intercept rule for short clips
+                    if dec == "REJECT" and float(meta.get("duration", 0.0)) < 35.0:
+                        dec = "KEEP"
+                        report["decision"] = "KEEP"
+                        report["rejection_type"] = "INTERCEPTED_35S_REPAIR"
+                        report["rejection_reason"] = "Forced KEEP (duration < 35s intercept)"
+                        
+                    audit_data["decisions"][dec] = audit_data["decisions"].get(dec, 0) + 1
+                    
                     reason = str(report.get("rejection_reason", "none"))
                     c_source = str(report.get("core_idea_source", "UNKNOWN"))
                     
