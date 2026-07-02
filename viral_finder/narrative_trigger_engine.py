@@ -4,7 +4,18 @@ Rule-based narrative trigger detection (O(n) over transcript segments).
 
 from __future__ import annotations
 
-from typing import Dict, List
+
+import os
+import json
+import logging
+import requests
+from typing import Dict, List, Any
+
+try:
+    from viral_finder.groq_cortex import is_groq_enabled, _get_groq_api_key, _get_groq_model, _get_timeout, parse_groq_json_safely
+except ImportError:
+    def is_groq_enabled(): return False
+
 
 
 # ── English trigger phrases ──────────────────────────────────────────────────
@@ -129,48 +140,160 @@ def _confidence_for_phrase(text_lower: str, phrase: str) -> float:
     return max(0.0, min(1.0, score))
 
 
-def detect_narrative_triggers(transcript_segments: List[Dict]) -> List[Dict]:
-    import logging
-    log = logging.getLogger(__name__)
-    
+
+def _run_sliding_window_detection(transcript_segments: List[Dict], log: logging.Logger) -> List[Dict]:
     triggers: List[Dict] = []
     total_phrases_checked = 0
     total_segments = len(transcript_segments or [])
     
-    for seg in transcript_segments or []:
-        text = str(seg.get("text", "") or "")
-        if not text.strip():
+    # Pre-compile regexes for flexibility (ignore punctuation/spacing between words)
+    import re
+    compiled_patterns = {}
+    for t_type, phrases in _TRIGGER_MAP.items():
+        compiled_patterns[t_type] = []
+        for p in phrases:
+            # allow optional spaces, commas, or filler words
+            regex_str = r'\b' + p.replace(' ', r'(?:\s+|,|\bu\b|\buh\b|\bum\b|\bhi\b)+') + r'\b'
+            compiled_patterns[t_type].append((p, re.compile(regex_str, re.IGNORECASE)))
+
+    # Window size of 3 segments (approx 5-10 seconds of speech)
+    WINDOW_SIZE = 3
+    
+    for i in range(total_segments):
+        window = transcript_segments[i:i+WINDOW_SIZE]
+        if not window:
             continue
-        t = text.lower()
-        start = float(seg.get("start", 0.0) or 0.0)
-        end = float(seg.get("end", start) or start)
+            
+        combined_text = " ".join(str(s.get("text", "")).strip() for s in window).lower()
+        if not combined_text.strip():
+            continue
+            
+        start = float(window[0].get("start", 0.0))
+        end = float(window[-1].get("end", start))
         if end <= start:
             continue
             
-        for trigger_type, patterns in _TRIGGER_MAP.items():
-            for phrase in patterns:
+        for trigger_type, patterns in compiled_patterns.items():
+            for original_phrase, pattern in patterns:
                 total_phrases_checked += 1
-                if phrase in t:
-                    conf = _confidence_for_phrase(t, phrase)
-                    log.info(f"[TRIGGER_FORENSIC] MATCH! Phrase: '{phrase}' (Type: {trigger_type}) | Conf: {conf:.2f} | Text: '{t[:40]}...'")
-                    triggers.append(
-                        {
-                            "start": start,
-                            "end": end,
-                            "type": trigger_type,
-                            "confidence": round(float(conf), 4),
-                            "text": text,
-                            "phrase": phrase,
-                            "span": {"start": start, "end": end},
-                        }
-                    )
+                if pattern.search(combined_text) or original_phrase in combined_text:
+                    conf = _confidence_for_phrase(combined_text, original_phrase)
+                    
+                    # Avoid duplicate overlapping triggers
+                    if triggers and triggers[-1]["type"] == trigger_type and abs(triggers[-1]["start"] - start) < 10.0:
+                        continue
+                        
+                    log.info(f"[TRIGGER_FORENSIC_SLIDING] MATCH! Phrase: '{original_phrase}' (Type: {trigger_type}) | Conf: {conf:.2f} | Text: '{combined_text[:60]}...'")
+                    triggers.append({
+                        "start": start,
+                        "end": end,
+                        "type": trigger_type,
+                        "confidence": round(float(conf), 4),
+                        "text": combined_text,
+                        "phrase": original_phrase,
+                        "span": {"start": start, "end": end},
+                    })
                     break
     
     if not triggers:
-        log.warning(f"[TRIGGER_FORENSIC] ZERO triggers found. Evaluated {total_phrases_checked} phrase combinations across {total_segments} segments.")
-        log.warning(f"[TRIGGER_FORENSIC] Threshold logic is NOT the blocker. The EXACT keyword strings in _TRIGGER_MAP were simply not spoken.")
-    else:
-        log.info(f"[TRIGGER_FORENSIC] Found {len(triggers)} triggers.")
-        
+        log.warning(f"[TRIGGER_FORENSIC_SLIDING] ZERO triggers found. Evaluated {total_phrases_checked} combinations in windows.")
     return triggers
 
+def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> List[Dict]:
+    api_key = _get_groq_api_key()
+    if not api_key:
+        log.warning("Groq enabled but API key missing. Falling back to sliding window.")
+        return _run_sliding_window_detection(transcript_segments, log)
+
+    # Chunk transcript into max 4-minute chunks to avoid massive token limits
+    # and provide start/end times clearly.
+    chunks = []
+    current_chunk = []
+    current_duration = 0
+    for seg in transcript_segments:
+        dur = seg.get("end", 0) - seg.get("start", 0)
+        current_chunk.append(seg)
+        current_duration += dur
+        if current_duration > 240: # 4 mins
+            chunks.append(current_chunk)
+            current_chunk = []
+            current_duration = 0
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    all_triggers = []
+    for chunk_idx, chunk in enumerate(chunks):
+        if not chunk: continue
+        
+        transcript_text = ""
+        for s in chunk:
+            transcript_text += f"[{s.get('start', 0):.1f}-{s.get('end', 0):.1f}] {s.get('text', '')}\n"
+            
+        prompt = f"""You are an expert AI editor analyzing a video transcript.
+Find "Narrative Triggers" in the text. Narrative Triggers are moments where the speaker:
+1. "belief_reversal": Challenges a common belief ("most people think... but actually")
+2. "secret_revelation": Reveals a secret ("the real reason is", "nobody tells you this")
+3. "mistake_explanation": Explains a mistake ("everyone does this wrong", "biggest mistake")
+4. "strong_claim": Makes a strong definitive claim ("the reality is", "the problem is")
+
+The transcript is in English, Hindi, or Hinglish.
+Identify the exact timestamps where these triggers occur.
+Return ONLY valid JSON in this format:
+{{
+    "triggers": [
+        {{"type": "belief_reversal", "start": 12.5, "end": 15.0, "phrase": "lekin sach ye hai ki", "confidence": 0.9}},
+        ...
+    ]
+}}
+
+Transcript:
+{transcript_text}
+"""
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": _get_groq_model(),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                    "response_format": {"type": "json_object"}
+                },
+                timeout=_get_timeout()
+            )
+            if resp.status_code == 200:
+                data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
+                triggers = data.get("triggers", [])
+                for t in triggers:
+                    log.info(f"[TRIGGER_FORENSIC_LLM] MATCH! Type: {t.get('type')} | Phrase: '{t.get('phrase')}' | Time: {t.get('start')}-{t.get('end')}")
+                    all_triggers.append({
+                        "start": float(t.get("start", 0)),
+                        "end": float(t.get("end", 0)),
+                        "type": str(t.get("type", "unknown")),
+                        "confidence": float(t.get("confidence", 0.8)),
+                        "text": str(t.get("phrase", "")),
+                        "phrase": str(t.get("phrase", "")),
+                        "span": {"start": float(t.get("start", 0)), "end": float(t.get("end", 0))},
+                    })
+            else:
+                log.error(f"[TRIGGER_FORENSIC_LLM] Groq API error {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            log.error(f"[TRIGGER_FORENSIC_LLM] LLM call failed: {e}")
+
+    # Fallback to sliding window if LLM found 0 (it might have failed or hallucinated)
+    if not all_triggers:
+        log.warning("[TRIGGER_FORENSIC_LLM] LLM returned 0 triggers. Falling back to Sliding Window.")
+        return _run_sliding_window_detection(transcript_segments, log)
+        
+    return all_triggers
+
+def detect_narrative_triggers(transcript_segments: List[Dict]) -> List[Dict]:
+    import logging
+    log = logging.getLogger(__name__)
+    
+    if is_groq_enabled():
+        log.info("[TRIGGER_FORENSIC] Using LLM Intelligence Dataset for trigger detection.")
+        return _run_llm_detection(transcript_segments, log)
+    else:
+        log.info("[TRIGGER_FORENSIC] Using Sliding Window exact/regex detection.")
+        return _run_sliding_window_detection(transcript_segments, log)
