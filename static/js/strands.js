@@ -268,12 +268,15 @@ export function initStrands(containerSelector, options = {}) {
     if (!ctn) return;
     const width = ctn.offsetWidth;
     const height = ctn.offsetHeight;
+    if (width === 0 || height === 0) return;
     renderer.setSize(width, height);
     program.uniforms.uResolution.value = [width, height];
     renderTarget.setSize(width, height);
     glassProgram.uniforms.uResolution.value = [width, height];
   }
-  window.addEventListener('resize', resize);
+  
+  const ro = new ResizeObserver(() => resize());
+  ro.observe(ctn);
   resize();
 
   let animateId = 0;
