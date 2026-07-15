@@ -218,12 +218,15 @@ export function initStrands(containerSelector, options = {}) {
     delete geometry.attributes.uv;
   }
 
+  const initialWidth = ctn.offsetWidth || 1;
+  const initialHeight = ctn.offsetHeight || 1;
+
   const program = new Program(gl, {
     vertex: VERT,
     fragment: FRAG,
     uniforms: {
       uTime: { value: 0 },
-      uResolution: { value: [ctn.offsetWidth, ctn.offsetHeight] },
+      uResolution: { value: [initialWidth, initialHeight] },
       uColors: { value: buildPalette(config.colors) },
       uColorCount: { value: Math.min(config.colors.length, MAX_COLORS) },
       uStrandCount: { value: Math.min(config.count, MAX_STRANDS) },
@@ -245,8 +248,8 @@ export function initStrands(containerSelector, options = {}) {
   const mesh = new Mesh(gl, { geometry, program });
 
   const renderTarget = new RenderTarget(gl, {
-    width: ctn.offsetWidth,
-    height: ctn.offsetHeight
+    width: initialWidth,
+    height: initialHeight
   });
 
   const glassProgram = new Program(gl, {
@@ -254,7 +257,7 @@ export function initStrands(containerSelector, options = {}) {
     fragment: GLASS_FRAG,
     uniforms: {
       uScene: { value: renderTarget.texture },
-      uResolution: { value: [ctn.offsetWidth, ctn.offsetHeight] },
+      uResolution: { value: [initialWidth, initialHeight] },
       uRadius: { value: 0.46 * config.glassSize },
       uRefraction: { value: config.refraction },
       uDispersion: { value: config.dispersion }
