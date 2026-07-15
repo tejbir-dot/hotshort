@@ -246,20 +246,24 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
     import uuid
     import time as _time
 
-    # ── SINGLE BATCHED CALL: send full transcript in one request ─────────────────
-    # Previously capped at 120 segs — this was leaving 55%+ of the video unseen.
-    # Full transcript (~275 segs × ~20 tokens ≈ 5500 tokens) is safely within Groq's
-    # 32k token context window. Sending the full transcript gives the LLM full context
-    # for more dynamic, diverse trigger discovery across the entire video.
-    segs_to_use = transcript_segments  # no cap — send everything
+    # ── BATCHED CALLS: send transcript in chunks to avoid 413/TPM limits ─────────────
+    # Full transcript (~275 segs × ~20 tokens ≈ 5500 tokens) can hit the 6000 TPM limit
+    # on free tiers, throwing a 413 error. We split into chunks and wait between them.
+    all_triggers = []
+    CHUNK_SIZE = 100
+    chunks = [transcript_segments[i:i + CHUNK_SIZE] for i in range(0, len(transcript_segments), CHUNK_SIZE)]
+    log.info(f"[TRIGGER_FORENSIC_LLM] Sending full transcript in {len(chunks)} chunks of max {CHUNK_SIZE} segs.")
 
-    transcript_text = ""
-    for s in segs_to_use:
-        transcript_text += f"[{s.get('start', 0):.1f}-{s.get('end', 0):.1f}] {s.get('text', '')}\n"
+    for chunk_idx, segs_to_use in enumerate(chunks):
+        if chunk_idx > 0:
+            log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 8 seconds before chunk {chunk_idx+1}/{len(chunks)} to respect TPM limits...")
+            _time.sleep(8.0)
 
-    log.info(f"[TRIGGER_FORENSIC_LLM] Sending full transcript: {len(segs_to_use)} segs to LLM.")
+        transcript_text = ""
+        for s in segs_to_use:
+            transcript_text += f"[{s.get('start', 0):.1f}-{s.get('end', 0):.1f}] {s.get('text', '')}\n"
 
-    prompt = f"""You are an expert AI editor analyzing a video transcript.
+        prompt = f"""You are an expert AI editor analyzing a video transcript.
 Find "Narrative Triggers" in the text. Narrative Triggers include both semantic and structural moments where the speaker:
 1. "belief_reversal": Challenges a common belief ("most people think... but actually")
 2. "secret_revelation": Reveals a secret ("the real reason is", "nobody tells you this")
@@ -313,76 +317,77 @@ Transcript:
 {transcript_text}
 """
 
-    all_triggers = []
-    MAX_RETRIES = 3
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": _get_groq_model(),
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.1,
-                    "response_format": {"type": "json_object"}
-                },
-                timeout=_get_timeout()
-            )
-            if resp.status_code == 200:
-                data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
-                raw_triggers = data.get("triggers", [])
-                for t in raw_triggers:
-                    psy = t.get("psychology", {})
-                    log.info(
-                        f"[TRIGGER_FORENSIC_LLM] MATCH"
-                        f" | type={t.get('type')}"
-                        f" | conf={t.get('confidence', 0.0):.2f}"
-                        f" | time={t.get('start'):.1f}-{t.get('end'):.1f}s"
-                        f" | stop_scroll={psy.get('stop_scroll', 0.0):.2f}"
-                        f" curiosity={psy.get('curiosity', 0.0):.2f}"
-                        f" memorability={psy.get('memorability', 0.0):.2f}"
-                        f" shareability={psy.get('shareability', 0.0):.2f}"
-                        f" novelty={psy.get('novelty', 0.0):.2f}"
-                        f" clarity={psy.get('clarity', 0.0):.2f}"
-                        f" belief_reversal={psy.get('belief_reversal', 0.0):.2f}"
-                        f" emotional_charge={psy.get('emotional_charge', 0.0):.2f}"
-                        f" | reason='{t.get('reason', '')}'"
-                        f" | phrase='{t.get('phrase', '')[:80]}'"
-                    )
+        MAX_RETRIES = 3
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": _get_groq_model(),
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1,
+                        "response_format": {"type": "json_object"}
+                    },
+                    timeout=_get_timeout()
+                )
+                if resp.status_code == 200:
+                    data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
+                    raw_triggers = data.get("triggers", [])
+                    found_in_chunk = 0
+                    for t in raw_triggers:
+                        psy = t.get("psychology", {})
+                        log.info(
+                            f"[TRIGGER_FORENSIC_LLM] MATCH"
+                            f" | type={t.get('type')}"
+                            f" | conf={t.get('confidence', 0.0):.2f}"
+                            f" | time={t.get('start'):.1f}-{t.get('end'):.1f}s"
+                            f" | stop_scroll={psy.get('stop_scroll', 0.0):.2f}"
+                            f" curiosity={psy.get('curiosity', 0.0):.2f}"
+                            f" memorability={psy.get('memorability', 0.0):.2f}"
+                            f" shareability={psy.get('shareability', 0.0):.2f}"
+                            f" novelty={psy.get('novelty', 0.0):.2f}"
+                            f" clarity={psy.get('clarity', 0.0):.2f}"
+                            f" belief_reversal={psy.get('belief_reversal', 0.0):.2f}"
+                            f" emotional_charge={psy.get('emotional_charge', 0.0):.2f}"
+                            f" | reason='{t.get('reason', '')}'"
+                            f" | phrase='{t.get('phrase', '')[:80]}'"
+                        )
 
-                    artifact = TriggerArtifact(
-                        trigger_type=str(t.get("type", "unknown")),
-                        psychology=t.get("psychology", {}),
-                        reason=str(t.get("reason", "")),
-                        confidence=float(t.get("confidence", 0.8)),
-                        trace_id=str(uuid.uuid4())
-                    )
+                        artifact = TriggerArtifact(
+                            trigger_type=str(t.get("type", "unknown")),
+                            psychology=t.get("psychology", {}),
+                            reason=str(t.get("reason", "")),
+                            confidence=float(t.get("confidence", 0.8)),
+                            trace_id=str(uuid.uuid4())
+                        )
 
-                    all_triggers.append({
-                        "start": float(t.get("start", 0)),
-                        "end": float(t.get("end", 0)),
-                        "type": artifact.trigger_type,
-                        "confidence": artifact.confidence,
-                        "text": str(t.get("phrase", "")),
-                        "phrase": str(t.get("phrase", "")),
-                        "span": {"start": float(t.get("start", 0)), "end": float(t.get("end", 0))},
-                        "artifact": artifact
-                    })
-                log.info(f"[TRIGGER_FORENSIC_LLM] Batch complete: {len(all_triggers)} triggers found.")
-                break  # success — exit retry loop
+                        all_triggers.append({
+                            "start": float(t.get("start", 0)),
+                            "end": float(t.get("end", 0)),
+                            "type": artifact.trigger_type,
+                            "confidence": artifact.confidence,
+                            "text": str(t.get("phrase", "")),
+                            "phrase": str(t.get("phrase", "")),
+                            "span": {"start": float(t.get("start", 0)), "end": float(t.get("end", 0))},
+                            "artifact": artifact
+                        })
+                        found_in_chunk += 1
+                    log.info(f"[TRIGGER_FORENSIC_LLM] Chunk {chunk_idx+1} complete: {found_in_chunk} triggers found.")
+                    break  # success — exit retry loop for this chunk
 
-            elif resp.status_code == 429:
-                retry_after = float(resp.headers.get("Retry-After", 2 ** attempt))
-                log.warning(f"[TRIGGER_FORENSIC_LLM] 429 rate limit (attempt {attempt+1}/{MAX_RETRIES}). "
-                            f"Waiting {retry_after:.1f}s...")
-                _time.sleep(retry_after)
-            else:
-                log.error(f"[TRIGGER_FORENSIC_LLM] Groq API error {resp.status_code}: {resp.text[:200]}")
-                break
-        except Exception as e:
-            log.error(f"[TRIGGER_FORENSIC_LLM] LLM call failed (attempt {attempt+1}): {e}")
-            if attempt < MAX_RETRIES - 1:
-                _time.sleep(2 ** attempt)
+                elif resp.status_code == 429:
+                    retry_after = float(resp.headers.get("Retry-After", 2 ** attempt))
+                    log.warning(f"[TRIGGER_FORENSIC_LLM] 429 rate limit (attempt {attempt+1}/{MAX_RETRIES}). "
+                                f"Waiting {retry_after:.1f}s...")
+                    _time.sleep(retry_after)
+                else:
+                    log.error(f"[TRIGGER_FORENSIC_LLM] Groq API error {resp.status_code}: {resp.text[:200]}")
+                    break
+            except Exception as e:
+                log.error(f"[TRIGGER_FORENSIC_LLM] LLM call failed (attempt {attempt+1}): {e}")
+                if attempt < MAX_RETRIES - 1:
+                    _time.sleep(2 ** attempt)
 
     # Fallback to sliding window if LLM found 0 (it might have failed or hallucinated)
     if not all_triggers:
