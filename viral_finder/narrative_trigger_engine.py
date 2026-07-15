@@ -247,19 +247,17 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
     import time as _time
 
     # ── SINGLE BATCHED CALL: send full transcript in one request ─────────────────
-    # Previously: one Groq call per 4-min chunk → 8 calls → 4000+ TPM → 429 crash.
-    # Now: ONE call with the whole transcript (capped at 120 segments to stay under
-    # 6000 TPM). This cuts rate limit errors from ~8 to 0 for most videos.
-    MAX_SEGS_PER_CALL = 120  # ~600 tokens for transcript portion
-    segs_to_use = transcript_segments[:MAX_SEGS_PER_CALL]
+    # Previously capped at 120 segs — this was leaving 55%+ of the video unseen.
+    # Full transcript (~275 segs × ~20 tokens ≈ 5500 tokens) is safely within Groq's
+    # 32k token context window. Sending the full transcript gives the LLM full context
+    # for more dynamic, diverse trigger discovery across the entire video.
+    segs_to_use = transcript_segments  # no cap — send everything
 
     transcript_text = ""
     for s in segs_to_use:
         transcript_text += f"[{s.get('start', 0):.1f}-{s.get('end', 0):.1f}] {s.get('text', '')}\n"
 
-    if len(transcript_segments) > MAX_SEGS_PER_CALL:
-        log.info(f"[TRIGGER_FORENSIC_LLM] Transcript capped at {MAX_SEGS_PER_CALL} segs "
-                 f"(total={len(transcript_segments)}) to stay within TPM limit.")
+    log.info(f"[TRIGGER_FORENSIC_LLM] Sending full transcript: {len(segs_to_use)} segs to LLM.")
 
     prompt = f"""You are an expert AI editor analyzing a video transcript.
 Find "Narrative Triggers" in the text. Narrative Triggers include both semantic and structural moments where the speaker:

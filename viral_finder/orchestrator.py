@@ -5108,25 +5108,47 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
                 else:
                     _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
                 
-                # EXPERIMENT: Reduce Groq Surgeon Input Pool
-                pool_before_len = len(_pool)
-                groq_pool_limit = int(os.getenv("HS_GROQ_POOL_LIMIT", "10"))
-                
-                lowest_score_sent = 0.0
-                highest_score_rejected = 0.0
-                
-                if len(_pool) > groq_pool_limit:
-                    highest_score_rejected = float(_pool[groq_pool_limit].get("viral_score", _pool[groq_pool_limit].get("score", 0)) or 0)
-                    _pool = _pool[:groq_pool_limit]
-                    
-                if _pool:
-                    lowest_score_sent = float(_pool[-1].get("viral_score", _pool[-1].get("score", 0)) or 0)
-                    
-                log.info("\n[GROQ_POOL_TEST]")
-                log.info(f"pool_before={pool_before_len}")
-                log.info(f"pool_after={len(_pool)}")
-                log.info(f"lowest_score_sent={lowest_score_sent}")
-                log.info(f"highest_score_rejected={highest_score_rejected}\n")
+                # ── SURGEON GATING: Emergency-Only ────────────────────────────────────────
+                # Only send candidates to Surgeon that NEED it:
+                #   (a) clip duration < 35s  → likely cut short, no payoff yet
+                #   (b) no payoff signal     → missing arc resolution
+                # Healthy long clips skip Surgeon entirely → saves TPM + latency.
+                _SURGEON_MIN_DUR = 35.0
+                _payoff_trigger_types = {"payoff", "complete_thought"}
+
+                def _has_payoff_signal(cand: dict) -> bool:
+                    """Check if a candidate already has a payoff trigger overlapping it."""
+                    cs = float(cand.get("start", 0.0) or 0.0)
+                    ce = float(cand.get("end", cs) or cs)
+                    for tr in (ctx.narrative_triggers or []):
+                        if tr.get("type") in _payoff_trigger_types:
+                            ts = float(tr.get("start", 0.0) or 0.0)
+                            te = float(tr.get("end", ts) or ts)
+                            # Overlaps the candidate window?
+                            if ts < ce and te > cs:
+                                return True
+                    return False
+
+                _all_pool = list(_pool)
+                _needs_surgeon = []
+                _skipped_surgeon = []
+                for _c in _all_pool:
+                    _dur = float(_c.get("end", 0.0) or 0.0) - float(_c.get("start", 0.0) or 0.0)
+                    _short = _dur < _SURGEON_MIN_DUR
+                    _no_payoff = not _has_payoff_signal(_c)
+                    if _short or _no_payoff:
+                        _needs_surgeon.append(_c)
+                    else:
+                        _skipped_surgeon.append(_c)
+
+                log.info(
+                    f"[GROQ_SURGEON_GATE] pool={len(_all_pool)}"
+                    f" → surgeon_queue={len(_needs_surgeon)} (short_or_no_payoff)"
+                    f" | skipped={len(_skipped_surgeon)} (healthy long clips)"
+                )
+                _pool = _needs_surgeon
+                pool_before_len = len(_all_pool)
+
                 if not _pool:
                     log.info("[GROQ_CORTEX] Skipping — empty candidate pool.")
                 else:
