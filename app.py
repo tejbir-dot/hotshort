@@ -2415,14 +2415,14 @@ def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = N
             return
 
         # ── Local Worker Mode ─────────────────────────────────────────────────
-        # When USE_LOCAL_WORKER=1, leave the job as "pending" so local_worker.py
-        # can poll /api/jobs/next and process it with the local RTX GPU.
+        # When USE_LOCAL_WORKER=1 (or WORKER_SECRET is set), leave the job as "pending"
+        # so local_worker.py can poll /api/jobs/next and process it with the local RTX GPU.
         # The background thread exits immediately — no blocking on Railway.
-        if os.getenv("USE_LOCAL_WORKER", "0").strip() == "1":
+        if os.getenv("USE_LOCAL_WORKER", "0").strip() == "1" or os.getenv("WORKER_SECRET"):
             job.status = "pending"
             db.session.commit()
             app.logger.info(
-                "[PIPELINE] job=%s handed off to local worker (USE_LOCAL_WORKER=1)", job_id
+                "[PIPELINE] job=%s handed off to local worker", job_id
             )
             return  # local_worker.py takes it from here
         # ─────────────────────────────────────────────────────────────────────
