@@ -365,10 +365,11 @@ Transcript:
                         all_triggers.append({
                             "start": float(t.get("start", 0)),
                             "end": float(t.get("end", 0)),
-                            "type": artifact.trigger_type,
+                            "type": artifact.trigger_type.lower().strip(),
                             "confidence": artifact.confidence,
                             "text": str(t.get("phrase", "")),
                             "phrase": str(t.get("phrase", "")),
+                            "psychology": psy,
                             "span": {"start": float(t.get("start", 0)), "end": float(t.get("end", 0))},
                             "artifact": artifact
                         })
@@ -459,63 +460,87 @@ def build_narrative_contracts(triggers: List[Dict]) -> List[Any]:
         raw = (0.30 * stop + 0.30 * cur + 0.25 * mem + 0.15 * sha)
         return max(conf * 0.4 + raw * 0.6, conf * 0.5)
 
-    # Separate into hooks and payoffs
-    hooks   = [t for t in triggers if t.get("type") in HOOK_TYPES]
-    payoffs = [t for t in triggers if t.get("type") in PAYOFF_TYPES]
+    # Separate into hooks and payoffs (case-insensitive)
+    hooks   = [t for t in triggers if t.get("type", "").lower().strip() in HOOK_TYPES]
+    payoffs = [t for t in triggers if t.get("type", "").lower().strip() in PAYOFF_TYPES]
 
-    # complete_thought can also act as a hook for the next payoff — keep both
-    # Sort by time
     hooks.sort(key=lambda t: float(t.get("start", 0.0)))
     payoffs.sort(key=lambda t: float(t.get("start", 0.0)))
 
-    used_payoffs = set()
-    contracts = []
-
-    for hook in hooks:
+    # Generate all valid (hook, payoff) candidate pairs
+    all_candidates = []
+    for h_idx, hook in enumerate(hooks):
         h_start = float(hook.get("start", 0.0))
         h_end   = float(hook.get("end", h_start))
         hook_score = _psych_score(hook)
 
-        # Find all candidate payoffs in the valid window
-        candidates = []
-        for j, p in enumerate(payoffs):
+        for p_idx, p in enumerate(payoffs):
             p_start = float(p.get("start", 0.0))
-            p_end   = float(p.get("end", p_start))
             gap = p_start - h_end
             if gap < MIN_GAP_S or gap > MAX_GAP_S:
                 continue
-            if j in used_payoffs:
-                continue
+
             payoff_score = _psych_score(p)
             # Score this pairing: hook × payoff psychology × proximity bonus
             proximity_bonus = max(0.0, 1.0 - (gap / MAX_GAP_S))  # 1.0 at 0s gap, 0.0 at 180s
             pair_score = hook_score * payoff_score * (0.7 + 0.3 * proximity_bonus)
-            candidates.append((pair_score, j, p, payoff_score))
+            
+            all_candidates.append({
+                "h_idx": h_idx,
+                "p_idx": p_idx,
+                "hook": hook,
+                "payoff": p,
+                "pair_score": pair_score,
+                "hook_score": hook_score,
+                "payoff_score": payoff_score
+            })
 
-        if candidates:
-            # Pick the highest-scoring payoff pairing
-            best_pair_score, best_j, best_payoff, best_resolution = max(candidates, key=lambda x: x[0])
-            used_payoffs.add(best_j)
-            contract = NarrativeContract(
-                hook_trigger=hook,
-                payoff_trigger=best_payoff,
-                hook_start=h_start,
-                payoff_end=float(best_payoff.get("end", 0.0)),
-                debt_score=round(hook_score, 4),
-                resolution_score=round(best_resolution, 4),
-                contract_score=round(hook_score * best_resolution, 4),
-                hook_type=str(hook.get("type", "unknown")),
-                payoff_type=str(best_payoff.get("type", "unknown")),
-                trace_id=str(uuid.uuid4()),
-            )
-            log.info(
-                f"[NCE] CONTRACT: {contract.hook_type}@{h_start:.1f}s → "
-                f"{contract.payoff_type}@{float(best_payoff.get('start',0)):.1f}s | "
-                f"debt={contract.debt_score:.3f} resolution={contract.resolution_score:.3f} "
-                f"score={contract.contract_score:.3f}"
-            )
-        else:
-            # Unresolved hook — still a contract, but resolution_score=0
+    # Sort ALL candidates globally by pair_score descending
+    # This prevents "chronological shadowing" where a weak early hook steals the best payoff
+    all_candidates.sort(key=lambda c: c["pair_score"], reverse=True)
+
+    used_hooks = set()
+    used_payoffs = set()
+    contracts = []
+
+    # Greedily lock in the absolute strongest pairs first
+    for cand in all_candidates:
+        if cand["h_idx"] in used_hooks or cand["p_idx"] in used_payoffs:
+            continue
+
+        used_hooks.add(cand["h_idx"])
+        used_payoffs.add(cand["p_idx"])
+        
+        hook = cand["hook"]
+        best_payoff = cand["payoff"]
+        
+        contract = NarrativeContract(
+            hook_trigger=hook,
+            payoff_trigger=best_payoff,
+            hook_start=float(hook.get("start", 0.0)),
+            payoff_end=float(best_payoff.get("end", 0.0)),
+            debt_score=round(cand["hook_score"], 4),
+            resolution_score=round(cand["payoff_score"], 4),
+            contract_score=round(cand["pair_score"], 4),
+            hook_type=str(hook.get("type", "unknown")).lower().strip(),
+            payoff_type=str(best_payoff.get("type", "unknown")).lower().strip(),
+            trace_id=str(uuid.uuid4()),
+        )
+        log.info(
+            f"[NCE] CONTRACT: {contract.hook_type}@{contract.hook_start:.1f}s → "
+            f"{contract.payoff_type}@{float(best_payoff.get('start', 0)):.1f}s | "
+            f"debt={contract.debt_score:.3f} resolution={contract.resolution_score:.3f} "
+            f"score={contract.contract_score:.3f}"
+        )
+        contracts.append(contract)
+
+    # Any hooks that didn't get a payoff become unresolved contracts
+    for h_idx, hook in enumerate(hooks):
+        if h_idx not in used_hooks:
+            h_start = float(hook.get("start", 0.0))
+            h_end   = float(hook.get("end", h_start))
+            hook_score = _psych_score(hook)
+            
             contract = NarrativeContract(
                 hook_trigger=hook,
                 payoff_trigger={},
@@ -524,7 +549,7 @@ def build_narrative_contracts(triggers: List[Dict]) -> List[Any]:
                 debt_score=round(hook_score, 4),
                 resolution_score=0.0,
                 contract_score=0.0,
-                hook_type=str(hook.get("type", "unknown")),
+                hook_type=str(hook.get("type", "unknown")).lower().strip(),
                 payoff_type="none",
                 trace_id=str(uuid.uuid4()),
             )
@@ -532,7 +557,7 @@ def build_narrative_contracts(triggers: List[Dict]) -> List[Any]:
                 f"[NCE] UNRESOLVED HOOK: {contract.hook_type}@{h_start:.1f}s "
                 f"debt={contract.debt_score:.3f} — no payoff found within {MAX_GAP_S}s"
             )
-        contracts.append(contract)
+            contracts.append(contract)
 
     log.info(f"[NCE] Built {len(contracts)} contracts: "
              f"{sum(1 for c in contracts if c.resolution_score > 0)} resolved, "
