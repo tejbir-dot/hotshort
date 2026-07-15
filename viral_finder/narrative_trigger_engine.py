@@ -285,6 +285,8 @@ CRITICAL INSTRUCTION: For every trigger you find, you MUST also provide deep psy
 - belief_reversal: How strongly does this challenge a common belief?
 - emotional_charge: How much emotion does this evoke?
 
+CRITICAL INSTRUCTION: A viral video MUST have a setup (hook) and a resolution (payoff). You MUST actively look for and include triggers of type "payoff" and "complete_thought". Do not just return hooks. If there are conclusions or takeaways, flag them as "payoff"!
+
 CRITICAL INSTRUCTION: You MUST also provide a "reason" (1 short sentence) explaining exactly WHY you selected this trigger and what makes it powerful.
 
 Return ONLY valid JSON in this format:
