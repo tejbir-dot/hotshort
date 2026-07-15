@@ -21,8 +21,10 @@ import time
 import math
 import hashlib
 import logging
+import inspect
 import re
 from collections import Counter
+from viral_finder.cognition import Evidence, IntelligenceArtifact
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed # Keep for other uses if any
 from typing import List, Dict, Any, Optional
@@ -43,19 +45,22 @@ log = logging.getLogger("orchestrator")
 # Defensive imports for project modules (graceful fallbacks)
 try:
     from viral_finder.gemini_transcript_engine import transcribe_file as gemini_transcribe, transcribe_and_analyze
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for viral_finder.gemini_transcript_engine: {e}")
     gemini_transcribe = None
     transcribe_and_analyze = None
 
 try:
     from viral_finder.transcript_engine import transcribe_file as legacy_transcribe, extract_transcript
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for viral_finder.transcript_engine: {e}")
     legacy_transcribe = None
     extract_transcript = None
 
 try:
     from viral_finder.visual_audio_engine import analyze_audio, analyze_visual
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for viral_finder.visual_audio_engine: {e}")
     analyze_audio = lambda path: []
     analyze_visual = lambda path: []
 
@@ -67,7 +72,8 @@ try:
         sentence_complete_extend,
         detect_payoff_end
     )
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for unknown: {e}")
     analyze_curiosity_and_detect_punches = None
     build_idea_graph = None
     select_candidate_clips = None
@@ -76,7 +82,8 @@ except Exception:
 
 try:
     from viral_finder.curiosity_engine import run_curiosity as run_curiosity_stage
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for viral_finder.curiosity_engine: {e}")
     run_curiosity_stage = None
 
 try:
@@ -87,52 +94,61 @@ try:
         apply_transcription_routing,
     )
     TRANSCRIPTION_ROUTER_AVAILABLE = True
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for unknown: {e}")
     TRANSCRIPTION_ROUTER_AVAILABLE = False
     log.warning("[ROUTER] Transcription router not available, using legacy mode")
 
 try:
     from viral_finder.validation_gates import apply_post_enrichment_validation
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for viral_finder.validation_gates: {e}")
     apply_post_enrichment_validation = None
 
 try:
     from viral_finder.clip_selector import rank_and_diversify
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for viral_finder.clip_selector: {e}")
     rank_and_diversify = None
 
 try:
     from viral_finder.narrative_trigger_engine import detect_narrative_triggers
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for viral_finder.narrative_trigger_engine: {e}")
     detect_narrative_triggers = None
 
 try:
     from utils.narrative_intelligence import compute_quality_scores
     from utils.narrative_intelligence import cqs_cache_reset, cqs_cache_stats
-    from utils.narrative_intelligence import compute_hook_resolution_bonus
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for utils.narrative_intelligence: {e}")
     compute_quality_scores = None
     cqs_cache_reset = lambda: {}
     cqs_cache_stats = lambda: {}
-    compute_hook_resolution_bonus = None
+# Story memory feature fallback
+compute_hook_resolution_bonus = None
 try:
     from utils.narrative_intelligence import detect_message_punch as _detect_message_punch
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for utils.narrative_intelligence: {e}")
     _detect_message_punch = None
 try:
     from utils.story_patterns import detect_story_pattern
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for utils.story_patterns: {e}")
     detect_story_pattern = None
 
 try:
     from viral_finder.pipeline_trace import PipelineTrace
-except Exception:
+except Exception as e:
+    log.warning(f"[ORCH] Import fallback triggered for viral_finder.pipeline_trace: {e}")
     PipelineTrace = None
 
 try:
     from .global_fields import build_cognition_cache
     from .dominance_selector import select_dominant_arcs, SelectorConfig
-except ImportError:
+except ImportError as e:
+    log.warning(f"[ORCH] Import fallback triggered for .dominance_selector: {e}")
     build_cognition_cache = None
     select_dominant_arcs = None
     SelectorConfig = None
@@ -140,7 +156,8 @@ except ImportError:
 from viral_finder.pipeline_context import PipelineContext
 try:
     from .ultron_finder_v33 import find_viral_moments as ultron_engine
-except ImportError:
+except ImportError as e:
+    log.warning(f"[ORCH] Import fallback triggered for .ultron_finder_v33: {e}")
     ultron_engine = None
 
 # Avoid importing ultron_brain eagerly because it loads SentenceTransformer
@@ -164,7 +181,8 @@ def _heuristic_semantic_scores(text: str, brain=None):
     wc = len(text.split())
     t_low = text.lower()
     meaning = min(1.0, wc / 18.0)
-    novelty = 1.0
+    # novelty=0.5: neutral, not 1.0 which is noise (we have no actual semantic distance signal here)
+    novelty = 0.5
     emotion_words = {
         "love", "hate", "amazing", "insane", "truth",
         "secret", "exposed", "crazy", "fear", "power",
@@ -298,6 +316,128 @@ def extend_until_sentence_complete(s, p, trs, max_extend=6.0):
         if ts < end_t < te:
             return min(te, end_t + float(max_extend or 6.0))
     return end_t
+
+
+def _clip_contains_time(candidate: Dict[str, Any], ts: Any, pad: float = 0.05) -> bool:
+    try:
+        t = float(ts)
+        s = float(candidate.get("start", 0.0) or 0.0) - float(pad)
+        e = float(candidate.get("end", s) or s) + float(pad)
+        return s <= t <= e
+    except Exception:
+        return False
+
+
+def _psychological_loop_state(
+    *,
+    hook_found: bool,
+    payoff_idx: Optional[int],
+    hook_idx: int,
+    payoff_resolution: float,
+    tension_gradient: float,
+    info_density: float,
+    rewatch: float,
+) -> tuple[str, float]:
+    expectation_opened = 1.0 if hook_found else 0.0
+    expectation_maintained = _clamp01((0.60 * tension_gradient) + (0.40 * rewatch))
+    evidence_added = _clamp01(info_density)
+    payoff_delivered = _clamp01(payoff_resolution) if payoff_idx is not None else 0.0
+    cognitive_closure = _clamp01((0.70 * payoff_delivered) + (0.30 * evidence_added))
+    loop_health = _clamp01(
+        (0.20 * expectation_opened)
+        + (0.15 * expectation_maintained)
+        + (0.20 * evidence_added)
+        + (0.30 * payoff_delivered)
+        + (0.15 * cognitive_closure)
+    )
+    if not hook_found:
+        return "NO_HOOK", loop_health
+    if payoff_idx is None or payoff_delivered <= 0.05:
+        return "NO_PAYOFF", loop_health
+    if payoff_idx == hook_idx and payoff_delivered >= 0.55:
+        return "SELF_CONTAINED", loop_health
+    if payoff_delivered >= 0.55 and cognitive_closure >= 0.50:
+        return "RESOLVED", loop_health
+    return "PARTIAL_PAYOFF", loop_health
+
+
+def _loop_score_cap(loop_state: str, loop_health: float) -> float:
+    state = str(loop_state or "UNKNOWN")
+    if state in ("RESOLVED", "SELF_CONTAINED"):
+        return 1.0
+    if state == "PARTIAL_PAYOFF":
+        return min(0.55, max(0.25, _clamp01(loop_health)))
+    if state == "NO_PAYOFF":
+        return 0.25
+    if state == "NO_HOOK":
+        return 0.20
+    return 0.45
+
+
+def _meaning_invariant_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
+    reasons: List[str] = []
+    hook_seg = candidate.get("hook_segment") if isinstance(candidate.get("hook_segment"), dict) else {}
+    payoff_seg = candidate.get("payoff_segment") if isinstance(candidate.get("payoff_segment"), dict) else {}
+    if hook_seg and not _clip_contains_time(candidate, hook_seg.get("start")):
+        reasons.append("hook_outside_clip")
+    if payoff_seg and not _clip_contains_time(candidate, payoff_seg.get("end")):
+        reasons.append("payoff_outside_clip")
+    locked_payoff_time = candidate.get("locked_payoff_time")
+    if locked_payoff_time is not None and not _clip_contains_time(candidate, locked_payoff_time):
+        reasons.append("locked_payoff_outside_clip")
+    return reasons
+
+
+def _bridge_intelligence_to_signals(candidates: List[Dict[str, Any]], consumer: str) -> int:
+    bridged = 0
+    ev_map = {
+        "stop_scroll": "stop_scroll",
+        "memorability": "memorability",
+        "shareability": "shareability",
+        "usefulness": "usefulness",
+        "completeness": "completeness",
+        "emotional_charge": "emotional_charge",
+        "curiosity": "curiosity",
+        "curiosity_peak": "curiosity_peak",
+    }
+    for cand in candidates or []:
+        if not isinstance(cand, dict):
+            continue
+        artifact = cand.get("intelligence")
+        if not isinstance(artifact, IntelligenceArtifact):
+            continue
+        signals = cand.setdefault("signals", {})
+        psych = signals.setdefault("psychology", {})
+        for ev in artifact.evidence_stream:
+            dest_key = ev_map.get(ev.type)
+            if not dest_key:
+                ev.reject(f"unsupported_evidence_type:{ev.type}", consumer)
+                continue
+            try:
+                ev_val = float(ev.value) * float(ev.confidence)
+            except (ValueError, TypeError):
+                ev.reject("non_numeric_value", consumer)
+                continue
+            if ev_val > float(psych.get(dest_key, 0.0) or 0.0):
+                psych[dest_key] = ev_val
+                bridged += 1
+            ev.consume(consumer)
+    return bridged
+
+
+def _reject_unsettled_intelligence(candidates: List[Dict[str, Any]], consumer: str, reason: str) -> int:
+    rejected = 0
+    for cand in candidates or []:
+        if not isinstance(cand, dict):
+            continue
+        artifact = cand.get("intelligence")
+        if not isinstance(artifact, IntelligenceArtifact):
+            continue
+        for ev in artifact.evidence_stream:
+            if ev.transport_state == "ORPHANED":
+                ev.reject(reason, consumer)
+                rejected += 1
+    return rejected
 
 # core config
 CACHE_DIR = ".hotshort_transcripts_cache"
@@ -855,6 +995,7 @@ def enrich_candidate(candidate: Dict, aud: List[Dict], vis: List[Dict], brain, c
     # fuse -> classic energy
     classic = fuse(0.05 + candidate.get('hook', 0.0), a_avg, m_avg)
 
+    before_keys = {k: candidate.get(k) for k in ("audio", "motion", "impact", "meaning", "novelty", "emotion", "clarity", "classic")}
     candidate.update({
         'audio': round(a_avg, 4),
         'motion': round(m_avg, 4),
@@ -865,6 +1006,10 @@ def enrich_candidate(candidate: Dict, aud: List[Dict], vis: List[Dict], brain, c
         'clarity': round(clarity, 4),
         'classic': round(classic, 4)
     })
+    for _k, _before in before_keys.items():
+        _after = candidate.get(_k)
+        if _before != _after:
+            _audit_field_mutation(candidate, _k, _before, _after, "enrich_candidate()", inspect.currentframe().f_lineno)
 
     # recalc a simple semantic_quality if not present
     if 'semantic_quality' not in candidate or candidate.get('semantic_quality') is None:
@@ -873,6 +1018,7 @@ def enrich_candidate(candidate: Dict, aud: List[Dict], vis: List[Dict], brain, c
             candidate['semantic_quality'] = round(float(estimate_semantic_quality(candidate.get('text',''), candidate.get('score',0.0))), 3)
         except Exception:
             candidate['semantic_quality'] = round(candidate.get('score', 0.0), 3)
+        _audit_field_mutation(candidate, "semantic_quality", None, candidate.get("semantic_quality"), "enrich_candidate()", inspect.currentframe().f_lineno)
 
     return candidate
 
@@ -1057,19 +1203,36 @@ def _maybe_backfill_raw_candidates(ctx: "PipelineContext") -> None:
 
 
 def _final_quality_rescue(candidate: Dict[str, Any]) -> bool:
-    if candidate.get("groq_moment") or candidate.get("cortex_enabled"):
-        return True
+    hard_reasons = set(_meaning_invariant_reject_reasons(candidate))
+    loop_state = str(candidate.get("loop_state", "") or "")
+    if hard_reasons or loop_state in ("NO_HOOK", "NO_PAYOFF"):
+        return False
     semantic_strength = _semantic_explanation_strength(candidate)
     hook_metric = _clamp01(candidate.get("hook_score", candidate.get("hook_strength", 0.0)))
     payoff_metric = _clamp01(candidate.get("payoff_score", candidate.get("payoff_confidence", 0.0)))
     open_loop_metric = _clamp01(candidate.get("open_loop_score", 0.0))
+    if hook_metric <= 0.02 and open_loop_metric <= 0.02:
+        return False
+    if payoff_metric <= 0.08 and loop_state not in ("RESOLVED", "CONTINUED"):
+        return False
+    if candidate.get("groq_moment") or candidate.get("cortex_enabled"):
+        return True
     return semantic_strength >= 0.68 and (hook_metric >= 0.16 or open_loop_metric >= 0.14 or payoff_metric >= 0.22)
 
 
 def _final_quality_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
-    if candidate.get("groq_moment") or candidate.get("cortex_enabled"):
-        return []
     reasons: List[str] = []
+    reasons.extend(_meaning_invariant_reject_reasons(candidate))
+    
+    # Cortex-enabled candidates (LLM triggers/contracts) bypass all structural NLP rules.
+    if candidate.get("groq_moment") or candidate.get("cortex_enabled"):
+        return reasons
+        
+    loop_state = str(candidate.get("loop_state", "") or "")
+    if loop_state == "NO_HOOK":
+        reasons.append("loop_no_hook")
+    elif loop_state == "NO_PAYOFF":
+        reasons.append("loop_no_payoff")
     motion = _clamp01(candidate.get("motion", (candidate.get("signals", {}) or {}).get("engagement", {}).get("motion", 0.0)))
     hook_strength = _clamp01(candidate.get("hook_strength", candidate.get("hook_score", 0.0)))
     payoff_score = _clamp01(candidate.get("payoff_score", candidate.get("payoff_confidence", 0.0)))
@@ -1078,6 +1241,10 @@ def _final_quality_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
     label = str(candidate.get("label", "") or "").lower()
     duration = float(candidate.get("duration", 0.0) or 0.0)
     hook_offset = float(candidate.get("hook_offset", 0.0) or 0.0)
+    if hook_strength <= 0.02 and _clamp01(candidate.get("open_loop_score", 0.0)) <= 0.02:
+        reasons.append("zero_hook_signal")
+    if payoff_score < 0.32 and loop_state not in ("RESOLVED", "CONTINUED"):
+        reasons.append("weak_unresolved_payoff")
     if (not arc_complete) and hook_strength < 0.20 and motion <= 0.02 and payoff_score < 0.15 and not story_patterns:
         reasons.append("flat_incomplete_arc")
     if "context" in label and payoff_score < 0.18 and hook_strength < 0.18 and not story_patterns:
@@ -1085,6 +1252,74 @@ def _final_quality_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
     if duration >= 18.0 and payoff_score < 0.12 and hook_strength < 0.16 and hook_offset > 4.0:
         reasons.append("late_flat_hook")
     return reasons
+
+
+def _resolve_contract_from_payoff(
+    ctx: "PipelineContext",
+    candidate: Dict[str, Any],
+    *,
+    hook_start: float,
+    hook_trigger: Dict[str, Any],
+    payoff_idx: Optional[int],
+    payoff_seg: Dict[str, Any],
+    resolution_score: float,
+    payoff_source: str,
+) -> Optional[Any]:
+    """Reconcile late PayoffResolver truth back into the shared NCE contract list."""
+    contracts = list(getattr(ctx, "narrative_contracts", []) or [])
+    if not contracts or not payoff_seg:
+        return None
+
+    best = None
+    best_dist = 999999.0
+    for contract in contracts:
+        c_hook_start = float(getattr(contract, "hook_start", 0.0) or 0.0)
+        c_res = float(getattr(contract, "resolution_score", 0.0) or 0.0)
+        if c_res > 0.0:
+            continue
+        dist = abs(c_hook_start - float(hook_start))
+        if dist < best_dist:
+            best = contract
+            best_dist = dist
+
+    if best is None or best_dist > 8.0:
+        return None
+
+    payoff_start = float(payoff_seg.get("start", 0.0) or 0.0)
+    payoff_end = float(payoff_seg.get("end", payoff_start) or payoff_start)
+    payoff_text = str(payoff_seg.get("text", "") or "")
+    score = _clamp01(resolution_score)
+
+    setattr(best, "payoff_trigger", {
+        "type": "payoff",
+        "start": payoff_start,
+        "end": payoff_end,
+        "text": payoff_text,
+        "confidence": score,
+        "source": payoff_source,
+        "idx": payoff_idx,
+    })
+    setattr(best, "payoff_end", payoff_end)
+    setattr(best, "resolution_score", round(float(score), 4))
+    setattr(best, "contract_score", round(float(getattr(best, "debt_score", 0.0) or 0.0) * score, 4))
+    setattr(best, "payoff_type", str(payoff_source or "payoff"))
+
+    candidate["contract_seed"] = True
+    candidate["_contract_trace_id"] = getattr(best, "trace_id", "")
+    candidate["_contract_score"] = getattr(best, "contract_score", 0.0)
+    candidate["completeness_signal"] = "RESOLVED"
+    candidate["payoff_confidence"] = max(_clamp01(candidate.get("payoff_confidence", 0.0)), score)
+
+    log.info(
+        "[CONTRACT_RECONCILE] cid=%s hook_start=%.2f payoff_idx=%s source=%s resolution=%.3f contract_score=%.3f",
+        candidate.get("cid", candidate.get("id", "?")),
+        float(hook_start),
+        payoff_idx,
+        payoff_source,
+        score,
+        float(getattr(best, "contract_score", 0.0) or 0.0),
+    )
+    return best
 
 
 def _pipeline_mode(explicit_mode: Optional[str]) -> str:
@@ -1454,6 +1689,19 @@ def _run_narrative_trigger_stage(ctx: PipelineContext) -> None:
     for tr in triggers:
         k = str(tr.get("type", "unknown"))
         dist[k] = int(dist.get(k, 0)) + 1
+
+    # ── Narrative Contract Engine ─────────────────────────────────────────────
+    # Pair hooks with payoffs to detect complete psychological debt cycles.
+    # Clips spanning a full contract get a contract_score boost in UVS.
+    try:
+        from viral_finder.narrative_trigger_engine import build_narrative_contracts
+        ctx.narrative_contracts = build_narrative_contracts(triggers)
+    except Exception as exc:
+        log.warning("[NCE] Contract engine degraded: %s", exc)
+        ctx.narrative_contracts = []
+    # ─────────────────────────────────────────────────────────────────────────
+
+    resolved = sum(1 for c in ctx.narrative_contracts if getattr(c, "resolution_score", 0) > 0)
     _record_stage(
         ctx,
         "L4_NARRATIVE_TRIGGER_ENGINE",
@@ -1462,6 +1710,8 @@ def _run_narrative_trigger_stage(ctx: PipelineContext) -> None:
         secret_revelation=dist.get("secret_revelation", 0),
         mistake_explanation=dist.get("mistake_explanation", 0),
         strong_claim=dist.get("strong_claim", 0),
+        contracts_resolved=resolved,
+        contracts_total=len(ctx.narrative_contracts),
         wall_s=round(time.time() - t0, 3),
     )
 
@@ -1534,6 +1784,255 @@ def _run_candidate_generation(ctx: PipelineContext) -> None:
     )
 
 
+def _curiosity_peak_from_curve(curve: List, s: float, e: float) -> float:
+    """Read peak curiosity value within [s, e] from the curiosity curve.
+    Curve items can be (timestamp, value) tuples or bare float values (index = time).
+    """
+    window = []
+    for i, item in enumerate(curve):
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            t, v = item
+        else:
+            t = float(i)
+            v = item
+        if float(s) <= float(t) <= float(e):
+            window.append(float(v or 0.0))
+    if not window:
+        return 0.0
+    return _clamp01(max(window))
+
+
+def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
+    """
+    Guarantee every LLM trigger that has NO overlapping candidate becomes a clip.
+    
+    Algorithm:
+    1. For each trigger, check if ANY existing candidate overlaps it.
+    2. If not → it is "unmatched". Collect all unmatched triggers.
+    3. Cluster nearby unmatched triggers (within 30s of each other).
+    4. Per cluster: find sentence-aware START and END from transcript.
+    5. Create a candidate with hook_seed=True and carry the trigger's psychology.
+    """
+    triggers = list(ctx.narrative_triggers or [])
+    candidates = list(ctx.raw_candidates or [])
+    transcript = list(ctx.transcript or [])
+    if not triggers:
+        return
+    
+    # Step 1: find unmatched triggers
+    unmatched = []
+    for tr in triggers:
+        ts = float(tr.get("start", 0.0) or 0.0)
+        te = float(tr.get("end", ts) or ts)
+        matched = False
+        for cand in candidates:
+            cs = float(cand.get("start", 0.0) or 0.0)
+            ce = float(cand.get("end", cs) or cs)
+            if _overlap_ratio(ts, te, cs, ce) > 0.0:
+                matched = True
+                break
+        if not matched:
+            unmatched.append(tr)
+    
+    if not unmatched:
+        log.info("[TRIGGER_INJECT] All triggers already covered by existing candidates.")
+        return
+    
+    log.info(f"[TRIGGER_INJECT] {len(unmatched)} unmatched triggers → generating candidates")
+    
+    # Step 2: cluster by proximity (within 30s = likely same narrative passage)
+    unmatched.sort(key=lambda t: float(t.get("start", 0.0)))
+    clusters = []
+    current_cluster = [unmatched[0]]
+    for tr in unmatched[1:]:
+        last_end = max(float(t.get("end", 0.0)) for t in current_cluster)
+        if float(tr.get("start", 0.0)) - last_end <= 30.0:
+            current_cluster.append(tr)
+        else:
+            clusters.append(current_cluster)
+            current_cluster = [tr]
+    clusters.append(current_cluster)
+    
+    new_candidates = []
+    media_end = float(transcript[-1].get("end", 0.0)) if transcript else 9999.0
+    
+    for cluster in clusters:
+        earliest_start = min(float(t.get("start", 0.0)) for t in cluster)
+        latest_end = max(float(t.get("end", 0.0)) for t in cluster)
+        
+        # Sentence-aware START: walk backward to find prior sentence boundary
+        best_start = earliest_start
+        for seg in reversed(transcript):
+            seg_end = float(seg.get("end", 0.0) or 0.0)
+            seg_start = float(seg.get("start", 0.0) or 0.0)
+            if seg_end > earliest_start:
+                continue
+            seg_text = str(seg.get("text", "") or "").strip()
+            if seg_text.endswith(('.', '!', '?', '...')) or (earliest_start - seg_end) > 8.0:
+                best_start = seg_start
+                break
+        
+        # Sentence-aware END: walk forward to find payoff sentence boundary
+        best_end = latest_end
+        for seg in transcript:
+            seg_start = float(seg.get("start", 0.0) or 0.0)
+            seg_end = float(seg.get("end", 0.0) or 0.0)
+            if seg_start < latest_end:
+                continue
+            seg_text = str(seg.get("text", "") or "").strip()
+            best_end = seg_end
+            if seg_text.endswith(('.', '!', '?', '...')) or (seg_end - latest_end) > 12.0:
+                break
+        
+        clip_start = max(0.0, best_start)
+        clip_end = min(media_end, best_end)
+        
+        # Pick best trigger in cluster (highest confidence) as representative
+        best_trigger = max(cluster, key=lambda t: float(t.get("confidence", 0.0)))
+        
+        # Collect text in the clip window
+        clip_text = " ".join(
+            str(s.get("text", "")).strip()
+            for s in transcript
+            if float(s.get("start", 0.0)) >= clip_start and float(s.get("end", 0.0)) <= clip_end + 1.0
+        ).strip()
+        
+        cand = {
+            "start": round(clip_start, 2),
+            "end": round(clip_end, 2),
+            "text": clip_text,
+            "score": float(best_trigger.get("confidence", 0.8)),
+            "hook_seed": True,
+            "hook_strength": float(best_trigger.get("confidence", 0.8)),
+            "select_pass": "hook",
+            "label": f"LLM Trigger: {best_trigger.get('type', 'strong_claim')}",
+            "reason": best_trigger.get("reason", ""),
+            "trigger_type": best_trigger.get("type", "strong_claim"),
+            "_injected_from_trigger": True,
+            "_trigger_cluster_size": len(cluster),
+            "psychology": dict(best_trigger.get("psychology", {}) or {}),
+            "_trigger_psychology": best_trigger.get("psychology", {}),
+            "fingerprint": _fingerprint(clip_text, clip_start, clip_end),
+            "cortex_enabled": True,  # Protect from structural rejection
+        }
+        
+        # Preserve LLM intelligence for verifier and downstream
+        psy = best_trigger.get("psychology", {})
+        if psy:
+            from viral_finder.cognition import IntelligenceArtifact, Evidence
+            art = IntelligenceArtifact()
+            for k, v in psy.items():
+                if v:
+                    art.evidence_stream.append(
+                        Evidence(type=k, value=float(v), producer="trigger_forensic", confidence=float(best_trigger.get("confidence", 0.8)))
+                    )
+            cand["intelligence"] = art
+        new_candidates.append(cand)
+        log.info(f"[TRIGGER_INJECT] Created candidate {clip_start:.2f}-{clip_end:.2f} from {len(cluster)} trigger(s) [{best_trigger.get('type')}]")
+    
+    ctx.raw_candidates = list(ctx.raw_candidates or []) + new_candidates
+    log.info(f"[TRIGGER_INJECT] Injected {len(new_candidates)} new trigger-sourced candidates. Total pool: {len(ctx.raw_candidates)}")
+
+    # ── CONTRACT-BASED INJECTION: guarantee every resolved contract gets a clip ──
+    # A resolved contract (hook → payoff pair) represents the most complete
+    # psychological experience we know about. Inject it if not already covered.
+    contract_candidates = []
+    all_cands_now = list(ctx.raw_candidates or [])
+    for contract in (ctx.narrative_contracts or []):
+        res = getattr(contract, "resolution_score", 0.0)
+        if res <= 0.0:
+            continue  # unresolved hooks don't get injected here
+        c_hook_start = getattr(contract, "hook_start", 0.0)
+        c_payoff_end = getattr(contract, "payoff_end", 0.0)
+        contract_window = c_payoff_end - c_hook_start
+        if contract_window < 3.0:
+            continue
+        # Check if any existing candidate covers ≥60% of this contract window
+        covered = False
+        for cand in all_cands_now:
+            cs = float(cand.get("start", 0.0) or 0.0)
+            ce = float(cand.get("end", cs) or cs)
+            overlap = max(0.0, min(ce, c_payoff_end) - max(cs, c_hook_start))
+            if (overlap / contract_window) >= 0.60:
+                covered = True
+                break
+        if covered:
+            continue
+        # Not covered — inject a contract-complete candidate
+        # Sentence-aware boundaries
+        c_start = c_hook_start
+        for seg in reversed(transcript):
+            seg_end = float(seg.get("end", 0.0) or 0.0)
+            seg_text = str(seg.get("text", "") or "").strip()
+            if seg_end > c_hook_start:
+                continue
+            if seg_text.endswith(('.', '!', '?', '...')) or (c_hook_start - seg_end) > 8.0:
+                c_start = float(seg.get("start", 0.0))
+                break
+        c_end = c_payoff_end
+        for seg in transcript:
+            seg_start = float(seg.get("start", 0.0) or 0.0)
+            seg_end = float(seg.get("end", 0.0) or 0.0)
+            if seg_start < c_payoff_end:
+                continue
+            seg_text = str(seg.get("text", "") or "").strip()
+            c_end = seg_end
+            if seg_text.endswith(('.', '!', '?', '...')) or (seg_end - c_payoff_end) > 10.0:
+                break
+        c_start = max(0.0, c_start)
+        c_end   = min(media_end, c_end)
+        clip_text = " ".join(
+            str(s.get("text", "")).strip()
+            for s in transcript
+            if float(s.get("start", 0.0)) >= c_start and float(s.get("end", 0.0)) <= c_end + 1.0
+        ).strip()
+        hook_psy = getattr(contract, "hook_trigger", {}).get("psychology", {}) or {}
+        payoff_psy = getattr(contract, "payoff_trigger", {}).get("psychology", {}) or {}
+        # Merge psychology: take max of hook + payoff for each dimension
+        merged_psy = {k: max(float(hook_psy.get(k, 0.0)), float(payoff_psy.get(k, 0.0)))
+                      for k in set(list(hook_psy.keys()) + list(payoff_psy.keys()))}
+        cand = {
+            "start": round(c_start, 2),
+            "end": round(c_end, 2),
+            "text": clip_text,
+            "score": round(getattr(contract, "contract_score", 0.5), 4),
+            "hook_seed": True,
+            "contract_seed": True,   # ← marks this as a contract-complete injection
+            "hook_strength": round(getattr(contract, "debt_score", 0.5), 4),
+            "select_pass": "contract",
+            "label": f"Contract: {getattr(contract, 'hook_type', '?')}→{getattr(contract, 'payoff_type', '?')}",
+            "trigger_type": getattr(contract, "hook_type", "strong_claim"),
+            "_injected_from_contract": True,
+            "_contract_score": getattr(contract, "contract_score", 0.0),
+            "_contract_trace_id": getattr(contract, "trace_id", ""),
+            "psychology": dict(merged_psy),
+            "_trigger_psychology": merged_psy,
+            "fingerprint": _fingerprint(clip_text, c_start, c_end),
+            "cortex_enabled": True,  # Protect from structural rejection
+        }
+        
+        # Preserve LLM intelligence for verifier and downstream
+        if merged_psy:
+            from viral_finder.cognition import IntelligenceArtifact, Evidence
+            art = IntelligenceArtifact()
+            for k, v in merged_psy.items():
+                if v:
+                    art.evidence_stream.append(
+                        Evidence(type=k, value=float(v), producer="trigger_forensic", confidence=1.0)
+                    )
+            cand["intelligence"] = art
+        contract_candidates.append(cand)
+        all_cands_now.append(cand)
+        log.info(f"[NCE_INJECT] Contract candidate {c_start:.2f}-{c_end:.2f} "
+                 f"[{getattr(contract, 'hook_type', '?')}→{getattr(contract, 'payoff_type', '?')}] "
+                 f"contract_score={getattr(contract, 'contract_score', 0):.3f}")
+
+    if contract_candidates:
+        ctx.raw_candidates = list(ctx.raw_candidates or []) + contract_candidates
+        log.info(f"[NCE_INJECT] Injected {len(contract_candidates)} contract-complete candidates. Total pool: {len(ctx.raw_candidates)}")
+    # ─────────────────────────────────────────────────────────────────────────
+
+
 def _run_global_hook_hunter(ctx: PipelineContext) -> None:
     t0 = time.time()
 
@@ -1555,6 +2054,11 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
     hook_threshold = _env_float("HS_ORCH_GLOBAL_HOOK_THRESHOLD", 0.45)
     dedupe_tol = _env_float("HS_ORCH_GLOBAL_HOOK_DEDUPE_S", 2.0)
     hooks: List[Dict[str, Any]] = []
+    # Deferred story-duplicate suppression: maps a discovered hook's trace_id to
+    # the (thread, continuity, start, text, strength) it continues. Suppression is
+    # applied later in the dedup/ranking stage — never at discovery time — so a
+    # continuation decision can never prevent creation of a hook candidate.
+    _susp_thread_by_trace: Dict[str, Any] = {}
     # STORY THREADS: the first stateful narrative primitive in HotShort.
     # Each StoryThread holds one open narrative contract (hook → payoff).
     # Before emitting a new candidate, we ask every active thread:
@@ -1645,13 +2149,19 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
 
         if hook_strength > hook_threshold or pattern_break_score > 0.40 or curiosity_peak > 0.45:
 
-            # ── STORY MEMORY CHECK ──────────────────────────────────────────────
+            # ── STORY MEMORY CLASSIFICATION (no suppression) ────────────────────
             # Ask every active StoryThread: "does this segment continue you?"
-            # If any thread claims it: suppress as new hook, let arc grow.
+            # This is CLASSIFICATION ONLY. It records the hook→thread relationship
+            # and grows the arc (add_development_point), but it MUST NOT prevent
+            # creation of the hook candidate below. Story-duplicate suppression is
+            # deferred to the dedup/ranking stage so that no valid hook hypothesis
+            # is ever silently discarded at discovery time.
             # A thread only claims a segment if:
             #   1. It is not expired (resolved or > horizon_s old)
             #   2. compute_hook_resolution_bonus >= threshold
             _continuing_existing_arc = False
+            _continuity_thread = None
+            _continuity_score = 0.0
             if active_story_threads and compute_hook_resolution_bonus:
                 # Prune expired threads first (resolved or timed out)
                 _active_next = []
@@ -1668,39 +2178,20 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
                     )
                     if _continuity >= _story_continuity_threshold:
                         _continuing_existing_arc = True
+                        _continuity_thread = _thread
+                        _continuity_score = _continuity
                         log.info("[STORY_THREAD_CONTINUED] seg=%d '%.50s' continues %r", idx, seg_text, _thread)
+                        # Grow the existing arc, but STILL create the independent
+                        # hook candidate below. Suppression happens later.
                         _thread.add_development_point(seg_text, seg_start, _continuity)
-                        log.info(
-                            "[HOOK_SUPPRESSED_BY_MEMORY]\n"
-                            "segment_text: %s\n"
-                            "continuity_score: %.2f\n"
-                            "thread_id: %s\n"
-                            "thread_start: %.1f",
-                            seg_text, _continuity, id(_thread), _thread.start_s
-                        )
-                        ctx.hooks_suppressed += 1
-                        if _thread.trace_id:
-                            ctx.trace_suppressed_child(
-                                trace_id=_thread.trace_id,
-                                start=seg_start,
-                                text=seg_text,
-                                score=hook_strength,
-                                reason=f"continuity={_continuity:.2f}"
-                            )
-                            ctx.trace_event(
-                                trace_id=_thread.trace_id,
-                                stage="STORY_MEMORY",
-                                event="SUPPRESSED_CHILD",
-                                changed=True,
-                                impact="CRITICAL",
-                                before={"suppressed_children_count": len(ctx.trace_logs.get(_thread.trace_id, {}).get("suppressed_children", [])) - 1},
-                                after={"suppressed_children_count": len(ctx.trace_logs.get(_thread.trace_id, {}).get("suppressed_children", [])), "suppressed_text": seg_text}
-                            )
-                            ctx.trace_state(_thread.trace_id, "CONTINUED")
                         break
             # ────────────────────────────────────────────────────────────────────
 
-            if not _continuing_existing_arc:
+            # ── HOOK DISCOVERY (unconditional) ──────────────────────────────────
+            # Every segment that clears the strength gate produces a hook
+            # hypothesis, regardless of story-thread continuation. Continuation is
+            # recorded as metadata (`story_duplicate`) for the dedup/ranking stage.
+            if True:
                 import uuid
                 trace_id = str(uuid.uuid4())
                 payload = {
@@ -1712,9 +2203,18 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
                     "hook_strength": round(float(hook_strength), 4),
                     "semantic_quality": round(float(semantic_quality), 4),
                     "provenance": "L6B_GLOBAL_HOOK_HUNTER",
-                    "trace_id": trace_id
+                    "trace_id": trace_id,
+                    # Story-thread classification metadata (consumed by dedup stage).
+                    "continues_thread": (_continuity_thread.trace_id if _continuity_thread else None),
+                    "continuity_score": round(float(_continuity_score), 4),
+                    "story_duplicate": bool(_continuing_existing_arc),
                 }
                 hooks.append(payload)
+                if _continuing_existing_arc and _continuity_thread is not None:
+                    # Defer the suppression bookkeeping/tracing to the dedup stage.
+                    _susp_thread_by_trace[trace_id] = (
+                        _continuity_thread, _continuity_score, seg_start, seg_text, hook_strength
+                    )
                 if os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
                     if trace_id not in ctx.trace_logs:
                         ctx.trace_logs[trace_id] = {
@@ -1747,8 +2247,10 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
                             "start": round(seg_start, 2)
                         }
                     )
-                # Open a new StoryThread for this hook
-                if _StoryThread:
+                # Open a new StoryThread only for a genuinely-new hook. A
+                # continuation already grew its parent thread above; the candidate
+                # itself is still created and carried into the dedup stage.
+                if _StoryThread and not _continuing_existing_arc:
                     _new_thread = _StoryThread(
                         hook_text=seg_text, start_s=seg_start, start_idx=idx, trace_id=trace_id
                     )
@@ -1768,18 +2270,71 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
                 if debug_enabled and (len(hooks) <= 8 or hook_strength >= 0.65):
                     log.info('[HOOK] idx=%d strength=%.2f text="%s"', idx, hook_strength, seg_text[:120])
 
-    hooks = sorted(hooks, key=lambda x: float(x.get("hook_strength", x.get("score", 0.0)) or 0.0), reverse=True)[:max_global_hooks]
+    # ── DEDUP / RANKING STAGE ───────────────────────────────────────────────
+    # Discovery is complete: every hook hypothesis that cleared the strength gate
+    # now exists in `hooks`, including story-continuations. Suppression happens
+    # HERE, never at discovery, so a continuation decision can never prevent a
+    # candidate from being created. Two independent dedup gates:
+    #   1. story_duplicate    → same narrative arc (semantic continuation)
+    #   2. _is_duplicate_seed → same time window as an existing candidate
+    # The max_global_hooks cap is applied to INJECTED independent hooks (not to the
+    # pre-dedup list) so a suppressed duplicate can never consume a slot and thereby
+    # silently discard a real, independent hook.
+    hooks = sorted(hooks, key=lambda x: float(x.get("hook_strength", x.get("score", 0.0)) or 0.0), reverse=True)
     injected: List[Dict[str, Any]] = []
     seen = list(existing)
     for hook in hooks:
+        if hook.get("story_duplicate"):
+            # Deferred story-duplicate suppression (moved here from discovery).
+            ctx.hooks_suppressed += 1
+            _susp = _susp_thread_by_trace.get(hook.get("trace_id"))
+            if _susp:
+                _thread, _cscore, _sstart, _stext, _sstrength = _susp
+                log.info(
+                    "[HOOK_SUPPRESSED_BY_MEMORY]\n"
+                    "segment_text: %s\n"
+                    "continuity_score: %.2f\n"
+                    "thread_id: %s\n"
+                    "thread_start: %.1f",
+                    _stext, _cscore, id(_thread), _thread.start_s
+                )
+                if _thread.trace_id:
+                    ctx.trace_suppressed_child(
+                        trace_id=_thread.trace_id,
+                        start=_sstart,
+                        text=_stext,
+                        score=_sstrength,
+                        reason=f"continuity={_cscore:.2f}"
+                    )
+                    ctx.trace_event(
+                        trace_id=_thread.trace_id,
+                        stage="STORY_MEMORY",
+                        event="SUPPRESSED_CHILD",
+                        changed=True,
+                        impact="CRITICAL",
+                        before={"suppressed_children_count": len(ctx.trace_logs.get(_thread.trace_id, {}).get("suppressed_children", [])) - 1},
+                        after={"suppressed_children_count": len(ctx.trace_logs.get(_thread.trace_id, {}).get("suppressed_children", [])), "suppressed_text": _stext}
+                    )
+                    ctx.trace_state(_thread.trace_id, "CONTINUED")
+            continue
+        if len(injected) >= max_global_hooks:
+            # Ranking cap reached for independent hooks; keep scanning only so
+            # remaining story-duplicates are still counted/traced above.
+            continue
         if _is_duplicate_seed(hook, seen):
             continue
+        # Strip the internal-only classification flag before the candidate enters
+        # the downstream pipeline.
+        hook.pop("story_duplicate", None)
         injected.append(hook)
         seen.append(hook)
 
     if injected:
         ctx.raw_candidates = list(existing) + injected
-    log.info("[HOOK-HUNTER] scanned=%d strong_hooks=%d", len(transcript), len(hooks))
+    log.info(
+        "[HOOK-HUNTER] scanned=%d discovered=%d injected=%d suppressed_story_dupes=%d",
+        len(transcript), len(hooks), len(injected), ctx.hooks_suppressed
+    )
 
     from viral_finder.system_observer import get_observer
     get_observer().log_stage(
@@ -1878,8 +2433,41 @@ def _run_enrichment(ctx: PipelineContext) -> None:
                 overlapping_triggers.append(tr)
         if overlapping_triggers:
             media_end = float(ctx.transcript[-1].get("end", cand_end) or cand_end) if ctx.transcript else cand_end
-            cand_start = max(0.0, cand_start - 3.0)
-            cand_end = min(media_end, cand_end + 4.0)
+            transcript = ctx.transcript or []
+            
+            # ── Sentence-aware START: walk BACKWARD to find sentence boundary ──────
+            earliest_trigger_start = min(float(t.get("start", cand_start)) for t in overlapping_triggers)
+            best_start = earliest_trigger_start
+            for seg in reversed(transcript):
+                seg_end = float(seg.get("end", 0.0) or 0.0)
+                seg_start = float(seg.get("start", 0.0) or 0.0)
+                if seg_end > earliest_trigger_start:
+                    continue
+                # Found a segment that ends just before the trigger
+                seg_text = str(seg.get("text", "") or "").strip()
+                # Accept as start if it ends a sentence (good boundary) OR if we are within 8s
+                if seg_text.endswith(('.', '!', '?', '...')) or (earliest_trigger_start - seg_end) > 8.0:
+                    best_start = seg_start
+                    break
+            cand_start = max(0.0, best_start)
+            
+            # ── Sentence-aware END: walk FORWARD to find payoff/sentence resolution ─
+            latest_trigger_end = max(float(t.get("end", cand_end)) for t in overlapping_triggers)
+            best_end = latest_trigger_end
+            for seg in transcript:
+                seg_start = float(seg.get("start", 0.0) or 0.0)
+                seg_end = float(seg.get("end", 0.0) or 0.0)
+                if seg_start < latest_trigger_end:
+                    continue
+                # Walk forward: stop at the first proper sentence boundary after trigger end
+                seg_text = str(seg.get("text", "") or "").strip()
+                best_end = seg_end
+                if seg_text.endswith(('.', '!', '?', '...')) or (seg_end - latest_trigger_end) > 12.0:
+                    break
+            cand_end = min(media_end, best_end)
+            
+            log.info(f"[CLIP_BOUNDARY] Trigger-aware: {cand_start:.2f}-{cand_end:.2f} (trigger_span={earliest_trigger_start:.2f}-{latest_trigger_end:.2f})")
+            
             cand["start"] = round(cand_start, 2)
             cand["end"] = round(max(cand_start + 0.01, cand_end), 2)
             cache_key = _normalized_candidate_cache_key(cand, len(ctx.transcript or []))
@@ -1895,8 +2483,32 @@ def _run_enrichment(ctx: PipelineContext) -> None:
             0.18 * semantic_quality
         )
         cand["score_enriched"] = round(float(score_enriched), 4)
+        
+        # FIX3: DECISION TIMELINE — initialize and record first score
+        _timeline = cand.setdefault("decision_timeline", [])
+        _timeline.append({
+            "stage": "ENRICHMENT",
+            "event": "Base Score Enriched",
+            "reason": "Combined impact, classic, meaning, and semantic_quality",
+            "score": round(float(score_enriched), 4)
+        })
         curiosity_at_start = _clamp01((cand.get("metrics", {}) or {}).get("curiosity_at_start", cand.get("curiosity", 0.0)))
         curiosity_peak = _clamp01((cand.get("metrics", {}) or {}).get("curiosity_peak", cand.get("curiosity", 0.0)))
+
+        # ── FIX: Curiosity curve fallback for hook/inject candidates ─────────────
+        # Hook Hunter and injected trigger candidates come in AFTER the curiosity
+        # pass, so their cand["metrics"]["curiosity_peak"] is always 0.0.
+        # Fall back to reading the actual curiosity curve for their time window.
+        if curiosity_peak == 0.0 and ctx.curiosity_curve:
+            curve_peak = _curiosity_peak_from_curve(ctx.curiosity_curve, cand_start, cand_end)
+            if curve_peak > 0.0:
+                curiosity_peak = curve_peak
+                curiosity_at_start = _curiosity_peak_from_curve(
+                    ctx.curiosity_curve, cand_start, min(cand_start + 2.0, cand_end)
+                )
+                log.info(f"[CURIOSITY_FALLBACK] {cand.get('cid','?')} {cand_start:.2f}-{cand_end:.2f}: curve_peak={curiosity_peak:.3f}")
+        # ─────────────────────────────────────────────────────────────────────────
+
         tension_gradient = _clamp01(max(0.0, curiosity_peak - curiosity_at_start)) if enable_tension_gradient else 0.0
         payoff_conf = _clamp01(cand.get("payoff_confidence", 0.0))
         impact = _clamp01(cand.get("impact", 0.0))
@@ -1912,7 +2524,42 @@ def _run_enrichment(ctx: PipelineContext) -> None:
         insight_count = _estimate_insight_count(str(cand.get("text", "") or ""))
         trigger_conf = max([float(t.get("confidence", 0.0) or 0.0) for t in overlapping_triggers], default=0.0)
         trigger_types = [str(t.get("type", "")) for t in overlapping_triggers if t.get("type")]
-        
+
+        # ── FIX: Completeness from transcript sentence boundaries ─────────────────
+        # ending_strength / completion_score previously came from narrative payoff
+        # engine which returns ~0.006 for most transcripts. Compute a real heuristic:
+        # does the clip's last transcript segment end a sentence?
+        transcript_segs = ctx.transcript or []
+        clip_end_time = float(cand.get("end", cand_end))
+        last_seg_in_clip = None
+        for _seg in transcript_segs:
+            _seg_start = float(_seg.get("start", 0.0) or 0.0)
+            _seg_end = float(_seg.get("end", 0.0) or 0.0)
+            if _seg_start <= clip_end_time and _seg_end <= clip_end_time + 1.5:
+                last_seg_in_clip = _seg
+        if last_seg_in_clip:
+            _last_text = str(last_seg_in_clip.get("text", "") or "").strip()
+            ends_sentence = _last_text.endswith(('.', '!', '?', '...', '."', '!"', '?"'))
+            completion_heuristic = 0.82 if ends_sentence else 0.45
+        else:
+            completion_heuristic = 0.50
+        # Merge with any existing narrative signals (take max)
+        if narrative_scores:
+            narrative_scores["completion_score"] = max(
+                float(narrative_scores.get("completion_score", 0.0)),
+                completion_heuristic
+            )
+            narrative_scores["ending_strength"] = max(
+                float(narrative_scores.get("ending_strength", 0.0)),
+                completion_heuristic * 0.8
+            )
+        else:
+            narrative_scores = {
+                "completion_score": completion_heuristic,
+                "ending_strength": completion_heuristic * 0.8,
+            }
+        # ─────────────────────────────────────────────────────────────────────────
+
         weighted_triggers = 0.0
         trigger_bonus = 0.0
         for t_type in trigger_types:
@@ -1927,7 +2574,70 @@ def _run_enrichment(ctx: PipelineContext) -> None:
                 trigger_bonus = max(trigger_bonus, 0.2)
             else:
                 weighted_triggers += 1.0
+
+        psy = dict(cand.get("psychology_scores", cand.get("psychology", {})))
+        trigger_psy = cand.get("_trigger_psychology", {})
+        if isinstance(trigger_psy, dict):
+            for key, raw_val in trigger_psy.items():
+                try:
+                    val = float(raw_val)
+                    if val > float(psy.get(key, 0.0) or 0.0):
+                        psy[key] = val
+                except (ValueError, TypeError):
+                    continue
+        psy.update({
+            "curiosity": float(cand.get("curiosity", 0.0) or 0.0),
+            "curiosity_peak": curiosity_peak,
+            "curiosity_start": curiosity_at_start,
+            "punch_confidence": float(cand.get("punch_confidence", 0.0) or 0.0),
+            "payoff_confidence": payoff_conf,
+            "tension_gradient": tension_gradient,
+        })
+
+        # ── INTELLIGENCE TRANSPORT BRIDGE ────────────────────────────────────────
+        # Read Evidence from IntelligenceArtifact and merge into psy scoring dict.
+        # Marking each Evidence as CONSUMED so the transport verifier can track it.
+        # Without this bridge, evidence_stream packets produced by groq_cortex are
+        # orphaned — generated but never influencing any decision.
+        if isinstance(cand.get("intelligence"), IntelligenceArtifact):
+            signals_ref = cand.setdefault("signals", {})
+            signals_ref["psychology"] = psy
+            _bridge_intelligence_to_signals([cand], "signal_enrichment")
+            psy = signals_ref.get("psychology", psy)
+        # ─────────────────────────────────────────────────────────────────────────
+        
+        # Attach TriggerArtifacts to Candidate
+        import dataclasses
+        artifacts_list = []
+        for t in overlapping_triggers:
+            if "artifact" in t:
+                art = t["artifact"]
+                # Convert dataclass to dict to avoid "Object of type TriggerArtifact is not JSON serializable"
+                if dataclasses.is_dataclass(art):
+                    artifacts_list.append(dataclasses.asdict(art))
+                elif hasattr(art, "__dict__"):
+                    artifacts_list.append(vars(art))
+                else:
+                    artifacts_list.append(art)
+                    
+                conf = max(0.0, float(getattr(art, "confidence", 0.0)))
                 
+                # Confidence-weighted aggregation
+                psy_dict = getattr(art, "psychology", {})
+                t_type = getattr(art, "trigger_type", "unknown")
+                for key, raw_val in psy_dict.items():
+                    try:
+                        val = float(raw_val) * conf
+                        if val > psy.get(key, 0.0):
+                            log.info(f"[TRACE] Trigger({t_type}) -> {key}={raw_val} (conf={conf}) -> Candidate({cand.get('cid','?')}) -> Enrichment(effective={val:.3f}) -> Ranking")
+                            psy[key] = val
+                    except (ValueError, TypeError):
+                        pass
+                        
+        if "artifacts" not in cand:
+            cand["artifacts"] = {}
+        cand["artifacts"]["triggers"] = artifacts_list
+        
         trigger_density = float(weighted_triggers) / max(1.0, duration_s / 6.0)
         trigger_density = _clamp01(trigger_density)
         narrative_density = _clamp01(narrative_scores.get("information_density_score", 0.0))
@@ -1936,14 +2646,7 @@ def _run_enrichment(ctx: PipelineContext) -> None:
         ) if enable_viral_density else 0.0
         surprise_factor = _clamp01(max(cand.get("novelty", 0.0), narrative_scores.get("pattern_break_score", 0.0)))
         cand["signals"] = {
-            "psychology": {
-                "curiosity": float(cand.get("curiosity", 0.0) or 0.0),
-                "curiosity_peak": curiosity_peak,
-                "curiosity_start": curiosity_at_start,
-                "punch_confidence": float(cand.get("punch_confidence", 0.0) or 0.0),
-                "payoff_confidence": payoff_conf,
-                "tension_gradient": tension_gradient,
-            },
+            "psychology": psy,
             "semantic": {
                 "impact": float(cand.get("impact", 0.0) or 0.0),
                 "meaning": float(cand.get("meaning", 0.0) or 0.0),
@@ -2069,6 +2772,7 @@ def _run_validation(ctx: PipelineContext) -> None:
     min_peak = float(min_peak_raw or 0.08)
     payoff_conf_thresh = float(os.getenv("HS_ORCH_PAYOFF_CONF", "0.15") or 0.15)
     enriched_before_validation = list(ctx.enriched_candidates or [])
+    _audit_stage_snapshot("VALIDATION_IN", enriched_before_validation)
     if apply_post_enrichment_validation:
         accepted, rejected = apply_post_enrichment_validation(
             ctx.enriched_candidates or [],
@@ -2093,7 +2797,9 @@ def _run_validation(ctx: PipelineContext) -> None:
                 min_peak=min_peak,
                 payoff_conf_thresh=payoff_conf_thresh,
             )
+            before_validation = cand.get("validation")
             cand["validation"] = {"accepted": bool(ok), "reasons": [] if ok else [reason]}
+            _audit_field_mutation(cand, "validation", before_validation, cand["validation"], "_run_validation()", inspect.currentframe().f_lineno)
             if ok:
                 accepted.append(cand)
             else:
@@ -2116,6 +2822,7 @@ def _run_validation(ctx: PipelineContext) -> None:
     ctx.enriched_candidates = accepted
     ctx.validated_candidates = list(accepted or [])
     ctx.rejected_candidates = rejected
+    _audit_stage_snapshot("VALIDATION_OUT", ctx.validated_candidates)
     reject_counter = Counter()
     for cand in rejected:
         for reason in ((cand.get("validation", {}) or {}).get("reasons", []) or []):
@@ -2142,6 +2849,106 @@ def _run_validation(ctx: PipelineContext) -> None:
                 obs.finalize_candidate(cid, "passed_validation")
 
     for cand in rejected:
+        psych = cand.get("signals", {}).get("psychology", {})
+        sem = cand.get("signals", {}).get("semantic", {})
+        nar = cand.get("signals", {}).get("narrative", {})
+        eng = cand.get("signals", {}).get("engagement", {})
+        
+        # ── STREAM A: LLM Deep Psychology (Groq Trigger Artifacts) ─────────────
+        llm_stop_scroll  = _clamp01(psych.get("stop_scroll",  0.0))
+        llm_curiosity    = _clamp01(psych.get("curiosity",    psych.get("curiosity_peak", 0.0)))
+        llm_memorability = _clamp01(psych.get("memorability", 0.0))
+        llm_shareability = _clamp01(psych.get("shareability", 0.0))
+        llm_emotional    = _clamp01(psych.get("emotional_charge", 0.0))
+        has_llm = llm_stop_scroll > 0.0 or llm_memorability > 0.0
+        llm_score = _clamp01(
+            0.35 * llm_stop_scroll +
+            0.25 * llm_curiosity +
+            0.20 * llm_memorability +
+            0.12 * llm_shareability +
+            0.08 * llm_emotional
+        )
+
+        # ── STREAM B: Curiosity Engine (Medium-High Trust) ──────────────────────
+        curiosity_peak    = _clamp01(psych.get("curiosity_peak", psych.get("curiosity", 0.0)))
+        payoff_confidence = _clamp01(psych.get("payoff_confidence", cand.get("payoff_confidence", 0.0)))
+        curiosity_score   = _clamp01((0.65 * curiosity_peak) + (0.35 * payoff_confidence))
+
+        # ── STREAM C: Semantic (Ultron Brain) ───────────────────────────────────
+        semantic_impact = _clamp01(sem.get("impact", 0.0))
+        semantic_score  = _clamp01(
+            (0.50 * semantic_impact) +
+            (0.30 * _clamp01(sem.get("meaning", 0.0))) +
+            (0.20 * _clamp01(sem.get("clarity", 0.0)))
+        )
+
+        # ── STREAM D: Audio/Visual Energy ───────────────────────────────────────
+        engagement_energy = _clamp01(eng.get("energy", eng.get("classic", 0.0)))
+        av_score = _clamp01(
+            (0.60 * engagement_energy) +
+            (0.25 * _clamp01(eng.get("audio", 0.0))) +
+            (0.15 * _clamp01(eng.get("motion", 0.0)))
+        )
+
+        # ── STREAM E: Narrative Structure ───────────────────────────────────────
+        trigger_density = _clamp01(nar.get("trigger_density", 0.0))
+        trigger_score   = _clamp01(nar.get("trigger_score", 0.0))
+        trigger_type    = str(nar.get("trigger_type", "") or "")
+        _t_bonus = 0.15 if trigger_type in ("complete_thought", "payoff") else (0.10 if trigger_type == "belief_reversal" else 0.0)
+        narrative_score = _clamp01((0.55 * trigger_score) + (0.45 * trigger_density) + _t_bonus)
+
+        # ── COMPLETENESS: soft multiplier based on ending quality ───────────────
+        # No hard gate. Rewards complete clips. Never zeros out a clip.
+        ending_strength = _clamp01(nar.get("ending_strength", 0.0))
+        payoff_resolution = _clamp01(nar.get("payoff_resolution_score", 0.0))
+        completion_score = _clamp01(nar.get("completion_score", 0.0))
+        raw_completeness = _clamp01(
+            (0.45 * completion_score) +
+            (0.30 * ending_strength) +
+            (0.25 * payoff_resolution)
+        )
+        resolved_floor = 0.35 if (
+            str(cand.get("completeness_signal", "") or "").upper() == "RESOLVED"
+            or bool(cand.get("contract_seed"))
+            or (completion_score >= 0.45 and payoff_resolution >= 0.35)
+        ) else 0.0
+        completeness = max(resolved_floor, raw_completeness)
+
+        # ── UNIFIED VIRAL SCORE ─────────────────────────────────────────────────
+        if has_llm:
+            # LLM signals present: trust them most, they evaluated actual psychology
+            raw_uvs = (
+                0.40 * llm_score +
+                0.25 * curiosity_score +
+                0.20 * semantic_score +
+                0.10 * narrative_score +
+                0.05 * av_score
+            )
+            log.info(f"[UVS] LLM-path: llm={llm_score:.3f} curiosity={curiosity_score:.3f} semantic={semantic_score:.3f} narrative={narrative_score:.3f} av={av_score:.3f} completeness={completeness:.3f}")
+        else:
+            # No LLM signal: pure heuristic blend
+            raw_uvs = (
+                0.40 * curiosity_score +
+                0.30 * semantic_score +
+                0.20 * av_score +
+                0.10 * narrative_score
+            )
+            log.info(f"[UVS] heuristic-path: curiosity={curiosity_score:.3f} semantic={semantic_score:.3f} av={av_score:.3f} narrative={narrative_score:.3f} completeness={completeness:.3f}")
+
+        # Apply completeness as soft multiplier (never fully zeros out)
+        viral_score = _clamp01(raw_uvs * completeness)
+
+        if bool(cand.get("insight_candidate", False)):
+            viral_score = _clamp01(viral_score * 1.08)
+
+        cand["base_viral_score"] = round(float(raw_uvs), 4)
+        cand["viral_score"] = round(float(viral_score), 4)
+        cand["ranking_payoff_gate"] = round(float(completeness), 4)  # kept for log compat
+        cand["low_motion_talk"] = bool(
+            _semantic_explanation_strength(cand) >= 0.62
+            and _clamp01(eng.get("motion", 0.0)) <= 0.08
+            and _clamp01(sem.get("meaning", 0.0)) >= 0.58
+        )
         cid = cand.get("cid")
         if cid:
             reasons = (cand.get("validation", {}) or {}).get("reasons", [])
@@ -2161,44 +2968,220 @@ def _run_validation(ctx: PipelineContext) -> None:
 def _run_ranking(ctx: PipelineContext) -> None:
     t0 = time.time()
     use_viral_score = _env_bool("HS_ENABLE_ALIGNMENT_SCORING", True)
-    for cand in (ctx.enriched_candidates or []):
+    for cand in (ctx.ranked_output or []):
         psych = cand.get("signals", {}).get("psychology", {})
         sem = cand.get("signals", {}).get("semantic", {})
         nar = cand.get("signals", {}).get("narrative", {})
         eng = cand.get("signals", {}).get("engagement", {})
-        curiosity_peak = _clamp01(psych.get("curiosity_peak", psych.get("curiosity", 0.0)))
-        semantic_impact = _clamp01(sem.get("impact", 0.0))
-        semantic_score = _clamp01((0.5 * semantic_impact) + (0.3 * _clamp01(sem.get("meaning", 0.0))) + (0.2 * _clamp01(sem.get("clarity", 0.0))))
-        engagement_energy = _clamp01(eng.get("energy", eng.get("classic", 0.0)))
-        engagement_score = _clamp01((0.6 * engagement_energy) + (0.25 * _clamp01(eng.get("audio", 0.0))) + (0.15 * _clamp01(eng.get("motion", 0.0))))
-        trigger_density = _clamp01(nar.get("trigger_density", 0.0))
-        trigger_score = _clamp01(nar.get("trigger_score", 0.0))
-        trigger_type = str(nar.get("trigger_type", "") or "")
-        _t_bonus = 0.3 if trigger_type in ("complete_thought", "payoff") else (0.2 if trigger_type == "belief_reversal" else 0.0)
-        narrative_score = _clamp01((0.55 * trigger_score) + (0.45 * trigger_density) + _t_bonus)
+
+        # ── STREAM A: LLM Deep Psychology ────────────────────────────────────────
+        # FIX4: usefulness and completeness now read from psy (populated by
+        # INTELLIGENCE TRANSPORT BRIDGE in signal enrichment). Previously
+        # these Evidence packets were produced by groq_cortex but never
+        # consumed by the scoring formula — guaranteed orphans.
+        llm_stop_scroll  = _clamp01(psych.get("stop_scroll",  0.0))
+        llm_curiosity    = _clamp01(psych.get("curiosity",    psych.get("curiosity_peak", 0.0)))
+        llm_memorability = _clamp01(psych.get("memorability", 0.0))
+        llm_shareability = _clamp01(psych.get("shareability", 0.0))
+        llm_emotional    = _clamp01(psych.get("emotional_charge", 0.0))
+        llm_usefulness   = _clamp01(psych.get("usefulness",   0.0))  # FIX4: was always 0.0 before
+        llm_completeness = _clamp01(psych.get("completeness", 0.0))  # FIX4: was always 0.0 before
+        has_llm = llm_stop_scroll > 0.0 or llm_memorability > 0.0
+        llm_score = _clamp01(
+            0.30 * llm_stop_scroll +
+            0.22 * llm_curiosity +
+            0.18 * llm_memorability +
+            0.15 * llm_usefulness +    # FIX4: usefulness now contributes (was silently zero)
+            0.10 * llm_shareability +
+            0.05 * llm_emotional
+        )  # weights sum to 1.0
+
+        # ── STREAM B: Curiosity Engine ───────────────────────────────────────────
+        curiosity_peak    = _clamp01(psych.get("curiosity_peak", psych.get("curiosity", 0.0)))
         payoff_confidence = _clamp01(psych.get("payoff_confidence", cand.get("payoff_confidence", 0.0)))
-        explanation_strength = _semantic_explanation_strength(cand)
-        low_motion_talk = bool(
-            explanation_strength >= 0.62
+        curiosity_score   = _clamp01((0.65 * curiosity_peak) + (0.35 * payoff_confidence))
+
+        # ── STREAM C: Semantic (Ultron Brain) ────────────────────────────────────
+        semantic_score = _clamp01(
+            (0.50 * _clamp01(sem.get("impact", 0.0))) +
+            (0.30 * _clamp01(sem.get("meaning", 0.0))) +
+            (0.20 * _clamp01(sem.get("clarity", 0.0)))
+        )
+
+        # ── STREAM D: Audio/Visual Energy ────────────────────────────────────────
+        engagement_energy = _clamp01(eng.get("energy", eng.get("classic", 0.0)))
+        av_score = _clamp01(
+            (0.60 * engagement_energy) +
+            (0.25 * _clamp01(eng.get("audio", 0.0))) +
+            (0.15 * _clamp01(eng.get("motion", 0.0)))
+        )
+
+        # ── STREAM E: Narrative Structure ─────────────────────────────────────────
+        trigger_density = _clamp01(nar.get("trigger_density", 0.0))
+        trigger_score   = _clamp01(nar.get("trigger_score", 0.0))
+        trigger_type    = str(nar.get("trigger_type", "") or "")
+        _t_bonus = 0.15 if trigger_type in ("complete_thought", "payoff") else (0.10 if trigger_type == "belief_reversal" else 0.0)
+        narrative_score = _clamp01((0.55 * trigger_score) + (0.45 * trigger_density) + _t_bonus)
+
+        # ── STREAM F: Narrative Contract Score ───────────────────────────────────
+        # Does this clip span a complete hook→payoff debt cycle?
+        # A fully resolved contract boosts UVS. An unresolved hook gets a mild penalty.
+        cand_s = float(cand.get("start", 0.0) or 0.0)
+        cand_e = float(cand.get("end", cand_s) or cand_s)
+        contract_score = 0.0
+        contract_matched = False
+        for contract in (ctx.narrative_contracts or []):
+            c_hook_start = getattr(contract, "hook_start", 0.0)
+            c_payoff_end = getattr(contract, "payoff_end", 0.0)
+            c_res        = getattr(contract, "resolution_score", 0.0)
+            c_score      = getattr(contract, "contract_score", 0.0)
+            if c_payoff_end > c_hook_start:
+                contract_window = c_payoff_end - c_hook_start
+                overlap = max(0.0, min(cand_e, c_payoff_end) - max(cand_s, c_hook_start))
+                coverage = overlap / contract_window if contract_window > 0 else 0.0
+                if coverage >= 0.60:
+                    contract_score = max(contract_score, c_score * coverage)
+                    contract_matched = c_res > 0.0
+        if contract_matched:
+            log.info(f"[NCE_MATCH] {cand.get('cid','?')} {cand_s:.1f}-{cand_e:.1f}: "
+                     f"contract_score={contract_score:.3f} (RESOLVED)")
+        elif contract_score > 0:
+            log.info(f"[NCE_MATCH] {cand.get('cid','?')} {cand_s:.1f}-{cand_e:.1f}: "
+                     f"contract_score={contract_score:.3f} (FRAGMENT — hook only)")
+
+        # ── COMPLETENESS: soft multiplier (never zeros out a clip) ───────────────
+        ending_strength   = _clamp01(nar.get("ending_strength", 0.0))
+        payoff_resolution = _clamp01(nar.get("payoff_resolution_score", 0.0))
+        completion_score  = _clamp01(nar.get("completion_score", 0.0))
+        # FIX4: llm_completeness from groq now included in multiplier
+        # (previously produced as Evidence but orphaned — never reached this formula)
+        if contract_matched:
+            completion_score = max(completion_score, 0.75)
+            payoff_resolution = max(payoff_resolution, getattr(
+                next((c for c in (ctx.narrative_contracts or [])
+                      if getattr(c, "resolution_score", 0) > 0), None),
+                "resolution_score", payoff_resolution
+            ))
+        raw_completeness = _clamp01(
+            (0.40 * completion_score) +
+            (0.25 * ending_strength) +
+            (0.20 * payoff_resolution) +
+            (0.15 * llm_completeness)    # FIX4: Groq completeness signal finally consumed
+        )
+        resolved_floor = 0.35 if (
+            contract_matched
+            or str(cand.get("completeness_signal", "") or "").upper() == "RESOLVED"
+            or bool(cand.get("contract_seed"))
+            or (completion_score >= 0.45 and payoff_resolution >= 0.35)
+        ) else 0.0
+        completeness = max(resolved_floor, raw_completeness)
+
+        # ── UNIFIED VIRAL SCORE ───────────────────────────────────────────────────
+        if has_llm:
+            raw_uvs = _clamp01(
+                0.35 * llm_score +
+                0.22 * curiosity_score +
+                0.18 * semantic_score +
+                0.15 * contract_score +
+                0.07 * narrative_score +
+                0.03 * av_score
+            )
+            _uvs_path = "llm"
+            _uvs_weights = {"llm": 0.35, "curiosity": 0.22, "semantic": 0.18,
+                            "contract": 0.15, "narrative": 0.07, "av": 0.03}
+        else:
+            raw_uvs = _clamp01(
+                0.35 * curiosity_score +
+                0.28 * semantic_score +
+                0.20 * contract_score +
+                0.12 * av_score +
+                0.05 * narrative_score
+            )
+            _uvs_path = "heuristic"
+            _uvs_weights = {"curiosity": 0.35, "semantic": 0.28, "contract": 0.20,
+                            "av": 0.12, "narrative": 0.05}
+
+        viral_score = _clamp01(raw_uvs * completeness)
+        _insight_boost = 1.08 if bool(cand.get("insight_candidate", False)) else 1.0
+        if _insight_boost > 1.0:
+            viral_score = _clamp01(viral_score * _insight_boost)
+        loop_info = cand.get("psychological_loop", {}) if isinstance(cand.get("psychological_loop"), dict) else {}
+        loop_state = str(cand.get("loop_state", loop_info.get("state", "UNKNOWN")) or "UNKNOWN")
+        loop_health = _clamp01(cand.get("loop_health", loop_info.get("health", completeness)))
+        loop_cap = _loop_score_cap(loop_state, loop_health)
+        if viral_score > loop_cap:
+            log.info(
+                "[LOOP_GATE] cid=%s state=%s health=%.3f cap=%.3f score %.3f -> %.3f",
+                cand.get("cid", "?"),
+                loop_state,
+                loop_health,
+                loop_cap,
+                viral_score,
+                loop_cap,
+            )
+            viral_score = loop_cap
+
+        cand["base_viral_score"]   = round(float(raw_uvs), 4)
+        cand["viral_score"]        = round(float(viral_score), 4)
+        cand["ranking_payoff_gate"]= round(float(completeness), 4)
+        cand["loop_gate"]          = round(float(loop_cap), 4)
+        cand["low_motion_talk"]    = bool(
+            _semantic_explanation_strength(cand) >= 0.62
             and _clamp01(eng.get("motion", 0.0)) <= 0.08
             and _clamp01(sem.get("meaning", 0.0)) >= 0.58
         )
-        base_viral_score = (
-            0.40 * curiosity_peak +
-            0.30 * semantic_score +
-            0.20 * engagement_score +
-            0.10 * narrative_score
+
+        # ── FIX2: NAMED SCORE BREAKDOWN ──────────────────────────────────────────
+        # Every component that contributed to viral_score is named explicitly.
+        # No hidden scalar math. This dict travels with the candidate to the API.
+        cand["score_breakdown"] = {
+            "path":        _uvs_path,
+            "weights":     _uvs_weights,
+            # Stream inputs
+            "llm_score":        round(llm_score,       4) if has_llm else None,
+            "curiosity_score":  round(curiosity_score,  4),
+            "semantic_score":   round(semantic_score,   4),
+            "narrative_score":  round(narrative_score,  4),
+            "av_score":         round(av_score,         4),
+            "contract_score":   round(contract_score,   4),
+            "loop_state":       loop_state,
+            "loop_health":      round(loop_health,       4),
+            "loop_gate":        round(loop_cap,          4),
+            # LLM sub-signals (named, not buried in llm_score)
+            "llm_stop_scroll":   round(llm_stop_scroll,  4) if has_llm else None,
+            "llm_memorability":  round(llm_memorability, 4) if has_llm else None,
+            "llm_usefulness":    round(llm_usefulness,   4) if has_llm else None,
+            "llm_completeness":  round(llm_completeness, 4) if has_llm else None,
+            # Multipliers
+            "completeness_multiplier": round(completeness,    4),
+            "insight_boost":           round(_insight_boost,  3),
+            # Results
+            "raw_uvs":    round(raw_uvs,    4),
+            "viral_score": round(viral_score, 4),
+        }
+        log.info(
+            "[SCORE_BREAKDOWN] cid=%s %.1f-%.1f path=%s "
+            "llm=%.3f curiosity=%.3f semantic=%.3f contract=%.3f narrative=%.3f av=%.3f "
+            "completeness=%.3f insight_boost=%.2f raw_uvs=%.4f viral_score=%.4f",
+            cand.get("cid", "?"),
+            cand_s, cand_e,
+            _uvs_path,
+            llm_score if has_llm else 0.0,
+            curiosity_score, semantic_score, contract_score, narrative_score, av_score,
+            completeness, _insight_boost, raw_uvs, viral_score,
         )
-        cand["base_viral_score"] = round(float(base_viral_score), 4)
-        payoff_floor = max(0.12, 0.28 * explanation_strength)
-        payoff_gate = max(payoff_confidence, payoff_floor if low_motion_talk else 0.0)
-        blended_payoff = _clamp01((0.72 * payoff_confidence) + (0.28 * payoff_gate))
-        viral_score = float(base_viral_score * blended_payoff)
-        if bool(cand.get("insight_candidate", False)):
-            viral_score *= 1.08
-        cand["viral_score"] = round(float(viral_score), 4)
-        cand["ranking_payoff_gate"] = round(float(blended_payoff), 4)
-        cand["low_motion_talk"] = low_motion_talk
+
+        # ── FIX3: DECISION TIMELINE ───────────────────────────────────────────────
+        # Append ranking entry to the candidate's per-stage score change history.
+        _timeline = cand.setdefault("decision_timeline", [])
+        _timeline.append({
+            "stage":  "RANKING",
+            "event":  "Judged",
+            "reason": f"UVS: {_uvs_path}-path. completeness={completeness:.3f}"
+                      + f" loop={loop_state}:{loop_health:.3f}"
+                      + (f" insight_boost={_insight_boost:.2f}" if _insight_boost > 1.0 else ""),
+            "score":  round(viral_score, 4)
+        })
 
     # ── Hook-origin floor boost ──────────────────────────────────────────────
     # Hook Hunter clips are injected AFTER semantic scoring, so they carry
@@ -2206,11 +3189,14 @@ def _run_ranking(ctx: PipelineContext) -> None:
     # Without a floor they always rank last and get cut before arc assembly.
     # Grant them a minimum viral_score equal to their raw hook_score so they
     # compete fairly with strict candidates.
-    for cand in (ctx.enriched_candidates or []):
+    for cand in (ctx.ranked_output or []):
         if _candidate_origin(cand) == "hook":
             raw_hook = float(cand.get("score", 0.0) or 0.0)
             # Floor = 40% of raw hook score (keeps them below strong strict candidates)
-            hook_floor = raw_hook * 0.40
+            loop_info = cand.get("psychological_loop", {}) if isinstance(cand.get("psychological_loop"), dict) else {}
+            loop_state = str(cand.get("loop_state", loop_info.get("state", "UNKNOWN")) or "UNKNOWN")
+            loop_health = _clamp01(cand.get("loop_health", loop_info.get("health", 0.0)))
+            hook_floor = min(raw_hook * 0.40, _loop_score_cap(loop_state, loop_health))
             if cand.get("viral_score", 0.0) < hook_floor:
                 cand["viral_score"] = round(hook_floor, 4)
                 log.debug("[HOOK-FLOOR] cid=%s viral_score boosted to %.4f (hook_score=%.3f)",
@@ -2218,7 +3204,7 @@ def _run_ranking(ctx: PipelineContext) -> None:
     # ────────────────────────────────────────────────────────────────────────
 
     ranked = sorted(
-        (ctx.enriched_candidates or []),
+        (ctx.ranked_output or []),
         key=lambda x: (
             _rank_score(
                 x,
@@ -2267,7 +3253,10 @@ def _run_ranking(ctx: PipelineContext) -> None:
             )
             final = recovered
 
-    for c in final:
+    for rank_idx, c in enumerate(final):
+        c["decision_owner"] = "RANKING"
+        c["ranking_rank"] = int(rank_idx + 1)
+        c["ranking_decision_score"] = round(float(c.get("viral_score", c.get("score_enriched", c.get("score", 0.0))) or 0.0), 4)
         s = float(c.get("start", 0.0) or 0.0)
         e = float(c.get("end", 0.0) or 0.0)
         psych = c.get("signals", {}).get("psychology", {})
@@ -2285,6 +3274,24 @@ def _run_ranking(ctx: PipelineContext) -> None:
             float(c.get("alignment_score", 0.0) or 0.0),
             float(c.get("viral_score", c.get("score_enriched", 0.0)) or 0.0),
         )
+        
+        log.info(f"[CLIP_CHOOSER_REASONING] --- Clip {s:.2f}-{e:.2f} Selection ---")
+        artifacts = c.get("artifacts", {}).get("triggers", [])
+        if artifacts:
+            log.info(f"  -> Triggers Evaluated: {len(artifacts)}")
+            for art in artifacts:
+                # art is a dict (converted from TriggerArtifact dataclass during enrichment)
+                psy_dict = art.get("psychology", {}) if isinstance(art, dict) else getattr(art, "psychology", {})
+                t_type = art.get("trigger_type", "unknown") if isinstance(art, dict) else getattr(art, "trigger_type", "unknown")
+                conf = art.get("confidence", 0.0) if isinstance(art, dict) else getattr(art, "confidence", 0.0)
+                psy_metrics = " ".join([f"{k}={v}" for k, v in psy_dict.items()])
+                log.info(f"     * [{t_type}] conf={float(conf):.2f} | Deep Metrics: {psy_metrics}")
+            log.info(f"     => Extracted Effective Deep Metrics into Candidate's Core Signals.")
+        else:
+            log.info("  -> Triggers Evaluated: None (Selected via native heuristic signals)")
+            
+        log.info(f"  -> Final Decision Math: base_viral_score={c.get('base_viral_score', 0.0)} * payoff_gate={c.get('ranking_payoff_gate', 0.0)} = viral_score={c.get('viral_score', 0.0)}")
+        log.info("--------------------------------------------------")
         # Per-candidate Ultron semantic print through orchestrator (explicitly visible in main logs).
         log.info(
             "[ORCH][ULTRON][CAND] %.2f-%.2f impact=%.3f meaning=%.3f novelty=%.3f clarity=%.3f semantic_quality=%.3f",
@@ -2313,12 +3320,13 @@ def _run_ranking(ctx: PipelineContext) -> None:
 def _run_arc_assembler(ctx: PipelineContext) -> None:
     t0 = time.time()
     transcript = list(ctx.transcript or [])
-    ranked = list(ctx.ranked_output or ctx.final_candidates or [])
+    # FIX1: Assembler runs before Ranking, so it must read from validated_candidates.
+    ranked = list(ctx.validated_candidates or [])
     if (not transcript) or (not ranked):
         _record_stage(ctx, "L10_ARC_ASSEMBLER", input=len(ranked), arcs=0, complete=0, wall_s=round(time.time() - t0, 3))
         return
 
-    min_clip = 15.0
+    min_clip = 25.0
     base_max_clip = 40.0
     lookback_s = 7.0
     out: List[Dict[str, Any]] = []
@@ -2389,12 +3397,12 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         hook_seg = transcript[hook_idx]
         hook_start, hook_end = _seg_bounds(hook_seg)
         arc_start = hook_start
-        # Backward expansion: include short setup context immediately before hook.
-        for seg in reversed(transcript[:hook_idx]):
-            prev_s, prev_e = _seg_bounds(seg)
-            if prev_e < hook_start and (hook_start - prev_e) < lookback_s:
-                arc_start = min(arc_start, prev_s)
-                break
+        # Backward expansion removed to start exactly at hook
+        # for seg in reversed(transcript[:hook_idx]):
+        #     prev_s, prev_e = _seg_bounds(seg)
+        #     if prev_e < hook_start and (hook_start - prev_e) < lookback_s:
+        #         arc_start = min(arc_start, prev_s)
+        #         break
         
         # FIX: Do not start arc_end at e0 (candidate generation bound).
         # This was preventing the ArcAssembler from shrinking bloated clips!
@@ -2473,8 +3481,8 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
                     break
 
         # Clamp and complete trailing sentence.
-        # Avoid abrupt starts by keeping a small amount of pre-hook context.
-        arc_start = max(0.0, arc_start - 1.5)
+        # Start exactly at the hook.
+        # arc_start = max(0.0, arc_start - 1.5)
         arc_end = min(arc_end, arc_start + max_clip)
         arc_end = max(arc_end, arc_start + min_clip)
         if (arc_end - arc_start) < 18.0:
@@ -2499,7 +3507,10 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             + (0.10 * info_density)
             + (0.10 * rewatch)
         )
-        if str(nar.get("trigger_type", "") or "") in ("belief_reversal", "complete_thought", "payoff"):
+        base_arc_score = arc_score
+        trigger_type = str(nar.get("trigger_type", "") or "")
+        trigger_bonus_applied = trigger_type in ("belief_reversal", "complete_thought", "payoff")
+        if trigger_bonus_applied:
             arc_score = _clamp01(arc_score * 1.2)
         payoff_source = str(c.get("payoff_source", ""))
         payoff_score_val = c.get("payoff_engine_score", 0.0)
@@ -2509,13 +3520,12 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
             complete_count += 1
             arc_score = _clamp01(arc_score * 1.35)
         
-        # ≡ƒöÑ DURATION SWEET SPOT BONUS - Strongly prefer 12-25s (TikTok range)
+        # DURATION SWEET SPOT BONUS - Strongly prefer 12-25s (TikTok range)
         duration = arc_end - arc_start
         ideal_duration = 18.0
         if 12.0 <= duration <= 25.0:
-            # Maximum preference at 18s, soft decay at edges
             duration_bonus = max(0.0, 1.0 - (abs(duration - ideal_duration) / ideal_duration))
-            arc_score = _clamp01(arc_score + (duration_bonus * 0.10))  # +0.10 max bonus
+            arc_score = _clamp01(arc_score + (duration_bonus * 0.10))
 
         payoff_seg = transcript[payoff_idx] if payoff_idx is not None else transcript[min(len(transcript) - 1, hook_idx)]
         p_s, p_e = _seg_bounds(payoff_seg)
@@ -2537,13 +3547,34 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         }
         c["arc_complete"] = arc_complete
         c["arc_score"] = round(float(arc_score), 4)
-        c["viral_score"] = round(float(arc_score), 4)
+        # FIX1: Do NOT overwrite viral_score here.
+        # viral_score will be set by _run_ranking on the assembled clip.
+        # c["viral_score"] = round(float(arc_score), 4)  <- REMOVED
         c["provenance"] = {"stage": "L10_ARC_ASSEMBLER"}
         c["hook_selection_trace"] = {
             "text": str(hook_seg.get("text", "") or ""),
             "score": round(float(final_hook_score), 4),
             "reason": why_selected
         }
+
+        # FIX3: DECISION TIMELINE
+        _boundary_changed = (round(float(arc_start), 2) != round(s0, 2)
+                             or round(float(arc_end), 2) != round(e0, 2))
+        _timeline = c.setdefault("decision_timeline", [])
+        _timeline.append({
+            "stage":  "ASSEMBLY",
+            "event":  "Boundary Changed" if _boundary_changed else "Assembled",
+            "reason": "payoff_found" if payoff_idx is not None else ("horizon_expansion" if _boundary_changed else "no_change"),
+            "old_bounds": f"{round(s0, 2)}-{round(e0, 2)}",
+            "new_bounds": f"{round(float(arc_start), 2)}-{round(float(arc_end), 2)}",
+            "score":  round(arc_score, 4)
+        })
+        log.info(
+            "[DECISION_TIMELINE] cid=%s ASSEMBLY: %.2fs-%.2fs -> %.2fs-%.2fs "
+            "arc_score=%.4f arc_complete=%s boundary_changed=%s",
+            c.get("cid", "?"), s0, e0, float(arc_start), float(arc_end),
+            arc_score, arc_complete, _boundary_changed,
+        )
         out.append(c)
 
         if os.environ.get("HS_TRACE_MODE", "false").strip().lower() == "true":
@@ -2589,20 +3620,59 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
                             reason="payoff_found",
                             confidence=0.85
                         )
+    # FIX1: Assembler now only Transforms. Sort by arc_score for determinism,
+    # dedup overlaps, then write ALL assembled clips to ranked_output.
+    # _run_ranking (which runs after assembly) will apply top-k and final sort.
+    #
+    # GIANT-CLIP DEDUP PROTECTION:
+    # An incomplete arc (no confirmed payoff) that happens to be long dominates
+    # dedup (IoU > 0.40 against any normal 25-45s clip), killing all other candidates.
+    # Penalize ONLY incomplete long arcs before dedup ordering.
+    # arc_complete=True clips (genuine payoff at 83s, etc.) are EXEMPT — their
+    # duration is earned and their score should not be reduced.
+    DEDUP_MAX_CLIP_SAFE = base_max_clip  # 40s
+    for _c in out:
+        _dur = float(_c.get("end", 0.0) or 0.0) - float(_c.get("start", 0.0) or 0.0)
+        _is_complete = bool(_c.get("arc_complete"))
+        if _dur > DEDUP_MAX_CLIP_SAFE and not _is_complete:
+            # Incomplete arc is bloated without a real payoff — penalize for dedup ordering
+            _penalty = min(0.50, (_dur - DEDUP_MAX_CLIP_SAFE) / DEDUP_MAX_CLIP_SAFE * 0.5)
+            _orig = float(_c.get("arc_score", 0.0) or 0.0)
+            _c["arc_score"] = round(max(0.0, _orig - _penalty), 4)
+            log.info(
+                "[ARC_DEDUP_PENALTY] cid=%s dur=%.1fs arc_complete=False arc_score %.4f -> %.4f (incomplete giant-clip)",
+                _c.get("cid", "?"), _dur, _orig, _c["arc_score"]
+            )
+        elif _dur > DEDUP_MAX_CLIP_SAFE and _is_complete:
+            log.info(
+                "[ARC_DEDUP_EXEMPT] cid=%s dur=%.1fs arc_complete=True score_protected=%.4f (payoff earned the length)",
+                _c.get("cid", "?"), _dur, float(_c.get("arc_score", 0.0) or 0.0)
+            )
+
     out = sorted(
         out,
-        key=lambda x: (
-            _rank_score(x, "arc_score", "viral_score", "score_enriched", "score"),
-            _rank_score(x, "viral_score", "score_enriched", "score"),
-            _rank_score(x, "score_enriched", "score"),
-        ),
+        key=lambda x: float(x.get("arc_score", x.get("viral_score", 0.0)) or 0.0),
         reverse=True,
     )
-    # ∩┐╜ SMART DEDUPLICATION: Uses overlap-ratio based detection instead of strict time tolerance
-    # Fixes duplicate_arcs from overlapping hooks (e.g. hooks 56-59 on same payoff 63)
     out = dedupe_by_overlap(out, overlap_threshold=0.40)
-    ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
-    ctx.ranked_output = list(ctx.final_candidates)
+
+    # SAFETY NET: if dedup wiped everything, use top-3 by arc_score without dedup.
+    # A 0-clip output causes the staged pipeline to fail and wastes another ~160s
+    # running Ultron V33 as a fallback with no benefit.
+    if not out and ranked:
+        log.warning(
+            "[ARC_ASSEMBLER] dedup wiped all %d assembled clips -- using top-3 fallback (no dedup).",
+            len(ranked)
+        )
+        _fallback = sorted(
+            ranked,
+            key=lambda x: float(x.get("arc_score", x.get("viral_score", x.get("score_enriched", 0.0))) or 0.0),
+            reverse=True
+        )[:3]
+        out = sorted(_fallback, key=lambda x: float(x.get("start", 0.0) or 0.0))
+
+    ctx.ranked_output    = list(out)   # ranking reads from this
+    ctx.final_candidates = list(out)   # will be replaced by ranking's output
     log.info("[ORCH-ARC] assembled=%d complete=%d input=%d", len(ctx.ranked_output), complete_count, len(ranked))
 
     from viral_finder.system_observer import get_observer
@@ -2646,15 +3716,320 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
 
 
 
+def _audit_candidate_state(
+    ctx: PipelineContext,
+    stage: str,
+    candidate: Dict[str, Any],
+    *,
+    hook_idx: Any = None,
+    payoff_idx: Any = None,
+    contract_state: Any = None,
+    loop_state: Any = None,
+    resolution_score: Any = None,
+    arc_complete: Any = None,
+    drop_reason: str = "",
+) -> None:
+    if not isinstance(candidate, dict):
+        return
+
+    cid = candidate.get("cid", candidate.get("id", candidate.get("trace_id", "?")))
+
+    if hook_idx is None:
+        if isinstance(candidate.get("hook_segment"), dict):
+            hook_idx = candidate["hook_segment"].get("idx")
+        else:
+            hook_idx = candidate.get("hook_idx")
+
+    if payoff_idx is None:
+        payoff_idx = candidate.get("locked_payoff_idx")
+        if payoff_idx is None and isinstance(candidate.get("payoff_segment"), dict):
+            payoff_idx = candidate["payoff_segment"].get("idx")
+
+    tid = candidate.get("trace_id", candidate.get("id"))
+    st = None
+    if tid and hasattr(ctx, "candidate_threads"):
+        st = ctx.candidate_threads.get(tid)
+
+    if contract_state is None:
+        contract_state = getattr(st, "state", None) if st is not None else candidate.get("contract_state")
+    if loop_state is None:
+        loop_state = candidate.get("loop_state")
+    if resolution_score is None:
+        resolution_score = (
+            getattr(st, "resolution_score", None)
+            if st is not None
+            else candidate.get("resolution_score", candidate.get("payoff_engine_score"))
+        )
+    if arc_complete is None:
+        arc_complete = candidate.get("arc_complete")
+
+    log.info(
+        "[CANDIDATE_AUDIT] stage=%s cid=%s hook_idx=%s payoff_idx=%s contract_state=%s "
+        "loop_state=%s resolution_score=%s arc_complete=%s drop_reason=%s",
+        stage,
+        cid,
+        hook_idx,
+        payoff_idx,
+        contract_state,
+        loop_state,
+        resolution_score,
+        arc_complete,
+        drop_reason or "",
+    )
+
+
+def _audit_stage_snapshot(stage: str, candidates: List[Dict[str, Any]], label: str = "") -> None:
+    ids = [str(c.get("cid", c.get("id", c.get("trace_id", "?")))) for c in candidates if isinstance(c, dict)]
+    log.info("[STAGE AUDIT] stage=%s %sinput=%d output=%d ids=%s", stage, f"{label} " if label else "", len(candidates), len(candidates), ids)
+
+
+def _audit_field_mutation(candidate: Dict[str, Any], field: str, before: Any, after: Any, owner: str, exact_line: Optional[int] = None) -> None:
+    cid = candidate.get("cid", candidate.get("id", candidate.get("trace_id", "?"))) if isinstance(candidate, dict) else "?"
+    log.info(
+        "[FIELD MUTATION] cid=%s field=%s before=%s after=%s owner=%s exact_line=%s",
+        cid,
+        field,
+        before,
+        after,
+        owner,
+        exact_line if exact_line is not None else "?",
+    )
+
+
+def _run_story_completion(ctx: PipelineContext) -> None:
+    t0 = time.time()
+    transcript = list(ctx.transcript or [])
+    candidates = list(ctx.validated_candidates or [])
+    _audit_stage_snapshot("STORY_COMPLETION_IN", candidates)
+    if (not transcript) or (not candidates):
+        _record_stage(ctx, "L10A_STORY_COMPLETION", input=len(candidates), completed=0, wall_s=round(time.time() - t0, 3))
+        return
+
+    def _seg_bounds(seg: Dict[str, Any]) -> tuple[float, float]:
+        ss = float(seg.get("start", 0.0) or 0.0)
+        ee = float(seg.get("end", ss) or ss)
+        return ss, max(ss, ee)
+
+    def _find_seg_index(ts: float) -> int:
+        target = float(ts or 0.0)
+        for i, seg in enumerate(transcript):
+            s, e = _seg_bounds(seg)
+            if s <= target <= e:
+                return i
+        return max(0, min(len(transcript) - 1, 0 if not transcript else int(min(range(len(transcript)), key=lambda j: abs(_seg_bounds(transcript[j])[0] - target)))))
+
+    base_max_clip = 60.0
+    completed = 0
+    failed = 0
+
+    for c in candidates:
+        if not isinstance(c, dict):
+            continue
+        s0 = float(c.get("start", 0.0) or 0.0)
+        e0 = float(c.get("end", s0) or s0)
+        if e0 <= s0:
+            continue
+
+        if c.get("locked_payoff_time") is not None and c.get("locked_payoff_idx") is not None:
+            completed += 1
+            _audit_candidate_state(ctx, "StoryCompletion", c)
+            continue
+
+        if c.get("hook_segment"):
+            hook_idx = int(c["hook_segment"].get("idx", _find_seg_index(s0)))
+        elif c.get("hook_idx") is not None:
+            hook_idx = int(c["hook_idx"])
+        else:
+            hook_idx = _find_seg_index(s0)
+        hook_idx = max(0, min(len(transcript) - 1, hook_idx))
+        hook_seg = transcript[hook_idx]
+        hook_start, _ = _seg_bounds(hook_seg)
+
+        candidate_window = []
+        for tmp_j in range(hook_idx, len(transcript)):
+            tmp_seg_s, tmp_seg_e = _seg_bounds(transcript[tmp_j])
+            if (tmp_seg_e - hook_start) > base_max_clip:
+                break
+            candidate_window.append({
+                "idx": tmp_j,
+                "start": tmp_seg_s,
+                "end": tmp_seg_e,
+                "text": str(transcript[tmp_j].get("text", "") or "")
+            })
+
+        best_payoff = None
+        payoff_idx = None
+        tid = c.get("trace_id", c.get("id", "unknown"))
+        st = ctx.candidate_threads.get(tid) if tid and hasattr(ctx, "candidate_threads") else None
+
+        if (c.get("completeness_signal") == "RESOLVED" or c.get("contract_seed")) and c.get("end"):
+            llm_end = float(c["end"])
+            c["payoff_source"] = "CONTRACT_ENGINE" if c.get("contract_seed") else "LLM_DIRECTOR"
+            c["payoff_engine_score"] = max(float(c.get("payoff_engine_score", 0.0) or 0.0), 1.0)
+            for i, seg in enumerate(transcript):
+                seg_end = float(seg.get("end", 0) or 0)
+                if abs(seg_end - llm_end) <= 1.5:
+                    payoff_idx = i
+                    before_locked_idx = c.get("locked_payoff_idx")
+                    c["locked_payoff_idx"] = payoff_idx
+                    c["locked_payoff_time"] = llm_end
+                    c["locked_payoff_text"] = seg.get("text", "")
+                    _audit_field_mutation(c, "locked_payoff_idx", before_locked_idx, payoff_idx, "_run_story_completion()", inspect.currentframe().f_lineno)
+                    completed += 1
+                    break
+            _audit_candidate_state(ctx, "StoryCompletion", c, hook_idx=hook_idx, payoff_idx=payoff_idx)
+            continue
+
+        if candidate_window:
+            if st:
+                try:
+                    from utils.payoff_engine import PayoffEngine
+                    engine = PayoffEngine()
+                    
+                    # =================================================
+                    # THE INPUT CONTRACT (FORENSIC LOG)
+                    # =================================================
+                    print("\n=================================================")
+                    print("HOOK")
+                    _promise = st.ident.get("hook", "N/A") if hasattr(st, "ident") else "N/A"
+                    _debt = "N/A"
+                    _promise_type = "N/A"
+                    if hasattr(st, "ident") and "birth_reason" in st.ident:
+                        _br = st.ident["birth_reason"]
+                        _debt = _br.get("debt", "N/A")
+                        _promise_type = _br.get("promise_type", "N/A")
+                    
+                    _w_start = candidate_window[0]['start'] if candidate_window else "N/A"
+                    _w_end = candidate_window[-1]['end'] if candidate_window else "N/A"
+                    _num_segs = len(candidate_window)
+                    
+                    print(f"Promise\n{_promise}\n")
+                    print(f"Debt\n{_debt}\n")
+                    print(f"Promise Type\n{_promise_type}\n")
+                    print(f"Window Start\n{_w_start}\n")
+                    print(f"Window End\n{_w_end}\n")
+                    print(f"Segments Given To Engine\n{_num_segs}")
+                    
+                    print("Transcript passed into PayoffEngine:")
+                    for idx, _s in enumerate(candidate_window):
+                        print(f"  Seg {_s.get('idx', '?')}: '{_s.get('text', '')}'")
+                        
+                    print(f"\nExpected Payoff Region\n[To be manually verified by Engineer]")
+                    print("=================================================")
+
+                    result = engine.resolve(st, transcript, transcript[hook_idx], candidate_window)
+
+                    _state = result.get("state", "SEARCH_FAILED") if result else "SEARCH_FAILED"
+                    print("Then immediately after")
+                    print("Payoff Engine")
+                    print("received")
+                    print(f"{_num_segs} segments")
+                    print("returned")
+                    print(f"{_state}\n")
+                    # =================================================
+                    if result.get("winner") and result.get("state") in ("RESOLVED", "CONTINUED"):
+                        best_payoff = result["winner"]
+                        payoff_idx = best_payoff.get("idxs", [best_payoff.get("idx")])[-1]
+                        c["locked_payoff_idx"] = payoff_idx
+                        c["locked_payoff_time"] = best_payoff["end"]
+                        c["locked_payoff_text"] = best_payoff["text"]
+                        c["payoff_source"] = "PAYOFF_ENGINE"
+                        c["payoff_engine_score"] = best_payoff.get("final_score", 0.0)
+                        if "tier3_title" in best_payoff:
+                            c["clip_title"] = best_payoff["tier3_title"]
+                        _resolve_contract_from_payoff(
+                            ctx,
+                            c,
+                            hook_start=float(hook_start),
+                            hook_trigger=dict(transcript[hook_idx] or {}),
+                            payoff_idx=int(payoff_idx) if payoff_idx is not None else None,
+                            payoff_seg={
+                                "start": best_payoff.get("start"),
+                                "end": best_payoff.get("end"),
+                                "text": best_payoff.get("text", ""),
+                            },
+                            resolution_score=float(best_payoff.get("final_score", 0.0) or 0.0),
+                            payoff_source="PAYOFF_ENGINE",
+                        )
+                        completed += 1
+                except Exception as _pe_exc:
+                    log.warning("[STORY_COMPLETION] PayoffEngine failed cid=%s: %s", c.get("cid", c.get("id", "?")), _pe_exc)
+
+            if best_payoff is None:
+                try:
+                    from utils.payoff_resolver import PayoffResolver
+                    _resolver = PayoffResolver()
+                    hook_text_val = str(transcript[hook_idx].get("text", "") or "")
+                    hook_start_val = float(transcript[hook_idx].get("start", 0) or 0)
+                    resolver_seg = _resolver.find(
+                        hook_text=hook_text_val,
+                        hook_start_s=hook_start_val,
+                        candidate_window=candidate_window,
+                        full_transcript=list(transcript),
+                        thread_id=str(c.get("cid", c.get("id", "unknown"))),
+                        run_tier3=True,
+                    )
+                    if resolver_seg:
+                        tier = resolver_seg.get("tier", "?")
+                        tier_score = resolver_seg.get(
+                            f"tier{tier}_score",
+                            resolver_seg.get("tier1_score", resolver_seg.get("tier2_score", 0.5)),
+                        )
+                        payoff_idx = resolver_seg.get("idx")
+                        before_locked_idx = c.get("locked_payoff_idx")
+                        c["locked_payoff_idx"] = payoff_idx
+                        c["locked_payoff_time"] = resolver_seg.get("end")
+                        c["locked_payoff_text"] = resolver_seg.get("text", "")
+                        _audit_field_mutation(c, "locked_payoff_idx", before_locked_idx, payoff_idx, "_run_story_completion()", inspect.currentframe().f_lineno)
+                        c["payoff_source"] = f"TIER{tier}"
+                        c["payoff_engine_score"] = tier_score
+                        if "tier3_title" in resolver_seg:
+                            c["clip_title"] = resolver_seg["tier3_title"]
+                        _resolve_contract_from_payoff(
+                            ctx,
+                            c,
+                            hook_start=float(hook_start),
+                            hook_trigger=dict(transcript[hook_idx] or {}),
+                            payoff_idx=int(payoff_idx) if payoff_idx is not None else None,
+                            payoff_seg={
+                                "start": resolver_seg.get("start"),
+                                "end": resolver_seg.get("end"),
+                                "text": resolver_seg.get("text", ""),
+                            },
+                            resolution_score=float(tier_score or 0.0),
+                            payoff_source=f"TIER{tier}",
+                        )
+                        completed += 1
+                    else:
+                        failed += 1
+                except Exception as _res_exc:
+                    failed += 1
+                    log.warning("[STORY_COMPLETION] PayoffResolver failed cid=%s: %s", c.get("cid", c.get("id", "?")), _res_exc)
+
+        _audit_candidate_state(ctx, "StoryCompletion", c, hook_idx=hook_idx, payoff_idx=payoff_idx)
+
+    _record_stage(
+        ctx,
+        "L10A_STORY_COMPLETION",
+        input=len(candidates),
+        completed=completed,
+        failed=failed,
+        wall_s=round(time.time() - t0, 3),
+    )
+    log.info("[STORY_COMPLETION] input=%d completed=%d failed=%d", len(candidates), completed, failed)
+
+
 def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
     t0 = time.time()
     transcript = list(ctx.transcript or [])
-    ranked = list(ctx.ranked_output or ctx.final_candidates or [])
+    # FIX1: Assembler runs before Ranking, so it must read from validated_candidates.
+    ranked = list(ctx.validated_candidates or [])
+    _audit_stage_snapshot("ARC_ASSEMBLER_IN", ranked)
     if (not transcript) or (not ranked):
         _record_stage(ctx, "L10_ARC_ASSEMBLER", input=len(ranked), arcs=0, complete=0, wall_s=round(time.time() - t0, 3))
         return
 
-    min_clip = 5.0
+    min_clip = 25.0  # Increased from 5.0 to 25.0 to prevent 20-second mechanical clips
     base_max_clip = 60.0  # Reduced back from 90s to 60s (P2 Fix for messy clips)
     lookback_s = 7.0
     out: List[Dict[str, Any]] = []
@@ -2677,6 +4052,8 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
 
     def _assemble_one(cand):
         c = dict(cand or {})
+        if isinstance(cand, dict):
+            _audit_field_mutation(cand, "dict(candidate)", cand.get("cid", cand.get("id", cand.get("trace_id"))), c.get("cid", c.get("id", c.get("trace_id"))), "_assemble_one()", inspect.currentframe().f_lineno)
         s0 = float(c.get("start", 0.0) or 0.0)
         e0 = float(c.get("end", s0) or s0)
         if e0 <= s0:
@@ -2688,38 +4065,44 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         candidate_curiosity_peak = _clamp01(psych.get("curiosity_peak", psych.get("curiosity", 0.0)))
         candidate_semantic_quality = _clamp01(sem.get("semantic_quality", c.get("confidence", 0.0)))
 
-        # Trust candidate metadata first
+        # Candidate metadata identifies the onset, but its Hook Hunter confidence
+        # is provenance only.  The canonical score is measured below from the
+        # assembled arc and must be the value exposed in selection telemetry.
+        hook_hunter_confidence = 0.0
         if c.get("hook_segment"):
             hook_idx = int(c["hook_segment"].get("idx", _find_seg_index(s0)))
             hook_seg = transcript[hook_idx]
-            final_hook_score = float(c["hook_segment"].get("score", c.get("hook_strength", 0.0)))
+            hook_hunter_confidence = _clamp01(c["hook_segment"].get("score", c.get("hook_strength", 0.0)))
         elif c.get("hook_idx") is not None:
             hook_idx = int(c["hook_idx"])
             hook_seg = transcript[hook_idx]
-            final_hook_score = float(c.get("hook_strength", 0.0))
+            hook_hunter_confidence = _clamp01(c.get("hook_strength", 0.0))
         else:
             hook_idx = _find_seg_index(s0)
             hook_seg = transcript[hook_idx]
-            final_hook_score = float(c.get("hook_strength", 0.0))
+            hook_hunter_confidence = _clamp01(c.get("hook_strength", 0.0))
             
         hook_found = True
-        why_selected = "trusted candidate onset (Hook Hunter)"
+        why_selected = "candidate onset (Hook Hunter); score measured by Arc Assembler"
 
         hook_seg = transcript[hook_idx]
         hook_start, hook_end = _seg_bounds(hook_seg)
-        arc_start = hook_start
-        # Backward expansion: include short setup context immediately before hook.
-        for seg in reversed(transcript[:hook_idx]):
-            prev_s, prev_e = _seg_bounds(seg)
-            if prev_e < hook_start and (hook_start - prev_e) < lookback_s:
-                arc_start = min(arc_start, prev_s)
-                break
         
-        # FIX: Do not start arc_end at e0 (candidate generation bound). 
-        # This was preventing the ArcAssembler from shrinking bloated 90s clips!
-        arc_end = hook_end
+        protect_bounds = bool(c.get("cortex_enabled") or c.get("contract_seed") or c.get("_injected_from_trigger"))
+        
+        if protect_bounds:
+            # LLM-injected candidates already have perfect, sentence-aware boundaries.
+            # Bypassing the blind ArcAssembler geometry.
+            arc_start = s0
+            arc_end = e0
+            max_clip = 300.0  # Allow up to 5 mins for LLM arcs
+        else:
+            arc_start = hook_start
+            # Backward expansion removed to start exactly at hook
+            arc_end = hook_end
+            max_clip = base_max_clip
+            
         payoff_idx = None
-        max_clip = base_max_clip
 
         # BUILD + PAYOFF: Payoff Engine V1 (Narrative Resolver)
         candidate_window = []
@@ -2742,87 +4125,21 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
             st = ctx.candidate_threads[tid]
 
-        # ------------------------------------------------------------------
-        # PAYOFF RESOLUTION: Three-tier resolver always runs if we have a window.
-        # PayoffEngine via StoryThread is used if available (st != None);
-        # otherwise we fall back directly to PayoffResolver (Tier1 + Tier2).
-        # This fixes the dead-code bug where st was always None.
-        # ------------------------------------------------------------------
-        if candidate_window:
-            # --- Path A: StoryThread-backed PayoffEngine (full scoring) ---
-            if st:
-                try:
-                    from utils.payoff_engine import PayoffEngine
-                    engine = PayoffEngine()
-                    result = engine.resolve(st, transcript, transcript[hook_idx], candidate_window)
-
-                    if result.get("winner") and result.get("state") in ("RESOLVED", "CONTINUED"):
-                        best_payoff = result["winner"]
-                        payoff_idx = best_payoff.get("idxs", [best_payoff.get("idx")])[-1]
-                        arc_end = max(arc_end, best_payoff["end"])
-
-                        c["locked_payoff_idx"] = payoff_idx
-                        c["locked_payoff_time"] = best_payoff["end"]
-                        c["locked_payoff_text"] = best_payoff["text"]
-                        c["payoff_engine_score"] = best_payoff.get("final_score", 0.0)
-                        if "tier3_title" in best_payoff:
-                            c["clip_title"] = best_payoff["tier3_title"]
-
-                        import logging
-                        logging.getLogger("orchestrator").info(
-                            f"\n[PAYOFF_ENGINE] SUCCESS! cid={c.get('cid', c.get('id', 'unk'))}\n"
-                            f"  Hook: {transcript[hook_idx].get('text')}\n"
-                            f"  Winner: {best_payoff['text']}\n"
-                            f"  Engine Score: {best_payoff.get('final_score', 0.0):.3f} (debt: {best_payoff.get('debt_match', 0.0):.2f})"
-                        )
-                except Exception as _pe_exc:
-                    import logging
-                    logging.getLogger("orchestrator").warning("[PAYOFF_ENGINE] failed: %s", _pe_exc)
-
-            # --- Path B: Direct PayoffResolver (structural/embedding, no StoryThread needed) ---
-            if best_payoff is None:
-                try:
-                    from utils.payoff_resolver import PayoffResolver
-                    _resolver = PayoffResolver()
-                    hook_text_val = str(transcript[hook_idx].get("text", "") or "")
-                    hook_start_val = float(transcript[hook_idx].get("start", 0) or 0)
-                    resolver_seg = _resolver.find(
-                        hook_text=hook_text_val,
-                        hook_start_s=hook_start_val,
-                        candidate_window=candidate_window,
-                        full_transcript=list(transcript),
-                        thread_id=str(c.get("cid", c.get("id", "unknown"))),
-                        run_tier3=True,
-                    )
-                    if resolver_seg:
-                        tier = resolver_seg.get("tier", "?")
-                        tier_score = resolver_seg.get(
-                            f"tier{tier}_score",
-                            resolver_seg.get("tier1_score", resolver_seg.get("tier2_score", 0.5)),
-                        )
-                        best_payoff = resolver_seg
-                        payoff_idx = resolver_seg.get("idx")
-                        arc_end = max(arc_end, float(resolver_seg.get("end", arc_end)))
-
-                        c["locked_payoff_idx"] = payoff_idx
-                        c["locked_payoff_time"] = resolver_seg.get("end")
-                        c["locked_payoff_text"] = resolver_seg.get("text", "")
-                        c["payoff_source"] = f"TIER{tier}"
-                        c["payoff_engine_score"] = tier_score
-                        if "tier3_title" in resolver_seg:
-                            c["clip_title"] = resolver_seg["tier3_title"]
-
-                        import logging
-                        _log_orch = logging.getLogger("orchestrator")
-                        _log_orch.info(
-                            f"\n[PAYOFF_SOURCE]\ncid={c.get('cid', c.get('id', 'unk'))}\nsource=TIER{tier}\n"
-                            f"  Hook: {hook_text_val[:80]}\n"
-                            f"  Payoff: {resolver_seg.get('text', '')[:80]}\n"
-                            f"  Score: {tier_score:.2f}  arc_end: {arc_end:.1f}s"
-                        )
-                except Exception as _res_exc:
-                    import logging
-                    logging.getLogger("orchestrator").warning("[PAYOFF_RESOLVER] failed: %s", _res_exc)
+        # Arc is geometry only: consume payoff/completion selected upstream.
+        locked_payoff_idx = c.get("locked_payoff_idx")
+        locked_payoff_time = c.get("locked_payoff_time")
+        if locked_payoff_idx is not None:
+            try:
+                payoff_idx = max(0, min(len(transcript) - 1, int(locked_payoff_idx)))
+            except Exception:
+                payoff_idx = None
+        if locked_payoff_time is not None:
+            try:
+                arc_end = max(arc_end, float(locked_payoff_time))
+            except Exception:
+                pass
+        elif (c.get("completeness_signal") == "RESOLVED" or c.get("contract_seed")) and c.get("end"):
+            arc_end = max(arc_end, float(c.get("end", arc_end) or arc_end))
 
 
         # Preserving payoff_idx even if it equals hook_idx.
@@ -2831,48 +4148,176 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             # Only clear if it hallucinates backwards
             payoff_idx = None
 
-        # ---- INSIGHT TAIL EXTENSION (safe) ----
-        tail_limit = min((payoff_idx + 3) if payoff_idx is not None else (hook_idx + 3), len(transcript))
-        for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), tail_limit):
-            seg_s, seg_e = _seg_bounds(transcript[k])
-            seg_text = str(transcript[k].get("text", "") or "")
-            seg_scores = compute_quality_scores(transcript, arc_start, seg_e) if compute_quality_scores else {}
-            info_density = _clamp01(seg_scores.get("information_density_score", 0.0))
-            semantic_quality = _clamp01(seg_scores.get("semantic_quality", 0.0))
-            # Extend only if explanation/insight continues.
-            if info_density > 0.12 or semantic_quality > 0.55:
-                arc_end = max(arc_end, seg_e)
-            else:
-                break
-
-        # Enforce min duration by extending forward.
-        if (arc_end - arc_start) < min_clip:
-            import logging
-            logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=min_clip_15 candidate={c.get('cid', '?')} natural_duration={arc_end - arc_start:.1f} forced_extension=yes\n")
-            for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), len(transcript)):
-                _, seg_e = _seg_bounds(transcript[k])
-                arc_end = max(arc_end, seg_e)
-                if (arc_end - arc_start) >= min_clip:
+        if not protect_bounds:
+            # ---- INSIGHT TAIL EXTENSION (safe) ----
+            tail_limit = min((payoff_idx + 3) if payoff_idx is not None else (hook_idx + 3), len(transcript))
+            for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), tail_limit):
+                seg_s, seg_e = _seg_bounds(transcript[k])
+                seg_text = str(transcript[k].get("text", "") or "")
+                seg_scores = compute_quality_scores(transcript, arc_start, seg_e) if compute_quality_scores else {}
+                info_density = _clamp01(seg_scores.get("information_density_score", 0.0))
+                semantic_quality = _clamp01(seg_scores.get("semantic_quality", 0.0))
+                # Extend only if explanation/insight continues.
+                if info_density > 0.12 or semantic_quality > 0.55:
+                    arc_end = max(arc_end, seg_e)
+                else:
                     break
+    
+            # Enforce min duration by extending forward.
+            if (arc_end - arc_start) < min_clip:
+                import logging
+                logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=min_clip_15 candidate={c.get('cid', '?')} natural_duration={arc_end - arc_start:.1f} forced_extension=yes\n")
+                for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), len(transcript)):
+                    _, seg_e = _seg_bounds(transcript[k])
+                    arc_end = max(arc_end, seg_e)
+                    if (arc_end - arc_start) >= min_clip:
+                        break
+    
+            # Clamp and complete trailing sentence.
+            # Start exactly at the hook.
+            # arc_start = max(0.0, arc_start - 1.5)
+            arc_end = min(arc_end, arc_start + max_clip)
+            arc_end = max(arc_end, arc_start + min_clip)
+            # Removed legacy 18s->22s fallback padding to respect narrative bounds
 
-        # Clamp and complete trailing sentence.
-        # Avoid abrupt starts by keeping a small amount of pre-hook context.
-        arc_start = max(0.0, arc_start - 1.5)
-        arc_end = min(arc_end, arc_start + max_clip)
-        arc_end = max(arc_end, arc_start + min_clip)
-        # Removed legacy 18s->22s fallback padding to respect narrative bounds
-        arc_end = extend_until_sentence_complete(arc_start, arc_end, transcript, max_extend=4.0)
-        arc_end = min(arc_end, arc_start + max_clip)
+        hook_seg = transcript[hook_idx]
+        hook_start, hook_end = _seg_bounds(hook_seg)
+        
+        protect_bounds = bool(c.get("cortex_enabled") or c.get("contract_seed") or c.get("_injected_from_trigger"))
+        
+        if protect_bounds:
+            # LLM-injected candidates already have perfect, sentence-aware boundaries.
+            # Bypassing the blind ArcAssembler geometry.
+            arc_start = s0
+            arc_end = e0
+            max_clip = 300.0  # Allow up to 5 mins for LLM arcs
+        else:
+            arc_start = hook_start
+            # Backward expansion removed to start exactly at hook
+            arc_end = hook_end
+            max_clip = base_max_clip
+            
+        payoff_idx = None
+
+        # BUILD + PAYOFF: Payoff Engine V1 (Narrative Resolver)
+        candidate_window = []
+        for tmp_j in range(hook_idx, len(transcript)):
+            tmp_seg_s, tmp_seg_e = _seg_bounds(transcript[tmp_j])
+            if (tmp_seg_e - arc_start) > max_clip:
+                break
+            candidate_window.append({
+                "idx": tmp_j,
+                "start": tmp_seg_s,
+                "end": tmp_seg_e,
+                "text": str(transcript[tmp_j].get("text", "") or "")
+            })
+
+        payoff_idx = None
+        best_payoff = None
+
+        tid = c.get("trace_id", c.get("id", "unknown"))
+        st = None
+        if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
+            st = ctx.candidate_threads[tid]
+
+        # Arc is geometry only: consume payoff/completion selected upstream.
+        locked_payoff_idx = c.get("locked_payoff_idx")
+        locked_payoff_time = c.get("locked_payoff_time")
+        if locked_payoff_idx is not None:
+            try:
+                payoff_idx = max(0, min(len(transcript) - 1, int(locked_payoff_idx)))
+            except Exception:
+                payoff_idx = None
+        if locked_payoff_time is not None:
+            try:
+                arc_end = max(arc_end, float(locked_payoff_time))
+            except Exception:
+                pass
+        elif (c.get("completeness_signal") == "RESOLVED" or c.get("contract_seed")) and c.get("end"):
+            arc_end = max(arc_end, float(c.get("end", arc_end) or arc_end))
+
+
+        # Preserving payoff_idx even if it equals hook_idx.
+        # A 1-sentence hook that delivers its own punchline is a valid zero-duration arc.
+        if payoff_idx is not None and payoff_idx < hook_idx:
+            # Only clear if it hallucinates backwards
+            payoff_idx = None
+
+        if not protect_bounds:
+            # ---- INSIGHT TAIL EXTENSION (safe) ----
+            tail_limit = min((payoff_idx + 3) if payoff_idx is not None else (hook_idx + 3), len(transcript))
+            for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), tail_limit):
+                seg_s, seg_e = _seg_bounds(transcript[k])
+                seg_text = str(transcript[k].get("text", "") or "")
+                seg_scores = compute_quality_scores(transcript, arc_start, seg_e) if compute_quality_scores else {}
+                info_density = _clamp01(seg_scores.get("information_density_score", 0.0))
+                semantic_quality = _clamp01(seg_scores.get("semantic_quality", 0.0))
+                # Extend only if explanation/insight continues.
+                if info_density > 0.12 or semantic_quality > 0.55:
+                    arc_end = max(arc_end, seg_e)
+                else:
+                    break
+    
+            # Enforce min duration by extending forward.
+            if (arc_end - arc_start) < min_clip:
+                import logging
+                logging.getLogger("orchestrator").info(f"\n[CONSTRAINT_HIT] constraint=min_clip_15 candidate={c.get('cid', '?')} natural_duration={arc_end - arc_start:.1f} forced_extension=yes\n")
+                for k in range((payoff_idx + 1) if payoff_idx is not None else (hook_idx + 1), len(transcript)):
+                    _, seg_e = _seg_bounds(transcript[k])
+                    arc_end = max(arc_end, seg_e)
+                    if (arc_end - arc_start) >= min_clip:
+                        break
+    
+            # Clamp and complete trailing sentence.
+            # Start exactly at the hook.
+            # arc_start = max(0.0, arc_start - 1.5)
+            arc_end = min(arc_end, arc_start + max_clip)
+            arc_end = max(arc_end, arc_start + min_clip)
+            # Removed legacy 18s->22s fallback padding to respect narrative bounds
+            arc_end = extend_until_sentence_complete(arc_start, arc_end, transcript, max_extend=4.0)
+            arc_end = min(arc_end, arc_start + max_clip)
 
         arc_scores = compute_quality_scores(transcript, arc_start, arc_end) if compute_quality_scores else {}
         open_loop_tail = _clamp01(arc_scores.get("open_loop_score", 0.0))
-        if open_loop_tail > 0.5:
+        tid = c.get("trace_id", c.get("id"))
+        if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
+            st = ctx.candidate_threads[tid]
+            st.propose_boundary(
+                stage="ARC_ASSEMBLER",
+                before_start=round(s0, 2),
+                before_end=round(e0, 2),
+                after_start=round(float(arc_start), 2),
+                after_end=round(float(arc_end), 2),
+                reason="payoff_found" if payoff_idx is not None else "horizon_expired",
+                confidence=round(float(arc_score), 4)
+            )
+            if payoff_idx is not None:
+                st.propose_state("ARC_ASSEMBLER", "PAYOFF_CANDIDATE", "Payoff selected by Arc Assembler", round(float(arc_score), 4))
+                if st.state not in ["RESOLVED", "CONTINUED"]:
+                    st.state = "PAYOFF_CANDIDATE"
+                    st.payoff_candidate = str(payoff_seg.get("text", "") or "")
+                st.add_history("ARC_ASSEMBLER", "PAYOFF_CANDIDATE", "Payoff selected by Arc Assembler", round(float(arc_score), 4))
+            else:
+                st.propose_state("ARC_ASSEMBLER", "OPEN", "No payoff found within horizon", 0.0)
+                st.add_history("ARC_ASSEMBLER", "SEARCH_FAILED", "No payoff found within horizon", 0.0)
+
+        if open_loop_tail > 0.5 and not protect_bounds:
             arc_end = min(arc_end + 6.0, arc_start + max_clip)
             arc_scores = compute_quality_scores(transcript, arc_start, arc_end) if compute_quality_scores else {}
         hook_score = _clamp01(arc_scores.get("hook_score", nar.get("hook_score", 0.0)))
+        final_hook_score = hook_score
         
         legacy_payoff_resolution = _clamp01(arc_scores.get("payoff_resolution_score", nar.get("payoff_resolution_score", 0.0)))
         engine_score = c.get("payoff_engine_score", 0.0)
+        if payoff_idx is None and engine_score > 0:
+            print(
+                "[ARC_INVARIANT]",
+                c.get("id", c.get("cid")),
+                engine_score,
+                c.get("payoff_source"),
+                c.get("completion_state"),
+                c.get("arc_score"),
+            )
         
         if engine_score > 0.0:
             payoff_resolution = engine_score
@@ -2895,22 +4340,82 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         payoff_score_val = c.get("payoff_engine_score", 0.0)
         is_strong_payoff = (payoff_score_val >= 0.55) or (payoff_source in ["TIER1"])
         arc_complete = bool(hook_found and (payoff_idx is not None) and is_strong_payoff)
+        loop_state, loop_health = _psychological_loop_state(
+            hook_found=hook_found,
+            payoff_idx=payoff_idx,
+            hook_idx=hook_idx,
+            payoff_resolution=payoff_resolution,
+            tension_gradient=tension_gradient,
+            info_density=info_density,
+            rewatch=rewatch,
+        )
+        if arc_complete and loop_state == "PARTIAL_PAYOFF":
+            loop_state = "RESOLVED"
+            loop_health = max(loop_health, 0.70)
         if arc_complete:
             arc_score = _clamp01(arc_score * 1.35)
         
         # 🔥 NARRATIVE DURATION SWEET SPOT BONUS - Strongly prefer 60-90s (Long Arc range)
         duration = arc_end - arc_start
         ideal_duration = 75.0
+        duration_bonus = 0.0
         if 40.0 <= duration <= 120.0:
             # Maximum preference at 75s, soft decay at edges
             duration_bonus = max(0.0, 1.0 - (abs(duration - ideal_duration) / ideal_duration))
             arc_score = _clamp01(arc_score + (duration_bonus * 0.15))  # +0.15 max bonus
 
+        print(
+            "[ARC_SCORE_CALC]",
+            c.get("cid", c.get("id")),
+            "hook=", round(float(hook_score), 6),
+            "payoff=", round(float(payoff_resolution), 6),
+            "tension=", round(float(tension_gradient), 6),
+            "info=", round(float(info_density), 6),
+            "rewatch=", round(float(rewatch), 6),
+        )
+        tid = c.get("trace_id", c.get("id"))
+        if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
+            st = ctx.candidate_threads[tid]
+            st.propose_boundary(
+                stage="ARC_ASSEMBLER",
+                before_start=round(s0, 2),
+                before_end=round(e0, 2),
+                after_start=round(float(arc_start), 2),
+                after_end=round(float(arc_end), 2),
+                reason="payoff_found" if payoff_idx is not None else "horizon_expired",
+                confidence=round(float(arc_score), 4)
+            )
+            if payoff_idx is not None:
+                st.propose_state("ARC_ASSEMBLER", "PAYOFF_CANDIDATE", "Payoff selected by Arc Assembler", round(float(arc_score), 4))
+                if st.state not in ["RESOLVED", "CONTINUED"]:
+                    st.state = "PAYOFF_CANDIDATE"
+                    st.payoff_candidate = str(payoff_seg.get("text", "") or "")
+                # DO NOT overwrite st.resolution_score. The PayoffEngine already set it natively based on the narrative contract.
+                st.add_history("ARC_ASSEMBLER", "PAYOFF_CANDIDATE", "Payoff selected by Arc Assembler", round(float(arc_score), 4))
+            else:
+                st.propose_state("ARC_ASSEMBLER", "OPEN", "No payoff found within horizon", 0.0)
+                st.add_history("ARC_ASSEMBLER", "SEARCH_FAILED", "No payoff found within horizon", 0.0)
+        
+        print(
+            "base=(",
+            "0.30*hook + 0.30*payoff + 0.20*tension + 0.10*info + 0.10*rewatch",
+            ")=",
+            round(float(arc_score), 6), # Note: simplified representation here for brevity relative to original
+            "trigger_type=", nar.get("trigger_type"),
+            "arc_complete=", arc_complete,
+            "duration=", round(float(duration), 6),
+            "duration_bonus=", round(float(duration_bonus * 0.15), 6),
+            "final=", round(float(arc_score), 6),
+            "stored=", round(float(arc_score), 4),
+        )
+
         payoff_seg = transcript[payoff_idx] if payoff_idx is not None else transcript[min(len(transcript) - 1, hook_idx)]
         p_s, p_e = _seg_bounds(payoff_seg)
         print(f"[ARC] hook_idx={hook_idx} payoff_idx={payoff_idx} duration={arc_end - arc_start:.1f}s")
         c["start"] = round(float(arc_start), 2)
+        _audit_field_mutation(c, "start", s0, c["start"], "_assemble_one()", inspect.currentframe().f_lineno)
         c["end"] = round(float(max(arc_start + 0.01, arc_end)), 2)
+        _audit_field_mutation(c, "end", e0, c["end"], "_assemble_one()", inspect.currentframe().f_lineno)
         c["duration"] = round(float(c["end"] - c["start"]), 2)
         c["hook_segment"] = {
             "idx": int(hook_idx),
@@ -2927,11 +4432,34 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         c["arc_complete"] = arc_complete
         c["arc_score"] = round(float(arc_score), 4)
         c["viral_score"] = round(float(arc_score), 4)
+        c["hook_score"] = round(float(hook_score), 4)
+        c["hook_hunter_confidence"] = round(float(hook_hunter_confidence), 4)
+        c["loop_state"] = loop_state
+        c["loop_health"] = round(float(loop_health), 4)
+        c["psychological_loop"] = {
+            "state": loop_state,
+            "health": round(float(loop_health), 4),
+            "hook_found": bool(hook_found),
+            "payoff_found": bool(payoff_idx is not None),
+            "payoff_source": payoff_source or "none",
+            "payoff_score": round(float(payoff_resolution), 4),
+        }
+        _audit_candidate_state(
+            ctx,
+            "ArcAssembler",
+            c,
+            hook_idx=hook_idx,
+            payoff_idx=payoff_idx,
+            loop_state=loop_state,
+            resolution_score=payoff_resolution,
+            arc_complete=arc_complete,
+        )
         c["provenance"] = {"stage": "L10_ARC_ASSEMBLER"}
         c["hook_selection_trace"] = {
             "text": str(hook_seg.get("text", "") or ""),
             "score": round(float(final_hook_score), 4),
-            "reason": why_selected
+            "reason": why_selected,
+            "hook_hunter_confidence": round(float(hook_hunter_confidence), 4),
         }
         
         tid = c.get("trace_id", c.get("id"))
@@ -2951,7 +4479,6 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 if st.state not in ["RESOLVED", "CONTINUED"]:
                     st.state = "PAYOFF_CANDIDATE"
                     st.payoff_candidate = str(payoff_seg.get("text", "") or "")
-                # DO NOT overwrite st.resolution_score. The PayoffEngine already set it natively based on the narrative contract.
                 st.add_history("ARC_ASSEMBLER", "PAYOFF_CANDIDATE", "Payoff selected by Arc Assembler", round(float(arc_score), 4))
             else:
                 st.propose_state("ARC_ASSEMBLER", "OPEN", "No payoff found within horizon", 0.0)
@@ -3022,7 +4549,36 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         
     ctx.final_candidates = list(out[:top_k_limit])
     ctx.ranked_output = list(ctx.final_candidates)
-    log.info("[ORCH-ARC] assembled=%d complete=%d input=%d", len(ctx.ranked_output), complete_count, len(ranked))
+
+    def _audit_key(candidate: Dict[str, Any]) -> Any:
+        return candidate.get("cid", candidate.get("id", candidate.get("trace_id")))
+
+    kept_keys = {_audit_key(c) for c in ctx.ranked_output if isinstance(c, dict)}
+    survived_keys = {_audit_key(c) for c in out if isinstance(c, dict)}
+    for c in ranked:
+        if not isinstance(c, dict):
+            continue
+        key = _audit_key(c)
+        if key in kept_keys:
+            _audit_candidate_state(ctx, "ArcAssemblerFinal", c)
+        elif key in survived_keys:
+            _audit_candidate_state(ctx, "ArcAssemblerFinal", c, drop_reason="dropped_by_top_k_limit")
+        else:
+            _audit_candidate_state(ctx, "ArcAssemblerFinal", c, drop_reason="dropped_during_overlap_deduplication")
+
+    contracts_total = len(getattr(ctx, "narrative_contracts", []) or [])
+    contracts_resolved = sum(
+        1 for contract in (getattr(ctx, "narrative_contracts", []) or [])
+        if float(getattr(contract, "resolution_score", 0.0) or 0.0) > 0.0
+    )
+    log.info(
+        "[ORCH-ARC] assembled=%d complete=%d input=%d contracts_resolved_after_payoff=%d/%d",
+        len(ctx.ranked_output),
+        complete_count,
+        len(ranked),
+        contracts_resolved,
+        contracts_total,
+    )
 
     from viral_finder.system_observer import get_observer
     obs = get_observer()
@@ -3057,6 +4613,8 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         input=len(ranked),
         arcs=len(ctx.ranked_output),
         complete=complete_count,
+        contracts_resolved_after_payoff=contracts_resolved,
+        contracts_total=contracts_total,
         origins=dict(sorted(Counter(_candidate_origin(c) for c in ctx.ranked_output).items())),
         avg_arc_duration=round(sum(float(c.get("duration", 0.0) or 0.0) for c in ctx.ranked_output) / float(max(1, len(ctx.ranked_output))), 3),
         wall_s=round(time.time() - t0, 3),
@@ -3066,6 +4624,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
 def _run_editor_refiner(ctx: PipelineContext) -> None:
     t0 = time.time()
     clips = list(ctx.ranked_output or ctx.final_candidates or [])
+    _audit_stage_snapshot("EDITOR_REFINER_IN", clips)
     transcript = list(ctx.transcript or [])
     if (not clips) or (not transcript):
         _record_stage(ctx, "L12_EDITOR_REFINER", input=len(clips), output=len(clips), wall_s=round(time.time() - t0, 3))
@@ -3136,6 +4695,8 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
 
     for clip_idx, clip in enumerate(clips):
         c = dict(clip or {})
+        if isinstance(clip, dict):
+            _audit_field_mutation(clip, "dict(candidate)", clip.get("cid", clip.get("id", clip.get("trace_id"))), c.get("cid", c.get("id", c.get("trace_id"))), "_run_editor_refiner()", inspect.currentframe().f_lineno)
         s = float(c.get("start", 0.0) or 0.0)
         e = float(c.get("end", s) or s)
         orig_s = s
@@ -3264,6 +4825,7 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
         print(f"[PATTERN] clip={int(clip_idx)} patterns={patterns}")
 
         c["start"] = round(float(s), 2)
+        _audit_field_mutation(c, "start", orig_s, c["start"], "_run_editor_refiner()", inspect.currentframe().f_lineno)
         
         # Payoff Boundary Lock (Experiment Mode)
         locked_payoff_time = c.get("locked_payoff_time")
@@ -3290,7 +4852,18 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
             
             e = new_e
             
+        if locked_payoff_time is not None and not _clip_contains_time({"start": s, "end": e}, locked_payoff_time):
+            e = max(float(e), float(locked_payoff_time) + 0.25)
+            log.info(
+                "[PAYOFF_INVARIANT] restored editor end to keep locked payoff inside clip cid=%s payoff_time=%.2f end=%.2f",
+                c.get("cid", c.get("id", "?")),
+                float(locked_payoff_time),
+                float(e),
+            )
+
         c["end"] = round(float(e), 2)
+        _audit_field_mutation(c, "end", orig_e, c["end"], "_run_editor_refiner()", inspect.currentframe().f_lineno)
+        duration = max(0.01, float(e) - float(s))
         
         if tid and hasattr(ctx, "candidate_threads") and tid in ctx.candidate_threads:
             st = ctx.candidate_threads[tid]
@@ -3306,7 +4879,8 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
 
         c["duration"] = round(float(duration), 2)
         c["editor_score"] = round(float(editor_score), 4)
-        c["final_score"] = round(float(final_score), 4)
+        c["editor_presentation_score"] = round(float(final_score), 4)
+        c.setdefault("final_score", round(float(c.get("viral_score", final_score) or final_score), 4))
         c["hook_score"] = round(float(hook_metric), 4)
         c["open_loop_score"] = round(float(open_loop_metric), 4)
         c["payoff_score"] = round(float(c.get("payoff_engine_score", payoff_metric) or payoff_metric), 4)
@@ -3341,7 +4915,7 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
                 "text": str(hook_seg.get("text", "") or ""),
             }
         log.info(
-            "\n[CLIP %d]\nduration: %.1fs\narc_score: %.3f\nfinal_score: %.3f\n"
+            "\n[CLIP %d]\nduration: %.1fs\narc_score: %.3f\neditor_presentation_score: %.3f\n"
             "HOOK_SCORE: %.3f\nOPEN_LOOP_SCORE: %.3f\nPAYOFF_SCORE: %.3f\n"
             "SEMANTIC: impact=%.3f meaning=%.3f novelty=%.3f clarity=%.3f\n\n"
             "HOOK:\n%s\n\nBUILD:\n%s\n\nPAYOFF:\n%s\n\nFULL MOMENT:\n%s\n",
@@ -3361,7 +4935,17 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
             str((c.get("payoff_segment") or {}).get("text", "") or ""),
             str(c.get("text", "") or ""),
         )
-        c["viral_score"] = round(float(final_score), 4)
+        c["decision_owner"] = c.get("decision_owner", "RANKING")
+
+        # FIX3: DECISION TIMELINE — record editor refiner changes
+        _timeline = c.setdefault("decision_timeline", [])
+        _timeline.append({
+            "stage":  "EDITOR",
+            "event":  "Final Polish",
+            "reason": f"Presentation polish only. Ranking decision preserved at {float(c.get('viral_score', 0.0) or 0.0):.3f}",
+            "score":  round(float(c.get("viral_score", 0.0) or 0.0), 4),
+            "presentation_score": round(float(final_score), 4),
+        })
         c["provenance"] = {"stage": "L12_EDITOR_REFINER"}
         final_reject_reasons = _final_quality_reject_reasons(c)
         c["final_quality"] = {
@@ -3439,14 +5023,8 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
 
     out = sorted(
         out,
-        key=lambda x: (
-            _rank_score(x, "final_score", "arc_score", "viral_score", "score_enriched", "score"),
-            _rank_score(x, "arc_score", "viral_score", "score_enriched", "score"),
-            _rank_score(x, "viral_score", "score_enriched", "score"),
-        ),
-        reverse=True,
+        key=lambda x: int(x.get("ranking_rank", 10**9) or 10**9),
     )
-    out = dedupe_by_overlap(out, overlap_threshold=0.40)
     ctx.final_candidates = list(out[: max(1, int(ctx.top_k or 1))])
     ctx.ranked_output = list(ctx.final_candidates)
 
@@ -3499,512 +5077,16 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
     )
 
 
-def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool):
-    start = time.time()
-    print("PIPELINE STAGE: start staged pipeline")
-    has_tf_moments = False
-    # OPT-1: reset memoization cache at pipeline start
-    cqs_cache_reset()
-    ctx = PipelineContext(
-        path=path,
-        top_k=max(1, int(top_k)),
-        allow_fallback=bool(allow_fallback),
-        prefer_gpu=bool(prefer_gpu),
-        use_cache=bool(use_cache),
-    )
+
+def _run_groq_surgeon(ctx: PipelineContext) -> None:
+    import time
+    from viral_finder.system_observer import get_observer
     t0 = time.time()
-    trace_enabled = _env_bool("HS_PIPELINE_TRACE", False)
-    trace = PipelineTrace(enabled=trace_enabled, logger=log) if PipelineTrace else None
-    if trace:
-        trace.enter("L1_MEDIA_INPUT")
-    _record_stage(ctx, "INPUT_MEDIA", path=os.path.basename(path))
-    if trace:
-        trace.exit("L1_MEDIA_INPUT", {"path": os.path.basename(path)})
-
-    if trace:
-        trace.enter("L2_TRANSCRIPTION")
-    _run_transcription(ctx)
-    print("STAGE OK: transcription")
-    if trace:
-        trace.exit("L2_TRANSCRIPTION", {"segments": len(ctx.transcript or []), "source": ctx.transcript_source})
-    if not ctx.transcript:
-        log.warning("[ORCH] staged pipeline produced empty transcript")
-        if trace:
-            trace.error("L2_TRANSCRIPTION", "empty_transcript")
-            trace.render()
-        return []
-    total_dur = float(ctx.transcript[-1].get("end", ctx.transcript[-1].get("start", 0.0)) or 0.0)
-    ctx.target_min = _resolve_min_target(total_dur, ctx.top_k)
-    _record_stage(
-        ctx,
-        "TARGETS",
-        duration_s=round(total_dur, 2),
-        top_k=int(ctx.top_k),
-        target_min=int(ctx.target_min),
-    )
-
-    if trace:
-        trace.enter("L3_AUDIO_VISUAL")
-    _run_av_features(ctx)
-    print("STAGE OK: av_features")
-    if trace:
-        trace.exit(
-            "L3_AUDIO_VISUAL",
-            {
-                "audio_frames": len(ctx.audio_features or []),
-                "visual_frames": len(ctx.visual_features or []),
-            },
-        )
-
-    if trace:
-        trace.enter("L4_CURIOSITY_ENGINE")
-    _run_curiosity(ctx)
-    print("STAGE OK: curiosity")
-    if trace:
-        trace.exit(
-            "L4_CURIOSITY_ENGINE",
-            {"candidates": len(ctx.curiosity_candidates or []), "curve_points": len(ctx.curiosity_curve or [])},
-        )
-
-    if trace:
-        trace.enter("L5_NARRATIVE_TRIGGER_ENGINE")
-    _run_narrative_trigger_stage(ctx)
-    print("STAGE OK: narrative triggers")
-    if trace:
-        tdist: Dict[str, int] = {}
-        for t in (ctx.narrative_triggers or []):
-            k = str(t.get("type", "unknown"))
-            tdist[k] = int(tdist.get(k, 0)) + 1
-        trace.exit(
-            "L5_NARRATIVE_TRIGGER_ENGINE",
-            {
-                "triggers": len(ctx.narrative_triggers or []),
-                "belief_reversal": tdist.get("belief_reversal", 0),
-                "secret_revelation": tdist.get("secret_revelation", 0),
-                "mistake_explanation": tdist.get("mistake_explanation", 0),
-                "payoff": tdist.get("payoff", 0),
-                "complete_thought": tdist.get("complete_thought", 0),
-                "strong_claim": tdist.get("strong_claim", 0),
-            },
-        )
-
-    _run_narrative_intelligence(ctx)
-    print("STAGE OK: narrative intelligence")
-
-    if trace:
-        trace.enter("L6_IDEA_GRAPH")
-    _run_idea_graph(ctx)
-    print("STAGE OK: idea graph")
-    if trace:
-        trace.exit("L6_IDEA_GRAPH", {"nodes": len(ctx.idea_nodes or [])})
-
-    if trace:
-        trace.enter("L7_CANDIDATE_GENERATION")
-    print("STAGE ENTER: candidate generation")
-    _run_candidate_generation(ctx)
-    print("STAGE OK: candidate generation")
-    if trace:
-        trace.exit("L7_CANDIDATE_GENERATION", {"candidates": len(ctx.raw_candidates or [])})
-
-    if trace:
-        trace.enter("L6B_GLOBAL_HOOK_HUNTER")
-    _run_global_hook_hunter(ctx)
-    print("STAGE OK: global hook hunter")
-    _maybe_backfill_raw_candidates(ctx)
-    if trace:
-        trace.exit("L6B_GLOBAL_HOOK_HUNTER", {"candidates": len(ctx.raw_candidates or []), "injected": int((ctx.stage_stats.get("L6B_GLOBAL_HOOK_HUNTER", {}) or {}).get("injected", 0) or 0)})
-
-    # Transcript-First Groq Cortex
-    tf_env = os.environ.get("HS_GROQ_TRANSCRIPT_FIRST", "0").strip() == "1"
-    tf_force = os.environ.get("HS_GROQ_TRANSCRIPT_FIRST_FORCE", "0").strip() == "1"
-    log.info(f"[GROQ_TRANSCRIPT_FIRST] enabled={tf_env} force={tf_force}")
-    log.info("[GROQ_TRANSCRIPT_FIRST] checkpoint reached before validation")
-
-    if tf_env or tf_force:
-        transcript_source = None
-        for attr in ["transcript_segments", "segments", "transcript"]:
-            val = getattr(ctx, attr, None)
-            if val and isinstance(val, list) and len(val) > 0:
-                transcript_source = val
-                log.info(f"[GROQ_TRANSCRIPT_FIRST] found transcript in ctx.{attr} (length={len(val)})")
-                break
-        
-        if not transcript_source:
-            for attr in ["transcript_words", "words"]:
-                words = getattr(ctx, attr, None)
-                if words and isinstance(words, list) and len(words) > 0:
-                    log.info(f"[GROQ_TRANSCRIPT_FIRST] grouping words from ctx.{attr} into segments (length={len(words)})")
-                    grouped = []
-                    chunk_size = 20
-                    for idx, i in enumerate(range(0, len(words), chunk_size)):
-                        chunk = words[i:i+chunk_size]
-                        if not chunk:
-                            continue
-                        text = " ".join(w.get("text", w.get("word", "")) for w in chunk).strip()
-                        start = float(chunk[0].get("start", 0))
-                        end = float(chunk[-1].get("end", start))
-                        grouped.append({
-                            "start": start,
-                            "end": end,
-                            "text": text,
-                            "words": chunk
-                        })
-                    transcript_source = grouped
-                    break
-
-        if not transcript_source:
-            log.info("[GROQ_TRANSCRIPT_FIRST] skipped: transcript_segments empty")
-        else:
-            log.info(f"[GROQ_TRANSCRIPT_FIRST] transcript_segments={len(transcript_source)}")
-            try:
-                from viral_finder.groq_cortex import find_moments_from_transcript
-                # Calculate chunks count
-                chunk_len = 240
-                overlap = 30
-                if total_dur <= chunk_len:
-                    chunks_count = 1
-                else:
-                    chunks_count = int((total_dur - overlap) // (chunk_len - overlap)) + 1
-                log.info(f"[GROQ_TRANSCRIPT_FIRST] chunks={chunks_count}")
-
-                moments = find_moments_from_transcript(transcript_source, total_dur)
-                log.info(f"[GROQ_TRANSCRIPT_FIRST] moments_found={len(moments)}")
-
-                injected_count = 0
-                for i, m in enumerate(moments):
-                    start = float(m.get("start", 0))
-                    end = float(m.get("end", start))
-                    duration = round(end - start, 2)
-                    
-                    # Extract text for the moment from transcript segments
-                    seg_texts = []
-                    for seg in transcript_source:
-                        s_t = float(seg.get("start", 0))
-                        e_t = float(seg.get("end", 0))
-                        if s_t >= start - 1.0 and e_t <= end + 1.0:
-                            seg_texts.append(seg.get("text", ""))
-                    text = " ".join(seg_texts).strip() or m.get("text", "")
-                    
-                    # Construct candidate dict
-                    cand = {
-                        "start": start,
-                        "end": end,
-                        "duration": duration,
-                        "text": text,
-                        "viral_score": float(m.get("viral_score", 80)) / 100.0 if float(m.get("viral_score", 80)) > 1.0 else float(m.get("viral_score", 0.80)),
-                        "reason": "groq_transcript_first",
-                        "origin": "groq_transcript_first",
-                        "cortex_enabled": True,
-                        "title": m.get("title", ""),
-                        "opening_caption": m.get("opening_caption", ""),
-                        "clip_archetype": m.get("clip_archetype", ""),
-                        "editing_notes": m.get("editing_notes", {}),
-                        "groq_moment": True
-                    }
-                    if not ctx.raw_candidates:
-                        ctx.raw_candidates = []
-                    ctx.raw_candidates.append(cand)
-                    injected_count += 1
-                log.info(f"[GROQ_TRANSCRIPT_FIRST] injected_candidates={injected_count}")
-                if injected_count > 0:
-                    has_tf_moments = True
-            except Exception as e:
-                log.warning("[GROQ_TRANSCRIPT_FIRST] Failed: %s", e)
-
-    # 1. Log GROQ_TRANSCRIPT_FIRST stage to SystemObserver
-    from viral_finder.system_observer import get_observer
-    obs = get_observer()
-    if tf_env or tf_force:
-        obs.log_stage(
-            "GROQ_TRANSCRIPT_FIRST",
-            input_count=len(transcript_source) if 'transcript_source' in locals() and transcript_source else 0,
-            output_count=injected_count if 'injected_count' in locals() else 0,
-            wall_time=0.0
-        )
-    else:
-        obs.log_stage("GROQ_TRANSCRIPT_FIRST", 0, 0, 0.0)
-
-    # 2. Assign stable IDs & initialize in SystemObserver
-    for idx, cand in enumerate(ctx.raw_candidates or []):
-        if not cand.get("cid"):
-            cand["cid"] = f"c_{idx+1:04d}"
-        
-        cid = cand["cid"]
-        origin = cand.get("origin") or cand.get("reason") or "candidate_generation"
-        if cand.get("hook_seed"):
-            origin = "hook_hunter"
-        elif cand.get("backfill"):
-            origin = "backfill"
-        elif cand.get("groq_moment"):
-            origin = "groq_transcript_first"
-            
-        obs.init_candidate(
-            cid=cid,
-            created_by=origin,
-            text=cand.get("text", ""),
-            start=float(cand.get("start", 0.0)),
-            end=float(cand.get("end", 0.0)),
-            scores={
-                "score": float(cand.get("score", 0.0)),
-                "curiosity": float(cand.get("curiosity", 0.0)),
-                "punch": float(cand.get("punch_confidence", 0.0)),
-                "semantic": float(cand.get("semantic_quality", 0.0)),
-            }
-        )
-
-    if trace:
-        trace.enter("L8_SEMANTIC_SCORING")
-    print("STAGE ENTER: semantic scoring")
-    _run_semantic_scoring(ctx)
-    print("STAGE OK: semantic scoring")
-    if trace:
-        trace.exit("L8_SEMANTIC_SCORING", {"brain_loaded": 1 if ctx.brain is not None else 0})
-
-    if trace:
-        trace.enter("L9_SIGNAL_ENRICHMENT")
-    print("STAGE ENTER: enrichment")
-    _run_enrichment(ctx)
-    print("STAGE OK: enrichment")
-    if trace:
-        missing = 0
-        for c in (ctx.enriched_candidates or []):
-            sig = c.get("signals", {}) or {}
-            families = ("psychology", "semantic", "narrative", "engagement")
-            if not all(k in sig for k in families):
-                missing += 1
-        if missing > 0:
-            trace.error("L9_SIGNAL_ENRICHMENT", "missing_signal_family", {"missing_candidates": missing})
-        trace.exit("L9_SIGNAL_ENRICHMENT", {"enriched": len(ctx.enriched_candidates or [])})
-
-    if trace:
-        trace.enter("L8B_INSIGHT_DETECTOR")
-    _run_insight_detector(ctx)
-    print("STAGE OK: insight detector")
-    if trace:
-        trace.exit("L8B_INSIGHT_DETECTOR", {"found": int((ctx.stage_stats.get("L8B_INSIGHT_DETECTOR", {}) or {}).get("found", 0) or 0)})
-
-    if trace:
-        trace.enter("L10_VALIDATION")
-    print("STAGE ENTER: validation")
-    _run_validation(ctx)
-    print("STAGE OK: validation")
-    if trace:
-        trace.exit(
-            "L10_VALIDATION",
-            {
-                "accepted": len(ctx.validated_candidates or []),
-                "rejected": len(ctx.rejected_candidates or []),
-            },
-        )
-
-    if trace:
-        trace.enter("L10_RANKING")
-    print("STAGE ENTER: ranking")
-    _run_ranking(ctx)
-    print("STAGE OK: ranking")
-    if trace:
-        trace.exit("L10_RANKING", {"final": len(ctx.ranked_output or [])})
-
-    if trace:
-        trace.enter("L11_ARC_ASSEMBLER")
-    if os.environ.get("HS_EXPERIMENT_MODE") == "1":
-        import copy
-        ctx_legacy = copy.deepcopy(ctx)
-        ctx_v2 = copy.deepcopy(ctx)
-        
-        _run_arc_assembler(ctx_legacy)
-        _run_arc_assembler_v2(ctx_v2)
-        
-        # EXPERIMENT_COMPARE Telemetry
-        legacy_arcs = {c.get("cid", c.get("id", "")): c for c in ctx_legacy.final_candidates or []}
-        v2_arcs = {c.get("cid", c.get("id", "")): c for c in ctx_v2.final_candidates or []}
-        
-        all_cids = set(list(legacy_arcs.keys()) + list(v2_arcs.keys()))
-        log.info(f"\\n{'='*50}\\n[EXPERIMENT_MODE_RESULTS]\\n{'='*50}")
-        for cid in all_cids:
-            old_c = legacy_arcs.get(cid)
-            new_c = v2_arcs.get(cid)
-            if old_c and new_c:
-                old_text = str(old_c.get("text", "")).replace("\\n", " ")
-                new_text = str(new_c.get("text", "")).replace("\\n", " ")
-                
-                old_dur = float(old_c.get("end", 0.0)) - float(old_c.get("start", 0.0))
-                new_dur = float(new_c.get("end", 0.0)) - float(new_c.get("start", 0.0))
-                
-                old_score = float(old_c.get("arc_score", 0.0))
-                new_score = float(new_c.get("arc_score", 0.0))
-                
-                log.info(f"\\n[EXPERIMENT_COMPARE] candidate_id={cid}")
-                log.info(f'OLD_PAYOFF: "{old_text[:80]}..."')
-                log.info(f'NEW_PAYOFF: "{new_text[:80]}..."')
-                log.info(f"OLD_DURATION: {old_dur:.1f}s")
-                log.info(f"NEW_DURATION: {new_dur:.1f}s")
-                log.info(f"OLD_SCORE: {old_score:.3f}")
-                log.info(f"NEW_SCORE: {new_score:.3f}\\n")
-                
-        ctx.final_candidates = ctx_v2.final_candidates
-        ctx.ranked_output = ctx_v2.ranked_output
-        if hasattr(ctx_v2, "candidate_threads"):
-            ctx.candidate_threads = ctx_v2.candidate_threads
-    else:
-        _run_arc_assembler(ctx)
-    print("STAGE OK: arc assembler")
-    if trace:
-        trace.exit("L11_ARC_ASSEMBLER", {"final": len(ctx.ranked_output or [])})
-
-    if trace:
-        trace.enter("L12_EDITOR_REFINER")
-    _run_editor_refiner(ctx)
-    print("STAGE OK: editor refiner")
-    if trace:
-        trace.exit("L12_EDITOR_REFINER", {"final": len(ctx.ranked_output or [])})
-
-    out = ctx.ranked_output or ctx.final_candidates or []
-    if not out and ctx.allow_fallback and ultron_engine:
-        log.info("[ORCH] staged output empty, fallback -> legacy ultron")
-        if trace:
-            trace.error("STAGED_PIPELINE", "fallback_to_legacy_ultron")
-        try:
-            env = ultron_engine(path, top_k=top_k, allow_fallback=True)
-            out = env.get("candidates", [])
-        except Exception:
-            out = []
-
-    # Attach transcript to every candidate so downstream consumer (WCE/worker) has access to it
-    for c in out:
-        if isinstance(c, dict):
-            c["transcript"] = ctx.transcript
-            c["transcript_segments"] = ctx.transcript
-
-    # --- BUILD GROQ PRE-FILTER POOL ---
-    # Give Groq a richer candidate pool than the aggressively-filtered ranked_output.
-    # Pool = enriched (post-signal-enrichment, pre-validation-rejection) +
-    #        validated (post-validation, pre-arc) + ranked_output.
-    # Deduplicate by (round(start,1), round(end,1)) key; sort by viral_score desc.
-    _pool_seen: set = set()
-    _groq_pool: list = []
-    _transcript_ref = ctx.transcript  # reference for downstream
-    for _c in list(ctx.enriched_candidates or []) + list(ctx.validated_candidates or []) + list(out):
-        if not isinstance(_c, dict):
-            continue
-        _key = (round(float(_c.get("start", 0) or 0), 1), round(float(_c.get("end", 0) or 0), 1))
-        if _key in _pool_seen:
-            continue
-        _pool_seen.add(_key)
-        _cp = dict(_c)
-        _cp.setdefault("transcript", _transcript_ref)
-        _cp.setdefault("text", " ".join(
-            seg.get("text", "") for seg in (_transcript_ref or [])
-            if float(seg.get("start", 0) or 0) >= float(_cp.get("start", 0) or 0)
-            and float(seg.get("end", 0) or 0) <= float(_cp.get("end", 0) or 0)
-        ).strip() or _cp.get("text", ""))
-        _groq_pool.append(_cp)
-    _groq_pool.sort(key=lambda x: float(x.get("viral_score", x.get("score", 0)) or 0), reverse=True)
-    log.info(
-        "[ORCH] groq_pool built: pool=%d enriched=%d validated=%d ranked=%d",
-        len(_groq_pool), len(ctx.enriched_candidates or []),
-        len(ctx.validated_candidates or []), len(out),
-    )
-    # ----------------------------------
-
-    # OPT-1: log cache stats before reset
-    _cqs_stats = cqs_cache_stats()
-    log.info("[CQS-CACHE] pipeline_end %s", _cqs_stats)
-    cqs_cache_reset()
-    _record_stage(ctx, "SUMMARY", wall_s=round(time.time() - t0, 3), final=len(out), rejected=len(ctx.rejected_candidates), cqs_cache=_cqs_stats)
-    if trace:
-        pass
-    
-    from viral_finder.system_observer import get_observer
-    try:
-        xray_report = get_observer().render_report()
-        log.info(xray_report)
-        try:
-            print(xray_report)
-        except Exception:
-            # Fallback for Windows consoles that don't support UTF-8 emojis
-            print(xray_report.encode("ascii", "replace").decode("ascii"))
-    except Exception:
-        log.exception("[XRAY] report failed but pipeline output preserved")
-        xray_report = "[XRAY FAILED]"
-
-    print("TOTAL PROCESS TIME:", time.time() - start)
-    return out, _groq_pool, has_tf_moments, getattr(ctx, "transcript", []), ctx
-
-
-def orchestrate(path: str,
-                 top_k: int = DEFAULT_TOP_K,
-                 prefer_gpu: bool = True,
-                 use_cache: bool = True,
-                 allow_fallback: bool = False,
-                 pipeline_mode: Optional[str] = None) -> List[Dict]:
-    """
-    High-level orchestration entrypoint.
-    Modes:
-      - staged (default): explicit cognitive pipeline stages
-      - legacy: direct ultron engine passthrough
-    """
-    from viral_finder.system_observer import reset_observer
-    reset_observer()
-    print("[ORCH] ORCHESTRATOR STARTED")
-    start_time = time.time()
-    mode = _pipeline_mode(pipeline_mode)
-    log.info("[ORCH] pipeline_mode=%s", mode)
-    log.info("[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST=%s", os.environ.get("HS_GROQ_TRANSCRIPT_FIRST"))
-    log.info("[ORCH] Startup Env: HS_GROQ_CORTEX_ENABLED=%s", os.environ.get("HS_GROQ_CORTEX_ENABLED"))
-    log.info("[ORCH] Startup Env: HS_FORCE_30S_PADDING=%s", os.environ.get("HS_FORCE_30S_PADDING"))
-    log.info("[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST_FORCE=%s", os.environ.get("HS_GROQ_TRANSCRIPT_FIRST_FORCE"))
-
-    final_candidates = []
-    _groq_pool: list = []  # richer pre-filter pool for Groq
-
-    has_tf_moments = False
-    full_transcript = []
-    ctx = None
-    if mode == "staged":
-        try:
-            _staged_result = _run_staged_pipeline(
-                path=path,
-                top_k=top_k,
-                prefer_gpu=prefer_gpu,
-                use_cache=use_cache,
-                allow_fallback=allow_fallback,
-            )
-            if isinstance(_staged_result, tuple):
-                if len(_staged_result) == 5:
-                    final_candidates, _groq_pool, has_tf_moments, full_transcript, ctx = _staged_result
-                elif len(_staged_result) == 4:
-                    final_candidates, _groq_pool, has_tf_moments, full_transcript = _staged_result
-                elif len(_staged_result) == 3:
-                    final_candidates, _groq_pool, has_tf_moments = _staged_result
-                else:
-                    final_candidates, _groq_pool = _staged_result
-                    has_tf_moments = any(c.get("groq_moment") for c in final_candidates)
-            else:
-                final_candidates = _staged_result  # safety fallback
-            log.info("[ORCH] staged returned %d candidates (groq_pool=%d, has_tf_moments=%s).", len(final_candidates), len(_groq_pool), has_tf_moments)
-        except Exception as exc:
-            log.exception("[ORCH] staged pipeline failed: %s", exc)
-            if not _env_bool("HS_ORCH_STAGED_FAILOVER_TO_LEGACY", False):
-                return []
-            log.error("STAGED PIPELINE CRASHED — FALLING BACK TO ULTRON")
-            log.info("[ORCH] staged failover -> legacy")
-
-    if not final_candidates:
-        if not ultron_engine:
-            log.error("[ORCH] FATAL: Ultron V33 engine (ultron_finder_v33.py) is not available.")
-            return []
-
-        try:
-            result_envelope = ultron_engine(path, top_k=top_k, allow_fallback=allow_fallback)
-            final_candidates = result_envelope.get("candidates", [])
-            log.info("[ORCH] Ultron V33 Engine returned %d candidates.", len(final_candidates))
-        except Exception as exc:
-            log.exception("[ORCH] Ultron V33 engine failed: %s", exc)
-            return []
-
-    log.info('[ORCH] Orchestration complete (t=%.2fs)', (time.time() - start_time))
-
+    final_candidates = list(ctx.ranked_output or [])
+    _audit_stage_snapshot("GROQ_SURGEON_IN", final_candidates)
+    full_transcript = getattr(ctx, 'transcript', [])
+    _groq_pool = list(final_candidates)
+    has_tf_moments = any(c.get('groq_moment') for c in final_candidates)
     # --- HOTSHORT CORTEX (GROQ) LAYER ---
     # Pass the RICHER pre-filter pool to Groq, not just the aggressive top-k.
     # If Groq returns clips → use them as final_candidates.
@@ -4157,12 +5239,14 @@ def orchestrate(path: str,
                                     
                                         
                                         c["start"] = new_start
+                                        _audit_field_mutation(c, "start", old_start, new_start, "_run_groq_surgeon()", inspect.currentframe().f_lineno)
                                         
                                         # The candidates in groq_result are copies of final_candidates
                                         # We must write the repaired boundary back to the original objects
                                         for fc in final_candidates:
                                             if fc.get("cid") == cid and cid != "?":
                                                 fc["start"] = new_start
+                                                _audit_field_mutation(fc, "start", old_start, new_start, "_run_groq_surgeon()", inspect.currentframe().f_lineno)
                                                 from viral_finder.system_observer import get_observer
                                                 try:
                                                     get_observer().modify_candidate(cid, "surgeon_cortex", {"start": new_start})
@@ -4307,12 +5391,635 @@ def orchestrate(path: str,
                                             changed=False,
                                             impact="LOW"
                                         )
-
+    
+                    log.info("[GROQ_SURGEON] Phase 4: SURGEON_REPAIR execution active.")
+                    rejected_for_repair = []
+                    for c in groq_result:
+                        surgeon = c.get("groq_surgeon")
+                        if surgeon:
+                            dec = surgeon.get("decision", "")
+                            rej_type = surgeon.get("rejection_type", "")
+                            if dec == "REJECT" or rej_type == "INTERCEPTED_35S_REPAIR" or rej_type in ["TOO_SHORT", "NO_MEANINGFUL_PROGRESSION", "PAYOFF_DOES_NOT_RESOLVE_HOOK", "WEAK_HOOK"]:
+                                rejected_for_repair.append(c)
+                                log.info(f"[SURGEON_REPAIR] Attempting repair for rejection_type={rej_type} cid={c.get('id', '?')}")
+                                
+                    if rejected_for_repair:
+                        from viral_finder.groq_cortex import repair_rejected_clips_with_groq
+                        repaired_clips = repair_rejected_clips_with_groq(rejected_for_repair, full_transcript)
+                        
+                        repaired_count = 0
+                        for rep_c in repaired_clips:
+                            cid = rep_c.get("id")
+                            surgeon = rep_c.get("groq_surgeon", {})
+                            if surgeon.get("decision") == "EXTEND_RIGHT":
+                                payoff_idx = int(surgeon.get("payoff_segment_index", -1))
+                                if 0 <= payoff_idx < len(full_transcript):
+                                    old_end = float(rep_c.get("end", 0.0))
+                                    new_end = float(full_transcript[payoff_idx].get("end", 0.0))
+                                    
+                                    for fc in final_candidates:
+                                        if fc.get("cid") == cid or fc.get("id") == cid:
+                                            fc["end"] = max(old_end, new_end)
+                                            fc["groq_surgeon"] = surgeon
+                                            fc["groq_surgeon"]["repair_applied"] = True
+                                            repaired_count += 1
+                                            log.info(f"[SURGEON_REPAIR] SUCCESS: Replaced cid={cid} with repaired candidate.")
+                                            break
+    
         elif is_groq_enabled() and not _groq_api_key:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:
         log.warning("[GROQ_CORTEX] Exception during review: %s", e)
     # ------------------------------------
+
+def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool):
+    start = time.time()
+    print("PIPELINE STAGE: start staged pipeline")
+    has_tf_moments = False
+    # OPT-1: reset memoization cache at pipeline start
+    cqs_cache_reset()
+    ctx = PipelineContext(
+        path=path,
+        top_k=max(1, int(top_k)),
+        allow_fallback=bool(allow_fallback),
+        prefer_gpu=bool(prefer_gpu),
+        use_cache=bool(use_cache),
+    )
+    t0 = time.time()
+    trace_enabled = _env_bool("HS_PIPELINE_TRACE", False)
+    trace = PipelineTrace(enabled=trace_enabled, logger=log) if PipelineTrace else None
+    if trace:
+        trace.enter("L1_MEDIA_INPUT")
+    _record_stage(ctx, "INPUT_MEDIA", path=os.path.basename(path))
+    if trace:
+        trace.exit("L1_MEDIA_INPUT", {"path": os.path.basename(path)})
+
+    if trace:
+        trace.enter("L2_TRANSCRIPTION")
+    _run_transcription(ctx)
+    print("STAGE OK: transcription")
+    if trace:
+        trace.exit("L2_TRANSCRIPTION", {"segments": len(ctx.transcript or []), "source": ctx.transcript_source})
+    if not ctx.transcript:
+        log.warning("[ORCH] staged pipeline produced empty transcript")
+        if trace:
+            trace.error("L2_TRANSCRIPTION", "empty_transcript")
+            trace.render()
+        return []
+    total_dur = float(ctx.transcript[-1].get("end", ctx.transcript[-1].get("start", 0.0)) or 0.0)
+    ctx.target_min = _resolve_min_target(total_dur, ctx.top_k)
+    _record_stage(
+        ctx,
+        "TARGETS",
+        duration_s=round(total_dur, 2),
+        top_k=int(ctx.top_k),
+        target_min=int(ctx.target_min),
+    )
+
+    if trace:
+        trace.enter("L3_AUDIO_VISUAL")
+    _run_av_features(ctx)
+    print("STAGE OK: av_features")
+    if trace:
+        trace.exit(
+            "L3_AUDIO_VISUAL",
+            {
+                "audio_frames": len(ctx.audio_features or []),
+                "visual_frames": len(ctx.visual_features or []),
+            },
+        )
+
+    if trace:
+        trace.enter("L4_CURIOSITY_ENGINE")
+    _run_curiosity(ctx)
+    print("STAGE OK: curiosity")
+    if trace:
+        trace.exit(
+            "L4_CURIOSITY_ENGINE",
+            {"candidates": len(ctx.curiosity_candidates or []), "curve_points": len(ctx.curiosity_curve or [])},
+        )
+
+    if trace:
+        trace.enter("L5_NARRATIVE_TRIGGER_ENGINE")
+    _run_narrative_trigger_stage(ctx)
+    print("STAGE OK: narrative triggers")
+    if trace:
+        tdist: Dict[str, int] = {}
+        for t in (ctx.narrative_triggers or []):
+            k = str(t.get("type", "unknown"))
+            tdist[k] = int(tdist.get(k, 0)) + 1
+        trace.exit(
+            "L5_NARRATIVE_TRIGGER_ENGINE",
+            {
+                "triggers": len(ctx.narrative_triggers or []),
+                "belief_reversal": tdist.get("belief_reversal", 0),
+                "secret_revelation": tdist.get("secret_revelation", 0),
+                "mistake_explanation": tdist.get("mistake_explanation", 0),
+                "payoff": tdist.get("payoff", 0),
+                "complete_thought": tdist.get("complete_thought", 0),
+                "strong_claim": tdist.get("strong_claim", 0),
+            },
+        )
+
+    _run_narrative_intelligence(ctx)
+    print("STAGE OK: narrative intelligence")
+
+    if trace:
+        trace.enter("L6_IDEA_GRAPH")
+    _run_idea_graph(ctx)
+    print("STAGE OK: idea graph")
+    if trace:
+        trace.exit("L6_IDEA_GRAPH", {"nodes": len(ctx.idea_nodes or [])})
+
+    if trace:
+        trace.enter("L7_CANDIDATE_GENERATION")
+    print("STAGE ENTER: candidate generation")
+    _run_candidate_generation(ctx)
+    print("STAGE OK: candidate generation")
+    if trace:
+        trace.exit("L7_CANDIDATE_GENERATION", {"candidates": len(ctx.raw_candidates or [])})
+
+    if trace:
+        trace.enter("L6B_GLOBAL_HOOK_HUNTER")
+    _run_global_hook_hunter(ctx)
+    print("STAGE OK: global hook hunter")
+    
+    # ── Guarantee every LLM trigger becomes a candidate ───────────────────────
+    # Triggers that don't overlap ANY existing candidate are silently dropped.
+    # This function prevents that: unmatched triggers become their own clips.
+    _inject_unmatched_trigger_candidates(ctx)
+    # ──────────────────────────────────────────────────────────────────────────
+    
+    _maybe_backfill_raw_candidates(ctx)
+    if trace:
+        trace.exit("L6B_GLOBAL_HOOK_HUNTER", {"candidates": len(ctx.raw_candidates or []), "injected": int((ctx.stage_stats.get("L6B_GLOBAL_HOOK_HUNTER", {}) or {}).get("injected", 0) or 0)})
+
+    # Transcript-First Groq Cortex
+    tf_env = os.environ.get("HS_GROQ_TRANSCRIPT_FIRST", "0").strip() == "1"
+    tf_force = os.environ.get("HS_GROQ_TRANSCRIPT_FIRST_FORCE", "0").strip() == "1"
+    log.info(f"[GROQ_TRANSCRIPT_FIRST] enabled={tf_env} force={tf_force}")
+    log.info("[GROQ_TRANSCRIPT_FIRST] checkpoint reached before validation")
+
+    if tf_env or tf_force:
+        transcript_source = None
+        for attr in ["transcript_segments", "segments", "transcript"]:
+            val = getattr(ctx, attr, None)
+            if val and isinstance(val, list) and len(val) > 0:
+                transcript_source = val
+                log.info(f"[GROQ_TRANSCRIPT_FIRST] found transcript in ctx.{attr} (length={len(val)})")
+                break
+        
+        if not transcript_source:
+            for attr in ["transcript_words", "words"]:
+                words = getattr(ctx, attr, None)
+                if words and isinstance(words, list) and len(words) > 0:
+                    log.info(f"[GROQ_TRANSCRIPT_FIRST] grouping words from ctx.{attr} into segments (length={len(words)})")
+                    grouped = []
+                    chunk_size = 20
+                    for idx, i in enumerate(range(0, len(words), chunk_size)):
+                        chunk = words[i:i+chunk_size]
+                        if not chunk:
+                            continue
+                        text = " ".join(w.get("text", w.get("word", "")) for w in chunk).strip()
+                        start = float(chunk[0].get("start", 0))
+                        end = float(chunk[-1].get("end", start))
+                        grouped.append({
+                            "start": start,
+                            "end": end,
+                            "text": text,
+                            "words": chunk
+                        })
+                    transcript_source = grouped
+                    break
+
+        if not transcript_source:
+            log.info("[GROQ_TRANSCRIPT_FIRST] skipped: transcript_segments empty")
+        else:
+            log.info(f"[GROQ_TRANSCRIPT_FIRST] transcript_segments={len(transcript_source)}")
+            try:
+                from viral_finder.groq_cortex import find_moments_from_transcript
+                # Calculate chunks count
+                chunk_len = 240
+                overlap = 30
+                if total_dur <= chunk_len:
+                    chunks_count = 1
+                else:
+                    chunks_count = int((total_dur - overlap) // (chunk_len - overlap)) + 1
+                log.info(f"[GROQ_TRANSCRIPT_FIRST] chunks={chunks_count}")
+
+                moments = find_moments_from_transcript(transcript_source, total_dur)
+                log.info(f"[GROQ_TRANSCRIPT_FIRST] moments_found={len(moments)}")
+
+                injected_count = 0
+                for i, m in enumerate(moments):
+                    start = float(m.get("start", 0))
+                    end = float(m.get("end", start))
+                    duration = round(end - start, 2)
+                    
+                    # Extract text for the moment from transcript segments
+                    seg_texts = []
+                    for seg in transcript_source:
+                        s_t = float(seg.get("start", 0))
+                        e_t = float(seg.get("end", 0))
+                        if s_t >= start - 1.0 and e_t <= end + 1.0:
+                            seg_texts.append(seg.get("text", ""))
+                    text = " ".join(seg_texts).strip() or m.get("text", "")
+                    
+                    # Construct candidate dict
+                    cand = {
+                        "start": start,
+                        "end": end,
+                        "duration": duration,
+                        "text": text,
+                        "viral_score": float(m.get("viral_score", 80)) / 100.0 if float(m.get("viral_score", 80)) > 1.0 else float(m.get("viral_score", 0.80)),
+                        "reason": "groq_transcript_first",
+                        "origin": "groq_transcript_first",
+                        "cortex_enabled": True,
+                        "title": m.get("title", ""),
+                        "opening_caption": m.get("opening_caption", ""),
+                        "clip_archetype": m.get("clip_archetype", ""),
+                        "editing_notes": m.get("editing_notes", {}),
+                        "groq_moment": True,
+                        "completeness_signal": m.get("completeness_signal", ""),
+                        "psychology_scores": m.get("psychology_scores", {})
+                    }
+                    # Emit intelligence so the transport verifier sees evidence
+                    # (surgeon is skipped when has_tf_moments, so this is the only
+                    # evidence producer on the transcript-first path).
+                    _art = IntelligenceArtifact()
+                    _psy = m.get("psychology_scores", {}) or {}
+                    _art.evidence_stream.extend([
+                        Evidence(type="stop_scroll", value=float(cand["viral_score"]), producer="groq_moment_director", confidence=0.9),
+                        Evidence(type="memorability", value=float(_psy.get("memorability", 0) or 0) / 100.0, producer="groq_moment_director"),
+                        Evidence(type="usefulness", value=float(_psy.get("usefulness", 0) or 0) / 100.0, producer="groq_moment_director"),
+                        Evidence(type="completeness", value=1.0 if m.get("completeness_signal") else 0.0, producer="groq_moment_director"),
+                    ])
+                    cand["intelligence"] = _art
+                    if not ctx.raw_candidates:
+                        ctx.raw_candidates = []
+                    ctx.raw_candidates.append(cand)
+                    injected_count += 1
+                log.info(f"[GROQ_TRANSCRIPT_FIRST] injected_candidates={injected_count}")
+                if injected_count > 0:
+                    has_tf_moments = True
+            except Exception as e:
+                log.warning("[GROQ_TRANSCRIPT_FIRST] Failed: %s", e)
+
+    # 1. Log GROQ_TRANSCRIPT_FIRST stage to SystemObserver
+    from viral_finder.system_observer import get_observer
+    obs = get_observer()
+    if tf_env or tf_force:
+        obs.log_stage(
+            "GROQ_TRANSCRIPT_FIRST",
+            input_count=len(transcript_source) if 'transcript_source' in locals() and transcript_source else 0,
+            output_count=injected_count if 'injected_count' in locals() else 0,
+            wall_time=0.0
+        )
+    else:
+        obs.log_stage("GROQ_TRANSCRIPT_FIRST", 0, 0, 0.0)
+
+    # 2. Assign stable IDs & initialize in SystemObserver
+    for idx, cand in enumerate(ctx.raw_candidates or []):
+        if not cand.get("cid"):
+            cand["cid"] = f"c_{idx+1:04d}"
+        
+        cid = cand["cid"]
+        origin = cand.get("origin") or cand.get("reason") or "candidate_generation"
+        if cand.get("hook_seed"):
+            origin = "hook_hunter"
+        elif cand.get("backfill"):
+            origin = "backfill"
+        elif cand.get("groq_moment"):
+            origin = "groq_transcript_first"
+            
+        obs.init_candidate(
+            cid=cid,
+            created_by=origin,
+            text=cand.get("text", ""),
+            start=float(cand.get("start", 0.0)),
+            end=float(cand.get("end", 0.0)),
+            scores={
+                "score": float(cand.get("score", 0.0)),
+                "curiosity": float(cand.get("curiosity", 0.0)),
+                "punch": float(cand.get("punch_confidence", 0.0)),
+                "semantic": float(cand.get("semantic_quality", 0.0)),
+            }
+        )
+
+    if trace:
+        trace.enter("L8_SEMANTIC_SCORING")
+    print("STAGE ENTER: semantic scoring")
+    _run_semantic_scoring(ctx)
+    print("STAGE OK: semantic scoring")
+    if trace:
+        trace.exit("L8_SEMANTIC_SCORING", {"brain_loaded": 1 if ctx.brain is not None else 0})
+
+    if trace:
+        trace.enter("L9_SIGNAL_ENRICHMENT")
+    print("STAGE ENTER: enrichment")
+    _run_enrichment(ctx)
+    print("STAGE OK: enrichment")
+    if trace:
+        missing = 0
+        for c in (ctx.enriched_candidates or []):
+            sig = c.get("signals", {}) or {}
+            families = ("psychology", "semantic", "narrative", "engagement")
+            if not all(k in sig for k in families):
+                missing += 1
+        if missing > 0:
+            trace.error("L9_SIGNAL_ENRICHMENT", "missing_signal_family", {"missing_candidates": missing})
+        trace.exit("L9_SIGNAL_ENRICHMENT", {"enriched": len(ctx.enriched_candidates or [])})
+
+    if trace:
+        trace.enter("L8B_INSIGHT_DETECTOR")
+    _run_insight_detector(ctx)
+    print("STAGE OK: insight detector")
+    if trace:
+        trace.exit("L8B_INSIGHT_DETECTOR", {"found": int((ctx.stage_stats.get("L8B_INSIGHT_DETECTOR", {}) or {}).get("found", 0) or 0)})
+
+    if trace:
+        trace.enter("L10_VALIDATION")
+    print("STAGE ENTER: validation")
+    _run_validation(ctx)
+    print("STAGE OK: validation")
+    if trace:
+        trace.exit(
+            "L10_VALIDATION",
+            {
+                "accepted": len(ctx.validated_candidates or []),
+                "rejected": len(ctx.rejected_candidates or []),
+            },
+        )
+
+    # ── FIX: RECONNECT STORY COMPLETION ENGINE ─────────────────────────────────
+    if trace:
+        trace.enter("L10A_STORY_COMPLETION")
+    print("STAGE ENTER: story completion")
+    _run_story_completion(ctx)
+    print("STAGE OK: story completion")
+    if trace:
+        trace.exit("L10A_STORY_COMPLETION", {})
+
+    # ── FIX1: ARC ASSEMBLER before RANKING ─────────────────────────────────────
+    # Previously: Ranking (L4528) → Arc Assembler (L4575)
+    # Bug: ranking judged pre-assembly clips that don't exist in final output.
+    # Fix: Assembler runs first (Transform), then Ranking judges the real clips (Judge).
+    if trace:
+        trace.enter("L11_ARC_ASSEMBLER")
+    if os.environ.get("HS_EXPERIMENT_MODE") == "1" and os.environ.get("HS_EXPERIMENT_COMPARE_LEGACY") == "1":
+        import copy
+        ctx_legacy = copy.deepcopy(ctx)
+        ctx_v2 = copy.deepcopy(ctx)
+
+        _run_arc_assembler(ctx_legacy)
+        _run_arc_assembler_v2(ctx_v2)
+
+        # EXPERIMENT_COMPARE Telemetry
+        legacy_arcs = {c.get("cid", c.get("id", "")): c for c in ctx_legacy.final_candidates or []}
+        v2_arcs = {c.get("cid", c.get("id", "")): c for c in ctx_v2.final_candidates or []}
+
+        all_cids = set(list(legacy_arcs.keys()) + list(v2_arcs.keys()))
+        log.info(f"\\n{'='*50}\\n[EXPERIMENT_MODE_RESULTS]\\n{'='*50}")
+        for cid in all_cids:
+            old_c = legacy_arcs.get(cid)
+            new_c = v2_arcs.get(cid)
+            if old_c and new_c:
+                old_text = str(old_c.get("text", "")).replace("\\n", " ")
+                new_text = str(new_c.get("text", "")).replace("\\n", " ")
+
+                old_dur = float(old_c.get("end", 0.0)) - float(old_c.get("start", 0.0))
+                new_dur = float(new_c.get("end", 0.0)) - float(new_c.get("start", 0.0))
+
+                old_score = float(old_c.get("arc_score", 0.0))
+                new_score = float(new_c.get("arc_score", 0.0))
+
+                log.info(f"\\n[EXPERIMENT_COMPARE] candidate_id={cid}")
+                log.info(f'OLD_PAYOFF: "{old_text[:80]}..."')
+                log.info(f'NEW_PAYOFF: "{new_text[:80]}..."')
+                log.info(f"OLD_DURATION: {old_dur:.1f}s")
+                log.info(f"NEW_DURATION: {new_dur:.1f}s")
+                log.info(f"OLD_SCORE: {old_score:.3f}")
+                log.info(f"NEW_SCORE: {new_score:.3f}\\n")
+
+        ctx.final_candidates = ctx_v2.final_candidates
+        ctx.ranked_output = ctx_v2.ranked_output
+        if hasattr(ctx_v2, "candidate_threads"):
+            ctx.candidate_threads = ctx_v2.candidate_threads
+    else:
+        if os.environ.get("HS_ARC_ASSEMBLER_LEGACY", "0") == "1":
+            log.error("[ORCH-ARC] HS_ARC_ASSEMBLER_LEGACY=1 ignored; legacy assembler violates single payoff truth.")
+            _run_arc_assembler_v2(ctx)
+        else:
+            log.info("[ORCH-ARC] using resolver-aware assembler v2")
+            _run_arc_assembler_v2(ctx)
+    print("STAGE OK: arc assembler")
+    if trace:
+        trace.exit("L11_ARC_ASSEMBLER", {"assembled": len(ctx.ranked_output or [])})
+
+    if trace:
+        trace.enter("L11B_GROQ_SURGEON")
+    _run_groq_surgeon(ctx)
+    bridged_after_surgeon = _bridge_intelligence_to_signals(ctx.ranked_output or [], "pre_ranking_intelligence_bridge")
+    if bridged_after_surgeon:
+        log.info("[INTEL_BRIDGE] pre_ranking bridged=%d evidence signal(s) after Groq Surgeon", bridged_after_surgeon)
+    if trace:
+        trace.exit("L11B_GROQ_SURGEON")
+
+    # ── RANKING after ARC ASSEMBLY (FIX1) ──────────────────────────────────────
+    # Ranking now reads ctx.ranked_output (assembled clips) and writes
+    # ctx.final_candidates (top-k winners judged on the real assembled clip).
+    if trace:
+        trace.enter("L10_RANKING")
+    print("STAGE ENTER: ranking")
+    _run_ranking(ctx)
+    print("STAGE OK: ranking")
+    if trace:
+        trace.exit("L10_RANKING", {"final": len(ctx.ranked_output or [])})
+
+    if trace:
+        trace.enter("L12_EDITOR_REFINER")
+    _run_editor_refiner(ctx)
+    print("STAGE OK: editor refiner")
+    if trace:
+        trace.exit("L12_EDITOR_REFINER", {"final": len(ctx.ranked_output or [])})
+
+    out = ctx.ranked_output or ctx.final_candidates or []
+    if not out and ctx.allow_fallback and ultron_engine:
+        log.info("[ORCH] staged output empty, fallback -> legacy ultron")
+        if trace:
+            trace.error("STAGED_PIPELINE", "fallback_to_legacy_ultron")
+        try:
+            env = ultron_engine(path, top_k=top_k, allow_fallback=True)
+            out = env.get("candidates", [])
+        except Exception:
+            out = []
+
+    # FIX3: DECISION TIMELINE — Print full timeline for winners
+    for c in out:
+        if isinstance(c, dict) and "decision_timeline" in c:
+            log.info(f"\n[DECISION_TIMELINE] cid={c.get('cid','?')}")
+            for entry in c["decision_timeline"]:
+                _stage = entry.get("stage", "UNKNOWN").ljust(12)
+                _event = entry.get("event", "Changed")
+                log.info(f"  {_stage} | Event: {_event}")
+                if "old_bounds" in entry:
+                    log.info(f"               Old: {entry['old_bounds']}")
+                    log.info(f"               New: {entry['new_bounds']}")
+                log.info(f"               Reason: {entry.get('reason', '')}")
+                log.info(f"               Score: {entry.get('score', 0.0)}")
+            log.info("-" * 40)
+            log.info("")
+
+    # Attach transcript to every candidate so downstream consumer (WCE/worker) has access to it
+    for c in out:
+        if isinstance(c, dict):
+            c["transcript"] = ctx.transcript
+            c["transcript_segments"] = ctx.transcript
+
+    # --- BUILD GROQ PRE-FILTER POOL ---
+    # Give Groq a richer candidate pool than the aggressively-filtered ranked_output.
+    # Pool = enriched (post-signal-enrichment, pre-validation-rejection) +
+    #        validated (post-validation, pre-arc) + ranked_output.
+    # Deduplicate by (round(start,1), round(end,1)) key; sort by viral_score desc.
+    _pool_seen: set = set()
+    _groq_pool: list = []
+    _transcript_ref = ctx.transcript  # reference for downstream
+    for _c in list(ctx.enriched_candidates or []) + list(ctx.validated_candidates or []) + list(out):
+        if not isinstance(_c, dict):
+            continue
+        _key = (round(float(_c.get("start", 0) or 0), 1), round(float(_c.get("end", 0) or 0), 1))
+        if _key in _pool_seen:
+            continue
+        _pool_seen.add(_key)
+        _cp = dict(_c)
+        _cp.setdefault("transcript", _transcript_ref)
+        _cp.setdefault("text", " ".join(
+            seg.get("text", "") for seg in (_transcript_ref or [])
+            if float(seg.get("start", 0) or 0) >= float(_cp.get("start", 0) or 0)
+            and float(seg.get("end", 0) or 0) <= float(_cp.get("end", 0) or 0)
+        ).strip() or _cp.get("text", ""))
+        _groq_pool.append(_cp)
+    _groq_pool.sort(key=lambda x: float(x.get("viral_score", x.get("score", 0)) or 0), reverse=True)
+    log.info(
+        "[ORCH] groq_pool built: pool=%d enriched=%d validated=%d ranked=%d",
+        len(_groq_pool), len(ctx.enriched_candidates or []),
+        len(ctx.validated_candidates or []), len(out),
+    )
+    # ----------------------------------
+
+    # OPT-1: log cache stats before reset
+    _cqs_stats = cqs_cache_stats()
+    log.info("[CQS-CACHE] pipeline_end %s", _cqs_stats)
+    cqs_cache_reset()
+    _record_stage(ctx, "SUMMARY", wall_s=round(time.time() - t0, 3), final=len(out), rejected=len(ctx.rejected_candidates), cqs_cache=_cqs_stats)
+    if trace:
+        pass
+    
+    from viral_finder.system_observer import get_observer
+    try:
+        xray_report = get_observer().render_report()
+        log.info(xray_report)
+        try:
+            print(xray_report)
+        except Exception:
+            # Fallback for Windows consoles that don't support UTF-8 emojis
+            print(xray_report.encode("ascii", "replace").decode("ascii"))
+    except Exception:
+        log.exception("[XRAY] report failed but pipeline output preserved")
+        xray_report = "[XRAY FAILED]"
+
+    print("TOTAL PROCESS TIME:", time.time() - start)
+    return out, _groq_pool, has_tf_moments, getattr(ctx, "transcript", []), ctx
+
+
+def orchestrate(path: str,
+                 top_k: int = DEFAULT_TOP_K,
+                 prefer_gpu: bool = True,
+                 use_cache: bool = True,
+                 allow_fallback: bool = False,
+                 pipeline_mode: Optional[str] = None) -> List[Dict]:
+    """
+    High-level orchestration entrypoint.
+    Modes:
+      - staged (default): explicit cognitive pipeline stages
+      - legacy: direct ultron engine passthrough
+    """
+    from viral_finder.system_observer import reset_observer
+    reset_observer()
+    print("[ORCH] ORCHESTRATOR STARTED")
+    start_time = time.time()
+    mode = _pipeline_mode(pipeline_mode)
+    log.info("[ORCH] pipeline_mode=%s", mode)
+    log.info("[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST=%s", os.environ.get("HS_GROQ_TRANSCRIPT_FIRST"))
+    log.info("[ORCH] Startup Env: HS_GROQ_CORTEX_ENABLED=%s", os.environ.get("HS_GROQ_CORTEX_ENABLED"))
+    log.info("[ORCH] Startup Env: HS_FORCE_30S_PADDING=%s", os.environ.get("HS_FORCE_30S_PADDING"))
+    log.info("[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST_FORCE=%s", os.environ.get("HS_GROQ_TRANSCRIPT_FIRST_FORCE"))
+
+    final_candidates = []
+    _groq_pool: list = []  # richer pre-filter pool for Groq
+
+    has_tf_moments = False
+    full_transcript = []
+    ctx = None
+    if mode == "staged":
+        try:
+            _staged_result = _run_staged_pipeline(
+                path=path,
+                top_k=top_k,
+                prefer_gpu=prefer_gpu,
+                use_cache=use_cache,
+                allow_fallback=allow_fallback,
+            )
+            if isinstance(_staged_result, tuple):
+                if len(_staged_result) == 5:
+                    final_candidates, _groq_pool, has_tf_moments, full_transcript, ctx = _staged_result
+                elif len(_staged_result) == 4:
+                    final_candidates, _groq_pool, has_tf_moments, full_transcript = _staged_result
+                elif len(_staged_result) == 3:
+                    final_candidates, _groq_pool, has_tf_moments = _staged_result
+                else:
+                    final_candidates, _groq_pool = _staged_result
+                    has_tf_moments = any(c.get("groq_moment") for c in final_candidates)
+            else:
+                final_candidates = _staged_result  # safety fallback
+            log.info("[ORCH] staged returned %d candidates (groq_pool=%d, has_tf_moments=%s).", len(final_candidates), len(_groq_pool), has_tf_moments)
+            
+            # --- FRACTAL COGNITION ENGINE ---
+            if os.environ.get("HS_FRACTAL_ENGINE") == "1":
+                try:
+                    from viral_finder.fractal_cognition import optimize_boundaries
+                    log.info("[FRACTAL] Activating Geometric Cognition Engine...")
+                    _fractal_candidates = optimize_boundaries(final_candidates, full_transcript)
+                    if _fractal_candidates:
+                        final_candidates = _fractal_candidates
+                        log.info("[FRACTAL] Successfully optimized candidate boundaries.")
+                except Exception as e:
+                    import traceback
+                    log.error(f"[FRACTAL] Geometric Cognition Engine failed: {e}. Falling back to standard pipeline.\n{traceback.format_exc()}")
+            # --------------------------------
+        except Exception as exc:
+            log.exception("[ORCH] staged pipeline failed: %s", exc)
+            if not _env_bool("HS_ORCH_STAGED_FAILOVER_TO_LEGACY", False):
+                return []
+            log.error("STAGED PIPELINE CRASHED — FALLING BACK TO ULTRON")
+            log.info("[ORCH] staged failover -> legacy")
+
+    if not final_candidates:
+        if not ultron_engine:
+            log.error("[ORCH] FATAL: Ultron V33 engine (ultron_finder_v33.py) is not available.")
+            return []
+
+        try:
+            result_envelope = ultron_engine(path, top_k=top_k, allow_fallback=allow_fallback)
+            final_candidates = result_envelope.get("candidates", [])
+            log.info("[ORCH] Ultron V33 Engine returned %d candidates.", len(final_candidates))
+        except Exception as exc:
+            log.exception("[ORCH] Ultron V33 engine failed: %s", exc)
+            return []
+
+    log.info('[ORCH] Orchestration complete (t=%.2fs)', (time.time() - start_time))
+
+
     
     # Generate Final Clip Source Report
     cg_count = 0
@@ -4347,6 +6054,49 @@ def orchestrate(path: str,
         log.info(f"Surgeon Inputs = {len(ctx.validated_candidates) if ctx.validated_candidates else len(ctx.raw_candidates)}")
         log.info(f"Final Clips = {len(final_candidates)}\n")
 
+        # --- CANDIDATE LINEAGE AUDIT (PRODUCTION EVIDENCE) ---
+        log.info("============================================================")
+        log.info("    CANDIDATE LINEAGE AUDIT (PRODUCTION EVIDENCE)")
+        log.info("============================================================")
+        log.info(f"{'Candidate ID':<15} | {'Timestamp':<12} | {'Hook Strength':<14} | {'StoryThread ID':<30} | {'Suppressed?':<12} | {'Reason':<50} | {'Final injected?'}")
+        log.info("-" * 160)
+        
+        try:
+            from viral_finder.system_observer import get_observer
+            obs = get_observer()
+            
+            # Helper to find a candidate in all ctx lists
+            def _find_cand(cid):
+                for pool in [ctx.raw_candidates, ctx.enriched_candidates, ctx.validated_candidates, final_candidates]:
+                    if not pool: continue
+                    for p in pool:
+                        if isinstance(p, dict) and p.get("cid") == cid:
+                            return p
+                return {}
+
+            for cid, cand_data in obs.candidates.items():
+                start = round(cand_data.get("start") or 0.0, 1)
+                end = round(cand_data.get("end") or 0.0, 1)
+                ts = f"{start}s-{end}s"
+                
+                c_full = _find_cand(cid)
+                
+                hook_strength = float(c_full.get("hook_strength", c_full.get("score", c_full.get("viral_score", cand_data.get("scores", {}).get("hook_strength", 0.0)))))
+                
+                story_thread_id = str(c_full.get("trace_id", c_full.get("story_thread_id", "N/A")))
+                
+                final_reason = cand_data.get("final_reason", "")
+                suppressed = "Yes" if "rejected" in final_reason or "dropped" in final_reason else "No"
+                
+                injected = "Yes" if cid in [fc.get("cid") for fc in final_candidates if isinstance(fc, dict)] else "No"
+                
+                log.info(f"{cid:<15} | {ts:<12} | {hook_strength:<14.3f} | {story_thread_id:<30} | {suppressed:<12} | {final_reason:<50} | {injected}")
+                
+        except Exception as e:
+            log.error(f"Error generating lineage audit: {e}")
+            
+        log.info("============================================================\n")
+
     for i, c in enumerate(final_candidates):
         source = "groq_transcript_first" if c.get("groq_moment") else "candidate_generation"
         log.info(f"CLIP {i+1}: source={source} hook_score={c.get('hook_score', 0.0)} payoff_score={c.get('payoff_score', 0.0)} duration={c.get('duration', 0.0)} final_score={c.get('final_score', 0.0)}")
@@ -4356,6 +6106,8 @@ def orchestrate(path: str,
         if trace:
             log.info(f"  [HOOK_SELECTION_TRACE]")
             log.info(f"    selected_hook_score={trace.get('score', 0.0)}")
+            if "hook_hunter_confidence" in trace:
+                log.info(f"    hook_hunter_confidence={trace['hook_hunter_confidence']}")
             log.info(f"    why_selected={trace.get('reason', 'N/A')}")
             log.info(f"    selected_hook_text='{trace.get('text', '')}'\n")
 
@@ -4496,6 +6248,63 @@ def orchestrate(path: str,
     else:
         log.info("No StoryThread proposals found in this run.")
     log.info("="*60 + "\n")
+
+    # --- INTELLIGENCE TRANSPORT VERIFIER ---
+    # Every Evidence packet must end as CONSUMED, EXPLICITLY_REJECTED, or ORPHANED.
+    # An orphaned packet is a pipeline bug — intelligence generated but never used.
+    try:
+        from viral_finder.intelligence_verifier import reset_verifier
+        _verifier = reset_verifier()
+        _all_pool = list(ctx.enriched_candidates or []) + list(ctx.raw_candidates or [])
+        _rejected_pool = list(ctx.rejected_candidates or [])
+        _final_keys = {str(c.get("cid", c.get("id", id(c)))) for c in (final_candidates or []) if isinstance(c, dict)}
+        _intermediate_not_final = [
+            c for c in _all_pool
+            if not isinstance(c, dict) or str(c.get("cid", c.get("id", id(c)))) not in _final_keys
+        ]
+        _rejected_leftovers = _reject_unsettled_intelligence(
+            _rejected_pool,
+            "intelligence_transport_settlement",
+            "candidate_rejected_before_final_decision",
+        )
+        _intermediate_leftovers = _reject_unsettled_intelligence(
+            _intermediate_not_final,
+            "intelligence_transport_settlement",
+            "candidate_not_selected_for_final_decision",
+        )
+        _final_leftovers = _reject_unsettled_intelligence(
+            final_candidates,
+            "intelligence_transport_settlement",
+            "unsupported_or_late_evidence_not_used_by_ranking",
+        )
+        if _rejected_leftovers or _intermediate_leftovers or _final_leftovers:
+            log.info(
+                "[INTEL_SETTLEMENT] rejected_unsettled final=%d intermediate=%d rejected=%d",
+                _final_leftovers,
+                _intermediate_leftovers,
+                _rejected_leftovers,
+            )
+        _verifier.scan(
+            final_candidates=final_candidates,
+            all_candidates=_all_pool,
+            rejected_candidates=_rejected_pool,
+        )
+        if _verifier.total == 0:
+            log.info(
+                "[INTEL_VERIFIER] skipped: no intelligence-producing stage emitted evidence packets"
+            )
+        else:
+            _iv_report = _verifier.render_report()
+            log.info(_iv_report)
+        if _verifier.has_orphans:
+            log.warning(
+                "[INTEL_VERIFIER] %d orphaned intelligence packet(s) detected — "
+                "pipeline is silently discarding intelligence. See report above.",
+                _verifier.orphaned_count,
+            )
+    except Exception as _iv_exc:
+        log.warning("[INTEL_VERIFIER] Audit failed (non-fatal): %s", _iv_exc)
+    # -----------------------------------------
 
     return final_candidates
 # -------------------------

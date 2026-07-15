@@ -162,6 +162,7 @@ def _poll_next_job() -> dict | None:
 def _complete_job(job_id: str, clips: list):
     """POST /api/jobs/{id}/complete"""
     try:
+        clips = _json_safe(clips)
         resp = requests.post(
             f"{RAILWAY_URL}/api/jobs/{job_id}/complete",
             headers=_HEADERS,
@@ -172,6 +173,16 @@ def _complete_job(job_id: str, clips: list):
         print(f"[LOCAL_WORKER] ✅ Marked complete: {job_id} ({len(clips)} clips)", flush=True)
     except Exception as e:
         print(f"[LOCAL_WORKER] ERROR marking complete {job_id}: {e}", flush=True)
+
+
+def _json_safe(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    return str(value)
 
 
 def _fail_job(job_id: str, error: str):
@@ -193,17 +204,42 @@ def _fail_job(job_id: str, error: str):
 # Cloudinary upload
 # ══════════════════════════════════════════════════════════════════════════════
 
+_cloudinary_validated = None  # None = untested; True/False cached per-process
+
+
 def _configure_cloudinary() -> bool:
+    """Configure Cloudinary and validate with a one-time ping.
+
+    The ping runs exactly once per worker process and the result is cached.
+    This avoids spending 6+ seconds per clip on a network timeout when the
+    cloud_name is disabled or credentials are wrong.
+    """
+    global _cloudinary_validated
+    if _cloudinary_validated is not None:
+        return _cloudinary_validated
+
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
     api_key    = os.getenv("CLOUDINARY_API_KEY")
     api_secret = os.getenv("CLOUDINARY_API_SECRET")
     if not (cloud_name and api_key and api_secret):
+        print("[LOCAL_WORKER] Cloudinary: missing credentials — upload disabled", flush=True)
+        _cloudinary_validated = False
         return False
     try:
         import cloudinary
+        import cloudinary.api
         cloudinary.config(cloud_name=cloud_name, api_key=api_key, api_secret=api_secret)
+        cloudinary.api.ping()  # fast — raises AuthorizationRequired if cloud disabled
+        print("[LOCAL_WORKER] Cloudinary OK — upload enabled", flush=True)
+        _cloudinary_validated = True
         return True
     except ImportError:
+        print("[LOCAL_WORKER] Cloudinary: library not installed — upload disabled", flush=True)
+        _cloudinary_validated = False
+        return False
+    except Exception as e:
+        print(f"[LOCAL_WORKER] Cloudinary ping failed ({e}) — upload disabled for this run", flush=True)
+        _cloudinary_validated = False
         return False
 
 
@@ -517,10 +553,15 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
     print(f"[LOCAL_WORKER] Downloading via yt-dlp to {dest_path}", flush=True)
     cmd = [
         sys.executable, "-m", "yt_dlp",
-        "--js-runtimes", "nodejs",          # Use Node.js v24 (installed) instead of deno
-        "--format", "bestvideo[ext=mp4][vcodec*=avc][height<=720]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best",
+        "--js-runtimes", "node",          # Use Node.js v24 (installed) instead of deno
+        "--remote-components", "ejs:github", # Required to fetch latest JS solver
+        "--cookies-from-browser", "firefox",
+        "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "--merge-output-format", "mp4",
-        "--retries", "3",
+        "--retries", "10",
+        "--fragment-retries", "10",
+        "--retry-sleep", "3",
+        "--socket-timeout", "60",
         "--no-warnings",
         "--output", dest_path,
         youtube_url
@@ -621,8 +662,8 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40[bg];"
                 "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
                 "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
-                # Watermark overlay
-                "[1:v]scale=180:-1,format=rgba,colorchannelmixer=aa=0.8[wm];"
+                # Watermark overlay (forced even height with -2 to prevent NVENC -22 invalid argument)
+                "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
                 "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30[main_v];"
                 # Outro: scale to match
                 "[2:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
@@ -657,8 +698,8 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40[bg];"
                 "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
                 "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
-                "[1:v]scale=180:-1,format=rgba,colorchannelmixer=aa=0.8[wm];"
-                "[merged][wm]overlay=W-w-50:H-h-250"
+                "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
+                "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p"
             )
             cmd = [
                 "ffmpeg", "-y",
@@ -686,17 +727,231 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
         return False
 
 
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor
+import cv2
+from frame_clustering import cluster_similar_frames
+
+
+ENABLE_CLUSTER_SCAN = os.getenv("HS_ENABLE_CLUSTER_SCAN", "1").strip().lower() not in ("0", "false", "no", "off")
+CLUSTER_HASH_THRESHOLD = max(0, int(os.getenv("HS_CLUSTER_HASH_THRESHOLD", "18") or 18))
+MIN_CLUSTER_REDETECT_ATTEMPTS = max(0, int(os.getenv("HS_MIN_CLUSTER_REDETECT_ATTEMPTS", "2") or 2))
+MIN_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MIN_FACE_HEIGHT_RATIO", "0.05") or 0.05)))
+
+class FaceCache:
+    def __init__(self, video_path: str, clips: list):
+        self.video_path = video_path
+        self.cache = {}
+        self.clip_caches = {}
+        self.clips = clips
+        self._done = False
+        if clips:
+            self._precompute_clips_only(clips)
+        else:
+            self._done = True
+        
+    def _detect(self, cascade, frame):
+        print(
+            f"[DETECT_DEBUG] frame_shape={frame.shape} dtype={frame.dtype} "
+            f"mean={frame.mean():.1f} min={frame.min()} max={frame.max()}",
+            flush=True,
+        )
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        print(
+            f"[DETECT_RAW] cascade_empty={cascade.empty()} "
+            f"gray_shape={gray.shape} gray_dtype={gray.dtype} "
+            f"gray_mean={gray.mean():.1f}",
+            flush=True,
+        )
+        faces = cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.05,
+            minNeighbors=3,
+            minSize=(40, 40),
+            flags=cv2.CASCADE_SCALE_IMAGE,
+        )
+        print(
+            f"[DETECT_RAW] result_count={len(faces)} "
+            "call_kwargs={'scaleFactor': 1.05, 'minNeighbors': 3, "
+            "'minSize': (40, 40)}",
+            flush=True,
+        )
+        return [
+            {"x": float(x), "y": float(y), "w": float(w), "h": float(h)}
+            for x, y, w, h in faces
+        ]
+
+    @staticmethod
+    def _valid_face_count(faces, frame_height):
+        """Match the editor's minimum face-size/aspect safety floor."""
+        return sum(
+            1
+            for face in faces
+            if face["h"] >= frame_height * MIN_VALID_FACE_HEIGHT_RATIO
+            and 0.7 <= face["h"] / max(1.0, face["w"]) <= 3.0
+        )
+
+    def get_clip_cache(self, clip):
+        start = float(clip.get("start", 0.0) or 0.0)
+        end = float(clip.get("end", start) or start)
+        key = (round(start, 2), round(end, 2))
+        return dict(self.clip_caches.get(key, {}))
+
+    def _precompute_clips_only(self, clips):
+        _face_cache_start = time.time()
+        print(f"[FACE_CACHE] Starting targeted Haar face detection...", flush=True)
+        probe = cv2.VideoCapture(self.video_path)
+        fps = probe.get(cv2.CAP_PROP_FPS) or 25.0
+        probe.release()
+
+        total_scan = sum(c.get('end', 0) - c.get('start', 0) for c in clips)
+        print(f"[FACE_CACHE] Scanning {len(clips)} clips = {total_scan:.0f}s total (not full video)", flush=True)
+
+        stride = max(1, int(os.getenv("HS_FACE_CACHE_FRAME_STRIDE", "15") or 15))
+        workers = max(1, int(os.getenv("HS_FACE_CACHE_WORKERS", "4") or 4))
+
+        def scan_one_clip(clip):
+            _clip_start = time.time()
+            cap = cv2.VideoCapture(self.video_path)
+            local_fps = cap.get(cv2.CAP_PROP_FPS) or fps or 25.0
+            cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            )
+            start = float(clip.get("start", 0.0) or 0.0)
+            end = float(clip.get("end", start) or start)
+            start_frame = int(start * local_fps)
+            end_frame = int(end * local_fps)
+            abs_results = {}
+            rel_results = {}
+            sampled = []
+
+            # AV1 random seeks restart decoding from a keyframe and dominate wall
+            # time. Seek once to the clip and decode forward, retaining only the
+            # sampled frames required for in-memory clustering and Haar detection.
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            for fn in range(start_frame, end_frame):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if (fn - start_frame) % stride == 0:
+                    sampled.append((fn, frame))
+
+            print(
+                f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} "
+                f"sample_decode=sequential frames_preloaded={len(sampled)}",
+                flush=True,
+            )
+
+            haar_calls = 0
+            if ENABLE_CLUSTER_SCAN:
+                clusters = cluster_similar_frames(
+                    [frame for _, frame in sampled], CLUSTER_HASH_THRESHOLD
+                )
+                for cluster_id, cluster in enumerate(clusters):
+                    # The sharpest frame is generally more reliable than the midpoint
+                    # while remaining cheap compared with a Haar pass.
+                    representative = max(
+                        cluster,
+                        key=lambda idx: cv2.Laplacian(sampled[idx][1], cv2.CV_64F).var(),
+                    )
+                    raw_faces = self._detect(cascade, sampled[representative][1])
+                    haar_calls += 1
+                    valid_count = self._valid_face_count(
+                        raw_faces, sampled[representative][1].shape[0]
+                    )
+
+                    # A missed/invalid representative must not mark a whole scene
+                    # as faceless. This is intentionally based on valid_count, not
+                    # just Haar's raw false-positive count.
+                    if valid_count == 0:
+                        retries = [idx for idx in cluster if idx != representative]
+                        retries.sort(key=lambda idx: abs(idx - representative))
+                        print(
+                            f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} cluster={cluster_id} "
+                            f"redetect_triggered=True reason=representative_valid_count_0 "
+                            f"raw_count={len(raw_faces)} valid_count={valid_count} "
+                            f"min_face_height_ratio={MIN_VALID_FACE_HEIGHT_RATIO:.2f} "
+                            f"attempts={min(len(retries), MIN_CLUSTER_REDETECT_ATTEMPTS)}",
+                            flush=True,
+                        )
+                        for retry_idx in retries[:MIN_CLUSTER_REDETECT_ATTEMPTS]:
+                            raw_faces = self._detect(cascade, sampled[retry_idx][1])
+                            haar_calls += 1
+                            valid_count = self._valid_face_count(
+                                raw_faces, sampled[retry_idx][1].shape[0]
+                            )
+                            if valid_count > 0:
+                                break
+
+                    # Copy each result so callers cannot mutate a shared cluster bbox.
+                    for sample_idx in cluster:
+                        fn, _ = sampled[sample_idx]
+                        t_abs = round(fn / local_fps, 2)
+                        t_rel = round(max(0.0, t_abs - start), 2)
+                        assigned_faces = [
+                            {
+                                **face,
+                                "_cluster_id": cluster_id,
+                                "_cluster_start": cluster[0],
+                                "_cluster_end": cluster[-1],
+                            }
+                            for face in raw_faces
+                        ]
+                        abs_results[t_abs] = assigned_faces
+                        rel_results[t_rel] = assigned_faces
+                print(
+                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} clusters={len(clusters)} "
+                    f"haar_calls={haar_calls} frames_covered={len(sampled)} "
+                    f"wall_s={time.time() - _clip_start:.2f}",
+                    flush=True,
+                )
+            else:
+                # Safety-net: preserve the prior per-sampled-frame Haar scan exactly.
+                for fn, frame in sampled:
+                    t_abs = round(fn / local_fps, 2)
+                    t_rel = round(max(0.0, t_abs - start), 2)
+                    raw_faces = self._detect(cascade, frame)
+                    haar_calls += 1
+                    if raw_faces:
+                        abs_results[t_abs] = raw_faces
+                        rel_results[t_rel] = raw_faces
+                print(
+                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} clusters=disabled "
+                    f"haar_calls={haar_calls} frames_covered={len(sampled)} "
+                    f"wall_s={time.time() - _clip_start:.2f}",
+                    flush=True,
+                )
+
+            cap.release()
+            return (round(start, 2), round(end, 2)), abs_results, rel_results
+
+        with ThreadPoolExecutor(max_workers=min(workers, max(1, len(clips)))) as ex:
+            futures = [ex.submit(scan_one_clip, clip) for clip in clips]
+            for future in futures:
+                key, abs_results, rel_results = future.result()
+                self.cache.update(abs_results)
+                self.clip_caches[key] = rel_results
+
+        self._done = True
+        _face_cache_elapsed = time.time() - _face_cache_start
+        print(
+            f"[FACE_CACHE] Done - {len(self.cache)} frames cached "
+            f"| wall_time={_face_cache_elapsed:.2f}s",
+            flush=True,
+        )
+
 def _process_job(job: dict, cloudinary_ok: bool):
     job_id      = job["job_id"]
     youtube_url = job.get("youtube_url") or job.get("video_url", "")
     is_free     = False if os.getenv("HS_UNLIMITED_MODE", "0") == "1" else job.get("is_free_user", False)
 
-    print(f"[LOCAL_WORKER] 🎬 Processing job {job_id}: {youtube_url[:80]}", flush=True)
+    print(f"[LOCAL_WORKER] dYZ Processing job {job_id}: {youtube_url[:80]}", flush=True)
 
     with tempfile.TemporaryDirectory() as tmp:
         video_path = os.path.join(tmp, "video.mp4")
 
-        # ── Step 1: Download via RapidAPI or fallback to yt-dlp ────────────
+        # "?"? Step 1: Download via RapidAPI or fallback to yt-dlp "?"?
         print(f"[LOCAL_WORKER] Downloading video...", flush=True)
         try:
             _download_via_api(youtube_url, video_path)
@@ -709,175 +964,267 @@ def _process_job(job: dict, cloudinary_ok: bool):
 
         print(f"[LOCAL_WORKER] Download complete: {os.path.getsize(video_path) // (1024*1024)}MB", flush=True)
 
-        # ── Step 2: Orchestrate (full pipeline — orchestrator + Groq cortex) ──
-        print(f"[LOCAL_WORKER] Running orchestrator...", flush=True)
-        try:
-            from viral_finder.orchestrator import orchestrate
-        except Exception as e:
-            raise RuntimeError(f"Failed to import orchestrator: {e}")
-
-        from utils.clipper import format_viral_clips, get_video_duration
-
-        clips = orchestrate(
-            video_path,
-            top_k=int(os.getenv("HS_ORCH_TOP_K", "8")),
-            prefer_gpu=True,
-            use_cache=True,
-            allow_fallback=False,
-            pipeline_mode=os.getenv("HS_ORCH_PIPELINE_MODE", "staged"),
-        )
-
-        video_duration = get_video_duration(video_path)
-        # Trust dynamic arc-based boundaries and do not apply format_viral_clips padding
-        print(f"[LOCAL_WORKER] Orchestration done: {len(clips)} clips", flush=True)
-
-        # ── Step 3: Cut + Edit + Upload ───────────────────────────────────────
-        print(f"[LOCAL_WORKER] Uploading clips to Cloudinary...", flush=True)
-
-        # Lazy load world_class_editor
+        # "?"? PIPELINE ARCHITECTURE "?"?
+        clip_queue = queue.Queue(maxsize=5)
+        results = []
+        results_lock = threading.Lock()
+        gpu_lock = threading.Semaphore(1)
+        # Track orchestrator outcome so we can distinguish "orchestrator produced
+        # nothing / crashed" from "clips were produced but failed during editing".
+        orch_state = {"error": None, "produced": 0}
+        
+        # Initialize Editor
         _editor_cls = None
         _config_cls = None
         _wce_enabled = os.getenv("HS_WORKER_EDITOR_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
         _caption_enabled = os.getenv("HS_CAPTION_WORKER_ENABLED", "0").strip().lower() not in ("0", "false", "no", "off")
+        
         if _wce_enabled or _caption_enabled:
             try:
                 from effects.world_class_editor import ClipEditor, ClipEditConfig
                 _editor_cls = ClipEditor
                 _config_cls = ClipEditConfig
-                print("[LOCAL_WORKER] world_class_editor loaded ✅", flush=True)
+                print("[LOCAL_WORKER] world_class_editor loaded o.", flush=True)
             except Exception as e:
                 print(f"[LOCAL_WORKER] world_class_editor load failed (raw cuts): {e}", flush=True)
 
-        _full_transcript = None
-        if clips and isinstance(clips[0], dict):
-            _full_transcript = clips[0].get("transcript") or clips[0].get("captions")
+        editor_instance = None
+        editor_cfg = None
+        if _editor_cls:
+            _editor_work_dir = os.path.join(tmp, "wce_work")
+            os.makedirs(_editor_work_dir, exist_ok=True)
+            editor_instance = _editor_cls(_editor_work_dir)
+            editor_cfg = _config_cls()
+            # ── Pass distribution branding config so WCE merges it in-pass ──────
+            _branding_on = os.getenv("HS_APPLY_BRANDING", "1") == "1"
+            editor_cfg.apply_distribution_branding = _branding_on
+            editor_cfg.branding_watermark_path = (
+                os.path.join(BASE_DIR, "static", "branding", "logo.png")
+                if _branding_on else ""
+            )
+            editor_cfg.branding_outro_path = (
+                os.path.join(BASE_DIR, "static", "branding", "outro.mp4")
+                if _branding_on else ""
+            )
 
-        _editor_work_dir = os.path.join(tmp, "wce_work")
-        os.makedirs(_editor_work_dir, exist_ok=True)
+        # Start Global Face Cache (will be instantiated later)
+        face_cache = None
 
-        processed_clips = []
-        
-        def _process_single_clip(i: int, clip: dict) -> dict:
-            start = float(clip.get("start", 0))
-            end   = float(clip.get("end", start + 30))
-            # Restored ultra-fast stream copy extraction step. 
-            # enhance_pretrimmed_clip requires a PRE-TRIMMED clip because its fade/trim logic
-            # operates on clip-relative timestamps (0 to duration).
-            raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
+        # Global precomputed captions
+        precomputed_captions = {}
+
+        def run_orchestrator():
             try:
-                subprocess.run([
-                    "ffmpeg", "-y", "-ss", str(start), "-to", str(end),
-                    "-i", video_path, "-c", "copy", "-avoid_negative_ts", "make_zero", raw_path
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-            except Exception as e:
-                print(f"[LOCAL_WORKER] FFmpeg extract failed for clip {i}: {e}")
-
-
-            clip_res = {**clip, "clip_url": None, "error": None}
-
-            # Apply editor if available
-            final_path = raw_path
-            if _editor_cls and _config_cls:
-                try:
-                    edited_path = os.path.join(tmp, f"edited_{i}_{int(start)}_{int(end)}.mp4")
-                    clip_transcript = clip.get("transcript") or clip.get("captions") or _full_transcript or []
-                    clip_title = clip.get("opening_caption") or clip.get("title") or clip.get("text", "")
-
-                    cortex_hints = None
-                    if clip.get("cortex_enabled"):
-                        cortex_hints = {
-                            "cortex_enabled": True,
-                            "opening_caption": clip.get("opening_caption", ""),
-                            "title": clip.get("title", ""),
-                            "hook_type": clip.get("hook_type", ""),
-                            "cortex_score": clip.get("cortex_score", 0),
-                            "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {}),
-                            "editing_notes": clip.get("editing_notes", {}),
-                        }
-
-                    editor = _editor_cls(work_dir=_editor_work_dir)
-                    cfg = _config_cls(
-                        add_captions=_caption_enabled or _wce_enabled,
-                        add_dynamic_overlays=_wce_enabled,
-                        add_cta=_wce_enabled,
-                        add_hashtags=_wce_enabled,
-                        add_emojis=_caption_enabled or _wce_enabled,
-                        enhance_visuals=_wce_enabled,
-                        enhance_audio=_wce_enabled,
-                        target_ratio="9:16",
-                    )
-                    # Pass the pre-trimmed clip! WCE logic is clip-relative.
-                    edit_result = editor.enhance_pretrimmed_clip(
-                        input_path=raw_path,   # ← Pre-trimmed clip
-
-                        output_path=edited_path,
-                        source_start=start,
-                        source_end=end,
-                        transcript=clip_transcript,
-                        config=cfg,
-                        clip_title=clip_title,
-                        is_free=clip.get("is_free", False) or is_free,
-                        cortex_hints=cortex_hints,
-                    )
+                print(f"[LOCAL_WORKER] Running orchestrator...", flush=True)
+                from viral_finder.orchestrator import orchestrate
+                
+                clips = orchestrate(
+                    video_path,
+                    top_k=int(os.getenv("HS_ORCH_TOP_K", "8")),
+                    prefer_gpu=True,
+                    use_cache=True,
+                    allow_fallback=False,
+                    pipeline_mode=os.getenv("HS_ORCH_PIPELINE_MODE", "staged"),
+                )
+                
+                # Precompute FaceMesh only for the extracted clips
+                nonlocal face_cache
+                face_cache = FaceCache(video_path, clips)
+                
+                # Precompute captions async before releasing clips
+                if editor_instance and clips:
+                    from utils.clipper import get_video_duration
+                    print(f"[LOCAL_WORKER] Orchestration done: {len(clips)} clips. Pre-generating captions...", flush=True)
                     
-                    if edit_result and os.path.exists(edit_result.output_path):
-                        print(f"[LOCAL_WORKER] Captions added to clip {i}, now applying distribution branding...", flush=True)
+                    _full_transcript = clips[0].get("transcript") or clips[0].get("captions")
+                    
+                    def gen_cap(clip, idx):
+                        start = float(clip.get("start", 0))
+                        end   = float(clip.get("end", start + 30))
+                        clip_transcript = clip.get("transcript") or clip.get("captions") or _full_transcript or []
+                        clip_title = clip.get("opening_caption") or clip.get("title") or clip.get("text", "")
+                        cortex_hints = {"cortex_enabled": True} if clip.get("cortex_enabled") else None
+                        if cortex_hints:
+                            cortex_hints.update({
+                                "editing_notes": clip.get("editing_notes", {}),
+                                "opening_caption": clip.get("opening_caption", ""),
+                                "title": clip.get("title", ""),
+                                "hook_type": clip.get("hook_type", ""),
+                                "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {})
+                            })
+                        ass_path = editor_instance.generate_caption_file(
+                            input_path=video_path,
+                            source_start=start,
+                            source_end=end,
+                            transcript=clip_transcript,
+                            config=editor_cfg,
+                            clip_title=clip_title,
+                            cortex_hints=cortex_hints,
+                            precomputed_narrative=clip.get("precomputed_narrative")
+                        )
+                        return idx, ass_path
+
+                    ex = ThreadPoolExecutor(max_workers=4)
+                    for i, c in enumerate(clips):
+                        precomputed_captions[i] = ex.submit(gen_cap, c, i)
+
+                orch_state["produced"] = len(clips)
+                for i, clip in enumerate(clips):
+                    clip_queue.put((i, clip))
+                    print(f"[PIPELINE] Clip queued: {i}", flush=True)
+
+            except Exception as e:
+                import traceback
+                orch_state["error"] = e
+                print(f"[LOCAL_WORKER] Orchestrator thread failed: {e}\n{traceback.format_exc()}", flush=True)
+            finally:
+                clip_queue.put(None) # Signal done
+
+        def run_editor():
+            while True:
+                item = clip_queue.get()
+                if item is None:
+                    break
+                    
+                i, clip = item
+                start = float(clip.get("start", 0))
+                end   = float(clip.get("end", start + 30))
+                clip_res = {**clip, "clip_url": None, "error": None}
+                
+                try:
+                    t_clip_total = time.perf_counter()
+                    # CPU: Extract subclip (ffmpeg copy)
+                    t0 = time.perf_counter()
+                    raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
+                    import subprocess
+                    subprocess.run([
+                        "ffmpeg", "-y", "-ss", str(start), "-to", str(end),
+                        "-i", video_path, "-c", "copy", "-avoid_negative_ts", "make_zero", raw_path
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+                    t_raw_cut = time.perf_counter() - t0
+                    
+                    final_path = raw_path
+                    t_wce = 0.0
+                    t_branding = 0.0
+                    t_upload = 0.0
+                    
+                    # GPU: Enhance Clip
+                    if editor_instance:
+                        edited_path = os.path.join(tmp, f"edited_{i}_{int(start)}_{int(end)}.mp4")
+                        clip_transcript = clip.get("transcript") or clip.get("captions") or []
+                        clip_title = clip.get("opening_caption") or clip.get("title") or clip.get("text", "")
+                        
+                        cortex_hints = None
+                        if clip.get("cortex_enabled"):
+                            cortex_hints = {
+                                "cortex_enabled": True,
+                                "editing_notes": clip.get("editing_notes", {}),
+                                "opening_caption": clip.get("opening_caption", ""),
+                                "title": clip.get("title", ""),
+                                "hook_type": clip.get("hook_type", ""),
+                                "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {})
+                            }
+                        
+                        with gpu_lock:
+                            t0 = time.perf_counter()
+                            edit_result = editor_instance.enhance_pretrimmed_clip(
+                                input_path=raw_path,
+                                output_path=edited_path,
+                                source_start=start,
+                                source_end=end,
+                                transcript=clip_transcript,
+                                config=editor_cfg,
+                                clip_title=clip_title,
+                                precomputed_narrative=clip.get("precomputed_narrative"),
+                                cortex_hints=cortex_hints,
+                                is_free=is_free,
+                                precomputed_face_cache=face_cache.get_clip_cache(clip) if face_cache else {},
+                                precomputed_ass_path=precomputed_captions[i].result()[1] if precomputed_captions.get(i) else None
+                            )
+                            t_wce = time.perf_counter() - t0
+                        if edit_result:
+                            final_path = edited_path
+                            clip_res["edit_metadata"] = getattr(edit_result, "metadata", {}) or {}
+                        
+                    # Branding
+                    # If WCE merged branding into its pass, skip the separate call.
+                    # Fallback to separate pass if editor was disabled or branding wasn't merged.
+                    _wce_branding_merged = (
+                        edit_result is not None
+                        and (getattr(edit_result, "metadata", {}) or {}).get("branding_merged_into_wce", False)
+                    )
+                    if _wce_branding_merged:
+                        t_branding = 0.0  # merged into WCE — no extra pass needed
+                        print(f"[LOCAL_WORKER] Branding merged into WCE pass — 0s extra", flush=True)
+                    elif os.getenv("HS_APPLY_BRANDING", "1") == "1":
                         branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
-                        if _apply_distribution_branding(edit_result.output_path, branded_path):
-                            if os.path.exists(branded_path):
+                        with gpu_lock:
+                            t0 = time.perf_counter()
+                            if _apply_distribution_branding(final_path, branded_path):
                                 final_path = branded_path
-                        else:
-                            final_path = edit_result.output_path
-                    else:
-                        print(f"[LOCAL_WORKER] Editor output missing clip {i}, using raw and branding", flush=True)
-                        branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
-                        if _apply_distribution_branding(raw_path, branded_path):
-                            if os.path.exists(branded_path):
-                                final_path = branded_path
-                except Exception as edit_err:
-                    print(f"[LOCAL_WORKER] Editor error clip {i}: {edit_err}", flush=True)
-                    branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
-                    if _apply_distribution_branding(raw_path, branded_path):
-                        if os.path.exists(branded_path):
-                            final_path = branded_path
-            else:
-                print(f"[LOCAL_WORKER] WCE disabled, applying distribution branding (watermark+outro) to clip {i}", flush=True)
-                branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
-                if _apply_distribution_branding(raw_path, branded_path):
-                    if os.path.exists(branded_path):
-                        final_path = branded_path
-                else:
-                    print(f"[LOCAL_WORKER] Distribution branding failed for clip {i}, using raw", flush=True)
+                            t_branding = time.perf_counter() - t0
 
-            # Upload to Cloudinary
-            clip_url = None
-            if cloudinary_ok:
-                clip_url = _upload_clip_to_cloudinary(final_path)
-                if clip_url:
-                    print(f"[LOCAL_WORKER] Uploaded clip {i}: {clip_url[:60]}...", flush=True)
-                else:
-                    print(f"[LOCAL_WORKER] Cloudinary upload returned None for clip {i}", flush=True)
-            else:
-                print(f"[LOCAL_WORKER] Cloudinary not configured — clip {i} has no URL", flush=True)
+                    # Upload
+                    url = None
+                    if cloudinary_ok:
+                        t0 = time.perf_counter()
+                        url = _upload_clip_to_cloudinary(final_path)
+                        t_upload = time.perf_counter() - t0
+                    
+                    clip_res["clip_url"] = url
+                    clip_res["editor_timing"] = {
+                        "raw_cut_s": round(t_raw_cut, 3),
+                        "wce_s": round(t_wce, 3),
+                        "branding_s": round(t_branding, 3),
+                        "upload_s": round(t_upload, 3),
+                        "total_s": round(time.perf_counter() - t_clip_total, 3),
+                    }
+                    with results_lock:
+                        results.append(clip_res)
+                        
+                    print(
+                        f"[EDITOR_TIMING] clip={i} raw={t_raw_cut:.2f}s wce={t_wce:.2f}s "
+                        f"branding={t_branding:.2f}s upload={t_upload:.2f}s total={time.perf_counter() - t_clip_total:.2f}s",
+                        flush=True,
+                    )
+                    print(f"[PIPELINE] Clip done + uploaded: {i}", flush=True)
 
-            clip_res["clip_url"] = clip_url
-            return clip_res
+                except Exception as e:
+                    import traceback
+                    print(f"[PIPELINE] Clip failed: {i} -> {e}\n{traceback.format_exc()}", flush=True)
+                    clip_res["error"] = str(e)
+                    with results_lock:
+                        results.append(clip_res)
+                finally:
+                    clip_queue.task_done()
 
-        import concurrent.futures
-        # Use 3 concurrent workers for FFmpeg NVENC (Consumer GPUs usually cap around 3-5 concurrent streams)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            future_to_i = {executor.submit(_process_single_clip, i, clip): i for i, clip in enumerate(clips)}
-            for future in concurrent.futures.as_completed(future_to_i):
-                processed_clips.append(future.result())
+        producer = threading.Thread(target=run_orchestrator, name="Orchestrator")
+        consumer = threading.Thread(target=run_editor, name="Editor")
+        
+        producer.start()
+        consumer.start()
+        
+        producer.join()
+        consumer.join()
+        
+        # Sort results back to original order by start time
+        results.sort(key=lambda x: x.get("start", 0))
 
-        # Sort back to original order since futures finish randomly
-        processed_clips.sort(key=lambda x: x.get("start", 0))
-        return processed_clips
+        if orch_state["error"] is not None:
+            raise RuntimeError(f"Orchestrator failed before producing clips: {orch_state['error']}") from orch_state["error"]
+        if orch_state["produced"] == 0:
+            raise RuntimeError("Orchestrator produced 0 candidate clips — nothing to edit")
+
+        successful = [r for r in results if not r.get("error")]
+        failed = [r for r in results if r.get("error")]
+        if not successful:
+            summary = "; ".join(f"[{r.get('start')}-{r.get('end')}]: {r.get('error')}" for r in failed[:5])
+            raise RuntimeError(f"All {len(failed)} clip(s) failed during editing → {summary}")
+        if failed:
+            print(f"[PIPELINE] {len(failed)}/{len(results)} clips failed during editing; returning {len(successful)} successful.", flush=True)
+        return successful
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Main polling loop
-# ══════════════════════════════════════════════════════════════════════════════
 
 def main():
     _print_startup_banner()

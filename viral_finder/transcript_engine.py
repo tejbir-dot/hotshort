@@ -37,7 +37,8 @@ except ImportError:
 
 try:
     from faster_whisper import WhisperModel as FasterWhisperModel
-except ImportError:
+    import faster_whisper
+except Exception:
     FasterWhisperModel = None
 
 try:

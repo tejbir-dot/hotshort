@@ -114,32 +114,54 @@ def apply_post_enrichment_validation(
         import os
         soft_thresh = float(os.getenv("HS_SOFT_GATE_THRESHOLD", "0.35"))
         print(f"[INFO] Traffic-light gates bypassed! Using soft gates (threshold={soft_thresh}).")
-        
-        # Sort candidates by final_score / score
+
+        def _best_score(x: Dict[str, Any]) -> float:
+            """Pick the best available pre-ranking score.
+            viral_score is only set AFTER _run_ranking (which runs post-validation),
+            so for hook-origin candidates it is 0.0 at this point. Fall through to
+            score_enriched and raw score so they aren't incorrectly rejected."""
+            return float(
+                x.get("viral_score")
+                or x.get("score_enriched")
+                or x.get("final_score")
+                or x.get("arc_score")
+                or x.get("score")
+                or 0.0
+            )
+
         sorted_cands = sorted(
             [dict(c) for c in (candidates or [])],
-            key=lambda x: float(x.get("final_score") or x.get("score", 0.0) or 0.0),
+            key=_best_score,
             reverse=True,
         )
-        
+
         accepted = []
         rejected = []
         for c in sorted_cands:
-            vscore = float(c.get("viral_score", c.get("score", 0.0)) or 0.0)
+            vscore = _best_score(c)
             if vscore > soft_thresh:
                 c["validation"] = {"accepted": True, "reasons": []}
                 accepted.append(c)
             else:
                 c["validation"] = {"accepted": False, "reasons": ["viral_score_below_soft_threshold"]}
                 rejected.append(c)
-                
+
         if not accepted and sorted_cands:
+            # Safety rescue: always pass the highest-scored candidate so the
+            # pipeline never returns 0 results purely due to a threshold config.
             top = sorted_cands[0]
             top["validation"] = {"accepted": True, "reasons": ["rescued_top_1_by_soft_gate"]}
             accepted.append(top)
-            # Remove from rejected
-            rejected = [r for r in rejected if r.get("cid") != top.get("cid")]
-            
+            # Index-safe removal: don't rely on cid (may be missing for hook candidates)
+            rejected = [r for r in rejected if r is not top]
+            print(
+                f"[VALIDATION] rescued_top_1_by_soft_gate:"
+                f" score={_best_score(top):.3f}"
+                f" start={top.get('start', '?')}-{top.get('end', '?')}"
+                f" cid={top.get('cid', 'NO_CID')}",
+                flush=True,
+            )
+
         return accepted, rejected
     # ---- END SOFT MODE BYPASS ----
 

@@ -115,7 +115,9 @@ def ultron_brain_score(text: str, brain: dict):
     # --------------------------------------------------
     if not brain["semantic_enabled"]:
         meaning = min(1.0, wc / 18.0)
-        novelty = 1.0
+        # novelty=0.5: neutral signal. We have no semantic distance model here,
+        # so 1.0 is false confidence. Use 0.5 to avoid inflating every candidate equally.
+        novelty = 0.5
 
         emotion_words = {
             "love","hate","amazing","insane","truth",

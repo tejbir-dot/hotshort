@@ -1171,7 +1171,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
       <div class="empty-state" id="processingState" style="display: none; text-align: center; margin-top: 40px;">
         <div id="loader" class="loader" aria-hidden="true" style="display: block !important;">
           <p class="loader-caption" style="margin: 0 auto 10px; max-width: 420px; font-size: 0.74rem; letter-spacing: 0.26em; text-transform: uppercase; color: rgba(255, 236, 205, 0.52);">HotShort Intelligence</p>
-          <div class="loader-visual" style="position: relative; width: min(220px, 72vw); height: 160px; margin: 0 auto 18px; padding: 14px; border-radius: 28px; background: radial-gradient(circle at 50% 20%, rgba(255, 190, 95, 0.14), transparent 52%), radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.08), transparent 56%), linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)); border: 1px solid rgba(255, 215, 170, 0.12); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255,255,255,0.05); overflow: hidden;">
+          <div class="loader-visual" style="position: relative; width: 100%; max-width: 400px; height: 280px; margin: 0 auto 18px; padding: 0; overflow: hidden; background: transparent; border: none; box-shadow: none;">
             <div id="strands-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
           </div>
           <div class="wave" style="position: relative; overflow: hidden; width: 240px; height: 8px; margin: 0 auto 18px; border-radius: 999px; background: linear-gradient(90deg, rgba(255, 194, 94, 0.16), rgba(255, 244, 210, 0.92), rgba(255, 194, 94, 0.16)); background-size: 240% 100%; animation: waveMove 1.6s ease-in-out infinite; box-shadow: 0 0 20px rgba(255, 215, 160, 0.45), 0 0 46px rgba(255, 176, 71, 0.18);"></div>
@@ -2279,12 +2279,12 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
     import { initStrands } from "{{ url_for('static', filename='js/strands.js') }}";
     
     // Initialize WebGL Strands Animation when the processing state is visible, or just immediately.
-    // Setting golden/fiery colors for HotShort branding.
+    // Setting colors exactly as requested by user.
     initStrands('#strands-container', {
-      colors: ['#FFB84D', '#FF9A00', '#FFD277', '#FF5500'],
-      count: 5,
-      speed: 0.8,
-      thickness: 1.2,
+      colors: ['#eba12aff', '#7C3AED', '#06B6D4', '#EAB308'],
+      count: 4,
+      speed: 0.6,
+      thickness: 1.0,
       intensity: 0.85,
       glow: 2.8,
       taper: 3,

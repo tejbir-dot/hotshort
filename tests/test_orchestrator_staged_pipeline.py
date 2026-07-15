@@ -310,3 +310,83 @@ def test_editor_refiner_rejects_flat_incomplete_arc():
     orchestrator._run_editor_refiner(ctx)
 
     assert ctx.ranked_output == []
+
+
+def test_final_quality_rejects_zero_hook_unresolved_payoff():
+    candidate = {
+        "start": 10.0,
+        "end": 54.0,
+        "duration": 44.0,
+        "hook_strength": 0.0,
+        "hook_score": 0.0,
+        "open_loop_score": 0.0,
+        "payoff_score": 0.24,
+        "loop_state": "PARTIAL_PAYOFF",
+        "signals": {
+            "semantic": {"impact": 0.8, "meaning": 0.82, "clarity": 0.77},
+            "engagement": {"motion": 0.0},
+        },
+    }
+
+    reasons = orchestrator._final_quality_reject_reasons(candidate)
+
+    assert "zero_hook_signal" in reasons
+    assert "weak_unresolved_payoff" in reasons
+    assert orchestrator._final_quality_rescue(candidate) is False
+
+
+def test_final_quality_allows_resolved_complete_loop():
+    candidate = {
+        "start": 10.0,
+        "end": 45.0,
+        "duration": 35.0,
+        "hook_strength": 0.42,
+        "hook_score": 0.42,
+        "open_loop_score": 0.48,
+        "payoff_score": 0.52,
+        "loop_state": "RESOLVED",
+        "arc_complete": True,
+        "signals": {
+            "semantic": {"impact": 0.66, "meaning": 0.72, "clarity": 0.74},
+            "engagement": {"motion": 0.02},
+        },
+    }
+
+    assert orchestrator._final_quality_reject_reasons(candidate) == []
+
+
+def test_arc_assembler_trace_uses_measured_hook_score_not_hook_hunter_confidence(monkeypatch):
+    """Selection telemetry must never relabel a source confidence as a score."""
+    ctx = orchestrator.PipelineContext(path="dummy.mp4", top_k=1, allow_fallback=False)
+    ctx.transcript = [
+        {"start": 0.0, "end": 10.0, "text": "A startling claim opens the discussion."},
+        {"start": 10.0, "end": 20.0, "text": "Here is the supporting explanation."},
+        {"start": 20.0, "end": 30.0, "text": "The conclusion resolves the claim."},
+    ]
+    ctx.validated_candidates = [{
+        "cid": "hook-origin-1",
+        "start": 0.0,
+        "end": 30.0,
+        "hook_idx": 0,
+        "hook_strength": 0.9,
+        "signals": {"narrative": {"hook_score": 0.0}},
+    }]
+    monkeypatch.setattr(
+        orchestrator,
+        "compute_quality_scores",
+        lambda *args, **kwargs: {
+            "hook_score": 0.0,
+            "open_loop_score": 0.0,
+            "payoff_resolution_score": 0.0,
+            "information_density_score": 0.0,
+            "rewatch_score": 0.0,
+        },
+    )
+
+    orchestrator._run_arc_assembler_v2(ctx)
+
+    clip = ctx.ranked_output[0]
+    assert clip["hook_score"] == 0.0
+    assert clip["hook_selection_trace"]["score"] == 0.0
+    assert clip["hook_hunter_confidence"] == 0.9
+    assert clip["hook_selection_trace"]["hook_hunter_confidence"] == 0.9

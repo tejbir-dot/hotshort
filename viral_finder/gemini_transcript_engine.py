@@ -40,7 +40,7 @@ except ImportError:
 try:
     from faster_whisper import WhisperModel as FasterWhisperModel
     import faster_whisper
-except ImportError:
+except Exception:
     FasterWhisperModel = None
 
 # We don't need webrtcvad for the Turbo mode (we use native VAD), 

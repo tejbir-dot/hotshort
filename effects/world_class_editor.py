@@ -48,6 +48,11 @@ else:
 
 log = logging.getLogger("world_class_editor")
 
+# Face-cache cluster locks stabilize the crop anchor between scene changes.
+ENABLE_CLUSTER_SCAN = os.getenv("HS_ENABLE_CLUSTER_SCAN", "1").strip().lower() not in ("0", "false", "no", "off")
+CLUSTER_TRANSITION_FRAMES = max(1, int(os.getenv("HS_CLUSTER_TRANSITION_FRAMES", "12") or 12))
+MIN_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MIN_FACE_HEIGHT_RATIO", "0.05") or 0.05)))
+
 # Font directory: matches the COPY path in Dockerfile.worker.
 # On the NVIDIA container, fontconfig may not index these correctly,
 # so we pass this path directly to libass via the fontsdir= parameter.
@@ -106,7 +111,53 @@ def _nvdec_available() -> bool:
     return _nvdec_available._cached
 
 
-def _hwaccel_decode_args() -> List[str]:
+def _ffmpeg_decoder_available(decoder_name: str) -> bool:
+    cache_name = f"_decoder_{decoder_name}_cached"
+    if not hasattr(_ffmpeg_decoder_available, cache_name):
+        available = False
+        try:
+            r = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-decoders"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            available = r.returncode == 0 and decoder_name in (r.stdout or "")
+        except Exception:
+            available = False
+        setattr(_ffmpeg_decoder_available, cache_name, available)
+        log.info("[WCE] FFmpeg decoder %s available: %s", decoder_name, available)
+    return bool(getattr(_ffmpeg_decoder_available, cache_name))
+
+
+def _input_video_codec(path: Optional[str]) -> str:
+    if not path:
+        return ""
+    try:
+        out = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "default=nokey=1:noprint_wrappers=1",
+                path,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return (out.stdout or "").strip().lower()
+    except Exception:
+        return ""
+
+
+def _hwaccel_decode_args(input_path: Optional[str] = None) -> List[str]:
     """Return FFmpeg args to enable GPU (NVDEC/CUDA) decode when available.
 
     These args go BEFORE -i in the FFmpeg command.
@@ -120,6 +171,15 @@ def _hwaccel_decode_args() -> List[str]:
       - NVENC encodes output → GPU re-compresses final output
       Net: CPU load drops ~40-60% on a typical 30s clip encode pass.
     """
+    codec = _input_video_codec(input_path)
+    if codec == "av1":
+        if os.environ.get("HS_ENABLE_AV1_NVDEC", "0").strip().lower() in ("1", "true", "yes"):
+            if _ffmpeg_decoder_available("av1_cuvid"):
+                log.info("[WCE] input codec=av1; using AV1 NVDEC decode via av1_cuvid")
+                return ["-hwaccel", "cuda", "-hwaccel_output_format", "nv12", "-c:v", "av1_cuvid"]
+            log.info("[WCE] input codec=av1; HS_ENABLE_AV1_NVDEC=1 but av1_cuvid is unavailable")
+        log.info("[WCE] input codec=av1; using CPU decode while keeping NVENC encode when available")
+        return []
     if _nvdec_available():
         return ["-hwaccel", "cuda", "-hwaccel_output_format", "nv12"]
     return []
@@ -161,6 +221,7 @@ def _video_encode_args(crf: int = 20, preset: str = "veryfast") -> List[str]:
     log.info(f"[WCE-VISUAL] export_quality crf={_crf} maxrate={_maxrate}")
 
     if _nvenc_available():
+        log.info("[WCE] encode=NVENC codec=h264_nvenc")
         return [
             "-c:v", "h264_nvenc",
             "-preset", "p3",
@@ -174,6 +235,7 @@ def _video_encode_args(crf: int = 20, preset: str = "veryfast") -> List[str]:
             "-pix_fmt", "yuv420p",
         ]
     # CPU fallback (libx264)
+    log.info("[WCE] encode=CPU codec=libx264")
     return [
         "-c:v", "libx264",
         "-preset", _preset,
@@ -182,6 +244,23 @@ def _video_encode_args(crf: int = 20, preset: str = "veryfast") -> List[str]:
         "-bufsize", _bufsize,
         "-pix_fmt", "yuv420p",
     ]
+
+
+def _hook_zoom_filter_expr(config: "ClipEditConfig", clip_duration: float) -> Optional[str]:
+    if not config.enable_hook_zoom or clip_duration < 2.0:
+        return None
+    scale = _clamp(config.hook_zoom_scale, 1.01, 1.30)
+    dur = _clamp(config.hook_zoom_duration_s, 0.3, min(3.0, clip_duration * 0.4))
+    d = round(dur, 4)
+    s = round(scale, 4)
+    crop_w = f"iw/({s}-({s}-1)*min(t/{d}\\,1))"
+    crop_h = f"ih/({s}-({s}-1)*min(t/{d}\\,1))"
+    crop_x = f"(iw-{crop_w})/2"
+    crop_y = f"(ih-{crop_h})/2"
+    return (
+        f"crop=w='{crop_w}':h='{crop_h}':x='{crop_x}':y='{crop_y}',"
+        "scale=iw:ih:flags=lanczos"
+    )
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -282,6 +361,10 @@ class ClipEditConfig:
     enable_color_grade: bool = True        # professional color grading (inline, zero extra pass)
     color_grade_preset: str = "premium"    # "premium" | "warm" | "cool" | "clean"
     enable_vignette: bool = True           # subtle edge darkening for cinematic depth
+    # ── Distribution branding (merge into WCE pass) ─────────────────────────────
+    apply_distribution_branding: bool = False  # merge blur+watermark+outro into this pass
+    branding_watermark_path: str = ""      # abs path to logo.png
+    branding_outro_path: str = ""          # abs path to outro.mp4 (empty = skip outro)
 
 
 @dataclass
@@ -319,8 +402,45 @@ class ClipEditor:
         _ensure_dir(self.work_dir)
 
     def _run(self, cmd: List[str], timeout_s: int = 120) -> None:
-        # stderr ko sys.stderr pe bhej diya taaki RunPod logs mein print ho (DEVNULL hata diya)
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=sys.stderr, timeout=timeout_s)
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=sys.stderr, timeout=timeout_s)
+        except subprocess.CalledProcessError as exc:
+            if not self._uses_cuda_decode(cmd):
+                raise
+            log.warning("[WCE] CUDA decode failed; retrying same FFmpeg command with CPU decode")
+            fallback_cmd = self._without_cuda_decode(cmd)
+            subprocess.run(fallback_cmd, check=True, stdout=subprocess.DEVNULL, stderr=sys.stderr, timeout=timeout_s)
+
+    @staticmethod
+    def _uses_cuda_decode(cmd: List[str]) -> bool:
+        if "-hwaccel" in cmd and "cuda" in cmd:
+            return True
+        return any(
+            cmd[index] == "-c:v"
+            and index + 1 < len(cmd)
+            and str(cmd[index + 1]).endswith("_cuvid")
+            for index in range(len(cmd))
+        )
+
+    @staticmethod
+    def _without_cuda_decode(cmd: List[str]) -> List[str]:
+        out: List[str] = []
+        i = 0
+        while i < len(cmd):
+            if cmd[i] == "-hwaccel" and i + 1 < len(cmd):
+                i += 2
+                continue
+            if cmd[i] == "-hwaccel_output_format" and i + 1 < len(cmd):
+                i += 2
+                continue
+            # av1_cuvid is itself a hardware decoder. Leaving it in the retry
+            # command means the alleged CPU fallback repeats the same failure.
+            if cmd[i] == "-c:v" and i + 1 < len(cmd) and cmd[i + 1] == "av1_cuvid":
+                i += 2
+                continue
+            out.append(cmd[i])
+            i += 1
+        return out
 
     def _probe_video(self, path: str) -> Dict[str, Any]:
         cmd = [
@@ -613,7 +733,7 @@ class ClipEditor:
             "ffmpeg",
             "-y",
             "-nostdin",
-            *_hwaccel_decode_args(),   # ← GPU decode (NVDEC) when available
+            *_hwaccel_decode_args(input_path),   # GPU decode when supported by input codec
             "-ss",
             f"{start_s:.3f}",
             "-to",
@@ -662,23 +782,13 @@ class ClipEditor:
         total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1000.0
         step = max(1, int(total_frames / 15))
 
-        face_detector = None
-        if mp is not None:
-            try:
-                face_detector = mp.solutions.face_detection.FaceDetection(
-                    model_selection=1, min_detection_confidence=0.45
-                )
-            except Exception:
-                face_detector = None
-
         cascade = None
-        if face_detector is None:
-            try:
-                cascade = cv2.CascadeClassifier(
-                    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-                )
-            except Exception:
-                pass
+        try:
+            cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            )
+        except Exception:
+            pass
 
         samples = []
 
@@ -699,29 +809,17 @@ class ClipEditor:
                     continue
 
                 face_xs = []
-                if face_detector is not None:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    res = face_detector.process(rgb)
-                    for det in (res.detections or []):
-                        bbox = det.location_data.relative_bounding_box
-                        cx = _clamp(bbox.xmin + bbox.width / 2.0, 0.0, 1.0)
-                        face_xs.append(cx)
-                elif cascade is not None:
+                if cascade is not None:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = cascade.detectMultiScale(gray, 1.1, 6, minSize=(30, 30))
+                    faces = cascade.detectMultiScale(gray, 1.05, 3, minSize=(40, 40))
                     for x, y, fw, fh in faces:
-                        if 80 < fw < 400 and 0.05 < (y + fh / 2.0) / h < 0.95:
+                        if 40 < fw < 500 and 0.05 < (y + fh / 2.0) / h < 0.95:
                             face_xs.append(_clamp((x + fw / 2.0) / float(w), 0.0, 1.0))
 
                 if face_xs:
                     samples.append((target_frame / fps, face_xs))
         finally:
             cap.release()
-            if face_detector is not None:
-                try:
-                    face_detector.close()
-                except Exception:
-                    pass
 
         if not samples:
             return _null
@@ -781,7 +879,7 @@ class ClipEditor:
             speaker_positions=[median_x], face_switch_rate=0.0, samples=samples,
         )
 
-    def _get_crop_expression(self, video_fmt, transcript_window, config, clip_path=None):
+    def _get_crop_expression(self, video_fmt, transcript_window, config, clip_path=None, face_cache=None):
         """VideoFormat -> FFmpeg crop_x expression.
         monologue: EMA lerp (smooth, stable).
         podcast active: hard jump at transcript boundaries (true active speaker).
@@ -851,7 +949,7 @@ class ClipEditor:
             SMOOTH_ALPHA = 0.07        # position smoothing (ultra-smooth camera pan)
 
             active_detector = None
-            if mp is not None:
+            if False and mp is not None:
                 try:
                     # Bug fix: relaxed confidence thresholds — 0.5 was too strict
                     # for typical podcast talking-head shots where faces aren't
@@ -885,7 +983,7 @@ class ClipEditor:
                 real faces — especially in wide podcast shots.
                 """
                 h = det['h']
-                if h < frame_height * 0.08:  # Raised back to 0.08 — rejects plants/shoulders/false positives
+                if h < frame_height * MIN_VALID_FACE_HEIGHT_RATIO:
                     return False  # too small to be a face
                 ratio = h / max(1, det['w'])
                 if ratio < 0.7 or ratio > 3.0:  # Tighter aspect ratio — human face only
@@ -958,6 +1056,10 @@ class ClipEditor:
             smoothed_right_x = frame_width * 0.75
             smoothed_solo_x = frame_width * 0.5
             last_raw_faces = []
+            locked_cluster_id = None
+            locked_solo_x = None
+            cluster_transition_from_x = smoothed_solo_x
+            cluster_transition_remaining = 0
 
             # ── Per-frame analysis loop ──────────────────────────────────────────
             while True:
@@ -969,10 +1071,17 @@ class ClipEditor:
                 t = frame_idx / fps
 
                 # 1. Detect raw faces — FaceMesh (preferred) or haarcascade fallback
-                if frame_idx % 5 == 0:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                if face_cache is not None:
+                    # Nearest cached timestamp
+                    if face_cache:
+                        nearest = min(face_cache.keys(), key=lambda tx: abs(tx - t))
+                        raw_faces = face_cache[nearest]
+                    else:
+                        raw_faces = []
+                    last_raw_faces = raw_faces
+                elif frame_idx % 15 == 0:
                     raw_faces = []
-                    if active_detector:
+                    if False and active_detector:
                         res = active_detector.process(rgb)
                         if res and res.multi_face_landmarks:
                             for lm in res.multi_face_landmarks:
@@ -1003,6 +1112,16 @@ class ClipEditor:
                 else:
                     raw_faces = last_raw_faces
 
+                cluster_id = None
+                cluster_frame_range = None
+                if ENABLE_CLUSTER_SCAN and raw_faces:
+                    cluster_id = raw_faces[0].get("_cluster_id")
+                    if cluster_id is not None:
+                        cluster_frame_range = (
+                            raw_faces[0].get("_cluster_start"),
+                            raw_faces[0].get("_cluster_end"),
+                        )
+
                 # ── [FACE_DEBUG] Step-1 diagnostic ──────────────────────────────
                 if frame_idx % 25 == 0:
                     gray_mean = float(gray.mean()) if gray is not None else -1.0
@@ -1011,8 +1130,10 @@ class ClipEditor:
                         _h = _f['h']
                         _ratio = _h / max(1, _f['w'])
                         _cy = _f['y'] + _h / 2.0
-                        if _h < frame_height * 0.08:
-                            reject_reasons.append(f"too_small(h={_h:.0f}<{frame_height*0.08:.0f})")
+                        if _h < frame_height * MIN_VALID_FACE_HEIGHT_RATIO:
+                            reject_reasons.append(
+                                f"too_small(h={_h:.0f}<{frame_height * MIN_VALID_FACE_HEIGHT_RATIO:.0f})"
+                            )
                         elif _ratio < 0.7 or _ratio > 3.2:
                             reject_reasons.append(f"bad_ratio({_ratio:.2f})")
                         elif _cy < frame_height * 0.05 or _cy > frame_height * 0.95:
@@ -1126,9 +1247,34 @@ class ClipEditor:
 
                 if mode == "SOLO_LEFT" and left_slot is not None:
                     sx = left_slot['x'] + left_slot['w'] / 2.0
-                    smoothed_solo_x = smoothed_solo_x * (1 - SMOOTH_ALPHA) + sx * SMOOTH_ALPHA
                 elif mode == "SOLO_RIGHT" and right_slot is not None:
                     sx = right_slot['x'] + right_slot['w'] / 2.0
+                else:
+                    sx = None
+
+                if sx is not None and cluster_id is not None:
+                    if cluster_id != locked_cluster_id:
+                        locked_cluster_id = cluster_id
+                        locked_solo_x = sx
+                        cluster_transition_from_x = smoothed_solo_x
+                        cluster_transition_remaining = CLUSTER_TRANSITION_FRAMES
+                        log.info(
+                            "[CLUSTER_SCAN] cluster=%s locked_anchor_x=%d zoom=1.00 "
+                            "frame_range=[%s-%s]",
+                            cluster_id, int(locked_solo_x),
+                            cluster_frame_range[0], cluster_frame_range[1],
+                        )
+                    if cluster_transition_remaining > 0:
+                        progress = 1.0 - (cluster_transition_remaining / CLUSTER_TRANSITION_FRAMES)
+                        smoothed_solo_x = (
+                            cluster_transition_from_x * (1.0 - progress)
+                            + locked_solo_x * progress
+                        )
+                        cluster_transition_remaining -= 1
+                    else:
+                        smoothed_solo_x = locked_solo_x
+                elif sx is not None:
+                    # Original per-frame Haar behavior when the cache/cluster layer is off.
                     smoothed_solo_x = smoothed_solo_x * (1 - SMOOTH_ALPHA) + sx * SMOOTH_ALPHA
 
                 if frame_idx % 25 == 0:
@@ -1326,28 +1472,29 @@ class ClipEditor:
                 vf_parts.append(seg_in)
                 
                 if seg.mode in ("SOLO", "SOLO_LEFT", "SOLO_RIGHT"):
-                    # 1.05x cinematic zoom — draws the viewer's eye to the active speaker
-                    SOLO_ZOOM = 1.05
-                    crop_h = max(2, int(src_h / SOLO_ZOOM))
-                    crop_w = max(2, int(round(crop_h * dst_ar)))
-                    c_x = int(round(_clamp(seg.crop_x - crop_w / 2.0, 0.0, src_w - crop_w)))
-                    c_y = max(0, int(round((src_h - crop_h) / 2.0)))
+                    # Disabled 1.05x cinematic zoom to prevent chopping off the top of the head
+                    SOLO_ZOOM = 1.0
+                    crop_h = max(2, int(src_h / SOLO_ZOOM)) & ~1
+                    crop_w = max(2, int(round(crop_h * dst_ar))) & ~1
+                    c_x = int(round(_clamp(seg.crop_x - crop_w / 2.0, 0.0, src_w - crop_w))) & ~1
+                    c_y = max(0, int(round((src_h - crop_h) / 2.0))) & ~1
                     chain = f"[v_{idx}_raw]crop={crop_w}:{crop_h}:{c_x}:{c_y},scale={dst_w}:{dst_h}:flags=lanczos,setsar=1[v_{idx}_out]"
                     vf_parts.append(chain)
                     
                 elif seg.mode == "ACTIVE_CENTER":
-                    crop_h = max(2, int(src_h / 1.4))
-                    crop_w = max(2, int((src_h * dst_ar) / 1.4))
-                    c_x = int(round(_clamp(seg.crop_x - crop_w / 2.0, 0.0, src_w - crop_w)))
-                    c_y = int(round((src_h - crop_h) / 2.0))
+                    # Disabled 1.15x zoom to prevent chopping off the head
+                    crop_h = src_h & ~1
+                    crop_w = max(2, int(round(crop_h * dst_ar))) & ~1
+                    c_x = int(round(_clamp(seg.crop_x - crop_w / 2.0, 0.0, src_w - crop_w))) & ~1
+                    c_y = 0
                     chain = f"[v_{idx}_raw]crop={crop_w}:{crop_h}:{c_x}:{c_y},scale={dst_w}:{dst_h}:flags=lanczos,setsar=1[v_{idx}_out]"
                     vf_parts.append(chain)
                     
                 else: # SPLIT
-                    crop_h = src_h
-                    crop_w = max(2, int(round(src_h * (dst_w / (dst_h / 2.0)))))
-                    l_cx = int(round(_clamp(seg.left_x - crop_w / 2.0, 0.0, src_w - crop_w)))
-                    r_cx = int(round(_clamp(seg.right_x - crop_w / 2.0, 0.0, src_w - crop_w)))
+                    crop_h = src_h & ~1
+                    crop_w = max(2, int(round(src_h * (dst_w / (dst_h / 2.0))))) & ~1
+                    l_cx = int(round(_clamp(seg.left_x - crop_w / 2.0, 0.0, src_w - crop_w))) & ~1
+                    r_cx = int(round(_clamp(seg.right_x - crop_w / 2.0, 0.0, src_w - crop_w))) & ~1
                     is_left = (seg.active_speaker == "left")
                     
                     top_chain = f"crop={crop_w}:{crop_h}:{l_cx}:0,scale={dst_w}:{int(dst_h//2)}:flags=lanczos"
@@ -1396,8 +1543,8 @@ class ClipEditor:
         elif isinstance(focus_x, tuple) and len(focus_x) == 3:
             expr, left_x, right_x = focus_x
             expr = expr.replace(",", "\\,")
-            crop_h = src_h
-            crop_w = max(2, int(round(src_h * (dst_w / (dst_h / 2.0)))))
+            crop_h = src_h & ~1
+            crop_w = max(2, int(round(src_h * (dst_w / (dst_h / 2.0))))) & ~1
             l_cx = str(int(round(_clamp(src_w * left_x - crop_w / 2.0, 0.0, src_w - crop_w))))
             r_cx = str(int(round(_clamp(src_w * right_x - crop_w / 2.0, 0.0, src_w - crop_w))))
             is_top = f"lt({expr}\\,{left_x + 0.02})"
@@ -1433,8 +1580,8 @@ class ClipEditor:
                 return True, f"{vf_str}[v_stacked];[v_stacked]{','.join(post_chain)}[v_reframe]"
             return True, f"{vf_str}[v_stacked];[v_stacked]null[v_reframe]"
         elif src_ar >= dst_ar:
-            crop_h = src_h
-            crop_w = max(2, int(round(src_h * dst_ar)))
+            crop_h = src_h & ~1
+            crop_w = max(2, int(round(src_h * dst_ar))) & ~1
             if isinstance(focus_x, str):
                 raw_x = f"max(0,min({src_w}-{crop_w},{src_w}*({focus_x})-({crop_w}/2.0)))"
                 crop_x = raw_x.replace(",", "\\,")
@@ -1444,8 +1591,8 @@ class ClipEditor:
             crop_y = "0"
             vf_parts = [f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}", f"scale={dst_w}:{dst_h}:flags=lanczos"]
         else:
-            crop_w = src_w
-            crop_h = max(2, int(round(src_w / dst_ar)))
+            crop_w = src_w & ~1
+            crop_h = max(2, int(round(src_w / dst_ar))) & ~1
             crop_x = "0"
             crop_y = str(int(round((src_h - crop_h) / 2.0)))
             vf_parts = [f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}", f"scale={dst_w}:{dst_h}:flags=lanczos"]
@@ -1499,7 +1646,7 @@ class ClipEditor:
             "ffmpeg",
             "-y",
             "-nostdin",
-            *_hwaccel_decode_args(),   # ← GPU decode
+            *_hwaccel_decode_args(input_path),   # GPU decode when supported by input codec
             "-i",
             input_path,
             "-filter_complex",
@@ -1583,7 +1730,7 @@ class ClipEditor:
 
         cmd = [
             "ffmpeg", "-y", "-nostdin",
-            *_hwaccel_decode_args(),   # ← GPU decode (NVDEC)
+            *_hwaccel_decode_args(input_path),   # GPU decode when supported by input codec
             "-i", input_path,
             "-vf", vf,
             *_video_encode_args(crf=18, preset="veryfast"),  # ← NVENC, near-lossless intermediate
@@ -1635,6 +1782,11 @@ class ClipEditor:
             out += "..."
         return out
 
+    def _decorate_caption(self, text: str, use_emoji: bool) -> str:
+        # User explicitly requested 100% accuracy over emojis.
+        # Emojis break Whisper's exact word-level timing arrays.
+        return text.strip()
+
     def _load_translator(self, target_lang: str):
         if self._translator is not None:
             return self._translator
@@ -1663,23 +1815,6 @@ class ClipEditor:
         except Exception:
             pass
         return text
-
-    def _decorate_caption(self, text: str, use_emoji: bool) -> str:
-        out = text.strip()
-        if not use_emoji:
-            return out
-        emoji_rules = [
-            (r"\b(secret|nobody tells|hidden)\b", "🔥"),
-            (r"\b(money|profit|revenue|sale)\b", "💸"),
-            (r"\b(ai|tool|automation)\b", "🤖"),
-            (r"\b(grow|growth|viral)\b", "🚀"),
-            (r"\b(fast|quick|instantly)\b", "⚡"),
-        ]
-        low = out.lower()
-        for pat, suffix in emoji_rules:
-            if re.search(pat, low):
-                return out + suffix
-        return out
 
     def _caption_segments(
         self,
@@ -1822,7 +1957,7 @@ class ClipEditor:
         if not words:
             return text
 
-        # Semantic color routing — priority: Danger > Success > Highlight
+                # Semantic color routing - priority: Danger > Success > HookWord > Highlight
         _danger_keywords = {
             "wrong", "mistake", "fail", "failing", "failed", "failure", "lose", "losing", "loss",
             "bad", "never", "stop", "quit", "risk", "trap", "scam", "fake", "lie", "lies",
@@ -1833,9 +1968,13 @@ class ClipEditor:
             "free", "best", "top", "success", "succeed", "rich", "wealth", "power", "strong",
             "fast", "quick", "instant", "instantly", "viral", "launch", "unlock", "proven",
         }
+        _hook_keywords = {
+            "interesting", "look", "attention", "listen", "wait", "secret", "truth", 
+            "nobody", "why", "how", "money", "ai", "tool", "automation", "always", "real", 
+            "hack", "exposed", "hidden",
+        }
         _highlight_keywords = {
-            "secret", "truth", "nobody", "why", "how", "money", "ai", "tool", "automation",
-            "always", "real", "hack", "exposed", "hidden",
+            "must", "important", "crucial", "key", "remember", "focus",
         }
 
         def _style_for(word: str) -> str:
@@ -1844,6 +1983,8 @@ class ClipEditor:
                 return "Danger"
             if clean in _success_keywords:
                 return "Success"
+            if clean in _hook_keywords:
+                return "HookWord"
             if clean in _highlight_keywords:
                 return "Highlight"
             return ""
@@ -1872,6 +2013,146 @@ class ClipEditor:
             words[idx] = f"{{\\r{style}}}{words[idx]}{{\\r}}"
         return " ".join(words)
 
+    def generate_caption_file(self, input_path: str, source_start: float, source_end: float, transcript: list, config, clip_title: str, cortex_hints: dict, precomputed_narrative: dict = None) -> str:
+        """Standalone helper to generate .ass file for a clip before enhancing it."""
+        import uuid
+        import time
+        from utils.clipper import get_video_duration
+        
+        cfg = config or ClipEditConfig()
+        
+        _cortex = cortex_hints or {}
+        _cortex_active = bool(_cortex.get("cortex_enabled"))
+        editing_notes = _cortex.get("editing_notes", {}) if isinstance(_cortex.get("editing_notes"), dict) else {}
+        
+        pacing_note = str(editing_notes.get("pacing_note", "")).lower().strip()
+        subtitle_style = str(editing_notes.get("subtitle_style", "classic")).lower().strip()
+        
+        if _cortex_active:
+            if pacing_note == "fast":
+                cfg.max_caption_words = 3
+            elif pacing_note == "slow":
+                cfg.max_caption_words = 9
+
+        base_meta = self._probe_video(input_path)
+        clip_duration = max(0.01, float(base_meta.get("duration") or 0.0))
+        
+        if precomputed_narrative and isinstance(precomputed_narrative, dict):
+            transcript_window = list(precomputed_narrative.get("transcript_window") or [])
+            new_win = []
+            for x in transcript_window:
+                xs = _safe_float(x.get("start"), 0.0)
+                xe = _safe_float(x.get("end"), xs)
+                seg_offset = xs - source_start
+                seg_remapped = {
+                    "start": max(0.0, seg_offset),
+                    "end": min(clip_duration, xe - source_start),
+                    "text": x.get("text", "")
+                }
+                raw_words = x.get("words", [])
+                if raw_words:
+                    remapped_words = []
+                    for w in raw_words:
+                        ws = _safe_float(w.get("start"), xs)
+                        we = _safe_float(w.get("end"), xe)
+                        remapped_words.append({
+                            "word": w.get("word") or w.get("text", ""),
+                            "text": w.get("word") or w.get("text", ""),
+                            "start": max(0.0, ws - source_start),
+                            "end": min(clip_duration, we - source_start),
+                        })
+                    seg_remapped["words"] = remapped_words
+                new_win.append(seg_remapped)
+            transcript_window = new_win
+            pre_trim = precomputed_narrative.get("trim")
+        else:
+            transcript_window = self._window_transcript(transcript, source_start, source_end)
+            pre_trim = None
+            
+        if isinstance(pre_trim, dict):
+            trim_in = _safe_float(pre_trim.get("in"), 0.0)
+            trim_out = _safe_float(pre_trim.get("out"), clip_duration)
+            trim_in = _clamp(trim_in, 0.0, max(0.0, clip_duration - 0.2))
+            trim_out = _clamp(trim_out, trim_in + 0.2, clip_duration)
+        else:
+            trim_in = 0.0
+            trim_out = clip_duration
+            
+        ramped_duration = trim_out - trim_in
+        if cfg.enable_hook_speed_ramp:
+            ramp_window = min(2.5, (trim_out - trim_in) * 0.4)
+            ramped_duration = ramp_window / cfg.hook_ramp_speed + (trim_out - trim_in - ramp_window)
+        else:
+            ramp_window = 0.0
+            
+        captions = self._caption_segments(
+            transcript_window=transcript_window,
+            source_start=source_start,
+            trim_in=trim_in,
+            trim_out=trim_out,
+            config=cfg,
+            ramp_window=ramp_window,
+            video_fmt=None,
+        )
+        
+        if _cortex_active and _cortex.get("opening_caption"):
+            hook_line = str(_cortex["opening_caption"]).strip()
+        elif _cortex_active and _cortex.get("title"):
+            hook_line = str(_cortex["title"]).strip()
+        else:
+            hook_line = clip_title.strip() if clip_title else (captions[0].text if captions else "")
+
+        if _cortex_active:
+            hook_type = str(_cortex.get("hook_type", "")).lower()
+            if "curiosity" in hook_type or "mystery" in hook_type:
+                cta_line = "Would you do it? Comment below."
+            elif "fear" in hook_type or "risk" in hook_type or "danger" in hook_type:
+                cta_line = "Share this before it's too late."
+            elif "reveal" in hook_type or "twist" in hook_type or "surprise" in hook_type:
+                cta_line = "Save this — you'll want to rewatch."
+            elif "inspiration" in hook_type or "motivation" in hook_type:
+                cta_line = "Follow for more of these moments."
+            elif "confession" in hook_type or "personal" in hook_type:
+                cta_line = "Drop a reaction below."
+            else:
+                cta_line = "Follow for more creator breakdowns."
+        else:
+            cta_line = "Follow for more creator breakdowns"
+            
+        cortex_hashtags = None
+        if _cortex_active:
+            ls = _cortex.get("learning_signal_for_hotshort", {})
+            meaning_pattern = (ls.get("meaning_pattern") or "").strip() if isinstance(ls, dict) else ""
+            topic_tags = [
+                w.lower().replace(" ", "")
+                for w in meaning_pattern.split(",")
+                if len(w.strip()) > 3
+            ][:3]
+            if topic_tags:
+                cortex_hashtags = " ".join(f"#{t}" for t in topic_tags)
+        hashtags_line = (cortex_hashtags or self._extract_hashtags(transcript_window)) if cfg.add_hashtags else None
+        
+        has_any_overlay = (cfg.add_captions and captions) or (cfg.add_dynamic_overlays and hook_line) or (cfg.add_cta and cta_line)
+        if not has_any_overlay:
+            return ""
+            
+        ass_path = os.path.join(self.work_dir, f"wc_subs_async_{uuid.uuid4().hex}.ass")
+        target_wh = self._resolve_ratio(cfg.target_ratio)
+        
+        self._write_ass(
+            path=ass_path,
+            width=target_wh[0],
+            height=target_wh[1],
+            duration=max(0.1, ramped_duration),
+            captions=captions,
+            hook_line=hook_line if cfg.add_dynamic_overlays else None,
+            cta_line=cta_line if cfg.add_cta else None,
+            hashtags_line=hashtags_line,
+            subtitle_style=subtitle_style,
+            speaker_side="center",
+        )
+        return ass_path
+
     def _write_ass(
         self,
         path: str,
@@ -1890,9 +2171,9 @@ class ClipEditor:
         # Default style tokens
         caption_color = "&H00FFFFFF"     # White
         hook_color = "&H00FFAA00"        # Orange-yellow
-        highlight_color = "&H0000C8FF"   # Gold
-        border_size = "3"
-        shadow_size = "2"
+        highlight_color = "&H0000D4FF"   # Brighter Gold/Yellow
+        border_size = "5"                # Increased for 3D Pop
+        shadow_size = "8"                # Increased for deep 3D shadow
         bold_val = "-1"
         italic_val = "0"
         
@@ -1942,11 +2223,12 @@ class ClipEditor:
             f"Style: Caption,Montserrat,80,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             f"Style: Hook,Montserrat,75,{hook_color},&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
             f"Style: Highlight,Montserrat,80,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Danger,Montserrat,80,&H003300FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Success,Montserrat,80,&H0055FF00,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: HookWord,Montserrat,80,&H00FFAAFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Danger,Montserrat,80,&H006666FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Success,Montserrat,80,&H00AAFF88,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             f"Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
             # KaraokeWord: slightly smaller, used for the inactive (ghost) state of karaoke
-            f"Style: KaraokeGhost,Montserrat,80,&H80FFFFFF,&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: KaraokeGhost,Montserrat,80,&H00E0E0E0,&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -1958,8 +2240,14 @@ class ClipEditor:
                 continue
             escaped_text = _ass_escape(seg.text)
             words = seg.text.split()
-            if getattr(seg, "words", None) and len(seg.words) == len(words):
-                for wi, (word_text, w_dict) in enumerate(zip(words, seg.words)):
+            if getattr(seg, "words", None) and len(seg.words) > 0:
+                # Pad timings for any extra words (like emojis added by _decorate)
+                word_timings = list(seg.words)
+                while len(word_timings) < len(words):
+                    word_timings.append(word_timings[-1])
+                
+                for wi, word_text in enumerate(words):
+                    w_dict = word_timings[wi]
                     w_start = w_dict["start"]
                     w_end = w_dict["end"]
                     ghost_before = " ".join(words[:wi])
@@ -1972,7 +2260,7 @@ class ClipEditor:
                     if ghost_after:
                         parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_after))
                     line_text = " ".join(parts)
-                    an_tag = {"left": "{\\an1}", "right": "{\\an3}"}.get(getattr(seg, "speaker_side", "center"), "")
+                    an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                     events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
             elif len(words) > 1:
                 word_dur = (seg.end - seg.start) / len(words)
@@ -1990,12 +2278,12 @@ class ClipEditor:
                     if ghost_after:
                         parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_after))
                     line_text = " ".join(parts)
-                    an_tag = {"left": "{\\an1}", "right": "{\\an3}"}.get(getattr(seg, "speaker_side", "center"), "")
+                    an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                     events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
             else:
                 # Single-word segment — just highlight it
                 highlighted_text = self._highlight_text(escaped_text)
-                an_tag = {"left": "{\\an1}", "right": "{\\an3}"}.get(getattr(seg, "speaker_side", "center"), "")
+                an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                 events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{an_tag}{highlighted_text}")
 
         if hook_line:
@@ -2011,6 +2299,8 @@ class ClipEditor:
             start = max(0.0, duration - 2.6)
             end = max(start + 0.5, duration - 0.1)
             events.append(f"Dialogue: 2,{_ass_time(start)},{_ass_time(end)},CTA,,0,0,0,,{_ass_escape(cta_line)}")
+            
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(header + events))
 
@@ -2022,7 +2312,7 @@ class ClipEditor:
             "ffmpeg",
             "-y",
             "-nostdin",
-            *_hwaccel_decode_args(),   # ← GPU decode
+            *_hwaccel_decode_args(input_path),   # GPU decode when supported by input codec
             "-i",
             input_path,
             "-map",
@@ -2104,6 +2394,8 @@ class ClipEditor:
         write_metadata_file: bool = True,
         is_free: bool = False,
         cortex_hints: Optional[Dict[str, Any]] = None,
+        precomputed_face_cache: Optional[Dict[float, List[Dict[str, float]]]] = None,
+        precomputed_ass_path: Optional[str] = None,
     ) -> EditResult:
         cfg = config or ClipEditConfig()
         _ensure_dir(os.path.dirname(output_path) or ".")
@@ -2127,6 +2419,9 @@ class ClipEditor:
         t_face = 0.0
         t_reframe = 0.0
         t_encode = 0.0
+        ffmpeg_passes = 0
+        intermediate_files_created = 0
+        passes_saved = 0
 
         try:
             # --- CORTEX EDITING HINTS EXTRACTION ---
@@ -2237,33 +2532,52 @@ class ClipEditor:
             metadata["trim"] = {"in": round(trim_in, 3), "out": round(trim_out, 3)}
 
             work_a = input_path
-            if (trim_in > 0.08 or (clip_duration - trim_out) > 0.08) and (trim_out - trim_in) > 1.0:
+            render_trim_in = 0.0
+            render_trim_out = clip_duration
+            needs_trim = (trim_in > 0.08 or (clip_duration - trim_out) > 0.08) and (trim_out - trim_in) > 1.0
+            if needs_trim:
+                # Materialize the trim before format/crop analysis. Previously the
+                # final command limited input with -to while DirectorSegments still
+                # referenced the full pretrimmed timeline, producing empty trim
+                # branches and an FFmpeg concat failure.
                 cut_path = os.path.join(self.work_dir, f"wc_cut_{uuid.uuid4().hex}.mp4")
                 self._cut_with_fade(input_path, cut_path, trim_in, trim_out)
+                ffmpeg_passes += 1
+                intermediate_files_created += 1
                 tmp_files.append(cut_path)
                 work_a = cut_path
                 clip_duration = max(0.01, trim_out - trim_in)
+                render_trim_in = 0.0
+                render_trim_out = clip_duration
+                log.info(
+                    "[WCE_TIMELINE] materialized trim %.3f-%.3f; director/render timeline reset to 0-%.3f",
+                    trim_in, trim_out, clip_duration,
+                )
 
-            speed_path = os.path.join(self.work_dir, f"wc_speed_{uuid.uuid4().hex}.mp4")
-            ramp_window, ramped_duration = self._apply_hook_speed_ramp(work_a, speed_path, clip_duration, cfg)
-            tmp_files.append(speed_path)
-            work_b = speed_path
+            if cfg.enable_hook_speed_ramp:
+                speed_path = os.path.join(self.work_dir, f"wc_speed_{uuid.uuid4().hex}.mp4")
+                ramp_window, ramped_duration = self._apply_hook_speed_ramp(work_a, speed_path, clip_duration, cfg)
+                ffmpeg_passes += 1
+                intermediate_files_created += 1
+                tmp_files.append(speed_path)
+                work_b = speed_path
+                render_trim_in = 0.0
+                render_trim_out = ramped_duration
+            else:
+                ramp_window, ramped_duration = 0.0, clip_duration
+                work_b = work_a
+                passes_saved += 1
             metadata["hook_ramp"] = {"window_s": round(ramp_window, 3), "speed": round(cfg.hook_ramp_speed, 3)}
 
-            # ── Hook Zoom (GPU-accelerated punch-in at clip start) ─────────────────
-            if cfg.enable_hook_zoom:
-                zoom_path = os.path.join(self.work_dir, f"wc_zoom_{uuid.uuid4().hex}.mp4")
-                self._apply_hook_zoom(work_b, zoom_path, ramped_duration, cfg)
-                tmp_files.append(zoom_path)
-                work_b = zoom_path
+            hook_zoom_filter = _hook_zoom_filter_expr(cfg, ramped_duration)
+            if hook_zoom_filter:
+                passes_saved += 1
                 metadata["hook_zoom"] = {
                     "scale": round(cfg.hook_zoom_scale, 3),
                     "duration_s": round(cfg.hook_zoom_duration_s, 3),
+                    "compiled_into_final_graph": True,
                 }
-                log.info(
-                    "[HOOK_ZOOM] ✓ punch-in %.2fx / %.2fs applied",
-                    cfg.hook_zoom_scale, cfg.hook_zoom_duration_s,
-                )
+                log.info("[HOOK_ZOOM] compiled into final filter graph")
 
             t0 = time.perf_counter()
             work_meta = self._probe_video(work_b)
@@ -2306,7 +2620,7 @@ class ClipEditor:
                     )
             
             cap_thread = None
-            if cfg.add_captions:
+            if cfg.add_captions and precomputed_ass_path is None:
                 cap_thread = CaptionThread(self, transcript_window, source_start, trim_in, trim_out, cfg, ramp_window, video_fmt)
                 cap_thread.start()
             # --- END CAPTION THREAD ---
@@ -2314,7 +2628,7 @@ class ClipEditor:
             t0 = time.perf_counter()
             target_wh = self._resolve_ratio(cfg.target_ratio)
             if video_fmt is not None:
-                focus_x = self._get_crop_expression(video_fmt, transcript_window, cfg, work_b)
+                focus_x = self._get_crop_expression(video_fmt, transcript_window, cfg, work_b, face_cache=precomputed_face_cache)
             else:
                 focus_x = 0.5
             is_complex_graph, vf = self._build_reframe_filter(work_meta, target_wh, focus_x, cfg, boring_mode)
@@ -2398,25 +2712,35 @@ class ClipEditor:
             else:
                 speaker_side = "center"
 
-            if has_any_overlay:
-                ass_path = os.path.join(self.work_dir, f"wc_subs_{uuid.uuid4().hex}.ass")
-                tmp_files.append(ass_path)
-                self._write_ass(
-                    path=ass_path,
-                    width=target_wh[0],
-                    height=target_wh[1],
-                    duration=max(0.1, ramped_duration),
-                    captions=captions,
-                    hook_line=hook_line if cfg.add_dynamic_overlays else None,
-                    cta_line=cta_line if cfg.add_cta else None,
-                    hashtags_line=hashtags_line,
-                    subtitle_style=subtitle_style,
-                    speaker_side=speaker_side,
-                )
+            graph_video_pad = "v_reframe"
+            if hook_zoom_filter:
+                if is_complex_graph:
+                    vf_render = f"{vf_render};[v_reframe]{hook_zoom_filter}[v_zoom]"
+                    graph_video_pad = "v_zoom"
+                else:
+                    vf_render = f"{vf_render},{hook_zoom_filter}"
+
+            if has_any_overlay or precomputed_ass_path:
+                ass_path = precomputed_ass_path
+                if not ass_path:
+                    ass_path = os.path.join(self.work_dir, f"wc_subs_{uuid.uuid4().hex}.ass")
+                    tmp_files.append(ass_path)
+                    self._write_ass(
+                        path=ass_path,
+                        width=target_wh[0],
+                        height=target_wh[1],
+                        duration=max(0.1, ramped_duration),
+                        captions=captions,
+                        hook_line=hook_line if cfg.add_dynamic_overlays else None,
+                        cta_line=cta_line if cfg.add_cta else None,
+                        hashtags_line=hashtags_line,
+                        subtitle_style=subtitle_style,
+                        speaker_side=speaker_side,
+                    )
                 fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
                 ass_esc = _ffmpeg_filter_path(ass_path)
                 if is_complex_graph:
-                    vf_render = f"{vf_render};[v_reframe]subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}'[v_subs]"
+                    vf_render = f"{vf_render};[{graph_video_pad}]subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}'[v_subs]"
                 else:
                     vf_render = f"{vf_render},subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}'"
                     
@@ -2429,7 +2753,7 @@ class ClipEditor:
 
             if is_complex_graph:
                 # If we added subtitles, the last pad is [v_subs], otherwise [v_reframe]
-                last_pad = "[v_subs]" if has_any_overlay else "[v_reframe]"
+                last_pad = "[v_subs]" if (has_any_overlay or precomputed_ass_path) else f"[{graph_video_pad}]"
                 vf_render = f"{vf_render};{last_pad}format=yuv420p[v_fmt]"
             else:
                 vf_render = f"{vf_render},format=yuv420p"
@@ -2445,23 +2769,83 @@ class ClipEditor:
             else:
                 if is_complex_graph:
                     vf_render = f"{vf_render};[v_fmt]null[out_v]"
-                
+
+            # ── Distribution branding: merge blur-bg + watermark + outro into this pass ──
+            # Eliminates the separate _apply_distribution_branding() call (saves ~26s/clip)
+            # and avoids double-encode quality loss. Flag is set by local_worker.py.
+            branding_merged = False
+            branding_outro_merged = False
+            if cfg.apply_distribution_branding and cfg.branding_watermark_path:
+                _bwm = os.path.abspath(cfg.branding_watermark_path).replace("\\", "/")
+                _has_outro = bool(
+                    cfg.branding_outro_path
+                    and os.path.exists(cfg.branding_outro_path)
+                    and os.path.getsize(cfg.branding_outro_path) > 1000
+                )
+                # Input index tracking: 0=clip, 1=wm_icon (if is_watermarked), else not present
+                _bwm_idx = 2 if is_watermarked else 1   # index for branding logo.png
+                _outro_idx = _bwm_idx + 1               # index for outro.mp4
+
+                # Build branding chain appended onto [out_v]
+                # Step 1: cinematic blur background
+                _brand_chain = (
+                    f";[out_v]split=2[hs_blur_src][hs_vid_raw]"
+                    f";[hs_blur_src]scale=1080:1920:force_original_aspect_ratio=increase,"
+                    f"crop=1080:1920,boxblur=40[hs_bg]"
+                    f";[hs_vid_raw]scale=1080:1920:force_original_aspect_ratio=decrease[hs_fg]"
+                    f";[hs_bg][hs_fg]overlay=(W-w)/2:(H-h)/2[hs_merged]"
+                    # Step 2: branding watermark overlay
+                    f";[{_bwm_idx}:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[hs_wm]"
+                    f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30[hs_main_v]"
+                )
+                vf_render = f"{vf_render}{_brand_chain}"
+
+                if _has_outro:
+                    # Step 3: outro concat
+                    vf_render += (
+                        f";[{_outro_idx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
+                        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[hs_outro_v]"
+                        f";[0:a]aresample=44100,aformat=channel_layouts=stereo[hs_main_a_r]"
+                        f";[{_outro_idx}:a]aresample=44100,aformat=channel_layouts=stereo[hs_outro_a_r]"
+                        f";[hs_main_v][hs_main_a_r][hs_outro_v][hs_outro_a_r]"
+                        f"concat=n=2:v=1:a=1[hs_final_v][hs_final_a]"
+                    )
+                    branding_outro_merged = True
+                    log.info("[WCE] Branding+outro merged into WCE pass (single encode)")
+                else:
+                    vf_render += ";[hs_main_v]null[hs_final_v]"
+                    log.info("[WCE] Branding merged into WCE pass (no outro found at %s)", cfg.branding_outro_path)
+
+                branding_merged = True
+
             cmd = [
                 "ffmpeg",
                 "-y",
                 "-nostdin",
-                *_hwaccel_decode_args(),   # ← GPU decode (NVDEC) — full GPU pipeline
-                "-i", work_b
+                *_hwaccel_decode_args(work_b),   # GPU decode when supported by input codec
             ]
-            
+            if render_trim_in > 0.001:
+                cmd.extend(["-ss", f"{render_trim_in:.3f}"])
+            if render_trim_out > render_trim_in and render_trim_out < float((work_meta.get("duration") or render_trim_out) or render_trim_out) - 0.001:
+                cmd.extend(["-to", f"{render_trim_out:.3f}"])
+            cmd.extend(["-i", work_b])
+
             if is_watermarked:
                 cmd.extend(["-i", wm_path])
-                
+
+            if branding_merged:
+                cmd.extend(["-i", os.path.abspath(cfg.branding_watermark_path)])
+                if branding_outro_merged:
+                    cmd.extend(["-i", os.path.abspath(cfg.branding_outro_path)])
+
+            # Determine final output pad and audio handling
+            _out_video_pad = "hs_final_v" if branding_merged else ("out_v" if (is_watermarked or is_complex_graph) else None)
+            _use_filter_complex = is_watermarked or is_complex_graph or branding_merged
             cmd.extend([
-                "-filter_complex" if (is_watermarked or is_complex_graph) else "-vf",
+                "-filter_complex" if _use_filter_complex else "-vf",
                 vf_render,
-                "-map", "[out_v]" if (is_watermarked or is_complex_graph) else "0:v:0",
-                "-map", "0:a:0?",
+                "-map", f"[{_out_video_pad}]" if _out_video_pad else "0:v:0",
+                "-map", "[hs_final_a]" if branding_outro_merged else "0:a:0?",
                 "-r",
                 str(max(24, int(cfg.export_fps))),
                 *_video_encode_args(
@@ -2469,11 +2853,19 @@ class ClipEditor:
                     preset=cfg.quality_preset if cfg.preserve_quality else "veryfast",
                 ),
             ])
-            if bool(work_meta.get("has_audio")):
-                cmd += ["-af", af, "-c:a", "aac", "-b:a", _get_export_audio_bitrate()]
+            if branding_outro_merged:
+                # Audio already handled in filter graph via concat — just encode
+                cmd += ["-c:a", "aac", "-b:a", _get_export_audio_bitrate()]
+            elif bool(work_meta.get("has_audio")):
+                af_render = af
+                fade_start = max(0.0, float(ramped_duration) - 0.05)
+                if needs_trim:
+                    af_render = f"{af_render},afade=t=out:st={fade_start:.3f}:d=0.05"
+                cmd += ["-af", af_render, "-c:a", "aac", "-b:a", _get_export_audio_bitrate()]
             else:
                 cmd += ["-an"]
             cmd.append(output_path)
+            ffmpeg_passes += 1
             
             t0 = time.perf_counter()
             with _GPU_SEMAPHORE:
@@ -2489,6 +2881,16 @@ class ClipEditor:
             score = self._estimate_engagement(captions, transcript_window, boring_mode=boring_mode, has_hook=has_hook)
             metadata["engagement_score"] = round(score, 2)
             metadata["captions_count"] = len(captions)
+            metadata["visual_effect_graph"] = {
+                "single_encode_path": True,
+                "ffmpeg_passes": int(ffmpeg_passes),
+                "intermediate_files_created": int(intermediate_files_created),
+                "decode_encode_passes_saved": int(passes_saved),
+                "trim_compiled_into_final_graph": bool(needs_trim and not cfg.enable_hook_speed_ramp),
+                "hook_zoom_compiled_into_final_graph": bool(hook_zoom_filter),
+                "branding_outro_external_pass": not branding_merged,
+                "branding_merged_into_wce": branding_merged,
+            }
             if isinstance(focus_x, str):
                 metadata["focus_x"] = "dynamic"
             elif isinstance(focus_x, tuple):
@@ -2505,13 +2907,19 @@ class ClipEditor:
                     "face_s": round(float(t_face), 3),
                     "encode_s": round(float(t_encode), 3),
                     "total_s": round(float(total_s), 3),
+                    "ffmpeg_passes": int(ffmpeg_passes),
+                    "intermediate_files_created": int(intermediate_files_created),
+                    "decode_encode_passes_saved": int(passes_saved),
                 }
                 log.info(
-                    "[EDIT-PROFILE] reframe=%.2fs face=%.2fs encode=%.2fs total=%.2fs",
+                    "[EDIT-PROFILE] reframe=%.2fs face=%.2fs encode=%.2fs total=%.2fs ffmpeg_passes=%d intermediates=%d saved=%d",
                     float(t_reframe),
                     float(t_face),
                     float(t_encode),
                     float(total_s),
+                    int(ffmpeg_passes),
+                    int(intermediate_files_created),
+                    int(passes_saved),
                 )
 
             if write_metadata_file:

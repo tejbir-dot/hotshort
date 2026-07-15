@@ -15,6 +15,48 @@ from utils.clip_schema import (
 from utils.platform_variants import generate_platform_variants
 
 
+def polish_clip_title(title: Optional[str] = None, fallback_text: Optional[str] = None, max_chars: int = 72) -> str:
+    """Create a short, human-friendly title that feels polished and native."""
+    raw = (title or fallback_text or "").strip()
+    if not raw:
+        return "Viral clip"
+
+    raw = re.sub(r"\s+", " ", str(raw)).strip()
+    raw = raw.strip(' "“”\'‘’')
+    raw = re.sub(r"\s+([,.;:!?])", r"\1", raw)
+    raw = re.sub(r"^[A-Za-z]+:\s*", "", raw)
+
+    candidate = raw
+    for piece in re.split(r"(?<=[.!?])\s+", raw):
+        cleaned = piece.strip().strip(' "“”\'‘’')
+        if cleaned:
+            candidate = cleaned
+            break
+
+    candidate = re.sub(r"^[\-–—\s]+", "", candidate)
+    candidate = re.sub(r"[\-–—]+$", "", candidate)
+    candidate = re.sub(r"\s+", " ", candidate).strip()
+
+    if len(candidate) > max_chars:
+        words = candidate.split()
+        compact = []
+        current_len = 0
+        for word in words:
+            add_len = len(word) + (1 if compact else 0)
+            if current_len + add_len > max_chars:
+                break
+            compact.append(word)
+            current_len += add_len
+        candidate = " ".join(compact).rstrip(" ,.;:!?")
+        if not candidate:
+            candidate = raw[: max_chars - 1].rstrip(" ,.;:!?")
+
+    candidate = candidate.rstrip(" ,.;:!?")
+    if not candidate:
+        return "Viral clip"
+    return candidate
+
+
 class ClipBuilder:
     """Transform raw analysis into intelligent clip objects."""
     
@@ -169,7 +211,7 @@ class ClipBuilder:
         # Create the clip
         clip = create_viral_clip(
             clip_id=clip_id,
-            title=text[:60] + "..." if len(text) > 60 else text,  # First 60 chars
+            title=polish_clip_title(text, fallback_text=text, max_chars=72),
             clip_url=clip_url,
             platform_variants=platform_variants,
             hook_type=hook_type,

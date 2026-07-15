@@ -609,53 +609,59 @@ def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: i
     if local_worker_url:
         status = _local_worker_status(local_worker_url, timeout=2.0)
         if not status.get("alive"):
-            # If a worker is configured, do not silently fall back to heavy local/RunPod paths.
-            raise RuntimeError(
-                "Local worker is configured but not reachable: "
-                f"method={status.get('method')} url={status.get('url')} error={status.get('error')}"
+            log.warning(
+                "[FALLBACK] Local worker is configured but not reachable: "
+                f"method={status.get('method')} url={status.get('url')} error={status.get('error')}. Falling back to RunPod/Local GPU..."
             )
+        else:
+            style = status.get("style") or "unknown"
+            if style == "local_http_worker":
+                try:
+                    # Local HTTP worker expects the raw task payload at POST /run.
+                    run_url = (local_worker_url.rstrip("/"))
+                    if not run_url.lower().endswith("/run"):
+                        run_url = f"{run_url}/run"
 
-        style = status.get("style") or "unknown"
-        if style == "local_http_worker":
-            # Local HTTP worker expects the raw task payload at POST /run.
-            run_url = (local_worker_url.rstrip("/"))
-            if not run_url.lower().endswith("/run"):
-                run_url = f"{run_url}/run"
+                    payload = {"task": "orchestrate", "youtube_url": youtube_url, "is_free_user": is_free_user}
+                    if job_id is not None:
+                        payload["job_id"] = job_id
 
-            payload = {"task": "orchestrate", "youtube_url": youtube_url, "is_free_user": is_free_user}
-            if job_id is not None:
-                payload["job_id"] = job_id
+                    resp = requests.post(run_url, json=payload, timeout=timeout)
+                    if resp.status_code != 200:
+                        raise RuntimeError(f"Local worker orchestrate failed: {resp.status_code} - {resp.text}")
+                    data = resp.json()
+                    if isinstance(data, dict) and data.get("error"):
+                        raise RuntimeError(f"Local worker orchestrate error: {data.get('error')}")
+                    return data if isinstance(data, dict) else {"status": "ok", "clips": data}
+                except Exception as e:
+                    log.warning(f"[FALLBACK] Local worker orchestrate request failed: {e}. Falling back to RunPod/Local GPU...")
 
-            resp = requests.post(run_url, json=payload, timeout=timeout)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Local worker orchestrate failed: {resp.status_code} - {resp.text}")
-            data = resp.json()
-            if isinstance(data, dict) and data.get("error"):
-                raise RuntimeError(f"Local worker orchestrate error: {data.get('error')}")
-            return data if isinstance(data, dict) else {"status": "ok", "clips": data}
+            else:
+                try:
+                    # Default to RunPod-style shape (nested "input") for proxies/serverless.
+                    payload = {"input": {"task": "orchestrate", "youtube_url": youtube_url, "is_free_user": is_free_user}}
+                    if job_id is not None:
+                        payload["input"]["job_id"] = job_id
 
-        # Default to RunPod-style shape (nested "input") for proxies/serverless.
-        payload = {"input": {"task": "orchestrate", "youtube_url": youtube_url, "is_free_user": is_free_user}}
-        if job_id is not None:
-            payload["input"]["job_id"] = job_id
-
-        resp = requests.post(local_worker_url, json=payload, timeout=timeout)
-        if resp.status_code != 200:
-            raise RuntimeError(f"Local worker orchestrate failed: {resp.status_code} - {resp.text}")
-        data = resp.json()
-        if isinstance(data, dict) and data.get("error"):
-            raise RuntimeError(f"Local worker orchestrate error: {data.get('error')}")
-        if isinstance(data, dict) and "output" in data:
-            out = data.get("output") or {}
-            if isinstance(out, dict) and out.get("error"):
-                raise RuntimeError(f"Local worker orchestrate error: {out.get('error')}")
-            return out
-        if isinstance(data, dict) and data.get("status") == "COMPLETED" and "output" in data:
-            out = data.get("output") or {}
-            if isinstance(out, dict) and out.get("error"):
-                raise RuntimeError(f"Local worker orchestrate error: {out.get('error')}")
-            return out
-        return data if isinstance(data, dict) else {"status": "ok", "clips": data}
+                    resp = requests.post(local_worker_url, json=payload, timeout=timeout)
+                    if resp.status_code != 200:
+                        raise RuntimeError(f"Local worker orchestrate failed: {resp.status_code} - {resp.text}")
+                    data = resp.json()
+                    if isinstance(data, dict) and data.get("error"):
+                        raise RuntimeError(f"Local worker orchestrate error: {data.get('error')}")
+                    if isinstance(data, dict) and "output" in data:
+                        out = data.get("output") or {}
+                        if isinstance(out, dict) and out.get("error"):
+                            raise RuntimeError(f"Local worker orchestrate error: {out.get('error')}")
+                        return out
+                    if isinstance(data, dict) and data.get("status") == "COMPLETED" and "output" in data:
+                        out = data.get("output") or {}
+                        if isinstance(out, dict) and out.get("error"):
+                            raise RuntimeError(f"Local worker orchestrate error: {out.get('error')}")
+                        return out
+                    return data if isinstance(data, dict) else {"status": "ok", "clips": data}
+                except Exception as e:
+                    log.warning(f"[FALLBACK] Local worker orchestrate request failed: {e}. Falling back to RunPod/Local GPU...")
 
     if _local_gpu_available():
         return _orchestrate_via_local_gpu(youtube_url, job_id=job_id, timeout=timeout)
@@ -3516,6 +3522,7 @@ def results(job_id):
         try:
             import json as jsonmodule
             from utils.clip_schema import SelectionReason, ScoreBreakdown, PlatformVariants, ViralClip
+            from utils.clip_builder import polish_clip_title
             
             # Preserve server ranking if present - sort by composite quality score
             try:
@@ -3719,10 +3726,16 @@ def results(job_id):
                 log.info(f"[CLIP-DEBUG] raw_clip_keys={list(simple_clip.keys())}")
                 log.info(f"[CLIP-DEBUG] resolved_clip_url={resolved_url}")
 
+                polished_title = polish_clip_title(
+                    title=explanation.get("hook") or simple_clip.get("title") or "",
+                    fallback_text=simple_clip.get("title") or explanation.get("hook") or f"Viral Clip #{idx + 1}",
+                    max_chars=72,
+                )
+
                 # Create proper ViralClip object from simple data
                 clip = ViralClip(
                     clip_id=simple_clip.get("clip_id") or simple_clip.get("job_id") or f"clip_{idx}",
-                    title=explanation.get("hook") or simple_clip.get("title") or f"Viral Clip #{idx}",
+                    title=polished_title,
                     clip_url=resolved_url,
                     platform_variants={
                         "youtube_shorts": resolved_url,

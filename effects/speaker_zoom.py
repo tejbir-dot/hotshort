@@ -1,6 +1,6 @@
 def build_zoom_filter(
     energy_curve,
-    max_zoom=1.08
+    max_zoom=1.00
 ):
     if not energy_curve:
         return ""

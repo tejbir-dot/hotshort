@@ -22,6 +22,8 @@ class PipelineContext:
     curiosity: Dict[str, Any] = field(default_factory=dict)
     narrative: Dict[str, Any] = field(default_factory=dict)
     narrative_triggers: List[Dict[str, Any]] = field(default_factory=list)
+    narrative_contracts: List[Any] = field(default_factory=list)  # List[NarrativeContract]
+
     idea_nodes: List[Any] = field(default_factory=list)
     raw_candidates: List[Dict[str, Any]] = field(default_factory=list)
     enriched_candidates: List[Dict[str, Any]] = field(default_factory=list)

@@ -1,4 +1,5 @@
 import os
+from viral_finder.cognition import Evidence, IntelligenceArtifact
 import json
 import logging
 import requests
@@ -139,9 +140,14 @@ def validate_groq_clips(parsed_json: dict, original_candidates: list) -> list:
         # Ensure adjustments are reasonable
         try:
             clip["start_adjustment_seconds"] = float(clip.get("start_adjustment_seconds", 0))
-            clip["end_adjustment_seconds"] = float(clip.get("end_adjustment_seconds", 0))
         except (ValueError, TypeError):
             clip["start_adjustment_seconds"] = 0.0
+            
+        try:
+            # Check if groq_surgeon appended end_adjustment_seconds during review
+            surgeon_adj = float(clip.get("groq_surgeon", {}).get("end_adjustment_seconds", 0))
+            clip["end_adjustment_seconds"] = float(clip.get("end_adjustment_seconds", surgeon_adj))
+        except (ValueError, TypeError):
             clip["end_adjustment_seconds"] = 0.0
             
         valid_clips.append(clip)
@@ -179,12 +185,23 @@ def merge_groq_results_with_candidates(validated_clips: list, original_candidate
         
         # Attach Groq specific fields
         new_cand["cortex_enabled"] = True
+        
+        # Instantiate Intelligence Artifact if it doesn't exist
+        artifact = new_cand.get("intelligence")
+        if not artifact:
+            artifact = IntelligenceArtifact()
+            new_cand["intelligence"] = artifact
+            
         raw_score = float(v_clip.get("viral_score", 0))
-        # Normalise 0-100 to 0.0-1.0 to match pipeline convention
         cortex_score = raw_score / 100.0 if raw_score > 1.0 else raw_score
-        new_cand["cortex_score"] = round(cortex_score, 4)
-        # Override viral score to ensure ranking
-        new_cand["viral_score"] = new_cand["cortex_score"]
+        
+        # We no longer overwrite viral_score! We emit Evidence.
+        artifact.evidence_stream.extend([
+            Evidence(type="stop_scroll", value=cortex_score, producer="groq_trigger", confidence=0.95),
+            Evidence(type="memorability", value=float(v_clip.get("insight_strength", 0) or 0) / 100.0, producer="groq_trigger"),
+            Evidence(type="usefulness", value=float(v_clip.get("usefulness", 0) or 0) / 100.0, producer="groq_trigger"),
+            Evidence(type="completeness", value=float(v_clip.get("completeness_score", 0) or 0) / 100.0, producer="groq_trigger"),
+        ])
         
         new_cand["title"] = v_clip.get("title", "")
         new_cand["opening_caption"] = v_clip.get("opening_caption", "")
@@ -281,6 +298,9 @@ Available Actions:
 - KEEP: The candidate is perfect. The idea is complete with development and resolution.
 - MOVE_HOOK: The candidate started too early with filler, or missed the true hook just before it. Move the hook.
 - EXTEND_RIGHT: The idea resolves, but the resolution is located later in ZONE B.
+
+CRITICAL EMERGENCY OVERRIDE:
+If you receive an `emergency_instruction` in the input payload for a specific clip, you MUST prioritize it above all else. If it warns that the clip is too short (<35s), you are FORBIDDEN from selecting 'KEEP'. You MUST choose 'EXTEND_RIGHT' and find the natural resolution further down in ZONE B, or 'REJECT' if no resolution exists.
 - REJECT: The candidate fails due to one of the strict rejection rules.
 
 EXTEND_RIGHT VALIDITY RULES:
@@ -317,6 +337,11 @@ Before you make a decision, you must map the narrative arc.
 7. Rate the continuity_score from 0-10 (how stable is the narrative thread?).
 8. Provide a continuity_reason explaining the score.
 9. Mark the core_idea_source as "CLIP_ONLY" or "WINDOW_DEPENDENT".
+10. Identify the `payoff_segment_index` (integer index from ZONE B) where the thought naturally concludes.
+
+SYSTEM_ACTION_REQUIRED:
+If the clip duration is less than 35 seconds, OR if `completeness_signal` is `UNRESOLVED_REQUIRES_EXTENSION`, you MUST extend the clip by finding the exact point in ZONE B where the thought naturally concludes. 
+Do this by identifying the exact `payoff_segment_index` (the integer index like [14] in ZONE B) where the thought finishes. We will mathematically extend the clip's time to match that segment. In this case, set `decision` to `"KEEP"`.
 
 Return JSON ONLY in this exact format:
 {
@@ -425,17 +450,24 @@ Return JSON ONLY in this exact format:
             if full_clip_len > 0:
                 assert payload_text_length >= (0.90 * full_clip_len), "Payload text length is less than 90% of full clip text!"
             
-            groq_input.append({
+            clip_dur = max(0.0, e0 - s0)
+            input_dict = {
                 "candidate_id": str(c["id"]),
                 "current_clip_text": payload_text,
                 "transcript_window": "\n".join(window_text)
-            })
+            }
+            
+            # User's brilliant idea: Dynamic injection directly into the payload!
+            if clip_dur < 35.0:
+                input_dict["emergency_instruction"] = "EMERGENCY: CLIP TOO SHORT (<35s). YOU MUST EXTEND THIS CLIP (EXTEND_RIGHT) TO A NATURAL COMPLETION POINT, OR REJECT IT. DO NOT JUST 'KEEP'."
+                
+            groq_input.append(input_dict)
             
             cand_tokens = len(cand_text.split())
             ctx_tokens = len(win_text_joined.split())
             
             batch_meta[str(c["id"])] = {
-                "duration": max(0.0, e0 - s0),
+                "duration": clip_dur,
                 "hook_text": hook_t,
                 "payoff_text": payoff_t,
                 "arc_score": float(c.get("scores", {}).get("curiosity", c.get("curiosity", 0.0))),
@@ -497,13 +529,18 @@ Return JSON ONLY in this exact format:
                     meta = batch_meta.get(cid, {})
                     dec = report.get("decision", "REJECT")
                     
-                    # Intercept rule for short clips
-                    if dec == "REJECT" and float(meta.get("duration", 0.0)) < 35.0:
-                        dec = "KEEP"
-                        report["decision"] = "KEEP"
-                        report["rejection_type"] = "INTERCEPTED_35S_REPAIR"
-                        report["rejection_reason"] = "Forced KEEP (duration < 35s intercept)"
-                        
+                    # Mathematical Extension from Segment Index
+                    try:
+                        payoff_idx = int(report.get("payoff_segment_index", -1))
+                        if payoff_idx >= 0 and payoff_idx < len(full_transcript) and dec in ["KEEP", "EXTEND_RIGHT"]:
+                            new_end = float(full_transcript[payoff_idx].get("end", 0))
+                            orig_end = float(meta.get("end", 0))
+                            if new_end > orig_end:
+                                report["end_adjustment_seconds"] = round(new_end - orig_end, 2)
+                                log.info(f"[SURGEON_EXTENSION] Extended candidate {cid} by +{report['end_adjustment_seconds']}s based on segment [{payoff_idx}]")
+                    except (ValueError, TypeError):
+                        pass
+                    
                     audit_data["decisions"][dec] = audit_data["decisions"].get(dec, 0) + 1
                     
                     reason = str(report.get("rejection_reason", "none"))
@@ -530,8 +567,27 @@ Return JSON ONLY in this exact format:
                     for c in top_candidates:
                         if str(c.get("id", "")) == cid:
                             c["groq_surgeon"] = report
-                            break
                             
+                            # Provide intelligence transport for Ranking decision math
+                            from viral_finder.cognition import Evidence, IntelligenceArtifact
+                            artifact = c.get("intelligence")
+                            if not isinstance(artifact, IntelligenceArtifact):
+                                artifact = IntelligenceArtifact()
+                                c["intelligence"] = artifact
+                                
+                            dev_score = float(report.get("development_score", 0)) / 10.0
+                            res_score = float(report.get("resolution_strength", 0)) / 10.0
+                            
+                            artifact.evidence_stream.extend([
+                                Evidence(type="usefulness", value=dev_score, producer="groq_surgeon", confidence=0.9),
+                                Evidence(type="completeness", value=res_score, producer="groq_surgeon", confidence=0.9),
+                                Evidence(type="stop_scroll", value=0.95, producer="groq_surgeon", confidence=0.9),
+                                Evidence(type="memorability", value=0.8, producer="groq_surgeon", confidence=0.9),
+                                Evidence(type="shareability", value=0.8, producer="groq_surgeon", confidence=0.9),
+                            ])
+                            
+                            break
+
                 break  # Success
                 
             except Exception as e:
@@ -821,6 +877,8 @@ For each valuable moment, identify:
 - usefulness (0 to 100 based on practical value or how actionable it is)
 - insight_strength (0 to 100 based on counterintuitive or deep thoughts)
 - completeness_score (0 to 100 score of stand-alone completeness)
+- completeness_signal ("RESOLVED" if the thought is fully concluded, or "UNRESOLVED_REQUIRES_EXTENSION" if it cuts off early)
+- psychology_scores (dict containing 0-100 scores answering: Would I stop scrolling? Is this surprising? Would I share this? Would I remember this?)
 - title (a punchy, curiosity-driven title for the clip)
 - opening_caption (the very first spoken phrase or a curiosity hook caption)
 - clip_archetype (choose from: practical_insight, warning, contrarian_take, story, framework, mistake, case_study, emotional_truth, tactical_steps)
@@ -868,6 +926,13 @@ Return this exact structure:
       "usefulness": 88,
       "insight_strength": 85,
       "completeness_score": 84,
+      "completeness_signal": "RESOLVED",
+      "psychology_scores": {
+        "stop_scrolling": 90,
+        "surprise": 85,
+        "shareability": 88,
+        "memorability": 92
+      },
       "clip_archetype": "practical_insight",
       "title": "...",
       "opening_caption": "...",
@@ -964,6 +1029,11 @@ Now review these transcript segments:
                 validated_chunk = validate_groq_moments(chunk_moments, video_duration)
                 all_raw_moments.extend(validated_chunk)
                 log.info(f"[GROQ_DIRECTOR] window {idx}: found {len(validated_chunk)} valid moments out of {len(chunk_moments)}")
+                for m in validated_chunk:
+                    cid = m.get("candidate_id") or m.get("id") or "unknown"
+                    psy = m.get("psychology_scores", {})
+                    log.info(f"   ?'? [HOOK_FOUND] id={cid} stop_scrolling={psy.get('stop_scrolling','?')} surprise={psy.get('surprise','?')} share={psy.get('shareability','?')} title='{m.get('title','?')}'")
+
             else:
                 log.info(f"[GROQ_DIRECTOR] window {idx}: no moments returned or failed to parse JSON")
         except Exception as e:
@@ -1179,3 +1249,134 @@ Transcript:
             
     log.info(f"[GROQ_NARRATIVE] Successfully mapped {len(master_roles_map)} total narrative roles.")
     return master_roles_map
+
+def repair_rejected_clips_with_groq(rejected_candidates: list, full_transcript: list) -> list:
+    """
+    Repairs rejected short clips using Groq.
+    DISABLED: The primary Surgeon engine now has 'Emergency Instruction' injected into its payload
+    and natively extends clips on the first pass. This redundant repair phase only causes 429 Rate Limits.
+    """
+    return []
+
+    def _find_seg_idx(ts: float) -> int:
+        target = float(ts or 0.0)
+        for i, seg in enumerate(full_transcript):
+            ss = float(seg.get("start", 0.0) or 0.0)
+            ee = float(seg.get("end", ss) or ss)
+            if ss <= target <= max(ss, ee):
+                return i
+        return max(0, min(len(full_transcript) - 1, 0 if not full_transcript else int(min(range(len(full_transcript)), key=lambda j: abs(float(full_transcript[j].get("start", 0.0) or 0.0) - target)))))
+
+    import time
+    import json
+    import requests
+    
+    system_prompt = """You are HotShort Cortex: a world-class Narrative Surgeon for video clips.
+Your ONLY job is to REPAIR clips that were rejected because they were TOO SHORT or lacked progression.
+The user explicitly requested: "grok tu iss hook complete thought clips taak extend krna geniusly"
+(Extend this hook up to the complete thought clips geniusly).
+
+You MUST repair the clip by choosing EXTEND_RIGHT and finding the exact quote where the complete thought resolves in ZONE B.
+
+Return a JSON array of objects, one per clip, with:
+- "candidate_id": the ID
+- "decision": "EXTEND_RIGHT"
+- "proposed_payoff_quote": 5-8 words EXACTLY matching ZONE B where the thought completes.
+- "payoff_segment_index": the integer index from ZONE B.
+- "resolution_strength": 10
+- "repair_applied": true
+"""
+
+    batch_size = 4
+    batches = [rejected_candidates[i:i + batch_size] for i in range(0, len(rejected_candidates), batch_size)]
+    repaired_results = []
+    
+    for batch_idx, batch in enumerate(batches):
+        groq_input = []
+        batch_meta = {}
+        for c in batch:
+            s0 = float(c.get("start", 0.0))
+            e0 = float(c.get("end", 0.0))
+            s_idx = _find_seg_idx(s0)
+            e_idx = _find_seg_idx(e0)
+            
+            window_start = max(0, s_idx - 4)
+            window_end = min(len(full_transcript), e_idx + 25)
+            
+            window_text = []
+            for j in range(window_start, window_end):
+                text = str(full_transcript[j].get("text", "")).strip()
+                window_text.append(f"[{j}] {text}")
+                
+            cand_text = str(c.get("text", "")).strip()
+            rebuilt_clip_text = " ".join(
+                str(full_transcript[j].get("text", "")).strip() 
+                for j in range(s_idx, min(e_idx + 1, len(full_transcript)))
+            ).strip()
+            if not rebuilt_clip_text: rebuilt_clip_text = cand_text
+            
+            groq_input.append({
+                "candidate_id": str(c["id"]),
+                "current_clip_text": rebuilt_clip_text,
+                "transcript_window": "\n".join(window_text)
+            })
+            
+            batch_meta[str(c["id"])] = c
+            
+        payload = {
+            "model": _get_groq_model(),
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "PROCESS BATCH:\n" + json.dumps(groq_input, indent=2)}
+            ]
+        }
+        
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                log.info(f"[SURGEON_REPAIR] Attempting repair for {len(batch)} clips (attempt {attempt+1}/{max_retries})")
+                r = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=_get_timeout()
+                )
+                if r.status_code == 429:
+                    sleep_s = 2.0 * (2 ** attempt)
+                    log.warning(f"[SURGEON_REPAIR] 429 Too Many Requests. Sleeping {sleep_s}s (attempt {attempt+1}/{max_retries})")
+                    time.sleep(sleep_s)
+                    continue
+                    
+                r.raise_for_status()
+                data = r.json()
+                content = data["choices"][0]["message"]["content"]
+                parsed = parse_groq_json_safely(content)
+                
+                if isinstance(parsed, dict) and "candidates" in parsed:
+                    arr = parsed["candidates"]
+                elif isinstance(parsed, list):
+                    arr = parsed
+                else:
+                    arr = []
+                    
+                for item in arr:
+                    cid = str(item.get("candidate_id", ""))
+                    if cid in batch_meta:
+                        orig_c = batch_meta[cid]
+                        orig_c["groq_surgeon"] = item
+                        orig_c["groq_surgeon"]["repair_applied"] = True
+                        repaired_results.append(orig_c)
+                        log.info(f"[SURGEON_REPAIR] Successfully repaired via EXTEND_RIGHT. quote='{item.get('proposed_payoff_quote', '')}'")
+                
+                break
+            except Exception as e:
+                log.error(f"[SURGEON_REPAIR] Error: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2.0 * (2 ** attempt))
+                    
+        if batch_idx < len(batches) - 1:
+            time.sleep(2.0)
+            
+    return repaired_results
