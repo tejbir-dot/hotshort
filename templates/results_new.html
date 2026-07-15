@@ -1195,26 +1195,25 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         <p>Analyze a video to see your viral moments</p>
       </div>
 
-      <!-- Processing message (shown while job is running) -->
-      <div class="empty-state" id="processingState" style="display: none; text-align: center; margin-top: 40px;">
-        <div id="loader" class="loader" aria-hidden="true" style="display: block !important;">
+      <!-- Processing message (shown whi      <div class="empty-state" id="processingState" style="display: none; text-align: center; margin-top: 40px; padding: 20px;">
+        <div id="loader" class="loader" aria-hidden="true" style="display: block !important; background: linear-gradient(145deg, rgba(22, 19, 29, 0.95), rgba(13, 11, 16, 0.98)); border: 1px solid rgba(138, 92, 235, 0.15); box-shadow: 0 24px 60px rgba(0,0,0,0.5), inset 0 0 40px rgba(138, 92, 235, 0.05); border-radius: 24px; padding: 40px 20px; max-width: 580px; margin: 0 auto; backdrop-filter: blur(12px);">
           <p class="loader-caption"
-            style="margin: 0 auto 10px; max-width: 420px; font-size: 0.74rem; letter-spacing: 0.26em; text-transform: uppercase; color: rgba(255, 236, 205, 0.52);">
+            style="margin: 0 auto 15px; max-width: 420px; font-size: 0.74rem; letter-spacing: 0.26em; text-transform: uppercase; color: rgba(255, 236, 205, 0.6);">
             HotShort Intelligence</p>
           <div class="loader-visual"
-            style="position: relative; width: 100%; max-width: 460px; height: 280px; margin: 0 auto 18px; padding: 0; overflow: hidden; background: transparent; border: none; box-shadow: none;">
+            style="position: relative; width: 100%; max-width: 480px; height: 260px; margin: 0 auto 24px; padding: 0; overflow: hidden; background: radial-gradient(circle at center, rgba(138, 92, 235, 0.08) 0%, transparent 70%); border-radius: 16px;">
             <div id="strands-container"
               style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
           </div>
           <div class="wave"
-            style="position: relative; overflow: hidden; width: 240px; height: 8px; margin: 0 auto 18px; border-radius: 999px; background: linear-gradient(90deg, rgba(255, 194, 94, 0.16), rgba(255, 244, 210, 0.92), rgba(255, 194, 94, 0.16)); background-size: 240% 100%; animation: waveMove 1.6s ease-in-out infinite; box-shadow: 0 0 20px rgba(255, 215, 160, 0.45), 0 0 46px rgba(255, 176, 71, 0.18);">
+            style="position: relative; overflow: hidden; width: 240px; height: 6px; margin: 0 auto 24px; border-radius: 999px; background: linear-gradient(90deg, rgba(255, 194, 94, 0.16), rgba(255, 244, 210, 0.92), rgba(255, 194, 94, 0.16)); background-size: 240% 100%; animation: waveMove 1.6s ease-in-out infinite; box-shadow: 0 0 20px rgba(255, 215, 160, 0.45), 0 0 46px rgba(255, 176, 71, 0.18);">
           </div>
           <p id="loaderText"
-            style="font-size: 0.9rem; letter-spacing: 0.3px; opacity: 0.85; color: var(--gold-100); font-weight: 500; margin: 0;">
-            Analyzing video… this may take a few minutes</p>
+            style="font-size: 1.05rem; letter-spacing: 0.3px; opacity: 0.95; color: var(--gold-100); font-weight: 500; margin: 0;">
+            Transcribing audio with Whisper AI...</p>
           <p class="loader-subtext"
-            style="margin: 10px auto 0; max-width: 460px; font-size: 0.82rem; color: rgba(255, 235, 214, 0.68); letter-spacing: 0.01em;">
-            Keep this tab open while we orchestrate the processing queue.</p>
+            style="margin: 12px auto 0; max-width: 460px; font-size: 0.85rem; color: rgba(255, 235, 214, 0.5); letter-spacing: 0.02em;">
+            Keep this tab open while we orchestrate the processing queue.</p> the processing queue.</p>
           <style>
             @keyframes waveMove {
               0% {
