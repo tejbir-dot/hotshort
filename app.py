@@ -2998,6 +2998,40 @@ def api_jobs_complete(job_id: str):
     return jsonify({"ok": True, "job_id": job_id, "clips": len(clips)})
 
 
+# ── Direct clip file upload from local worker (Cloudinary fallback) ──────────
+_CLIP_FILES_DIR = os.path.join(BASE_DIR, "static", "clip_files")
+os.makedirs(_CLIP_FILES_DIR, exist_ok=True)
+
+@app.route("/api/jobs/<job_id>/upload_clip", methods=["POST"])
+def api_upload_clip(job_id: str):
+    """
+    Multipart file upload endpoint for local_worker.py when Cloudinary is unavailable.
+    Accepts: multipart/form-data with field 'file' (mp4).
+    Returns: {"ok": True, "clip_url": "<public URL>"}
+    """
+    if not _check_worker_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if "file" not in request.files:
+        return jsonify({"error": "no_file"}), 400
+
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "empty_filename"}), 400
+
+    # Sanitise filename: <job_id>_<original_name>
+    import werkzeug.utils
+    safe_name = werkzeug.utils.secure_filename(f.filename)
+    dest_name = f"{job_id[:8]}_{safe_name}"
+    dest_path = os.path.join(_CLIP_FILES_DIR, dest_name)
+    f.save(dest_path)
+
+    # Build a public URL (Railway serves /static/ statically)
+    clip_url = url_for("static", filename=f"clip_files/{dest_name}", _external=True)
+    log.info("[WORKER_API] Clip uploaded for job=%s → %s", job_id, clip_url)
+    return jsonify({"ok": True, "clip_url": clip_url})
+
+
 @app.route("/api/jobs/<job_id>/failed", methods=["POST"])
 def api_jobs_failed(job_id: str):
     """

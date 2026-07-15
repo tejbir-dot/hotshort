@@ -257,6 +257,32 @@ def _upload_clip_to_cloudinary(local_path: str) -> str | None:
         return None
 
 
+def _upload_clip_to_railway(local_path: str, job_id: str) -> str | None:
+    """
+    Fallback: Upload clip directly to Railway when Cloudinary is unavailable.
+    Uses POST /api/jobs/{job_id}/upload_clip (multipart).
+    Returns a public URL served by Railway's /static/clip_files/ handler.
+    """
+    try:
+        filename = os.path.basename(local_path)
+        with open(local_path, "rb") as fh:
+            resp = requests.post(
+                f"{RAILWAY_URL}/api/jobs/{job_id}/upload_clip",
+                headers={"X-Worker-Secret": WORKER_SECRET},
+                files={"file": (filename, fh, "video/mp4")},
+                timeout=120,
+            )
+        resp.raise_for_status()
+        clip_url = resp.json().get("clip_url")
+        if clip_url:
+            print(f"[LOCAL_WORKER] ✅ Railway fallback upload OK: {clip_url}", flush=True)
+        return clip_url
+    except Exception as e:
+        print(f"[LOCAL_WORKER] Railway fallback upload failed: {e}", flush=True)
+        return None
+
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # RapidAPI YouTube Downloader  (youtube-media-downloader.p.rapidapi.com)
 # Strategy: fetch 720p video-only + best m4a audio → FFmpeg merge for sync
@@ -1164,12 +1190,16 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 final_path = branded_path
                             t_branding = time.perf_counter() - t0
 
-                    # Upload
+                    # Upload — Cloudinary first, Railway fallback if disabled/failed
                     url = None
+                    t0 = time.perf_counter()
                     if cloudinary_ok:
-                        t0 = time.perf_counter()
                         url = _upload_clip_to_cloudinary(final_path)
-                        t_upload = time.perf_counter() - t0
+                    if url is None:
+                        # Cloudinary not configured or failed — upload directly to Railway
+                        url = _upload_clip_to_railway(final_path, job_id)
+                    t_upload = time.perf_counter() - t0
+
                     
                     clip_res["clip_url"] = url
                     clip_res["editor_timing"] = {
