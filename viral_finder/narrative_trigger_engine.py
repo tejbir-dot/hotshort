@@ -275,7 +275,7 @@ Find "Narrative Triggers" in the text. Narrative Triggers include both semantic 
 The transcript is in English, Hindi, or Hinglish.
 Identify the exact timestamps where these triggers occur.
 
-CRITICAL INSTRUCTION: For every trigger you find, you MUST also provide deep psychological metrics on a scale of 0.00 to 1.00:
+CRITICAL INSTRUCTION: For every trigger you find, you MUST also provide deep psychological metrics on a scale of 0.0 to 100.0 (e.g., 91.4, 87.2, 73.0):
 - stop_scroll: How likely is this moment to stop someone from scrolling?
 - curiosity: How much does this make the viewer want to keep watching?
 - memorability: How memorable is this phrase?
@@ -297,16 +297,16 @@ Return ONLY valid JSON in this format:
             "start": 12.5, 
             "end": 15.0, 
             "phrase": "the exact phrase from transcript",
-            "confidence": 0.0_to_1.0,
+            "confidence": 0.0_to_100.0,
             "psychology": {{
-                "stop_scroll": 0.0_to_1.0,
-                "curiosity": 0.0_to_1.0,
-                "memorability": 0.0_to_1.0,
-                "shareability": 0.0_to_1.0,
-                "novelty": 0.0_to_1.0,
-                "clarity": 0.0_to_1.0,
-                "belief_reversal": 0.0_to_1.0,
-                "emotional_charge": 0.0_to_1.0
+                "stop_scroll": 0.0_to_100.0,
+                "curiosity": 0.0_to_100.0,
+                "memorability": 0.0_to_100.0,
+                "shareability": 0.0_to_100.0,
+                "novelty": 0.0_to_100.0,
+                "clarity": 0.0_to_100.0,
+                "belief_reversal": 0.0_to_100.0,
+                "emotional_charge": 0.0_to_100.0
             }},
             "reason": "Your specific 1-sentence explanation for why this phrase is a powerful trigger"
         }}
@@ -338,11 +338,23 @@ Transcript:
                     raw_triggers = data.get("triggers", [])
                     found_in_chunk = 0
                     for t in raw_triggers:
+                        # Normalize 0-100 values back to 0.0-1.0 for downstream math
+                        raw_conf = float(t.get("confidence", 0.8))
+                        conf = raw_conf / 100.0 if raw_conf > 1.0 else raw_conf
+                        t["confidence"] = conf
+                        
                         psy = t.get("psychology", {})
+                        for k, v in psy.items():
+                            try:
+                                val = float(v)
+                                psy[k] = val / 100.0 if val > 1.0 else val
+                            except (ValueError, TypeError):
+                                psy[k] = 0.0
+                                
                         log.info(
                             f"[TRIGGER_FORENSIC_LLM] MATCH"
                             f" | type={t.get('type')}"
-                            f" | conf={t.get('confidence', 0.0):.2f}"
+                            f" | conf={conf:.2f}"
                             f" | time={t.get('start'):.1f}-{t.get('end'):.1f}s"
                             f" | stop_scroll={psy.get('stop_scroll', 0.0):.2f}"
                             f" curiosity={psy.get('curiosity', 0.0):.2f}"
@@ -358,9 +370,9 @@ Transcript:
 
                         artifact = TriggerArtifact(
                             trigger_type=str(t.get("type", "unknown")),
-                            psychology=t.get("psychology", {}),
+                            psychology=psy,
                             reason=str(t.get("reason", "")),
-                            confidence=float(t.get("confidence", 0.8)),
+                            confidence=conf,
                             trace_id=str(uuid.uuid4())
                         )
 
