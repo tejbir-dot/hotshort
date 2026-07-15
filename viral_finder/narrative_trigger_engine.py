@@ -335,13 +335,22 @@ Transcript:
                 raw_triggers = data.get("triggers", [])
                 for t in raw_triggers:
                     psy = t.get("psychology", {})
-                    metrics_str = (f"stop_scroll={psy.get('stop_scroll', 0.0)} "
-                                   f"curiosity={psy.get('curiosity', 0.0)} "
-                                   f"memorability={psy.get('memorability', 0.0)} "
-                                   f"novelty={psy.get('novelty', 0.0)}")
-                    log.info(f"[TRIGGER_FORENSIC_LLM] MATCH! Type: {t.get('type')} | "
-                             f"Phrase: '{t.get('phrase')}' | "
-                             f"Time: {t.get('start')}-{t.get('end')} | {metrics_str}")
+                    log.info(
+                        f"[TRIGGER_FORENSIC_LLM] MATCH"
+                        f" | type={t.get('type')}"
+                        f" | conf={t.get('confidence', 0.0):.2f}"
+                        f" | time={t.get('start'):.1f}-{t.get('end'):.1f}s"
+                        f" | stop_scroll={psy.get('stop_scroll', 0.0):.2f}"
+                        f" curiosity={psy.get('curiosity', 0.0):.2f}"
+                        f" memorability={psy.get('memorability', 0.0):.2f}"
+                        f" shareability={psy.get('shareability', 0.0):.2f}"
+                        f" novelty={psy.get('novelty', 0.0):.2f}"
+                        f" clarity={psy.get('clarity', 0.0):.2f}"
+                        f" belief_reversal={psy.get('belief_reversal', 0.0):.2f}"
+                        f" emotional_charge={psy.get('emotional_charge', 0.0):.2f}"
+                        f" | reason='{t.get('reason', '')}'"
+                        f" | phrase='{t.get('phrase', '')[:80]}'"
+                    )
 
                     artifact = TriggerArtifact(
                         trigger_type=str(t.get("type", "unknown")),
