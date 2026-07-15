@@ -169,6 +169,9 @@ def _complete_job(job_id: str, clips: list):
             json={"clips": clips},
             timeout=30,
         )
+        if resp.status_code == 404:
+            print(f"[LOCAL_WORKER] ⚠️ Server database reset detected (404). Job {job_id} lost on server, but clips are saved locally.", flush=True)
+            return
         resp.raise_for_status()
         print(f"[LOCAL_WORKER] ✅ Marked complete: {job_id} ({len(clips)} clips)", flush=True)
     except Exception as e:
@@ -792,14 +795,14 @@ class FaceCache:
         )
         faces = cascade.detectMultiScale(
             gray,
-            scaleFactor=1.05,
+            scaleFactor=1.15,
             minNeighbors=3,
             minSize=(40, 40),
             flags=cv2.CASCADE_SCALE_IMAGE,
         )
         print(
             f"[DETECT_RAW] result_count={len(faces)} "
-            "call_kwargs={'scaleFactor': 1.05, 'minNeighbors': 3, "
+            "call_kwargs={'scaleFactor': 1.15, 'minNeighbors': 3, "
             "'minSize': (40, 40)}",
             flush=True,
         )
