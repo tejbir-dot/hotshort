@@ -1589,11 +1589,12 @@ def _run_narrative_intelligence(ctx: PipelineContext) -> None:
                 role_paths.append(r)
 
     groq_roles_map = {}
-    try:
-        from viral_finder.groq_cortex import analyze_narrative_roles
-        groq_roles_map = analyze_narrative_roles(ctx.transcript or [])
-    except Exception as e:
-        log.warning(f"[ORCH][NARRATIVE] Failed to run Groq Narrative Roles: {e}")
+    if os.environ.get("HS_GROQ_NARRATIVE_ROLES", "0") == "1":
+        try:
+            from viral_finder.groq_cortex import analyze_narrative_roles
+            groq_roles_map = analyze_narrative_roles(ctx.transcript or [])
+        except Exception as e:
+            log.warning(f"[ORCH][NARRATIVE] Failed to run Groq Narrative Roles: {e}")
 
     agreement_count = 0
     total_compared = 0
