@@ -1195,7 +1195,8 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         <p>Analyze a video to see your viral moments</p>
       </div>
 
-      <!-- Processing message (shown whi      <div class="empty-state" id="processingState" style="display: none; text-align: center; margin-top: 40px; padding: 20px;">
+      <!-- Processing message (shown while job is running) -->
+      <div class="empty-state" id="processingState" style="display: none; text-align: center; margin-top: 40px; padding: 20px;">
         <div id="loader" class="loader" aria-hidden="true" style="display: block !important; background: linear-gradient(145deg, rgba(22, 19, 29, 0.95), rgba(13, 11, 16, 0.98)); border: 1px solid rgba(138, 92, 235, 0.15); box-shadow: 0 24px 60px rgba(0,0,0,0.5), inset 0 0 40px rgba(138, 92, 235, 0.05); border-radius: 24px; padding: 40px 20px; max-width: 580px; margin: 0 auto; backdrop-filter: blur(12px);">
           <p class="loader-caption"
             style="margin: 0 auto 15px; max-width: 420px; font-size: 0.74rem; letter-spacing: 0.26em; text-transform: uppercase; color: rgba(255, 236, 205, 0.6);">
@@ -1213,7 +1214,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
             Transcribing audio with Whisper AI...</p>
           <p class="loader-subtext"
             style="margin: 12px auto 0; max-width: 460px; font-size: 0.85rem; color: rgba(255, 235, 214, 0.5); letter-spacing: 0.02em;">
-            Keep this tab open while we orchestrate the processing queue.</p> the processing queue.</p>
+            Keep this tab open while we orchestrate the processing queue.</p>
           <style>
             @keyframes waveMove {
               0% {
