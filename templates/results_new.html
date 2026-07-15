@@ -131,6 +131,39 @@
       border-bottom-color: rgba(255, 210, 120, 0.5);
     }
 
+    .results-intro {
+      margin: 0 0 24px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .results-intro-card {
+      max-width: 760px;
+      width: 100%;
+      padding: 14px 18px;
+      border-radius: 14px;
+      background: linear-gradient(90deg, rgba(255, 210, 120, 0.12), rgba(255, 255, 255, 0.03));
+      border: 1px solid rgba(255, 210, 120, 0.16);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+    }
+
+    .results-intro-badge {
+      display: inline-block;
+      margin-bottom: 6px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--gold-100);
+    }
+
+    .results-intro-copy {
+      margin: 0;
+      font-size: 0.95rem;
+      color: rgba(255, 235, 214, 0.86);
+      line-height: 1.5;
+    }
+
     /* Main content */
     main {
       flex: 1;
@@ -1080,6 +1113,13 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
     </header>
 
     <main>
+      <section class="results-intro" aria-label="Results summary">
+        <div class="results-intro-card">
+          <div class="results-intro-badge">✨ First impression ready</div>
+          <p class="results-intro-copy">The strongest hook is already surfaced. The top card is your polished first pick, designed to feel premium and easy to trust on day one.</p>
+        </div>
+      </section>
+
       <!-- Details Panel (hidden by default, shown when user clicks a clip) -->
       <section class="details-panel hidden" id="detailsPanel">
         <h2 class="panel-title">Why This Clip Works</h2>
@@ -1131,8 +1171,8 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
       <div class="empty-state" id="processingState" style="display: none; text-align: center; margin-top: 40px;">
         <div id="loader" class="loader" aria-hidden="true" style="display: block !important;">
           <p class="loader-caption" style="margin: 0 auto 10px; max-width: 420px; font-size: 0.74rem; letter-spacing: 0.26em; text-transform: uppercase; color: rgba(255, 236, 205, 0.52);">HotShort Intelligence</p>
-          <div class="loader-visual" style="position: relative; width: min(220px, 72vw); margin: 0 auto 18px; padding: 14px; border-radius: 28px; background: radial-gradient(circle at 50% 20%, rgba(255, 190, 95, 0.14), transparent 52%), radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.08), transparent 56%), linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)); border: 1px solid rgba(255, 215, 170, 0.12); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255,255,255,0.05); overflow: hidden;">
-            <img class="loader-animation" src="{{ url_for('static', filename='media/hotshort-thinking.gif') }}" alt="HotShort AI analyzing video structure" style="position: relative; z-index: 1; display: block; width: 100%; height: auto; border-radius: 22px; mix-blend-mode: screen; filter: saturate(1.04) contrast(1.06) drop-shadow(0 0 22px rgba(255, 196, 112, 0.12));" />
+          <div class="loader-visual" style="position: relative; width: min(220px, 72vw); height: 160px; margin: 0 auto 18px; padding: 14px; border-radius: 28px; background: radial-gradient(circle at 50% 20%, rgba(255, 190, 95, 0.14), transparent 52%), radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.08), transparent 56%), linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)); border: 1px solid rgba(255, 215, 170, 0.12); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255,255,255,0.05); overflow: hidden;">
+            <div id="strands-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
           </div>
           <div class="wave" style="position: relative; overflow: hidden; width: 240px; height: 8px; margin: 0 auto 18px; border-radius: 999px; background: linear-gradient(90deg, rgba(255, 194, 94, 0.16), rgba(255, 244, 210, 0.92), rgba(255, 194, 94, 0.16)); background-size: 240% 100%; animation: waveMove 1.6s ease-in-out infinite; box-shadow: 0 0 20px rgba(255, 215, 160, 0.45), 0 0 46px rgba(255, 176, 71, 0.18);"></div>
           <p id="loaderText" style="font-size: 0.9rem; letter-spacing: 0.3px; opacity: 0.85; color: var(--gold-100); font-weight: 500; margin: 0;">Analyzing video… this may take a few minutes</p>
@@ -2235,5 +2275,22 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
     }
   </script>
 
+  <script type="module">
+    import { initStrands } from "{{ url_for('static', filename='js/strands.js') }}";
+    
+    // Initialize WebGL Strands Animation when the processing state is visible, or just immediately.
+    // Setting golden/fiery colors for HotShort branding.
+    initStrands('#strands-container', {
+      colors: ['#FFB84D', '#FF9A00', '#FFD277', '#FF5500'],
+      count: 5,
+      speed: 0.8,
+      thickness: 1.2,
+      intensity: 0.85,
+      glow: 2.8,
+      taper: 3,
+      spread: 1.2,
+      glass: false
+    });
+  </script>
 </body>
 </html>
