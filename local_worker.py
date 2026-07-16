@@ -693,7 +693,7 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
                 # Watermark overlay (forced even height with -2 to prevent NVENC -22 invalid argument)
                 "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
-                "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30[main_v];"
+                "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[main_v];"
                 # Outro: scale to match
                 "[2:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
                 "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[outro_v];"

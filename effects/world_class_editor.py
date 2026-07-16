@@ -157,6 +157,18 @@ def _input_video_codec(path: Optional[str]) -> str:
         return ""
 
 
+_AV1_HWDECODE_KNOWN_BROKEN = False  # becomes True after first confirmed failure
+
+def _should_try_av1_hwdecode():
+    global _AV1_HWDECODE_KNOWN_BROKEN
+    return not _AV1_HWDECODE_KNOWN_BROKEN
+
+def _mark_av1_hwdecode_broken():
+    global _AV1_HWDECODE_KNOWN_BROKEN
+    _AV1_HWDECODE_KNOWN_BROKEN = True
+    print("[AV1_HWDECODE] marked broken for this run — all subsequent clips use CPU decode directly")
+
+
 def _hwaccel_decode_args(input_path: Optional[str] = None) -> List[str]:
     """Return FFmpeg args to enable GPU (NVDEC/CUDA) decode when available.
 
@@ -174,10 +186,10 @@ def _hwaccel_decode_args(input_path: Optional[str] = None) -> List[str]:
     codec = _input_video_codec(input_path)
     if codec == "av1":
         if os.environ.get("HS_ENABLE_AV1_NVDEC", "0").strip().lower() in ("1", "true", "yes"):
-            if _ffmpeg_decoder_available("av1_cuvid"):
+            if _should_try_av1_hwdecode() and _ffmpeg_decoder_available("av1_cuvid"):
                 log.info("[WCE] input codec=av1; using AV1 NVDEC decode via av1_cuvid")
                 return ["-hwaccel", "cuda", "-hwaccel_output_format", "nv12", "-c:v", "av1_cuvid"]
-            log.info("[WCE] input codec=av1; HS_ENABLE_AV1_NVDEC=1 but av1_cuvid is unavailable")
+            log.info("[WCE] input codec=av1; HS_ENABLE_AV1_NVDEC=1 but av1_cuvid is unavailable or marked broken")
         log.info("[WCE] input codec=av1; using CPU decode while keeping NVENC encode when available")
         return []
     if _nvdec_available():
@@ -403,8 +415,14 @@ class ClipEditor:
 
     def _run(self, cmd: List[str], timeout_s: int = 120) -> None:
         try:
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=sys.stderr, timeout=timeout_s)
+            res = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=timeout_s)
+            if res.stderr:
+                sys.stderr.write(res.stderr)
         except subprocess.CalledProcessError as exc:
+            if exc.stderr:
+                sys.stderr.write(exc.stderr)
+                if "Codec av1_cuvid is not supported with this chroma format" in exc.stderr:
+                    _mark_av1_hwdecode_broken()
             if not self._uses_cuda_decode(cmd):
                 raise
             log.warning("[WCE] CUDA decode failed; retrying same FFmpeg command with CPU decode")
@@ -811,7 +829,7 @@ class ClipEditor:
                 face_xs = []
                 if cascade is not None:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = cascade.detectMultiScale(gray, 1.05, 3, minSize=(40, 40))
+                    faces = cascade.detectMultiScale(gray, 1.15, 3, minSize=(40, 40))
                     for x, y, fw, fh in faces:
                         if 40 < fw < 500 and 0.05 < (y + fh / 2.0) / h < 0.95:
                             face_xs.append(_clamp((x + fw / 2.0) / float(w), 0.0, 1.0))
@@ -1097,7 +1115,7 @@ class ClipEditor:
                         # Haarcascade fallback (relaxed params — Step 3 fix)
                         _faces_hc = _podcast_cascade.detectMultiScale(
                             gray,
-                            scaleFactor=1.05,   # finer scale (was 1.1)
+                            scaleFactor=1.15,   # finer scale (was 1.1)
                             minNeighbors=3,     # easier to detect (was 6)
                             minSize=(40, 40),   # smaller minimum (was 80,80)
                             flags=cv2.CASCADE_SCALE_IMAGE,
@@ -2796,7 +2814,7 @@ class ClipEditor:
                     f";[hs_bg][hs_fg]overlay=(W-w)/2:(H-h)/2[hs_merged]"
                     # Step 2: branding watermark overlay
                     f";[{_bwm_idx}:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[hs_wm]"
-                    f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30[hs_main_v]"
+                    f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[hs_main_v]"
                 )
                 vf_render = f"{vf_render}{_brand_chain}"
 
