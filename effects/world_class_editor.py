@@ -236,7 +236,7 @@ def _video_encode_args(crf: int = 20, preset: str = "veryfast") -> List[str]:
         log.info("[WCE] encode=NVENC codec=h264_nvenc")
         return [
             "-c:v", "h264_nvenc",
-            "-preset", "p3",
+            "-preset", "p1",
             "-tune", "hq",
             "-profile:v", "high",
             "-rc", "vbr",
@@ -2803,13 +2803,27 @@ class ClipEditor:
                 # Input index tracking: 0=clip, 1=wm_icon (if is_watermarked), else not present
                 _bwm_idx = 2 if is_watermarked else 1   # index for branding logo.png
                 _outro_idx = _bwm_idx + 1               # index for outro.mp4
+                _long_heavy_render = ramped_duration >= 90.0
+                if _long_heavy_render:
+                    # At half resolution, boxblur=20 gives approximately the
+                    # existing 40px full-resolution background softness at a
+                    # quarter of the blur workload.
+                    _blur_chain = (
+                        "scale=540:960:force_original_aspect_ratio=increase,"
+                        "crop=540:960,boxblur=10,scale=1080:1920"
+                    )
+                    log.info("[WCE_PERF] long clip %.1fs: half-res background blur enabled", ramped_duration)
+                else:
+                    _blur_chain = (
+                        "scale=1080:1920:force_original_aspect_ratio=increase,"
+                        "crop=1080:1920,boxblur=20"
+                    )
 
                 # Build branding chain appended onto [out_v]
                 # Step 1: cinematic blur background
                 _brand_chain = (
                     f";[out_v]split=2[hs_blur_src][hs_vid_raw]"
-                    f";[hs_blur_src]scale=1080:1920:force_original_aspect_ratio=increase,"
-                    f"crop=1080:1920,boxblur=40[hs_bg]"
+                    f";[hs_blur_src]{_blur_chain}[hs_bg]"
                     f";[hs_vid_raw]scale=1080:1920:force_original_aspect_ratio=decrease[hs_fg]"
                     f";[hs_bg][hs_fg]overlay=(W-w)/2:(H-h)/2[hs_merged]"
                     # Step 2: branding watermark overlay
@@ -2888,7 +2902,10 @@ class ClipEditor:
             t0 = time.perf_counter()
             with _GPU_SEMAPHORE:
                 gpu_start = time.perf_counter()
-                self._run(cmd, timeout_s=220)
+                render_timeout_s = 420 if ramped_duration >= 90.0 else 220
+                if render_timeout_s > 220:
+                    log.info("[WCE_PERF] long clip %.1fs: render timeout=%ss", ramped_duration, render_timeout_s)
+                self._run(cmd, timeout_s=render_timeout_s)
                 gpu_done = time.perf_counter() - gpu_start
                 cpu_done = gpu_start - t_total
                 log.info(f"[WCE_PARALLEL] clip={os.path.basename(output_path)} cpu_done={cpu_done:.1f}s gpu_done={gpu_done:.1f}s")

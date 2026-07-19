@@ -325,6 +325,22 @@
       overflow: hidden;
     }
 
+    .groq-summary-box {
+      display: inline-block;
+      max-width: 100%;
+      margin-top: 7px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      background: rgba(37, 99, 235, 0.88);
+      border: 1px solid rgba(147, 197, 253, 0.75);
+      color: #eff6ff;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+
     /* Duration & Media Type Tooltip */
     .clip-duration-tooltip {
       position: absolute;
@@ -1877,13 +1893,14 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
         card.innerHTML = `
           <div class="clip-preview">
-            <video class="clip-video" muted playsinline loop preload="metadata" src="${clip.clip_url}" title="Viral Clip #${index}"></video>
+            <video class="clip-video" muted playsinline loop preload="metadata" src="${clip.clip_url}" title="${clip.exact_hook ? escapeHtml(clip.exact_hook) : (clip.title ? escapeHtml(clip.title) : 'Viral Clip #' + index)}"></video>
             <div class="badge-group">${badgesHtml}</div>
             ${freeStampHtml}
             ${soundHintHtml}
             
-            <div class="hook-glass-overlay">
-              <p class="hook-text">"${clip.title}"</p>
+            <div class="hook-glass-overlay" style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
+              ${clip.groq_summary ? `<div class="groq-summary-badge" style="background: rgba(30, 136, 229, 0.9); color: white; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; display: inline-block; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid rgba(100, 181, 246, 0.5);">${escapeHtml(clip.groq_summary)}</div>` : ''}
+              <p class="hook-text">"${clip.exact_hook ? escapeHtml(clip.exact_hook) : escapeHtml(clip.title || 'Viral Clip')}"</p>
             </div>
 
             <div class="clip-duration-tooltip">
@@ -1893,7 +1910,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           </div>
 
           <div class="clip-content">
-            <div class="clip-title">${clip.title}</div>
+            <div class="clip-title">${clip.exact_hook ? escapeHtml(clip.exact_hook) : escapeHtml(clip.title || 'Viral Clip')}</div>
             
             <!-- Genius: Show punch line right before hook type -->
             ${clip.hook_type === 'Contradiction' ? `

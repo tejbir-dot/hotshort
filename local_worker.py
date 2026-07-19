@@ -687,13 +687,13 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
             # ── SINGLE PASS: blur + watermark + outro concat ───────────────────
             filter_complex = (
                 # Main clip: cinematic blur bg + centered video
-                "[0:v]split=2[blur][vid];"
-                "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40[bg];"
+                "[0:v]fps=30,split=2[blur][vid];"
+                "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20[bg];"
                 "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
                 "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
                 # Watermark overlay (forced even height with -2 to prevent NVENC -22 invalid argument)
                 "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
-                "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[main_v];"
+                "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p,setsar=1[main_v];"
                 # Outro: scale to match
                 "[2:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
                 "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[outro_v];"
@@ -712,7 +712,7 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "-filter_complex", filter_complex,
                 "-map", "[v]", "-map", "[a]",
                 "-c:v", "h264_nvenc",
-                "-preset", "p4",
+                "-preset", "p2",
                 "-b:v", "5M",
                 "-c:a", "aac",
                 "-b:a", "128k",
@@ -723,8 +723,8 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
             # ── NO OUTRO: blur + watermark only (single pass) ──────────────────
             print(f"[LOCAL_WORKER] WARNING: Outro not found at {outro_path}. Watermark only.", flush=True)
             filter_complex = (
-                "[0:v]split=2[blur][vid];"
-                "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=40[bg];"
+                "[0:v]fps=30,split=2[blur][vid];"
+                "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20[bg];"
                 "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
                 "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
                 "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
@@ -737,7 +737,7 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "-i", watermark_path,
                 "-filter_complex", filter_complex,
                 "-c:v", "h264_nvenc",
-                "-preset", "p4",
+                "-preset", "p2",
                 "-b:v", "5M",
                 "-c:a", "copy",
                 "-movflags", "+faststart",

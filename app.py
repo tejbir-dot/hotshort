@@ -3686,6 +3686,21 @@ def results(job_id):
                 explanation["build"] = str(m.get("build_text", "") or "").strip()
                 return explanation
 
+            def compact_groq_summary(moment: dict) -> str:
+                """Render a short, clip-specific Groq insight for the card overlay."""
+                import re
+                source = next((
+                    str(moment.get(key, "") or "").strip()
+                    for key in ("why_valuable", "why_this_clip_works", "why_people_keep_watching")
+                    if str(moment.get(key, "") or "").strip()
+                ), "")
+                if not source:
+                    source = str(moment.get("clip_archetype", "") or "").replace("_", " ").strip()
+                if not source:
+                    source = str(moment.get("title", "") or "").strip()
+                words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'’-]*", source)
+                return " ".join(words[:4])
+
             transformed_clips = []
             for idx, simple_clip in enumerate(analysis_results):
                 signals = simple_clip.get("signals") if isinstance(simple_clip.get("signals"), dict) else {}
@@ -3727,6 +3742,14 @@ def results(job_id):
                     virality_confidence,
                 )
                 explanation = explain_clip(simple_clip)
+                exact_hook = str(
+                    simple_clip.get("hook_line")
+                    or explanation.get("hook")
+                    or simple_clip.get("opening_caption")
+                    or simple_clip.get("title")
+                    or ""
+                ).strip()
+                groq_summary = compact_groq_summary(simple_clip)
                 story_panel = {
                     "hook": explanation.get("hook", ""),
                     "build": explanation.get("build", ""),
@@ -3800,6 +3823,8 @@ def results(job_id):
                 clip.information_density_score = information_density_score
                 clip.virality_confidence = virality_confidence
                 clip.explanation = explanation
+                clip.exact_hook = exact_hook
+                clip.groq_summary = groq_summary
                 clip.story_panel = story_panel
                 clip.story_patterns = list(simple_clip.get("story_patterns", []) or [])
                 # 🔥 ADD ARC QUALITY INDICATORS
@@ -3836,6 +3861,8 @@ def results(job_id):
                     },
                     "why": clip.why,
                     "explanation": getattr(clip, "explanation", {}),
+                    "exact_hook": getattr(clip, "exact_hook", ""),
+                    "groq_summary": getattr(clip, "groq_summary", ""),
                     "story_structure": getattr(clip, "story_panel", {}),
                     "story_patterns": getattr(clip, "story_patterns", []),
                     "rank": clip.rank,
