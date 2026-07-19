@@ -366,7 +366,7 @@ class ClipEditConfig:
     # ── Split mode strictness ────────────────────────────────────────────────────
     split_min_gap_ratio: float = 0.38      # min face center gap (% frame width) required for SPLIT
     # ── Hook zoom ────────────────────────────────────────────────────────────────
-    enable_hook_zoom: bool = True           # subtle punch-in zoom when clip starts
+    enable_hook_zoom: bool = False           # subtle punch-in zoom when clip starts
     hook_zoom_scale: float = 1.08          # start zoom (1.08 = 8% tighter than final frame)
     hook_zoom_duration_s: float = 1.2      # seconds to ease from zoomed-in → normal
     # ── Color grading ────────────────────────────────────────────────────────────
