@@ -2239,7 +2239,7 @@ class ClipEditor:
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
             f"Style: Caption,Montserrat,80,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Hook,Montserrat,75,{hook_color},&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,150,1",
+            f"Style: Hook,Outfit,55,{hook_color},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,20,20,80,1",
             f"Style: Highlight,Montserrat,80,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             f"Style: HookWord,Montserrat,80,&H00FFAAFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             f"Style: Danger,Montserrat,80,&H006666FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
