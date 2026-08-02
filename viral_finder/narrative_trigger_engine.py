@@ -12,7 +12,7 @@ import requests
 from typing import Dict, List, Any
 
 try:
-    from viral_finder.groq_cortex import is_groq_enabled, _get_groq_api_key, _get_groq_model, _get_timeout, parse_groq_json_safely
+    from viral_finder.groq_cortex import is_groq_enabled, _get_groq_api_key, _get_groq_model, _get_timeout, parse_groq_json_safely, post_groq_completions
 except ImportError:
     def is_groq_enabled(): return False
 
@@ -160,6 +160,7 @@ def _confidence_for_phrase(text_lower: str, phrase: str) -> float:
 
 
 def _run_sliding_window_detection(transcript_segments: List[Dict], log: logging.Logger) -> List[Dict]:
+    import uuid
     triggers: List[Dict] = []
     total_phrases_checked = 0
     total_segments = len(transcript_segments or [])
@@ -203,6 +204,7 @@ def _run_sliding_window_detection(transcript_segments: List[Dict], log: logging.
                         
                     log.info(f"[TRIGGER_FORENSIC_SLIDING] MATCH! Phrase: '{original_phrase}' (Type: {trigger_type}) | Conf: {conf:.2f} | Text: '{combined_text[:60]}...'")
                     triggers.append({
+                        "id": uuid.uuid4().hex,
                         "start": start,
                         "end": end,
                         "type": trigger_type,
@@ -253,6 +255,9 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
     CHUNK_SIZE = 100
     chunks = [transcript_segments[i:i + CHUNK_SIZE] for i in range(0, len(transcript_segments), CHUNK_SIZE)]
     log.info(f"[TRIGGER_FORENSIC_LLM] Sending full transcript in {len(chunks)} chunks of max {CHUNK_SIZE} segs.")
+
+    failed_chunks: list[int] = []  # track which chunk indices fully failed
+    MAX_CHUNK_RETRIES = 3
 
     for chunk_idx, segs_to_use in enumerate(chunks):
         if chunk_idx > 0:
@@ -319,90 +324,113 @@ Transcript:
 {transcript_text}
 """
 
-        MAX_RETRIES = 3
-        for attempt in range(MAX_RETRIES):
+        chunk_succeeded = False
+        last_exc: Exception | None = None
+
+        for attempt in range(1, MAX_CHUNK_RETRIES + 1):
             try:
-                resp = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json={
+                resp = post_groq_completions(
+                    payload={
                         "model": _get_groq_model(),
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0.1,
                         "response_format": {"type": "json_object"}
                     },
-                    timeout=_get_timeout()
+                    timeout=_get_timeout(),
+                    max_retries=3
                 )
-                if resp.status_code == 200:
-                    data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
-                    raw_triggers = data.get("triggers", [])
-                    found_in_chunk = 0
-                    for t in raw_triggers:
-                        # Normalize 0-100 values back to 0.0-1.0 for downstream math
-                        raw_conf = float(t.get("confidence", 0.8))
-                        conf = raw_conf / 100.0 if raw_conf > 1.0 else raw_conf
-                        t["confidence"] = conf
-                        
-                        psy = t.get("psychology", {})
-                        for k, v in psy.items():
-                            try:
-                                val = float(v)
-                                psy[k] = val / 100.0 if val > 1.0 else val
-                            except (ValueError, TypeError):
-                                psy[k] = 0.0
-                                
-                        log.info(
-                            f"[TRIGGER_FORENSIC_LLM] MATCH"
-                            f" | type={t.get('type')}"
-                            f" | conf={conf:.2f}"
-                            f" | time={t.get('start'):.1f}-{t.get('end'):.1f}s"
-                            f" | stop_scroll={psy.get('stop_scroll', 0.0):.2f}"
-                            f" curiosity={psy.get('curiosity', 0.0):.2f}"
-                            f" memorability={psy.get('memorability', 0.0):.2f}"
-                            f" shareability={psy.get('shareability', 0.0):.2f}"
-                            f" novelty={psy.get('novelty', 0.0):.2f}"
-                            f" clarity={psy.get('clarity', 0.0):.2f}"
-                            f" belief_reversal={psy.get('belief_reversal', 0.0):.2f}"
-                            f" emotional_charge={psy.get('emotional_charge', 0.0):.2f}"
-                            f" | reason='{t.get('reason', '')}'"
-                            f" | phrase='{t.get('phrase', '')[:80]}'"
-                        )
+                resp.raise_for_status()
+                data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
+                raw_triggers = data.get("triggers", [])
+                found_in_chunk = 0
+                for t in raw_triggers:
+                    # Normalize 0-100 values back to 0.0-1.0 for downstream math
+                    raw_conf = float(t.get("confidence", 0.8))
+                    conf = raw_conf / 100.0 if raw_conf > 1.0 else raw_conf
+                    t["confidence"] = conf
+                    
+                    psy = t.get("psychology", {})
+                    for k, v in psy.items():
+                        try:
+                            val = float(v)
+                            psy[k] = val / 100.0 if val > 1.0 else val
+                        except (ValueError, TypeError):
+                            psy[k] = 0.0
+                            
+                    log.info(
+                        f"[TRIGGER_FORENSIC_LLM] MATCH"
+                        f" | type={t.get('type')}"
+                        f" | conf={conf:.2f}"
+                        f" | time={t.get('start'):.1f}-{t.get('end'):.1f}s"
+                        f" | stop_scroll={psy.get('stop_scroll', 0.0):.2f}"
+                        f" curiosity={psy.get('curiosity', 0.0):.2f}"
+                        f" memorability={psy.get('memorability', 0.0):.2f}"
+                        f" shareability={psy.get('shareability', 0.0):.2f}"
+                        f" novelty={psy.get('novelty', 0.0):.2f}"
+                        f" clarity={psy.get('clarity', 0.0):.2f}"
+                        f" belief_reversal={psy.get('belief_reversal', 0.0):.2f}"
+                        f" emotional_charge={psy.get('emotional_charge', 0.0):.2f}"
+                        f" | reason='{t.get('reason', '')}'"
+                        f" | phrase='{t.get('phrase', '')[:80]}'"
+                    )
 
-                        artifact = TriggerArtifact(
-                            trigger_type=str(t.get("type", "unknown")),
-                            psychology=psy,
-                            reason=str(t.get("reason", "")),
-                            confidence=conf,
-                            trace_id=str(uuid.uuid4())
-                        )
+                    artifact = TriggerArtifact(
+                        trigger_type=str(t.get("type", "unknown")),
+                        psychology=psy,
+                        reason=str(t.get("reason", "")),
+                        confidence=conf,
+                        trace_id=str(uuid.uuid4())
+                    )
 
-                        all_triggers.append({
-                            "start": float(t.get("start", 0)),
-                            "end": float(t.get("end", 0)),
-                            "type": artifact.trigger_type.lower().strip(),
-                            "confidence": artifact.confidence,
-                            "text": str(t.get("phrase", "")),
-                            "phrase": str(t.get("phrase", "")),
-                            "psychology": psy,
-                            "span": {"start": float(t.get("start", 0)), "end": float(t.get("end", 0))},
-                            "artifact": artifact
-                        })
-                        found_in_chunk += 1
-                    log.info(f"[TRIGGER_FORENSIC_LLM] Chunk {chunk_idx+1} complete: {found_in_chunk} triggers found.")
-                    break  # success — exit retry loop for this chunk
+                    all_triggers.append({
+                        "id": uuid.uuid4().hex,
+                        "start": float(t.get("start", 0)),
+                        "end": float(t.get("end", 0)),
+                        "type": artifact.trigger_type.lower().strip(),
+                        "confidence": artifact.confidence,
+                        "text": str(t.get("phrase", "")),
+                        "phrase": str(t.get("phrase", "")),
+                        "psychology": psy,
+                        "span": {"start": float(t.get("start", 0)), "end": float(t.get("end", 0))},
+                        "artifact": artifact
+                    })
+                    found_in_chunk += 1
+                log.info(f"[TRIGGER_FORENSIC_LLM] Chunk {chunk_idx+1} complete: {found_in_chunk} triggers found.")
+                chunk_succeeded = True
+                break  # success — stop retrying this chunk
 
-                elif resp.status_code == 429:
-                    retry_after = float(resp.headers.get("Retry-After", 2 ** attempt))
-                    log.warning(f"[TRIGGER_FORENSIC_LLM] 429 rate limit (attempt {attempt+1}/{MAX_RETRIES}). "
-                                f"Waiting {retry_after:.1f}s...")
-                    _time.sleep(retry_after)
-                else:
-                    log.error(f"[TRIGGER_FORENSIC_LLM] Groq API error {resp.status_code}: {resp.text[:200]}")
-                    break
             except Exception as e:
-                log.error(f"[TRIGGER_FORENSIC_LLM] LLM call failed (attempt {attempt+1}): {e}")
-                if attempt < MAX_RETRIES - 1:
-                    _time.sleep(2 ** attempt)
+                last_exc = e
+                backoff = 2 ** attempt  # 2s, 4s, 8s
+                log.warning(
+                    f"[TRIGGER_FORENSIC_LLM] Chunk {chunk_idx+1} attempt {attempt}/{MAX_CHUNK_RETRIES} FAILED: {e}. "
+                    f"{'Retrying in ' + str(backoff) + 's...' if attempt < MAX_CHUNK_RETRIES else 'All retries exhausted.'}"
+                )
+                if attempt < MAX_CHUNK_RETRIES:
+                    _time.sleep(backoff)
+
+        if not chunk_succeeded:
+            failed_chunks.append(chunk_idx)
+            log.error(
+                f"[TRIGGER_FORENSIC_LLM] ⚠️ CHUNK {chunk_idx+1}/{len(chunks)} PERMANENTLY FAILED after {MAX_CHUNK_RETRIES} attempts. "
+                f"Last error: {last_exc}. "
+                f"Segs {segs_to_use[0].get('start', 0):.1f}s–{segs_to_use[-1].get('end', 0):.1f}s will have NO trigger analysis."
+            )
+
+    # ── Coverage audit: emit a loud WARNING if any chunks were lost ───────────────────
+    if failed_chunks:
+        total_chunks = len(chunks)
+        failed_count = len(failed_chunks)
+        failed_segs = sum(len(chunks[i]) for i in failed_chunks)
+        total_segs = len(transcript_segments)
+        pct_unanalyzed = (failed_segs / total_segs * 100) if total_segs else 0
+        failed_chunk_labels = ", ".join(str(i + 1) for i in failed_chunks)
+        log.warning(
+            f"[TRIGGER_FORENSIC_LLM] ⚠️ COVERAGE ALERT: {failed_count}/{total_chunks} chunks failed "
+            f"(chunks: {failed_chunk_labels}). "
+            f"{failed_segs}/{total_segs} segments unanalyzed = {pct_unanalyzed:.1f}% of transcript "
+            f"has NO trigger intelligence. Downstream clip quality will be degraded."
+        )
 
     # Fallback to sliding window if LLM found 0 (it might have failed or hallucinated)
     if not all_triggers:
@@ -456,7 +484,7 @@ def build_narrative_contracts(triggers: List[Dict]) -> List[Any]:
     if not triggers:
         return []
 
-    HOOK_TYPES = {"strong_claim", "belief_reversal", "secret_revelation", "mistake_explanation"}
+    HOOK_TYPES = {"strong_claim", "belief_reversal", "secret_revelation", "mistake_explanation", "complete_thought"}
     PAYOFF_TYPES = {"payoff", "complete_thought"}
     # Maximum gap between hook end and payoff start
     MIN_GAP_S = 5.0

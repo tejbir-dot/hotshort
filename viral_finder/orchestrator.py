@@ -441,8 +441,35 @@ def _reject_unsettled_intelligence(candidates: List[Dict[str, Any]], consumer: s
 
 # core config
 CACHE_DIR = ".hotshort_transcripts_cache"
-DEFAULT_TOP_K = 8
+DEFAULT_TOP_K = 8  # fallback only — runtime uses _compute_dynamic_top_k()
 MAX_ENRICH_WORKERS = max(1, min(4, max(1, (os.cpu_count() or 2) - 1)))
+
+
+def _compute_dynamic_top_k(duration_s: float, triggers: list) -> int:
+    """Scale clip output to video length + trigger density.
+
+    Rules:
+      - 1 clip per 3 minutes of video  (duration signal)
+      - OR half the high-confidence triggers (content signal)
+      - Take the larger of the two
+      - Floor = 3,  Ceiling = 15
+    """
+    import math
+    duration_clips = math.ceil(max(0.0, duration_s) / 180.0)  # 1 per 3 min
+    high_conf = sum(
+        1 for t in (triggers or [])
+        if isinstance(t, dict) and float(t.get("conf", t.get("confidence", 0)) or 0) >= 0.90
+    )
+    trigger_clips = max(high_conf // 2, 1)
+    dynamic = min(max(duration_clips, trigger_clips), 15)   # cap at 15
+    dynamic = max(dynamic, 3)                                # floor at 3
+    print(
+        f"[DYNAMIC_TOP_K] duration={duration_s:.0f}s → duration_clips={duration_clips} "
+        f"high_conf_triggers={high_conf} → trigger_clips={trigger_clips} "
+        f"→ top_k={dynamic}",
+        flush=True,
+    )
+    return dynamic
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -1224,7 +1251,7 @@ def _final_quality_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
     reasons: List[str] = []
     reasons.extend(_meaning_invariant_reject_reasons(candidate))
     
-    # Cortex-enabled candidates (LLM triggers/contracts) bypass all structural NLP rules.
+    # Cortex-enabled candidates bypass structural NLP rejection rules.
     if candidate.get("groq_moment") or candidate.get("cortex_enabled"):
         return reasons
         
@@ -1234,7 +1261,7 @@ def _final_quality_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
     elif loop_state == "NO_PAYOFF":
         reasons.append("loop_no_payoff")
     motion = _clamp01(candidate.get("motion", (candidate.get("signals", {}) or {}).get("engagement", {}).get("motion", 0.0)))
-    hook_strength = _clamp01(candidate.get("hook_strength", candidate.get("hook_score", 0.0)))
+    hook_strength = _clamp01(candidate.get("hook_strength", candidate.get("hook_score", candidate.get("curiosity", candidate.get("score", 0.0)))))
     payoff_score = _clamp01(candidate.get("payoff_score", candidate.get("payoff_confidence", 0.0)))
     story_patterns = list(candidate.get("story_patterns") or [])
     arc_complete = bool(candidate.get("arc_complete", False))
@@ -1897,6 +1924,10 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
             earliest_start = float(best_trigger.get("start", 0.0))
             latest_end = float(best_trigger.get("end", 0.0))
             
+            target_dur = float(getattr(ctx, "target_min", 30.0))
+            back_target = max(8.0, target_dur * 0.3)
+            fwd_target = max(12.0, target_dur * 0.7)
+            
             # Sentence-aware START: walk backward
             best_start = earliest_start
             for seg in reversed(transcript):
@@ -1905,7 +1936,11 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
                 if seg_end > earliest_start:
                     continue
                 seg_text = str(seg.get("text", "") or "").strip()
-                if seg_text.endswith(('.', '!', '?', '...')) or (earliest_start - seg_end) > 8.0:
+                # Break ONLY if we reached the target duration AND a sentence boundary, or hard stop
+                if (earliest_start - seg_start) >= back_target and seg_text.endswith(('.', '!', '?', '...')):
+                    best_start = seg_start
+                    break
+                elif (earliest_start - seg_start) > back_target + 10.0:
                     best_start = seg_start
                     break
             
@@ -1918,7 +1953,9 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
                     continue
                 seg_text = str(seg.get("text", "") or "").strip()
                 best_end = seg_end
-                if seg_text.endswith(('.', '!', '?', '...')) or (seg_end - latest_end) > 12.0:
+                if (seg_end - latest_end) >= fwd_target and seg_text.endswith(('.', '!', '?', '...')):
+                    break
+                elif (seg_end - latest_end) > fwd_target + 10.0:
                     break
             
             clip_start = max(0.0, best_start)
@@ -1949,6 +1986,7 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
                 "_hook_trigger_psychology": dict(best_trigger.get("psychology", {})),
                 "fingerprint": _fingerprint(clip_text, clip_start, clip_end),
                 "cortex_enabled": True,
+                "completeness_signal": "RESOLVED",
             }
             
             psych = best_trigger.get("psychology")
@@ -2070,6 +2108,12 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
             "_trigger_psychology": merged_psy,
             "fingerprint": _fingerprint(clip_text, c_start, c_end),
             "cortex_enabled": True,
+            # ── NCE PAYOFF PIN ────────────────────────────────────────────────
+            # Store the exact NCE payoff timestamp so Story Completion can pin
+            # directly to it without running PayoffResolver's blind embedding
+            # search. This prevents the 60s window from cutting off long arcs.
+            "_nce_payoff_end": round(float(c_payoff_end), 3),
+            "_nce_contract_score": round(getattr(contract, "contract_score", 0.0), 4),
         }
         
         if merged_psy:
@@ -2085,7 +2129,60 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
         contract_candidates.append(cand)
         log.info(f"[NCE_INJECT] Contract candidate {c_start:.2f}-{c_end:.2f} "
                  f"[{getattr(contract, 'hook_type', '?')}→{getattr(contract, 'payoff_type', '?')}] "
-                 f"contract_score={getattr(contract, 'contract_score', 0):.3f}")
+                 f"contract_score={getattr(contract, 'contract_score', 0):.3f} "
+                 f"nce_payoff_pin={round(float(c_payoff_end), 2)}s")
+
+    # ── NCE PAYOFF PIN: tag strict-pass candidates whose hook overlaps a contract ─
+    # These are NOT NCE-injected (no contract_seed) but their hook trigger IS paired
+    # by NCE. Without this, PayoffResolver runs blind — it searches a 60s window
+    # not knowing that NCE already found the payoff further out.
+    _contract_by_hook: dict = {}
+    for _c in contracts:
+        _hs = getattr(_c, "hook_start", 0.0)
+        _he = float(getattr(_c, "hook_end", _hs) or _hs)
+        _pe = getattr(_c, "payoff_end", 0.0)
+        if _pe > _hs:
+            _contract_by_hook[(_hs, _he)] = _pe
+
+    _tagged = 0
+    for cand in candidates:
+        if cand.get("contract_seed") or cand.get("_nce_payoff_end"):
+            continue  # already has a pin
+        cand_s = float(cand.get("start", 0.0) or 0.0)
+        cand_e = float(cand.get("end", cand_s) or cand_s)
+        best_pin: float = 0.0
+        best_score: float = 0.0
+        for _c in contracts:
+            _hs = getattr(_c, "hook_start", 0.0)
+            _he = float(getattr(_c, "hook_end", _hs) or _hs)
+            _pe = getattr(_c, "payoff_end", 0.0)
+            _cs = getattr(_c, "contract_score", 0.0)
+            if _pe <= _hs:
+                continue
+            # Hook window of contract overlaps the candidate
+            if _overlap_ratio(cand_s, cand_e, _hs, _he) > 0.0 or (
+                cand_s <= _hs <= cand_e or _hs <= cand_s <= _he
+            ):
+                if _cs > best_score:
+                    best_score = _cs
+                    best_pin = _pe
+        if best_pin > 0.0:
+            cand["_nce_payoff_end"] = round(best_pin, 3)
+            cand["_nce_contract_score"] = round(best_score, 4)
+            _tagged += 1
+            log.info(
+                f"[NCE_PIN] Tagged strict-pass candidate {cand_s:.2f}-{cand_e:.2f} "
+                f"with nce_payoff_end={best_pin:.2f}s contract_score={best_score:.3f}"
+            )
+            print(
+                f"[NCE_PIN] ✓ strict-pass {cand_s:.1f}-{cand_e:.1f}s "
+                f"→ payoff pinned at {best_pin:.1f}s (contract_score={best_score:.3f})",
+                flush=True,
+            )
+
+    if _tagged:
+        log.info(f"[NCE_PIN] Tagged {_tagged} strict-pass candidates with NCE payoff pins")
+        print(f"[NCE_PIN] SUMMARY: {_tagged} strict-pass candidate(s) received NCE payoff pins", flush=True)
 
     ctx.raw_candidates = candidates + new_standalone_candidates + contract_candidates
     if new_standalone_candidates or contract_candidates:
@@ -2129,7 +2226,7 @@ def _run_hook_decision(ctx: "PipelineContext") -> None:
             # trigger.  Preserve that identity instead of taking max() over
             # every later trigger that happens to overlap its broad geometry.
             score = _clamp01(injected_psych.get("stop_scroll", cand.get("hook_strength", 0.0)))
-            anchor_start = float(cand.get("_hook_trigger_start", start) or start)
+            anchor_start = float(cand.get("start", start))
             anchor_end = float(cand.get("_hook_trigger_end", anchor_start) or anchor_start)
             source = "groq_contract_hook" if cand.get("contract_seed") else "groq_trigger_injection"
             evidence_id = str(cand.get("_hook_evidence_id", cand.get("_contract_trace_id", "")) or "")
@@ -3079,22 +3176,30 @@ def _run_validation(ctx: PipelineContext) -> None:
             else:
                 rejected.append(cand)
 
-    # Smart fallback: if validation removed everything, reuse already-computed candidates if fallback is allowed.
-    if not accepted and ctx.allow_fallback:
+    # Smart fallback: if validation left fewer than target candidates, reuse already-computed candidates if fallback is allowed.
+    target_needed = max(1, int(ctx.target_min or 0)) if ctx.allow_fallback else 1
+    if len(accepted) < target_needed and ctx.allow_fallback:
         fallback_source = enriched_before_validation or list(ctx.raw_candidates or [])
         if fallback_source:
-            log.warning("[ORCH-FALLBACK] validation removed all candidates, using enriched candidates")
-            accepted = sorted(
+            log.warning("[ORCH-FALLBACK] validation left %d < target %d candidates, rescuing from enriched candidates", len(accepted), target_needed)
+            existing_ids = set(id(c) for c in accepted)
+            sorted_fallback = sorted(
                 fallback_source,
                 key=lambda x: float((x or {}).get("score_enriched", (x or {}).get("score", 0.0)) or 0.0),
                 reverse=True,
-            )[: max(1, int(ctx.top_k or 1))]
-            for c in accepted:
-                c.setdefault("validation", {}).setdefault("reasons", []).append("validation_fallback_rescue")
-            rejected = []
+            )
+            for c in sorted_fallback:
+                if id(c) not in existing_ids:
+                    accepted.append(c)
+                    existing_ids.add(id(c))
+                    c.setdefault("validation", {}).setdefault("reasons", []).append("validation_fallback_rescue")
+                if len(accepted) >= max(int(ctx.top_k or 1), target_needed):
+                    break
+            rejected = [r for r in rejected if id(r) not in existing_ids]
 
     ctx.enriched_candidates = accepted
     ctx.validated_candidates = list(accepted or [])
+    ctx.ranked_output = list(accepted or [])
     ctx.rejected_candidates = rejected
     _audit_stage_snapshot("VALIDATION_OUT", ctx.validated_candidates)
     reject_counter = Counter()
@@ -3242,7 +3347,8 @@ def _run_validation(ctx: PipelineContext) -> None:
 def _run_ranking(ctx: PipelineContext) -> None:
     t0 = time.time()
     use_viral_score = _env_bool("HS_ENABLE_ALIGNMENT_SCORING", True)
-    for cand in (ctx.ranked_output or []):
+    candidates_to_rank = ctx.ranked_output or ctx.validated_candidates or ctx.enriched_candidates or []
+    for cand in candidates_to_rank:
         psych = cand.get("signals", {}).get("psychology", {})
         sem = cand.get("signals", {}).get("semantic", {})
         nar = cand.get("signals", {}).get("narrative", {})
@@ -3463,7 +3569,7 @@ def _run_ranking(ctx: PipelineContext) -> None:
     # Without a floor they always rank last and get cut before arc assembly.
     # Grant them a minimum viral_score equal to their raw hook_score so they
     # compete fairly with strict candidates.
-    for cand in (ctx.ranked_output or []):
+    for cand in candidates_to_rank:
         if _candidate_origin(cand) == "hook":
             raw_hook = float(cand.get("score", 0.0) or 0.0)
             # Floor = 40% of raw hook score (keeps them below strong strict candidates)
@@ -3478,7 +3584,7 @@ def _run_ranking(ctx: PipelineContext) -> None:
     # ────────────────────────────────────────────────────────────────────────
 
     ranked = sorted(
-        (ctx.ranked_output or []),
+        candidates_to_rank,
         key=lambda x: (
             _rank_score(
                 x,
@@ -3511,7 +3617,7 @@ def _run_ranking(ctx: PipelineContext) -> None:
     if ctx.target_min and len(final) < int(ctx.target_min):
         recovered = list(final)
         existing_ids = set(id(c) for c in recovered)
-        for c in ranked:
+        for c in (list(ranked) + list(ctx.enriched_candidates or []) + list(ctx.rejected_candidates or [])):
             if id(c) in existing_ids:
                 continue
             recovered.append(c)
@@ -3594,8 +3700,8 @@ def _run_ranking(ctx: PipelineContext) -> None:
 def _run_arc_assembler(ctx: PipelineContext) -> None:
     t0 = time.time()
     transcript = list(ctx.transcript or [])
-    # FIX1: Assembler runs before Ranking, so it must read from validated_candidates.
-    ranked = list(ctx.validated_candidates or [])
+    # FIX1: Assembler runs before Ranking, so it must read from validated_candidates or enriched_candidates or raw_candidates.
+    ranked = list(ctx.validated_candidates or ctx.enriched_candidates or ctx.raw_candidates or [])
     if (not transcript) or (not ranked):
         _record_stage(ctx, "L10_ARC_ASSEMBLER", input=len(ranked), arcs=0, complete=0, wall_s=round(time.time() - t0, 3))
         return
@@ -3621,6 +3727,7 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
 
     for cand in ranked:
         c = dict(cand or {})
+        hook_anchor = _decision_value(c, "hook_anchor")
         s0 = float(c.get("start", 0.0) or 0.0)
         e0 = float(c.get("end", s0) or s0)
         if e0 <= s0:
@@ -3670,8 +3777,6 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
 
         hook_seg = transcript[hook_idx]
         hook_start, hook_end = _seg_bounds(hook_seg)
-        if hook_anchor:
-            hook_start = float(hook_anchor.get("start", hook_start) or hook_start)
         # A transcript segment can begin several seconds before the LLM moment.
         # Segment lookup is for text/payoff context only; clip geometry must
         # begin at the immutable anchor timestamp itself.
@@ -3831,12 +3936,18 @@ def _run_arc_assembler(ctx: PipelineContext) -> None:
         # FIX1: Do NOT overwrite viral_score here.
         # viral_score will be set by _run_ranking on the assembled clip.
         # c["viral_score"] = round(float(arc_score), 4)  <- REMOVED
+        c["hook_score"] = round(float(final_hook_score), 4)
+        if "hook_strength" in c or "hook_hunter_confidence" in c:
+            hh_conf = float(c.get("hook_hunter_confidence", c.get("hook_strength", 0.0)))
+            c["hook_hunter_confidence"] = hh_conf
         c["provenance"] = {"stage": "L10_ARC_ASSEMBLER"}
         c["hook_selection_trace"] = {
             "text": str(hook_seg.get("text", "") or ""),
             "score": round(float(final_hook_score), 4),
             "reason": why_selected
         }
+        if "hook_hunter_confidence" in c:
+            c["hook_selection_trace"]["hook_hunter_confidence"] = c["hook_hunter_confidence"]
 
         # FIX3: DECISION TIMELINE
         _boundary_changed = (round(float(arc_start), 2) != round(s0, 2)
@@ -4089,6 +4200,7 @@ def _run_story_completion(ctx: PipelineContext) -> None:
 
     completed = 0
     failed = 0
+    _sc_audit: list = []  # (cid, route, status) — for end-of-stage summary table
 
     for c in candidates:
         if not isinstance(c, dict):
@@ -4109,11 +4221,51 @@ def _run_story_completion(ctx: PipelineContext) -> None:
                 hook_idx = i
                 break
                 
+        # ── NCE PAYOFF PIN: use pinned timestamp if available ─────────────────
+        # NCE already computed the exact payoff location during trigger pairing.
+        # If the candidate carries _nce_payoff_end, use it directly — no need
+        # to run PayoffResolver's blind Tier1/Tier2/Tier3 search at all.
+        nce_pin = c.get("_nce_payoff_end") or (float(c["end"]) if c.get("contract_seed") and c.get("end") else None)
+        if nce_pin:
+            pin_end = float(nce_pin)
+            pin_idx = None
+            for i, seg in enumerate(transcript):
+                if abs(float(seg.get("end", 0)) - pin_end) <= 2.0:
+                    pin_idx = i
+                    break
+            target = {
+                "start": pin_end - 1.0,
+                "end": pin_end,
+                "score": float(c.get("_nce_contract_score", c.get("payoff_engine_score", 1.0))),
+                "source": "NCE_PIN",
+                "segment_idx": pin_idx,
+            }
+            _write_decision(c, "payoff_target", target, "STORY_COMPLETION")
+            c["completeness_signal"] = "RESOLVED"  # LOOP_GATE reads this → lifts completeness cap from 0.35 → 0.70+
+            _cid = c.get("cid", "?")
+            _src = "contract_seed" if c.get("contract_seed") else "strict-pass"
+            log.info(
+                "[STORY_COMPLETION] NCE_PIN used for cid=%s payoff=%.2fs (skipped PayoffResolver)",
+                _cid, pin_end,
+            )
+            print(
+                f"[STORY_COMPLETION] NCE_PIN ✓ cid={_cid} src={_src} "
+                f"payoff_pinned={pin_end:.2f}s seg_idx={pin_idx} "
+                f"(embedding SKIPPED)",
+                flush=True,
+            )
+            _sc_audit.append((_cid, f"NCE_PIN@{pin_end:.1f}s", "OK"))
+            completed += 1
+            continue
+
+        # ── PAYOFF_RESOLVER: build candidate window (90s) ─────────────────────
+        # Window expanded from 60s → 90s so payoffs in longer arcs (60-90s clips)
+        # are actually visible to Tier1/Tier2 search.
         candidate_window = []
         for tmp_j in range(hook_idx, len(transcript)):
             tmp_seg_s = float(transcript[tmp_j].get("start", 0.0))
             tmp_seg_e = float(transcript[tmp_j].get("end", tmp_seg_s))
-            if (tmp_seg_e - hook_start) > 60.0:
+            if (tmp_seg_e - hook_start) > 90.0:  # expanded: 60s → 90s
                 break
             candidate_window.append({
                 "idx": tmp_j,
@@ -4121,24 +4273,23 @@ def _run_story_completion(ctx: PipelineContext) -> None:
                 "end": tmp_seg_e,
                 "text": str(transcript[tmp_j].get("text", ""))
             })
-            
+
         best_payoff = None
         payoff_idx = None
-        
-        # If injected with strict completeness signal
-        if (c.get("completeness_signal") == "RESOLVED" or c.get("contract_seed")) and c.get("end"):
+
+        # Legacy completeness_signal bypass (kept for backward compat)
+        if c.get("completeness_signal") == "RESOLVED" and c.get("end"):
             llm_end = float(c["end"])
             for i, seg in enumerate(transcript):
                 if abs(float(seg.get("end", 0)) - llm_end) <= 1.5:
                     payoff_idx = i
                     break
-            
             target = {
-                "start": llm_end - 1.0,  # approximation for target
+                "start": llm_end - 1.0,
                 "end": llm_end,
                 "score": float(c.get("payoff_engine_score", 1.0)),
-                "source": "CONTRACT_ENGINE" if c.get("contract_seed") else "LLM_DIRECTOR",
-                "segment_idx": payoff_idx
+                "source": "LLM_DIRECTOR",
+                "segment_idx": payoff_idx,
             }
             _write_decision(c, "payoff_target", target, "STORY_COMPLETION")
             completed += 1
@@ -4146,6 +4297,12 @@ def _run_story_completion(ctx: PipelineContext) -> None:
             
         # Otherwise run PayoffResolver
         if candidate_window:
+            _rcid = str(c.get("cid", "?"))
+            _hook_preview = (transcript[hook_idx].get("text", "") or "")[:50]
+            print(
+                f"[STORY_COMPLETION] PayoffResolver → cid={_rcid} hook='{_hook_preview}' window={len(candidate_window)}segs",
+                flush=True,
+            )
             try:
                 from utils.payoff_resolver import PayoffResolver
                 _resolver = PayoffResolver()
@@ -4168,22 +4325,52 @@ def _run_story_completion(ctx: PipelineContext) -> None:
                         "segment_idx": resolver_seg.get("idx")
                     }
                     _write_decision(c, "payoff_target", target, "STORY_COMPLETION")
-                    
+                    _payoff_end = resolver_seg.get("end", 0)
+                    print(
+                        f"[STORY_COMPLETION] PayoffResolver FOUND cid={_rcid} "
+                        f"tier=TIER{tier} score={tier_score:.3f} payoff_end={_payoff_end:.2f}s",
+                        flush=True,
+                    )
+                    _sc_audit.append((_rcid, f"TIER{tier}@{_payoff_end:.1f}s score={tier_score:.3f}", "OK"))
                     if "tier3_title" in resolver_seg:
                         c["clip_title"] = resolver_seg["tier3_title"]
                     completed += 1
                 else:
+                    print(
+                        f"[STORY_COMPLETION] PayoffResolver NONE cid={_rcid} — no payoff found in {len(candidate_window)}seg window",
+                        flush=True,
+                    )
+                    _sc_audit.append((_rcid, "RESOLVER_NONE", "FAILED"))
                     failed += 1
             except Exception as _res_exc:
                 failed += 1
+                _sc_audit.append((_rcid, "RESOLVER_EXCEPTION", f"ERR:{_res_exc!s:.40}"))
                 log.warning("[STORY_COMPLETION] PayoffResolver failed cid=%s: %s", c.get("cid", "?"), _res_exc)
+        else:
+            _sc_audit.append((str(c.get("cid", "?")), "NO_WINDOW", "FAILED"))
+            failed += 1
                 
     _record_stage(ctx, "L10A_STORY_COMPLETION", input=len(candidates), completed=completed, failed=failed, wall_s=round(time.time() - t0, 3))
+
+    # ── STORY_COMPLETION AUDIT TABLE (always printed to stdout) ──────────────
+    _nce_count = sum(1 for _, r, _ in _sc_audit if r.startswith("NCE_PIN"))
+    _res_count = sum(1 for _, r, s in _sc_audit if r.startswith("TIER") and s == "OK")
+    _fail_count = sum(1 for _, _, s in _sc_audit if s != "OK")
+    print("\n[STORY_COMPLETION_AUDIT] " + "=" * 55, flush=True)
+    print(
+        f"[STORY_COMPLETION_AUDIT] total={len(candidates)} "
+        f"nce_pin={_nce_count} resolver_ok={_res_count} failed={_fail_count}",
+        flush=True,
+    )
+    for _cid, _route, _status in _sc_audit:
+        _icon = "✓" if _status == "OK" else "✗"
+        print(f"[STORY_COMPLETION_AUDIT]   {_icon} {_cid:10s}  {_route:35s}  {_status}", flush=True)
+    print("[STORY_COMPLETION_AUDIT] " + "=" * 55, flush=True)
     
 def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
     t0 = time.time()
     transcript = list(ctx.transcript or [])
-    candidates = list(ctx.raw_candidates or [])
+    candidates = list(ctx.validated_candidates or ctx.enriched_candidates or ctx.raw_candidates or [])
     _audit_stage_snapshot("ARC_ASSEMBLER_IN", candidates)
     
     if (not transcript) or (not candidates):
@@ -4191,6 +4378,8 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         return
 
     complete_count = 0
+    v2_handled = []
+    v2_unhandled = []
     
     for c in candidates:
         if not isinstance(c, dict):
@@ -4200,15 +4389,72 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         payoff_target = _decision_value(c, "payoff_target")
         
         if not hook_anchor or not payoff_target:
+            v2_unhandled.append(c)
             continue
             
+        # ── CLIP GEOMETRY: hook_start + best trigger in window ────────────────
+        # ROOT DESIGN:
+        #   NCE payoff timestamp = narrative analysis signal → flows to SCORING only
+        #   Clip geometry = independently chosen from Groq trigger psychology scores
+        #
+        # Given hook_start T, we look for the highest-scored payoff/complete_thought
+        # trigger in the window [T + MIN_DUR, T + MAX_DUR].
+        # Groq already ranked every trigger by memorability + shareability — trust it.
+        # No floor/ceiling bandages needed: the window enforces both naturally.
+        _MIN_DUR = _env_float("HS_MIN_CLIP_DUR_S", 45.0)
+        _MAX_DUR = _env_float("HS_MAX_CLIP_DUR_S", 90.0)
+        _END_TYPES = {"payoff", "complete_thought"}
+
         arc_start = float(hook_anchor.get("start", 0.0))
-        arc_end = float(payoff_target.get("end", arc_start))
-            
-        # Align to sentence boundary ONLY within the strict limits of the anchor/target
+        window_lo = arc_start + _MIN_DUR
+        window_hi = arc_start + _MAX_DUR
+
+        # Preserve NCE payoff for scoring/ranking — NOT used for geometry
+        nce_payoff_end = float(
+            payoff_target.get("end", payoff_target.get("start", arc_start))
+        )
+        c["_nce_payoff_for_scoring"] = round(nce_payoff_end, 2)
+
+        # Scan ALL Groq triggers in window → pick highest psychology score
+        # Groq already told us which moments are most memorable + shareable.
+        # Trust it. The best clip ending = highest scored trigger in the window.
+        best_end: float = 0.0
+        best_score: float = -1.0
+
+        for tr in (ctx.narrative_triggers or []):
+            if str(tr.get("type", "")) not in _END_TYPES:
+                continue
+            tr_end = float(tr.get("end", tr.get("start", 0.0)) or 0.0)
+            if tr_end < window_lo or tr_end > window_hi:
+                continue
+            psy  = tr.get("psychology", {}) or {}
+            mem  = float(psy.get("memorability", 0.0))
+            sha  = float(psy.get("shareability", 0.0))
+            conf = float(tr.get("confidence", 0.5))
+            end_score = conf * (0.55 * mem + 0.45 * sha)
+            if end_score > best_score:
+                best_score = end_score
+                best_end   = tr_end
+
+        if best_end > 0.0:
+            arc_end = best_end
+            c["_arc_resolution"] = "BEST_GROQ_TRIGGER"
+            log.info(
+                "[ARC_ASSEMBLER] hook=%.2f → best_end=%.2f (score=%.3f) cid=%s",
+                arc_start, arc_end, best_score, c.get("cid", "?"),
+            )
+        else:
+            arc_end = arc_start + (_MIN_DUR + _MAX_DUR) / 2.0
+            c["_arc_resolution"] = "WINDOW_MIDPOINT"
+            log.info(
+                "[ARC_ASSEMBLER] hook=%.2f → no trigger in [%.0f,%.0f] → midpoint %.2f cid=%s",
+                arc_start, window_lo, window_hi, arc_end, c.get("cid", "?"),
+            )
+
+        # Align start/end to transcript sentence boundaries
         aligned_start = arc_start
-        aligned_end = arc_end
-        
+        aligned_end   = arc_end
+
         for seg in transcript:
             seg_s = float(seg.get("start", 0.0))
             seg_e = float(seg.get("end", seg_s))
@@ -4216,23 +4462,41 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
                 aligned_start = seg_s
             if seg_s <= arc_end <= seg_e:
                 aligned_end = seg_e
-                
-        # Write geometry safely, absolutely no minimum padding applied
+
         geom = {
             "start": round(aligned_start, 2),
-            "end": round(aligned_end, 2),
-            "rule": "ARC_V2_GEOMETRY"
+            "end":   round(aligned_end, 2),
+            "rule":  "ARC_V2_PSYCH_GEOMETRY",
         }
         _write_decision(c, "clip_geometry", geom, "ARC_ASSEMBLER")
-        
-        # We preserve start/end at root strictly for backwards-compat export scripts
-        c["start"] = geom["start"]
-        c["end"] = geom["end"]
-        
-        complete_count += 1
 
-    ctx.ranked_output = [c for c in candidates if _decision_value(c, "clip_geometry")]
-    _record_stage(ctx, "L11_ARC_ASSEMBLER", input=len(candidates), arcs=complete_count, complete=complete_count, wall_s=round(time.time() - t0, 3))
+        c["start"] = geom["start"]
+        c["end"]   = geom["end"]
+
+        complete_count += 1
+        v2_handled.append(c)
+
+
+    if v2_unhandled:
+        import copy
+        temp_ctx = copy.copy(ctx)
+        temp_ctx.validated_candidates = v2_unhandled
+        _run_arc_assembler(temp_ctx)
+        legacy_assembled = list(temp_ctx.ranked_output or [])
+        for c in legacy_assembled:
+            if not _decision_value(c, "clip_geometry"):
+                geom = {
+                    "start": round(float(c.get("start", 0.0)), 2),
+                    "end": round(float(c.get("end", 0.0)), 2),
+                    "rule": "ARC_V1_GEOMETRY"
+                }
+                _write_decision(c, "clip_geometry", geom, "ARC_ASSEMBLER")
+        v2_handled.extend(legacy_assembled)
+
+    ctx.ranked_output = [c for c in v2_handled if _decision_value(c, "clip_geometry")]
+    if ctx.ranked_output:
+        ctx.raw_candidates = list(ctx.ranked_output)
+    _record_stage(ctx, "L11_ARC_ASSEMBLER", input=len(candidates), arcs=complete_count, complete=len(ctx.ranked_output), wall_s=round(time.time() - t0, 3))
     
 def _run_editor_refiner(ctx: PipelineContext) -> None:
     t0 = time.time()
@@ -4243,16 +4507,23 @@ def _run_editor_refiner(ctx: PipelineContext) -> None:
         _record_stage(ctx, "L12_EDITOR_REFINER", input=len(clips), output=0, wall_s=round(time.time() - t0, 3))
         return
         
+    kept = []
     for c in clips:
+        reasons = _final_quality_reject_reasons(c)
+        if reasons and not _final_quality_rescue(c):
+            log.info("[EDITOR_REFINER_REJECT] cid=%s start=%.1f end=%.1f reasons=%s", c.get("cid", "?"), float(c.get("start", 0.0) or 0.0), float(c.get("end", 0.0) or 0.0), reasons)
+            continue
         # STRICT RULE: Editor Refiner is READ ONLY for geometry.
         # It may add editing notes but MUST NOT mutate bounds.
         geom = _decision_value(c, "clip_geometry")
-        if not geom:
-            continue
-            
-        c["editing_notes"] = ["Editor refiner passed (geometry is immutable)"]
+        if geom:
+            c["editing_notes"] = ["Editor refiner passed (geometry is immutable)"]
+        kept.append(c)
         
-    _record_stage(ctx, "L12_EDITOR_REFINER", input=len(clips), output=len(clips), wall_s=round(time.time() - t0, 3))
+    ctx.ranked_output = kept
+    if ctx.final_candidates is not None:
+        ctx.final_candidates = kept
+    _record_stage(ctx, "L12_EDITOR_REFINER", input=len(clips), output=len(kept), wall_s=round(time.time() - t0, 3))
 
 def _run_groq_surgeon(ctx: PipelineContext) -> None:
     import time
@@ -4724,6 +4995,23 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
 
     _run_narrative_intelligence(ctx)
     print("STAGE OK: narrative intelligence")
+
+    # ── DYNAMIC TOP_K: recalculate now that we know trigger count ────────────
+    # Replaces the fixed DEFAULT_TOP_K=8 with a content-aware target.
+    # A 28-min video with 50 triggers should produce ~13 clips, not 8.
+    _dyn_top_k = _compute_dynamic_top_k(
+        duration_s=total_dur,
+        triggers=list(ctx.narrative_triggers or []),
+    )
+    if _dyn_top_k != ctx.top_k:
+        log.info(
+            "[DYNAMIC_TOP_K] Overriding top_k: %d → %d (duration=%.0fs triggers=%d)",
+            ctx.top_k, _dyn_top_k, total_dur, len(ctx.narrative_triggers or []),
+        )
+        ctx.top_k = _dyn_top_k
+        ctx.target_min = _resolve_min_target(total_dur, ctx.top_k)
+        log.info("[DYNAMIC_TOP_K] Updated target_min=%d", ctx.target_min)
+    # ─────────────────────────────────────────────────────────────────────────
 
     if trace:
         trace.enter("L6_IDEA_GRAPH")
