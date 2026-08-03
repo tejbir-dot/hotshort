@@ -20,6 +20,13 @@ Optional:
 
 import os
 import sys
+
+# Inject local bundled bin/ directory (containing dav1d FFmpeg) into PATH
+# This guarantees that ffmpeg and ffprobe execute our optimized build, not system defaults.
+_local_bin = os.path.abspath(os.path.join(os.path.dirname(__file__), "bin"))
+if os.path.isdir(_local_bin):
+    os.environ["PATH"] = _local_bin + os.pathsep + os.environ.get("PATH", "")
+
 import json
 import time
 import tempfile
@@ -584,7 +591,7 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
         sys.executable, "-m", "yt_dlp",
         "--js-runtimes", "node",          # Use Node.js v24 (installed) instead of deno
         "--remote-components", "ejs:github", # Required to fetch latest JS solver
-        "--cookies-from-browser", "firefox",
+        "--cookies", "cookies.txt",
         "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "--merge-output-format", "mp4",
         "--retries", "10",
@@ -680,6 +687,18 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
     watermark_path = os.path.join(BASE_DIR, "static", "branding", "logo.png")
     has_outro = os.path.exists(outro_path) and os.path.getsize(outro_path) > 1000
 
+    ffmpeg_nvenc = False
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-f", "lavfi", "-i",
+             "nullsrc=s=64x64:d=0.1", "-c:v", "h264_nvenc",
+             "-preset", "fast", "-f", "null", "-"],
+            capture_output=True, timeout=10,
+        )
+        ffmpeg_nvenc = r.returncode == 0
+    except Exception:
+        pass
+
     try:
         print(f"[LOCAL_WORKER] Branding (single pass): blur+watermark{'+ outro' if has_outro else ''}", flush=True)
 
@@ -711,8 +730,8 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "-i", outro_path,        # 2: outro.mp4
                 "-filter_complex", filter_complex,
                 "-map", "[v]", "-map", "[a]",
-                "-c:v", "h264_nvenc",
-                "-preset", "p2",
+                "-c:v", "h264_nvenc" if ffmpeg_nvenc else "libx264",
+                "-preset", "fast" if ffmpeg_nvenc else "veryfast",
                 "-b:v", "5M",
                 "-c:a", "aac",
                 "-b:a", "128k",
@@ -736,8 +755,8 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
                 "-i", input_path,
                 "-i", watermark_path,
                 "-filter_complex", filter_complex,
-                "-c:v", "h264_nvenc",
-                "-preset", "p2",
+                "-c:v", "h264_nvenc" if ffmpeg_nvenc else "libx264",
+                "-preset", "fast" if ffmpeg_nvenc else "veryfast",
                 "-b:v", "5M",
                 "-c:a", "copy",
                 "-movflags", "+faststart",
@@ -746,8 +765,15 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
 
         result = subprocess.run(cmd, capture_output=True, timeout=300)
         if result.returncode != 0:
-            print(f"[LOCAL_WORKER] Branding failed: {result.stderr.decode('utf-8', errors='ignore')[-500:]}", flush=True)
-            return False
+            if "h264_nvenc" in cmd:
+                print(f"[LOCAL_WORKER] NVENC branding failed, retrying with CPU encode...", flush=True)
+                cmd = [c.replace("h264_nvenc", "libx264") if c == "h264_nvenc" else c for c in cmd]
+                cmd = [c.replace("fast", "veryfast") if c == "fast" else c for c in cmd]
+                result = subprocess.run(cmd, capture_output=True, timeout=300)
+            
+            if result.returncode != 0:
+                print(f"[LOCAL_WORKER] Branding failed: {result.stderr.decode('utf-8', errors='ignore')[-500:]}", flush=True)
+                return False
 
         return True
 
@@ -760,7 +786,8 @@ import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import cv2
-from frame_clustering import cluster_similar_frames
+from effects.format_analyzer import analyze_video_format, DirectorMode, detect_faces_multi_haar
+from frame_clustering import find_scene_segments
 
 
 ENABLE_CLUSTER_SCAN = os.getenv("HS_ENABLE_CLUSTER_SCAN", "1").strip().lower() not in ("0", "false", "no", "off")
@@ -781,35 +808,41 @@ class FaceCache:
             self._done = True
         
     def _detect(self, cascade, frame):
+        raw_mean = float(frame.mean())
         print(
             f"[DETECT_DEBUG] frame_shape={frame.shape} dtype={frame.dtype} "
-            f"mean={frame.mean():.1f} min={frame.min()} max={frame.max()}",
+            f"mean={raw_mean:.1f} min={frame.min()} max={frame.max()}",
             flush=True,
         )
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # CLAHE: if frame is overexposed (gray_mean > 180), Haar cannot see contrast.
+        # Locally normalise contrast before detection — recovers faces on blown-out segments.
+        _OVEREXPOSED_THRESHOLD = 180
+        clahe_applied = False
+        if gray.mean() > _OVEREXPOSED_THRESHOLD:
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            gray = clahe.apply(gray)
+            clahe_applied = True
+
+        faces = detect_faces_multi_haar(gray, cv2, scale_factor=1.15, min_neighbors=3, min_size=(40, 40))
         print(
-            f"[DETECT_RAW] cascade_empty={cascade.empty()} "
+            f"[DETECT_RAW] cascade_empty={cascade.empty() if cascade else False} "
             f"gray_shape={gray.shape} gray_dtype={gray.dtype} "
-            f"gray_mean={gray.mean():.1f}",
+            f"gray_mean={gray.mean():.1f} clahe={clahe_applied}",
             flush=True,
-        )
-        faces = cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.15,
-            minNeighbors=3,
-            minSize=(40, 40),
-            flags=cv2.CASCADE_SCALE_IMAGE,
         )
         print(
             f"[DETECT_RAW] result_count={len(faces)} "
             "call_kwargs={'scaleFactor': 1.15, 'minNeighbors': 3, "
-            "'minSize': (40, 40)}",
+            "'minSize': (40, 40), 'mode': 'multi_cascade_haar'}",
             flush=True,
         )
         return [
             {"x": float(x), "y": float(y), "w": float(w), "h": float(h)}
             for x, y, w, h in faces
         ]
+
 
     @staticmethod
     def _valid_face_count(faces, frame_height):
@@ -840,15 +873,28 @@ class FaceCache:
         stride = max(1, int(os.getenv("HS_FACE_CACHE_FRAME_STRIDE", "15") or 15))
         workers = max(1, int(os.getenv("HS_FACE_CACHE_WORKERS", "4") or 4))
 
-        def scan_one_clip(clip):
+        def scan_one_clip(clip_idx, clip):
+            t_open = 0.0
+            t_seek = 0.0
+            t_decode = 0.0
+            t_sample = 0.0
+            t_scene = 0.0
+            t_rep = 0.0
+            t_face = 0.0
+            t_anchor = 0.0
+
             _clip_start = time.time()
+            start = float(clip.get("start", 0.0) or 0.0)
+            end = float(clip.get("end", start) or start)
+
+            t0 = time.perf_counter()
             cap = cv2.VideoCapture(self.video_path)
+            t_open += time.perf_counter() - t0
             local_fps = cap.get(cv2.CAP_PROP_FPS) or fps or 25.0
             cascade = cv2.CascadeClassifier(
                 cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
             )
-            start = float(clip.get("start", 0.0) or 0.0)
-            end = float(clip.get("end", start) or start)
+
             start_frame = int(start * local_fps)
             end_frame = int(end * local_fps)
             abs_results = {}
@@ -858,33 +904,93 @@ class FaceCache:
             # AV1 random seeks restart decoding from a keyframe and dominate wall
             # time. Seek once to the clip and decode forward, retaining only the
             # sampled frames required for in-memory clustering and Haar detection.
+            t0 = time.perf_counter()
             cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            t_seek += time.perf_counter() - t0
+
+            # ── Seek verification: confirm OpenCV actually landed where we asked ──
+            actual_landed_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
+            actual_landed_t = actual_landed_frame / local_fps
+            seek_delta_frames = abs(actual_landed_frame - start_frame)
+            if seek_delta_frames > local_fps:  # >1 second off = real problem
+                print(
+                    f"[SEEK_VERIFY] ⚠️ SEEK MISS clip={start:.2f}-{end:.2f} "
+                    f"requested_frame={start_frame} landed_frame={actual_landed_frame:.0f} "
+                    f"delta={seek_delta_frames:.0f}frames ({seek_delta_frames/local_fps:.2f}s off)",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[SEEK_VERIFY] clip={start:.2f}-{end:.2f} "
+                    f"requested={start:.2f}s landed={actual_landed_t:.2f}s "
+                    f"delta={seek_delta_frames:.0f}frames ✓",
+                    flush=True,
+                )
+
+            frames_skipped_invalid = 0
             for fn in range(start_frame, end_frame):
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                if (fn - start_frame) % stride == 0:
+                rel = fn - start_frame
+                is_sample = (rel % stride == 0)
+
+                t0 = time.perf_counter()
+                if is_sample:
+                    # Full decode — we actually need this frame's pixels
+                    ret, frame = cap.read()
+                    t_decode += time.perf_counter() - t0
+                    if not ret:
+                        break
+
+                    # Guard: only keep genuinely decoded frames.
+                    # A stale/buffer frame from a failed seek can appear valid (ret=True)
+                    # but will have an unexpected shape or be entirely overexposed.
+                    if frame is None or frame.ndim != 3:
+                        frames_skipped_invalid += 1
+                        continue
+
+                    t0 = time.perf_counter()
                     sampled.append((fn, frame))
+                    t_sample += time.perf_counter() - t0
+                else:
+                    # grab() advances the decoder position WITHOUT full pixel decode.
+                    # ~10-14x faster than cap.read() for non-sampled frames.
+                    ret = cap.grab()
+                    t_decode += time.perf_counter() - t0
+                    if not ret:
+                        break
 
             print(
                 f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} "
-                f"sample_decode=sequential frames_preloaded={len(sampled)}",
+                f"sample_decode=grab_optimized frames_preloaded={len(sampled)} "
+                f"frames_skipped_invalid={frames_skipped_invalid}",
                 flush=True,
             )
 
+
             haar_calls = 0
             if ENABLE_CLUSTER_SCAN:
-                clusters = cluster_similar_frames(
+                t0 = time.perf_counter()
+                clusters = find_scene_segments(
                     [frame for _, frame in sampled], CLUSTER_HASH_THRESHOLD
                 )
+                t_scene += time.perf_counter() - t0
                 for cluster_id, cluster in enumerate(clusters):
-                    # The sharpest frame is generally more reliable than the midpoint
-                    # while remaining cheap compared with a Haar pass.
-                    representative = max(
-                        cluster,
-                        key=lambda idx: cv2.Laplacian(sampled[idx][1], cv2.CV_64F).var(),
-                    )
+                    t0 = time.perf_counter()
+                    # [PERF FIX] Downsample to 160x90 before Laplacian — sharpness is
+                    # a RELATIVE comparison between frames in the same cluster, so
+                    # full-resolution is wasteful. This cuts ~5s → <0.1s per clip.
+                    _SHARP_W, _SHARP_H = 160, 90
+                    def _sharpness(idx: int) -> float:
+                        f = sampled[idx][1]
+                        small = cv2.resize(f, (_SHARP_W, _SHARP_H), interpolation=cv2.INTER_AREA)
+                        gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if small.ndim == 3 else small
+                        return cv2.Laplacian(gray, cv2.CV_32F).var()
+
+                    representative = max(cluster, key=_sharpness)
+                    t_rep += time.perf_counter() - t0
+                    
+                    t0 = time.perf_counter()
                     raw_faces = self._detect(cascade, sampled[representative][1])
+                    t_face += time.perf_counter() - t0
                     haar_calls += 1
                     valid_count = self._valid_face_count(
                         raw_faces, sampled[representative][1].shape[0]
@@ -905,7 +1011,9 @@ class FaceCache:
                             flush=True,
                         )
                         for retry_idx in retries[:MIN_CLUSTER_REDETECT_ATTEMPTS]:
+                            t0 = time.perf_counter()
                             raw_faces = self._detect(cascade, sampled[retry_idx][1])
+                            t_face += time.perf_counter() - t0
                             haar_calls += 1
                             valid_count = self._valid_face_count(
                                 raw_faces, sampled[retry_idx][1].shape[0]
@@ -913,6 +1021,7 @@ class FaceCache:
                             if valid_count > 0:
                                 break
 
+                    t0 = time.perf_counter()
                     # Copy each result so callers cannot mutate a shared cluster bbox.
                     for sample_idx in cluster:
                         fn, _ = sampled[sample_idx]
@@ -929,6 +1038,7 @@ class FaceCache:
                         ]
                         abs_results[t_abs] = assigned_faces
                         rel_results[t_rel] = assigned_faces
+                    t_anchor += time.perf_counter() - t0
                 print(
                     f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} clusters={len(clusters)} "
                     f"haar_calls={haar_calls} frames_covered={len(sampled)} "
@@ -940,7 +1050,9 @@ class FaceCache:
                 for fn, frame in sampled:
                     t_abs = round(fn / local_fps, 2)
                     t_rel = round(max(0.0, t_abs - start), 2)
+                    t0 = time.perf_counter()
                     raw_faces = self._detect(cascade, frame)
+                    t_face += time.perf_counter() - t0
                     haar_calls += 1
                     if raw_faces:
                         abs_results[t_abs] = raw_faces
@@ -952,11 +1064,21 @@ class FaceCache:
                     flush=True,
                 )
 
+            print(f"\nClip {clip_idx + 1}\n"
+                  f"Open Video .......... {int(t_open * 1000)} ms\n"
+                  f"Seek ............... {int(t_seek * 1000)} ms\n"
+                  f"Decode ........... {int(t_decode * 1000)} ms\n"
+                  f"Frame Sampling ..... {int(t_sample * 1000)} ms\n"
+                  f"Scene Detection ..... {int(t_scene * 1000)} ms\n"
+                  f"Representative Pick.. {int(t_rep * 1000)} ms\n"
+                  f"Face Detect ........ {int(t_face * 1000)} ms\n"
+                  f"Anchor Build ........ {int(t_anchor * 1000)} ms\n", flush=True)
+
             cap.release()
             return (round(start, 2), round(end, 2)), abs_results, rel_results
 
         with ThreadPoolExecutor(max_workers=min(workers, max(1, len(clips)))) as ex:
-            futures = [ex.submit(scan_one_clip, clip) for clip in clips]
+            futures = [ex.submit(scan_one_clip, i, clip) for i, clip in enumerate(clips)]
             for future in futures:
                 key, abs_results, rel_results = future.result()
                 self.cache.update(abs_results)
@@ -1056,9 +1178,28 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     pipeline_mode=os.getenv("HS_ORCH_PIPELINE_MODE", "staged"),
                 )
                 
-                # Precompute FaceMesh only for the extracted clips
+                # Pre-classify clips for the Lightning Editor
+                haar_clips = []
+                for clip in clips:
+                    start = float(clip.get("start", 0.0) or 0.0)
+                    end = float(clip.get("end", start) or start)
+                    fmt = analyze_video_format(video_path, start, end)
+                    
+                    if fmt.director_mode == DirectorMode.SINGLE_CENTERED:
+                        print(f"[LIGHTNING_EDITOR] mode={fmt.director_mode.name} avg_faces={fmt.face_count_avg:.2f} speakers={fmt.speaker_positions}. Queuing for anchor extraction (Mode A).", flush=True)
+                        print(f"\\n[DIRECTOR]\\nStrategy=SingleCenteredStrategy\\nFaceCache=ENABLED (Anchor Only)\\nCaptionDriver=DirectorContext\\nCropDriver=DirectorContext\\nExpectedHaarCalls<=3\\n", flush=True)
+                        haar_clips.append(clip)
+                    else:
+                        print(f"[LIGHTNING_EDITOR] mode={fmt.director_mode.name} avg_faces={fmt.face_count_avg:.2f}. Queuing for anchor extraction (Mode B).", flush=True)
+                        print(f"\\n[DIRECTOR]\\nStrategy=PodcastStrategy\\nFaceCache=ENABLED (Anchor Only)\\nCaptionDriver=DirectorContext\\nCropDriver=DirectorContext\\nExpectedHaarCalls<=3\\n", flush=True)
+                        haar_clips.append(clip)
+                
+                # Precompute FaceMesh only for the extracted clips that need it
                 nonlocal face_cache
-                face_cache = FaceCache(video_path, clips)
+                if haar_clips:
+                    face_cache = FaceCache(video_path, haar_clips)
+                else:
+                    face_cache = None
                 
                 # Precompute captions async before releasing clips
                 if editor_instance and clips:
@@ -1125,11 +1266,17 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     # CPU: Extract subclip (ffmpeg copy)
                     t0 = time.perf_counter()
                     raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
+                    # Frame-accurate extraction (avoid -c copy keyframe drift)
                     import subprocess
-                    subprocess.run([
-                        "ffmpeg", "-y", "-ss", str(start), "-to", str(end),
-                        "-i", video_path, "-c", "copy", "-avoid_negative_ts", "make_zero", raw_path
-                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+                    try:
+                        subprocess.run([
+                            "ffmpeg", "-y", "-nostdin", "-ss", str(start), "-to", str(end),
+                            "-i", video_path, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                            "-c:a", "aac", raw_path
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
+                    except subprocess.CalledProcessError as e:
+                        print(f"[PIPELINE] Extraction failed for clip {i}: {e}", flush=True)
+                        continue
                     t_raw_cut = time.perf_counter() - t0
                     
                     final_path = raw_path
@@ -1178,10 +1325,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     # Branding
                     # If WCE merged branding into its pass, skip the separate call.
                     # Fallback to separate pass if editor was disabled or branding wasn't merged.
-                    _wce_branding_merged = (
-                        edit_result is not None
-                        and (getattr(edit_result, "metadata", {}) or {}).get("branding_merged_into_wce", False)
-                    )
+                    _meta = (getattr(edit_result, "metadata", {}) or {}) if edit_result is not None else {}
+                    _veg = _meta.get("visual_effect_graph", {}) or {}
+                    _wce_branding_merged = bool(_meta.get("branding_merged_into_wce", False) or _veg.get("branding_merged_into_wce", False))
                     if _wce_branding_merged:
                         t_branding = 0.0  # merged into WCE — no extra pass needed
                         print(f"[LOCAL_WORKER] Branding merged into WCE pass — 0s extra", flush=True)
@@ -1263,7 +1409,7 @@ def main():
     _print_startup_banner()
     cloudinary_ok = _configure_cloudinary()
     if not cloudinary_ok:
-        print("[LOCAL_WORKER] ⚠️  Cloudinary not configured — clips will have no URLs", flush=True)
+        print("[LOCAL_WORKER] ⚠️  Cloudinary not configured — falling back to direct Railway uploads (clips WILL have URLs)", flush=True)
 
     while True:
         print(f"[LOCAL_WORKER] polling...", flush=True)

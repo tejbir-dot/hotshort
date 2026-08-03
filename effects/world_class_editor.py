@@ -11,6 +11,11 @@ import uuid
 import threading
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Tuple, Union
+try:
+    import bolt
+except ImportError:
+    bolt = None
+from effects.format_analyzer import detect_faces_multi_haar
 
 @dataclass
 class DirectorSegment:
@@ -52,6 +57,7 @@ log = logging.getLogger("world_class_editor")
 ENABLE_CLUSTER_SCAN = os.getenv("HS_ENABLE_CLUSTER_SCAN", "1").strip().lower() not in ("0", "false", "no", "off")
 CLUSTER_TRANSITION_FRAMES = max(1, int(os.getenv("HS_CLUSTER_TRANSITION_FRAMES", "12") or 12))
 MIN_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MIN_FACE_HEIGHT_RATIO", "0.05") or 0.05)))
+MAX_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MAX_FACE_HEIGHT_RATIO", "0.40") or 0.40)))
 
 # Font directory: matches the COPY path in Dockerfile.worker.
 # On the NVIDIA container, fontconfig may not index these correctly,
@@ -64,6 +70,12 @@ _FONTS_DIR = os.environ.get(
 
 def _nvenc_available() -> bool:
     """Probe once whether h264_nvenc is usable on this system."""
+    force_env = os.environ.get("HS_FORCE_NVENC", "").strip().lower()
+    if force_env in ("1", "true", "yes"):
+        log.info("[WCE] NVENC forced via HS_FORCE_NVENC=1")
+        return True
+    if force_env in ("0", "false", "no"):
+        return False
     if not hasattr(_nvenc_available, "_cached"):
         try:
             r = subprocess.run(
@@ -142,9 +154,9 @@ def _input_video_codec(path: Optional[str]) -> str:
                 "-select_streams",
                 "v:0",
                 "-show_entries",
-                "stream=codec_name",
+                "stream=codec_name,pix_fmt",
                 "-of",
-                "default=nokey=1:noprint_wrappers=1",
+                "default=nokey=0:noprint_wrappers=1",
                 path,
             ],
             check=True,
@@ -152,7 +164,22 @@ def _input_video_codec(path: Optional[str]) -> str:
             text=True,
             timeout=10,
         )
-        return (out.stdout or "").strip().lower()
+        codec = ""
+        pix_fmt = ""
+        for line in (out.stdout or "").splitlines():
+            if line.startswith("codec_name="):
+                codec = line.split("=", 1)[1].strip().lower()
+            elif line.startswith("pix_fmt="):
+                pix_fmt = line.split("=", 1)[1].strip().lower()
+        # av1_cuvid does NOT support yuv420p chroma — pre-emptively mark it broken
+        # so we never waste a failed FFmpeg attempt on this machine/build.
+        if codec == "av1" and pix_fmt == "yuv420p" and not _AV1_HWDECODE_KNOWN_BROKEN:
+            log.info(
+                "[AV1_HWDECODE] pix_fmt=yuv420p is unsupported by av1_cuvid on this build — "
+                "skipping CUDA decode path to avoid wasted retry."
+            )
+            _mark_av1_hwdecode_broken()
+        return codec
     except Exception:
         return ""
 
@@ -206,8 +233,8 @@ def _get_export_crf(default: int = 20) -> int:
         return default
 
 
-def _get_export_preset(default: str = "veryfast") -> str:
-    """Read FFmpeg preset from env: HS_EXPORT_PRESET (default veryfast)."""
+def _get_export_preset(default: str = "ultrafast") -> str:
+    """Read FFmpeg preset from env: HS_EXPORT_PRESET (default ultrafast for CPU speed)."""
     return os.environ.get("HS_EXPORT_PRESET", default).strip() or default
 
 
@@ -236,8 +263,7 @@ def _video_encode_args(crf: int = 20, preset: str = "veryfast") -> List[str]:
         log.info("[WCE] encode=NVENC codec=h264_nvenc")
         return [
             "-c:v", "h264_nvenc",
-            "-preset", "p1",
-            "-tune", "hq",
+            "-preset", "fast",
             "-profile:v", "high",
             "-rc", "vbr",
             "-cq", str(_crf),
@@ -414,6 +440,8 @@ class ClipEditor:
         _ensure_dir(self.work_dir)
 
     def _run(self, cmd: List[str], timeout_s: int = 120) -> None:
+        if bolt and cmd and "ffmpeg" in str(cmd[0]).lower():
+            bolt.emit("ffmpeg_encode")
         try:
             res = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=timeout_s)
             if res.stderr:
@@ -544,8 +572,11 @@ class ClipEditor:
                     win.append(remapped_seg)
         
         n_segments = len(win)
+        segs_without_words = sum(1 for item in win if not item.get("words"))
         n_words = sum(len(item.get("words", [])) for item in win) if any(item.get("words") for item in win) else sum(len((item.get("text") or "").split()) for item in win)
-        log.info(f"[WCE] transcript_window segments={n_segments} words={n_words} for clip {clip_start:.2f}-{clip_end:.2f}")
+        log.info(f"[WCE-SYNC-FORENSIC] _window_transcript: segments={n_segments} words={n_words} missing_words_in_segs={segs_without_words} for clip {clip_start:.2f}-{clip_end:.2f}")
+        if segs_without_words > 0:
+            log.warning(f"[WCE-SYNC-FORENSIC] WARNING: {segs_without_words}/{n_segments} segments lack 'words' array! They will fall back to math division.")
         return win
 
     def _is_sentence_end(self, text: str) -> bool:
@@ -792,6 +823,8 @@ class ClipEditor:
         if cv2 is None:
             return _null
 
+        if bolt:
+            bolt.emit("video_open")
         cap = cv2.VideoCapture(clip_path)
         if not cap.isOpened():
             return _null
@@ -827,12 +860,11 @@ class ClipEditor:
                     continue
 
                 face_xs = []
-                if cascade is not None:
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = cascade.detectMultiScale(gray, 1.15, 3, minSize=(40, 40))
-                    for x, y, fw, fh in faces:
-                        if 40 < fw < 500 and 0.05 < (y + fh / 2.0) / h < 0.95:
-                            face_xs.append(_clamp((x + fw / 2.0) / float(w), 0.0, 1.0))
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                faces = detect_faces_multi_haar(gray, cv2, scale_factor=1.15, min_neighbors=3, min_size=(40, 40))
+                for x, y, fw, fh in faces:
+                    if 40 < fw < 500 and 0.05 < (y + fh / 2.0) / h < 0.95:
+                        face_xs.append(_clamp((x + fw / 2.0) / float(w), 0.0, 1.0))
 
                 if face_xs:
                     samples.append((target_frame / fps, face_xs))
@@ -855,12 +887,12 @@ class ClipEditor:
 
         left_xs  = [x for x in all_xs if x < 0.45]
         right_xs = [x for x in all_xs if x > 0.55]
-        is_bimodal = len(left_xs) >= 2 and len(right_xs) >= 2
+        is_bimodal = len(left_xs) >= 1 and len(right_xs) >= 1
 
-        if is_bimodal or avg_faces >= 1.4:
-            lc = (sum(left_xs) / len(left_xs)) if left_xs else 0.25
-            rc = (sum(right_xs) / len(right_xs)) if right_xs else 0.75
-            spk_positions = [round(lc, 3), round(rc, 3)] if is_bimodal else [0.5]
+        if is_bimodal or avg_faces >= 1.15:
+            lc = (sum(left_xs) / len(left_xs)) if left_xs else 0.30
+            rc = (sum(right_xs) / len(right_xs)) if right_xs else 0.70
+            spk_positions = [round(lc, 3), round(rc, 3)]
             single_sides = [
                 "L" if faces[0] < 0.5 else "R"
                 for _, faces in samples if len(faces) == 1
@@ -905,10 +937,61 @@ class ClipEditor:
         """
         fmt = video_fmt.format_type
 
+        cap = None
+        fps = 25.0
+        frame_width = 1920
+        frame_height = 1080
+
+        if clip_path and cv2 is not None:
+            try:
+                if bolt:
+                    bolt.emit("video_open")
+                cap = cv2.VideoCapture(clip_path)
+                fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+                frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1920)
+                frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1080)
+            except Exception:
+                cap = None
+
         if fmt in ("motion_graphic", "fast_cuts"):
+            if cap: cap.release()
             return 0.5
 
         if fmt == "monologue":
+            if cap: cap.release()
+            if face_cache and len(face_cache) > 0:
+                # Mode A (Monologue) with FaceCache (Anchor Only):
+                # No audio-switching needed (single speaker). Simply update anchor position per scene-segment!
+                clusters_map = {}
+                for t_rel, faces in face_cache.items():
+                    if not faces:
+                        continue
+                    f = max(faces, key=lambda item: item['w'] * item['h'])
+                    cid = f.get("_cluster_id", 0)
+                    cend = f.get("_cluster_end", int(t_rel * fps)) / max(1.0, float(fps))
+                    cx = (f['x'] + f['w'] / 2.0) / max(1.0, float(frame_width))
+                    if cid not in clusters_map:
+                        clusters_map[cid] = {"end_t": cend, "x_vals": []}
+                    clusters_map[cid]["x_vals"].append(cx)
+                    clusters_map[cid]["end_t"] = max(clusters_map[cid]["end_t"], cend)
+
+                if clusters_map:
+                    sorted_clusters = sorted(clusters_map.items(), key=lambda item: item[0])
+                    cluster_anchors = [
+                        (data["end_t"], _clamp(sum(data["x_vals"]) / len(data["x_vals"]), 0.15, 0.85))
+                        for _, data in sorted_clusters if data["x_vals"]
+                    ]
+                    if len(cluster_anchors) == 1:
+                        log.info("[WCE-VISUAL] mode=MONOLOGUE_ANCHOR_SINGLE")
+                        return cluster_anchors[0][1]
+                    elif len(cluster_anchors) > 1:
+                        log.info("[WCE-VISUAL] mode=MONOLOGUE_ANCHOR_SEGMENTED clusters=%d", len(cluster_anchors))
+                        expr = str(round(cluster_anchors[-1][1], 3))
+                        for i in range(len(cluster_anchors) - 2, -1, -1):
+                            end_t, x_val = cluster_anchors[i]
+                            expr = "if(lt(t,%s),%s,%s)" % (round(end_t, 3), round(x_val, 3), expr)
+                        return expr
+
             timed_pts = [(t, faces[0]) for t, faces in video_fmt.samples if len(faces) == 1]
             if not timed_pts:
                 pos = video_fmt.speaker_positions[0] if video_fmt.speaker_positions else 0.5
@@ -942,27 +1025,14 @@ class ClipEditor:
             #  4. Window-voting (0.4s) → single bad frame can't corrupt a segment
             #  5. 1.05x cinematic zoom on SOLO to draw the viewer's eye
             # ═══════════════════════════════════════════════════════════════════════
-            cap = None
-            fps = 25.0
-            frame_width = 1920
-            frame_height = 1080
-
-            if clip_path:
-                try:
-                    cap = cv2.VideoCapture(clip_path)
-                    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-                    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1920)
-                    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1080)
-                except Exception:
-                    cap = None
 
             if not cap or not cap.isOpened():
                 return 0.5
 
             # ── Tunable constants (env-overridable) ──────────────────────────────
             TALKING_THRESHOLD = float(os.environ.get("HS_TALKING_THRESHOLD", "80"))
-            VOTE_WINDOW_S = 1.2        # seconds — bigger window = stable mode, no flicker
-            MIN_SOLO_DURATION_S = 1.5  # don't switch mode for < 1.5s (avoids juggling)
+            VOTE_WINDOW_S = float(os.environ.get("HS_VOTE_WINDOW_S", "2.0"))       # 2s window → mode flip needs sustained 2s evidence
+            MIN_SOLO_DURATION_S = float(os.environ.get("HS_MIN_SOLO_S", "2.5"))    # raised 1.5→2.5s: brief detections can't cause cuts
             EMA_ALPHA = 0.15           # mouth motion EMA decay (slower = less noise)
             SMOOTH_ALPHA = 0.07        # position smoothing (ultra-smooth camera pan)
 
@@ -993,19 +1063,24 @@ class ClipEditor:
                     log.warning(f"[FACE_DEBUG] haarcascade fallback also failed: {_e}")
 
             def is_valid_face(det):
-                """Filter: reject plants, hands, tiny background objects.
+                """Filter: reject mics, hands, background objects.
 
-                Height threshold lowered from 0.08 → 0.05:
-                FaceMesh bboxes are derived from landmarks (tighter than
-                haarcascade boxes), so the old 8% threshold was rejecting
-                real faces — especially in wide podcast shots.
+                Aspect ratio check: faces are roughly square (w/h 0.6-1.4).
+                A mic or hand is tall-narrow (h >> w, aspect_wh < 0.5) or
+                wide-flat (rare). This rejects the most common false positives
+                in podcast frames where minNeighbors lets through non-face boxes.
                 """
                 h = det['h']
+                w = det['w']
                 if h < frame_height * MIN_VALID_FACE_HEIGHT_RATIO:
                     return False  # too small to be a face
-                ratio = h / max(1, det['w'])
-                if ratio < 0.7 or ratio > 3.0:  # Tighter aspect ratio — human face only
-                    return False  # wrong aspect ratio for a human face
+                if h > frame_height * MAX_VALID_FACE_HEIGHT_RATIO:
+                    return False  # too large (massive false positive, e.g. 60% of frame)
+                # Plausible-face aspect ratio: w/h must be roughly square
+                # Mics are tall-narrow (w/h < 0.5), wide objects fail > 1.6
+                aspect_wh = w / max(1.0, h)
+                if aspect_wh < 0.55 or aspect_wh > 1.55:
+                    return False  # wrong aspect ratio — not a face (mic/hand/object)
                 cy = det['y'] + h / 2.0
                 if cy < frame_height * 0.05 or cy > frame_height * 0.92:
                     return False  # face centroid too close to frame edge
@@ -1079,24 +1154,49 @@ class ClipEditor:
             cluster_transition_from_x = smoothed_solo_x
             cluster_transition_remaining = 0
 
-            # ── Per-frame analysis loop ──────────────────────────────────────────
+            # Pre-sort face_cache keys once — enables O(log n) bisect lookup
+            # instead of O(n) min() scan on every frame.
+            import bisect as _bisect
+            _fc_times: list = []
+            if face_cache:
+                _fc_times = sorted(face_cache.keys())
+
+            def _nearest_cache_t(t: float) -> float:
+                """Binary-search the sorted cache key list for the nearest timestamp."""
+                if not _fc_times:
+                    return 0.0
+                idx = _bisect.bisect_left(_fc_times, t)
+                if idx == 0:
+                    return _fc_times[0]
+                if idx == len(_fc_times):
+                    return _fc_times[-1]
+                before = _fc_times[idx - 1]
+                after  = _fc_times[idx]
+                return before if (t - before) <= (after - t) else after
+
             while True:
                 ok, frame = cap.read()
                 if not ok:
                     break
 
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 t = frame_idx / fps
+                need_debug  = (frame_idx % 25 == 0)  # [FACE_DEBUG] / [DIRECTOR_MODE] logging
+                need_motion = (prev_gray is not None) # mouth-motion diff needs gray
+
+                # Lazy gray: only convert when we actually need the grayscale pixels.
+                # face_cache path doesn't use gray AT ALL except for mouth-motion diff
+                # and the periodic debug log — saves ~2ms/frame on 1080p.
+                gray = None
+                if need_debug or need_motion:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
                 # 1. Detect raw faces — FaceMesh (preferred) or haarcascade fallback
                 if face_cache is not None:
-                    # Nearest cached timestamp
-                    if face_cache:
-                        nearest = min(face_cache.keys(), key=lambda tx: abs(tx - t))
-                        raw_faces = face_cache[nearest]
-                    else:
-                        raw_faces = []
+                    # O(log n) binary-search via pre-sorted key list
+                    nearest = _nearest_cache_t(t)
+                    raw_faces = face_cache.get(nearest, [])
                     last_raw_faces = raw_faces
+
                 elif frame_idx % 15 == 0:
                     raw_faces = []
                     if False and active_detector:
@@ -1112,14 +1212,8 @@ class ClipEditor:
                                     'h': (max(ys) - min(ys)) * frame_height,
                                 })
                     elif _podcast_cascade is not None:
-                        # Haarcascade fallback (relaxed params — Step 3 fix)
-                        _faces_hc = _podcast_cascade.detectMultiScale(
-                            gray,
-                            scaleFactor=1.15,   # finer scale (was 1.1)
-                            minNeighbors=3,     # easier to detect (was 6)
-                            minSize=(40, 40),   # smaller minimum (was 80,80)
-                            flags=cv2.CASCADE_SCALE_IMAGE,
-                        )
+                        # Haarcascade fallback (multi-cascade with profile detection)
+                        _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.15, min_neighbors=3, min_size=(40, 40))
                         if len(_faces_hc):
                             for _x, _y, _fw, _fh in _faces_hc:
                                 raw_faces.append({
@@ -1146,14 +1240,19 @@ class ClipEditor:
                     reject_reasons = []
                     for _f in raw_faces:
                         _h = _f['h']
-                        _ratio = _h / max(1, _f['w'])
+                        _w = _f['w']
+                        _aspect_wh = _w / max(1.0, _h)
                         _cy = _f['y'] + _h / 2.0
                         if _h < frame_height * MIN_VALID_FACE_HEIGHT_RATIO:
                             reject_reasons.append(
                                 f"too_small(h={_h:.0f}<{frame_height * MIN_VALID_FACE_HEIGHT_RATIO:.0f})"
                             )
-                        elif _ratio < 0.7 or _ratio > 3.2:
-                            reject_reasons.append(f"bad_ratio({_ratio:.2f})")
+                        elif _h > frame_height * MAX_VALID_FACE_HEIGHT_RATIO:
+                            reject_reasons.append(
+                                f"too_big(h={_h:.0f}>{frame_height * MAX_VALID_FACE_HEIGHT_RATIO:.0f})"
+                            )
+                        elif _aspect_wh < 0.55 or _aspect_wh > 1.55:
+                            reject_reasons.append(f"bad_aspect_wh({_aspect_wh:.2f},w={_w:.0f},h={_h:.0f})")
                         elif _cy < frame_height * 0.05 or _cy > frame_height * 0.95:
                             reject_reasons.append(f"edge_cy({_cy:.0f})")
                         else:
@@ -1164,6 +1263,17 @@ class ClipEditor:
                         f"gray_mean={gray_mean:.1f} "
                         f"filters={reject_reasons}"
                     )
+                    # [FACE_DEBUG] Extra: when raw > 4 in a podcast frame, log all boxes
+                    # so we can identify which false-positive object is being detected
+                    if len(raw_faces) > 4:
+                        boxes_str = " | ".join(
+                            f"x={_f['x']:.0f},y={_f['y']:.0f},w={_f['w']:.0f},h={_f['h']:.0f},wh={_f['w']/max(1,_f['h']):.2f}"
+                            for _f in raw_faces
+                        )
+                        log.warning(
+                            f"[FACE_DEBUG] HIGH_RAW_COUNT raw={len(raw_faces)} t={t:.2f}s "
+                            f"— likely false positives (mic/hand). Boxes: {boxes_str}"
+                        )
                 # ────────────────────────────────────────────────────────────────
 
                 valid_faces = [f for f in raw_faces if is_valid_face(f)]
@@ -1209,7 +1319,7 @@ class ClipEditor:
                 # 3. Mouth motion per named slot
                 mouth_motion_left = 0.0
                 mouth_motion_right = 0.0
-                if prev_gray is not None:
+                if prev_gray is not None and gray is not None:
                     for slot_label, slot_face in (("left", left_slot), ("right", right_slot)):
                         if slot_face is None:
                             continue
@@ -1310,7 +1420,10 @@ class ClipEditor:
                     "solo_x": smoothed_solo_x,
                 })
 
-                prev_gray = gray
+                # Only carry gray forward if it was actually computed this frame.
+                # If gray=None (skipped frame), prev_gray stays as the last valid frame.
+                if gray is not None:
+                    prev_gray = gray
                 frame_idx += 1
 
             cap.release()
@@ -1849,7 +1962,7 @@ class ClipEditor:
         cap_segments: List[CaptionSegment] = []
         speed = _clamp(config.hook_ramp_speed, 1.01, 1.30)
         clip_rel_max = max(0.0, trim_out - trim_in)
-        for seg in transcript_window:
+        for seg_idx, seg in enumerate(transcript_window):
             words_data = seg.get("words", [])
             
             sub_segments = []
@@ -1885,6 +1998,9 @@ class ClipEditor:
                 if not text: continue
                 chunks = self._split_caption_text(text, max_words=max(3, config.max_caption_words))
                 if not chunks: continue
+                
+                log.warning(f"[WCE-SYNC-FORENSIC] FALLBACK (No Words) for seg {seg_idx} ('{text[:30]}...'). Using proportional char division.")
+                
                 seg_dur = max(0.16, raw_end - raw_start)
                 all_words = text.split()
                 total_chars = max(1, sum(len(w) for w in all_words))
@@ -2226,7 +2342,7 @@ class ClipEditor:
         # override alignment for individual captions when speaker_side is set.
         # Alignment codes in ASS: 1=bottom-left, 2=bottom-center, 3=bottom-right
         caption_alignment = 2
-        margin_l, margin_r, margin_v = 40, 40, 250
+        margin_l, margin_r, margin_v = 40, 40, 450
         log.info("[WCE-CAPTION] per-event speaker-side \\an alignment: ACTIVE")
 
         header = [
@@ -2268,15 +2384,15 @@ class ClipEditor:
                     w_dict = word_timings[wi]
                     w_start = w_dict["start"]
                     w_end = w_dict["end"]
-                    ghost_before = " ".join(words[:wi])
-                    active = _ass_escape(word_text)
-                    ghost_after  = " ".join(words[wi + 1:])
+                    
                     parts = []
-                    if ghost_before:
-                        parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_before))
-                    parts.append("{\\rHighlight}" + active + "{\\r}")
-                    if ghost_after:
-                        parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_after))
+                    for i, w in enumerate(words):
+                        w_esc = _ass_escape(w)
+                        if i == wi:
+                            parts.append("{\\rHighlight}" + w_esc + "{\\r}")
+                        else:
+                            parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
+                            
                     line_text = " ".join(parts)
                     an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                     events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
@@ -2286,15 +2402,14 @@ class ClipEditor:
                     w_start = seg.start + wi * word_dur
                     w_end   = seg.start + (wi + 1) * word_dur
                     # Build line: ghost words + {\rHighlight}active_word{\r} + ghost words
-                    ghost_before = " ".join(words[:wi])
-                    active = _ass_escape(word)
-                    ghost_after  = " ".join(words[wi + 1:])
                     parts = []
-                    if ghost_before:
-                        parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_before))
-                    parts.append("{\\rHighlight}" + active + "{\\r}")
-                    if ghost_after:
-                        parts.append("{\\rKaraokeGhost}" + _ass_escape(ghost_after))
+                    for i, w in enumerate(words):
+                        w_esc = _ass_escape(w)
+                        if i == wi:
+                            parts.append("{\\rHighlight}" + w_esc + "{\\r}")
+                        else:
+                            parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
+                            
                     line_text = " ".join(parts)
                     an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                     events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
@@ -2305,10 +2420,7 @@ class ClipEditor:
                 events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{an_tag}{highlighted_text}")
 
         if hook_line:
-            hook_text = self._format_hook_line(hook_line)
-            if hook_text:
-                hook_end = min(duration, 4.0)  # Extended from 2.2s → 4s so viewers can read it
-                events.append(f"Dialogue: 1,{_ass_time(0.08)},{_ass_time(hook_end)},Hook,,0,0,0,,{_ass_escape(hook_text)}")
+            pass # Removed static top-screen hook text to declutter the video
         if hashtags_line:
             start = max(0.0, duration - 3.8)
             end = max(start + 0.5, duration - 0.2)
@@ -2803,33 +2915,39 @@ class ClipEditor:
                 # Input index tracking: 0=clip, 1=wm_icon (if is_watermarked), else not present
                 _bwm_idx = 2 if is_watermarked else 1   # index for branding logo.png
                 _outro_idx = _bwm_idx + 1               # index for outro.mp4
-                _long_heavy_render = ramped_duration >= 90.0
-                if _long_heavy_render:
-                    # At half resolution, boxblur=20 gives approximately the
-                    # existing 40px full-resolution background softness at a
-                    # quarter of the blur workload.
-                    _blur_chain = (
-                        "scale=540:960:force_original_aspect_ratio=increase,"
-                        "crop=540:960,boxblur=10,scale=1080:1920"
+                _disable_bg_blur = os.getenv("HS_DISABLE_BG_BLUR", "1").strip() != "0"
+                if _disable_bg_blur:
+                    log.info("[WCE_PERF] Background blur set to 0 (disabled via HS_DISABLE_BG_BLUR=1) -> using instant black padding!")
+                    _brand_chain = (
+                        f";[out_v]scale=1080:1920:force_original_aspect_ratio=decrease,"
+                        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black[hs_merged]"
+                        f";[{_bwm_idx}:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[hs_wm]"
+                        f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[hs_main_v]"
                     )
-                    log.info("[WCE_PERF] long clip %.1fs: half-res background blur enabled", ramped_duration)
                 else:
-                    _blur_chain = (
-                        "scale=1080:1920:force_original_aspect_ratio=increase,"
-                        "crop=1080:1920,boxblur=20"
+                    _long_heavy_render = ramped_duration >= 90.0
+                    if _long_heavy_render:
+                        _blur_chain = (
+                            "scale=540:960:force_original_aspect_ratio=increase,"
+                            "crop=540:960,boxblur=10,scale=1080:1920"
+                        )
+                        log.info("[WCE_PERF] long clip %.1fs: half-res background blur enabled", ramped_duration)
+                    else:
+                        _blur_chain = (
+                            "scale=1080:1920:force_original_aspect_ratio=increase,"
+                            "crop=1080:1920,boxblur=20"
+                        )
+                    # Build branding chain appended onto [out_v]
+                    # Step 1: cinematic blur background
+                    _brand_chain = (
+                        f";[out_v]split=2[hs_blur_src][hs_vid_raw]"
+                        f";[hs_blur_src]{_blur_chain}[hs_bg]"
+                        f";[hs_vid_raw]scale=1080:1920:force_original_aspect_ratio=decrease[hs_fg]"
+                        f";[hs_bg][hs_fg]overlay=(W-w)/2:(H-h)/2[hs_merged]"
+                        # Step 2: branding watermark overlay
+                        f";[{_bwm_idx}:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[hs_wm]"
+                        f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[hs_main_v]"
                     )
-
-                # Build branding chain appended onto [out_v]
-                # Step 1: cinematic blur background
-                _brand_chain = (
-                    f";[out_v]split=2[hs_blur_src][hs_vid_raw]"
-                    f";[hs_blur_src]{_blur_chain}[hs_bg]"
-                    f";[hs_vid_raw]scale=1080:1920:force_original_aspect_ratio=decrease[hs_fg]"
-                    f";[hs_bg][hs_fg]overlay=(W-w)/2:(H-h)/2[hs_merged]"
-                    # Step 2: branding watermark overlay
-                    f";[{_bwm_idx}:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[hs_wm]"
-                    f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[hs_main_v]"
-                )
                 vf_render = f"{vf_render}{_brand_chain}"
 
                 if _has_outro:
@@ -2856,11 +2974,22 @@ class ClipEditor:
                 "-nostdin",
                 *_hwaccel_decode_args(work_b),   # GPU decode when supported by input codec
             ]
+            fast_seek = 0.0
+            exact_seek = 0.0
             if render_trim_in > 0.001:
-                cmd.extend(["-ss", f"{render_trim_in:.3f}"])
-            if render_trim_out > render_trim_in and render_trim_out < float((work_meta.get("duration") or render_trim_out) or render_trim_out) - 0.001:
-                cmd.extend(["-to", f"{render_trim_out:.3f}"])
+                fast_seek = max(0.0, render_trim_in - 5.0)
+                exact_seek = render_trim_in - fast_seek
+                cmd.extend(["-ss", f"{fast_seek:.3f}"])
+            
             cmd.extend(["-i", work_b])
+            
+            if exact_seek > 0.001:
+                cmd.extend(["-ss", f"{exact_seek:.3f}"])
+                
+            if render_trim_out > render_trim_in and render_trim_out < float((work_meta.get("duration") or render_trim_out) or render_trim_out) - 0.001:
+                # duration to encode is (render_trim_out - render_trim_in)
+                encode_duration = render_trim_out - render_trim_in
+                cmd.extend(["-t", f"{encode_duration:.3f}"])
 
             if is_watermarked:
                 cmd.extend(["-i", wm_path])
@@ -2916,6 +3045,7 @@ class ClipEditor:
             score = self._estimate_engagement(captions, transcript_window, boring_mode=boring_mode, has_hook=has_hook)
             metadata["engagement_score"] = round(score, 2)
             metadata["captions_count"] = len(captions)
+            metadata["branding_merged_into_wce"] = branding_merged
             metadata["visual_effect_graph"] = {
                 "single_encode_path": True,
                 "ffmpeg_passes": int(ffmpeg_passes),
