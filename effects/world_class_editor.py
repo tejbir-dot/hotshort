@@ -2420,7 +2420,10 @@ class ClipEditor:
                 events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{an_tag}{highlighted_text}")
 
         if hook_line:
-            pass # Removed static top-screen hook text to declutter the video
+            hook_text = self._format_hook_line(hook_line)
+            if hook_text:
+                hook_end = min(duration, 4.0)
+                events.append(f"Dialogue: 1,{_ass_time(0.08)},{_ass_time(hook_end)},Hook,,0,0,0,,{_ass_escape(hook_text)}")
         if hashtags_line:
             start = max(0.0, duration - 3.8)
             end = max(start + 0.5, duration - 0.2)
