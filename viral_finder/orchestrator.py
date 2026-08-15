@@ -449,19 +449,19 @@ def _compute_dynamic_top_k(duration_s: float, triggers: list) -> int:
     """Scale clip output to video length + trigger density.
 
     Rules:
-      - 1 clip per 3 minutes of video  (duration signal)
+      - 1 clip per 2 minutes of video  (duration signal) [was 3 min — too conservative]
       - OR half the high-confidence triggers (content signal)
       - Take the larger of the two
-      - Floor = 3,  Ceiling = 15
+      - Floor = 3,  Ceiling = 18  [was 15 — raises cap for 20-30 min videos]
     """
     import math
-    duration_clips = math.ceil(max(0.0, duration_s) / 180.0)  # 1 per 3 min
+    duration_clips = math.ceil(max(0.0, duration_s) / 120.0)  # 1 per 2 min (was 180s)
     high_conf = sum(
         1 for t in (triggers or [])
         if isinstance(t, dict) and float(t.get("conf", t.get("confidence", 0)) or 0) >= 0.90
     )
     trigger_clips = max(high_conf // 2, 1)
-    dynamic = min(max(duration_clips, trigger_clips), 15)   # cap at 15
+    dynamic = min(max(duration_clips, trigger_clips), 18)   # cap at 18 (was 15)
     dynamic = max(dynamic, 3)                                # floor at 3
     print(
         f"[DYNAMIC_TOP_K] duration={duration_s:.0f}s → duration_clips={duration_clips} "
@@ -470,6 +470,7 @@ def _compute_dynamic_top_k(duration_s: float, triggers: list) -> int:
         flush=True,
     )
     return dynamic
+
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -4940,13 +4941,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         return []
     total_dur = float(ctx.transcript[-1].get("end", ctx.transcript[-1].get("start", 0.0)) or 0.0)
     ctx.target_min = _resolve_min_target(total_dur, ctx.top_k)
-    _record_stage(
-        ctx,
-        "TARGETS",
-        duration_s=round(total_dur, 2),
-        top_k=int(ctx.top_k),
-        target_min=int(ctx.target_min),
-    )
+
 
     if trace:
         trace.enter("L3_AUDIO_VISUAL")
@@ -5013,6 +5008,13 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         log.info("[DYNAMIC_TOP_K] Updated target_min=%d", ctx.target_min)
     # ─────────────────────────────────────────────────────────────────────────
 
+    _record_stage(
+        ctx,
+        "TARGETS",
+        duration_s=round(total_dur, 2),
+        top_k=int(ctx.top_k),
+        target_min=int(ctx.target_min),
+    )
     if trace:
         trace.enter("L6_IDEA_GRAPH")
     _run_idea_graph(ctx)

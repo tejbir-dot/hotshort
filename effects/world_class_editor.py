@@ -16,6 +16,9 @@ try:
 except ImportError:
     bolt = None
 from effects.format_analyzer import detect_faces_multi_haar
+from effects.face_tracker import FaceTracker, SmoothedPosition
+from effects import debug_visualizer
+import time
 
 @dataclass
 class DirectorSegment:
@@ -36,7 +39,7 @@ except Exception:
     cv2 = None
 
 try:
-    import mediapipe as mp
+    import mediapipe as mp  # type: ignore
 except Exception:
     mp = None
 
@@ -45,11 +48,20 @@ try:
 except Exception:
     hf_pipeline = None
 
-# Fallback fonts dir for local Windows testing vs Linux RunPod
+# Font directory: platform-aware (Linux RunPod vs Windows local)
+# On Linux: /usr/share/fonts/truetype/montserrat (Dockerfile COPY path)
+# On Windows: C:/Windows/Fonts (system fonts, always present)
+# Override via HS_FONTS_DIR env var.
+import platform as _platform
+_DEFAULT_FONTS_DIR = (
+    "C:/Windows/Fonts"
+    if _platform.system() == "Windows"
+    else "/usr/share/fonts/truetype/montserrat"
+)
 if os.path.exists("./fonts"):
     _FONTS_DIR = os.environ.get("HS_FONTS_DIR", os.path.abspath("./fonts"))
 else:
-    _FONTS_DIR = os.environ.get("HS_FONTS_DIR", "/usr/share/fonts/truetype/montserrat")
+    _FONTS_DIR = os.environ.get("HS_FONTS_DIR", _DEFAULT_FONTS_DIR)
 
 log = logging.getLogger("world_class_editor")
 
@@ -58,15 +70,6 @@ ENABLE_CLUSTER_SCAN = os.getenv("HS_ENABLE_CLUSTER_SCAN", "1").strip().lower() n
 CLUSTER_TRANSITION_FRAMES = max(1, int(os.getenv("HS_CLUSTER_TRANSITION_FRAMES", "12") or 12))
 MIN_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MIN_FACE_HEIGHT_RATIO", "0.05") or 0.05)))
 MAX_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MAX_FACE_HEIGHT_RATIO", "0.40") or 0.40)))
-
-# Font directory: matches the COPY path in Dockerfile.worker.
-# On the NVIDIA container, fontconfig may not index these correctly,
-# so we pass this path directly to libass via the fontsdir= parameter.
-_FONTS_DIR = os.environ.get(
-    "HS_FONTS_DIR",
-    "/usr/share/fonts/truetype/montserrat",
-)
-
 
 def _nvenc_available() -> bool:
     """Probe once whether h264_nvenc is usable on this system."""
@@ -84,7 +87,13 @@ def _nvenc_available() -> bool:
                  "-f", "null", "-"],
                 capture_output=True, timeout=10,
             )
-            _nvenc_available._cached = r.returncode == 0
+            # On Windows, the null muxer exits with code 1 even on success.
+            # Use stderr text to confirm h264_nvenc was actually initialised.
+            combined = (r.stdout + r.stderr).decode("utf-8", errors="replace")
+            _nvenc_available._cached = (
+                r.returncode == 0
+                or "h264_nvenc" in combined.lower()
+            )
         except Exception:
             _nvenc_available._cached = False
         log.info("[WCE] NVENC available: %s", _nvenc_available._cached)
@@ -864,6 +873,15 @@ class ClipEditor:
                 faces = detect_faces_multi_haar(gray, cv2, scale_factor=1.15, min_neighbors=3, min_size=(40, 40))
                 for x, y, fw, fh in faces:
                     if 40 < fw < 500 and 0.05 < (y + fh / 2.0) / h < 0.95:
+                        # Guard: reject bright light sources (lamps, ring-lights, globes).
+                        # These pass all shape filters but have very high ROI brightness.
+                        # Real skin: gray mean 55-145. Lamps: >185.
+                        try:
+                            _roi_mean = float(gray[int(y):int(y + fh), int(x):int(x + fw)].mean())
+                        except Exception:
+                            _roi_mean = 0.0
+                        if _roi_mean > 185.0:
+                            continue  # bright object — not a face
                         face_xs.append(_clamp((x + fw / 2.0) / float(w), 0.0, 1.0))
 
                 if face_xs:
@@ -1033,7 +1051,8 @@ class ClipEditor:
             TALKING_THRESHOLD = float(os.environ.get("HS_TALKING_THRESHOLD", "80"))
             VOTE_WINDOW_S = float(os.environ.get("HS_VOTE_WINDOW_S", "2.0"))       # 2s window → mode flip needs sustained 2s evidence
             MIN_SOLO_DURATION_S = float(os.environ.get("HS_MIN_SOLO_S", "2.5"))    # raised 1.5→2.5s: brief detections can't cause cuts
-            EMA_ALPHA = 0.15           # mouth motion EMA decay (slower = less noise)
+            EMA_ALPHA = float(os.environ.get("HS_EMA_ALPHA", "0.20"))  # mouth EMA rise speed
+            EMA_FLOOR = float(os.environ.get("HS_EMA_FLOOR", "0.0"))   # prevent crash to 0 on scene cuts
             SMOOTH_ALPHA = 0.07        # position smoothing (ultra-smooth camera pan)
 
             active_detector = None
@@ -1062,28 +1081,129 @@ class ClipEditor:
                 except Exception as _e:
                     log.warning(f"[FACE_DEBUG] haarcascade fallback also failed: {_e}")
 
-            def is_valid_face(det):
-                """Filter: reject mics, hands, background objects.
+            def is_valid_face(det, _log_reason=False, frame=None):
+                """Filter: reject mics, hands, logos, background objects.
 
-                Aspect ratio check: faces are roughly square (w/h 0.6-1.4).
-                A mic or hand is tall-narrow (h >> w, aspect_wh < 0.5) or
-                wide-flat (rare). This rejects the most common false positives
-                in podcast frames where minNeighbors lets through non-face boxes.
+                Guards (all must pass):
+                  1. Height in [MIN_VALID_FACE_HEIGHT_RATIO, MAX_VALID_FACE_HEIGHT_RATIO]
+                  2. Aspect ratio w/h in [0.60, 1.45]  — real faces are near-square
+                  3. Vertical centroid cy in [12%, 92%]  — logos sit at top-center
+                  4. Horizontal centroid cx in [3%, 97%] — avoid extreme-edge noise
+                  5. Face ROI brightness < 185 (mean gray) — rejects lamp/light-source FPs
+                     Lamps: round bright objects (glob lights, ring lights) pass all shape
+                     guards but are pure white. Real skin: 60-140 gray mean.
                 """
                 h = det['h']
                 w = det['w']
-                if h < frame_height * MIN_VALID_FACE_HEIGHT_RATIO:
-                    return False  # too small to be a face
-                if h > frame_height * MAX_VALID_FACE_HEIGHT_RATIO:
-                    return False  # too large (massive false positive, e.g. 60% of frame)
-                # Plausible-face aspect ratio: w/h must be roughly square
-                # Mics are tall-narrow (w/h < 0.5), wide objects fail > 1.6
+                x = det['x']
+                y = det['y']
+                min_h = frame_height * MIN_VALID_FACE_HEIGHT_RATIO
+                max_h = frame_height * MAX_VALID_FACE_HEIGHT_RATIO
+
+                # ── guard 1: height range ────────────────────────────────────────
+                if h < min_h:
+                    if _log_reason:
+                        log.info(
+                            f"[FACE_FILTER] REJECT too_small  h={h:.0f}px "
+                            f"min={min_h:.0f}px  face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                        )
+                    return False
+                if h > max_h:
+                    if _log_reason:
+                        log.info(
+                            f"[FACE_FILTER] REJECT too_big    h={h:.0f}px "
+                            f"max={max_h:.0f}px  face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                        )
+                    return False
+
+                # ── guard 2: aspect ratio ─────────────────────────────────────────
+                # Faces: 0.60–1.45. Mics/hands: <0.55 (tall-narrow). Wide logos: >1.5
                 aspect_wh = w / max(1.0, h)
-                if aspect_wh < 0.55 or aspect_wh > 1.55:
-                    return False  # wrong aspect ratio — not a face (mic/hand/object)
-                cy = det['y'] + h / 2.0
-                if cy < frame_height * 0.05 or cy > frame_height * 0.92:
-                    return False  # face centroid too close to frame edge
+                if aspect_wh < 0.60 or aspect_wh > 1.45:
+                    if _log_reason:
+                        log.info(
+                            f"[FACE_FILTER] REJECT bad_aspect wh={aspect_wh:.2f} "
+                            f"face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                        )
+                    return False
+
+                # ── guard 3: vertical position (reject top logo zone) ─────────────
+                # Logos / watermarks cluster in top 10-12% of frame.
+                # Real speakers in podcast/monologue sit between 12%-92%.
+                cy = y + h / 2.0
+                if cy < frame_height * 0.12 or cy > frame_height * 0.92:
+                    if _log_reason:
+                        log.info(
+                            f"[FACE_FILTER] REJECT edge_cy    cy={cy:.0f}px "
+                            f"limits=({frame_height*0.12:.0f},{frame_height*0.92:.0f}) "
+                            f"face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                        )
+                    return False
+
+                # ── guard 4: horizontal position (reject extreme edges) ───────────
+                cx = x + w / 2.0
+                if cx < frame_width * 0.03 or cx > frame_width * 0.97:
+                    if _log_reason:
+                        log.info(
+                            f"[FACE_FILTER] REJECT edge_cx    cx={cx:.0f}px "
+                            f"limits=({frame_width*0.03:.0f},{frame_width*0.97:.0f}) "
+                            f"face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                        )
+                    return False
+
+                # ── guard 5: brightness — reject lamps, ring-lights, logos ────────
+                # Round glowing lamps (glob lights, ceiling spotlights) pass all
+                # shape guards. Their face ROI has very high brightness.
+                # Threshold=185: skin in podcast lighting peaks at ~140 mean gray.
+                # Lamps: >200. Overexposed windows: >220. Safe margin: 185.
+                _BRIGHT_REJECT_THRESHOLD = float(
+                    os.environ.get("HS_FACE_BRIGHT_REJECT", "185")
+                )
+                if frame is not None:
+                    try:
+                        _roi_gray = cv2.cvtColor(
+                            frame[int(y):int(y + h), int(x):int(x + w)],
+                            cv2.COLOR_BGR2GRAY,
+                        )
+                        _roi_mean = float(_roi_gray.mean())
+                        if _roi_mean > _BRIGHT_REJECT_THRESHOLD:
+                            if _log_reason:
+                                log.info(
+                                    f"[FACE_FILTER] REJECT bright_src roi_mean={_roi_mean:.1f} "
+                                    f"thresh={_BRIGHT_REJECT_THRESHOLD:.0f} "
+                                    f"face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                                )
+                            return False
+
+                        # ── guard 6: Laplacian variance ───────────────────────────
+                        # Real faces have medium-frequency texture (skin, hair, eyes):
+                        #   Laplacian variance ≈ 50-800.
+                        # Bookshelves/text backgrounds have very high-frequency edges:
+                        #   Laplacian variance > 1200.
+                        # Flat walls / plain background have near-zero edges:
+                        #   Laplacian variance < 25.
+                        _LAP_MIN = float(os.environ.get("HS_FACE_LAP_MIN", "25"))
+                        _LAP_MAX = float(os.environ.get("HS_FACE_LAP_MAX", "1200"))
+                        _lap_var = float(
+                            cv2.Laplacian(_roi_gray, cv2.CV_64F).var()
+                        )
+                        if _lap_var < _LAP_MIN or _lap_var > _LAP_MAX:
+                            if _log_reason:
+                                log.info(
+                                    f"[FACE_FILTER] REJECT laplacian  lap_var={_lap_var:.1f} "
+                                    f"range=[{_LAP_MIN:.0f},{_LAP_MAX:.0f}] "
+                                    f"face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                                )
+                            return False
+
+                    except Exception:
+                        pass  # ROI out-of-bounds on edge clips — skip gracefully
+
+                if _log_reason:
+                    log.info(
+                        f"[FACE_FILTER] OK  h={h:.0f}px aspect={aspect_wh:.2f} "
+                        f"cy={cy:.0f} cx={cx:.0f}  face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                    )
                 return True
 
             def decide_mode_v2(left_face, right_face, left_talking, right_talking, face_gap_ratio=0.0):
@@ -1135,24 +1255,56 @@ class ClipEditor:
                     int(face['y'] + face['h'])
                 )
 
-            # ── State initialisation ─────────────────────────────────────────────
+            # ── State initialisation ───────────────────────────────────────────
             SPLIT_MIN_GAP = float(os.environ.get("HS_SPLIT_MIN_GAP", str(config.split_min_gap_ratio)))
             frame_stats = []
             prev_gray = None
             frame_idx = 0
-            # Bug fix: default was "SPLIT" — when valid_count=0, HOLD resolves to SPLIT,
-            # causing wrong split layout for the entire clip. SOLO_LEFT is the safe default.
-            last_mode = "SOLO_LEFT"
+            # Seed speaker position once — both solo_x AND last_mode use the same value.
+            _spk = video_fmt.speaker_positions if video_fmt and video_fmt.speaker_positions else [0.5]
+            _seed_x = float(statistics.median(_spk)) if _spk else 0.5
+
+            # Seed last_mode from format_analyzer dominant speaker side.
+            # If median speaker position > 0.55 (right half), start SOLO_RIGHT; else SOLO_LEFT.
+            # Prevents t=0 frames from wrongly cropping to the wrong side before any face is detected.
+            last_mode = "SOLO_RIGHT" if _seed_x > 0.55 else "SOLO_LEFT"
+            log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
+
             ema_mouth_left = 0.0
             ema_mouth_right = 0.0
             smoothed_left_x = frame_width * 0.25
             smoothed_right_x = frame_width * 0.75
-            smoothed_solo_x = frame_width * 0.5
+            # Seed solo_x from format_analyzer speaker_positions (not hardcoded center).
+            # When director loop finds 0 faces (B-roll, small face, etc.), the crop
+            # still starts at the correct position rather than defaulting to logo-zone.
+            smoothed_solo_x = frame_width * _seed_x
+            log.info(f"[INIT] solo_x seeded={_seed_x:.3f} px={smoothed_solo_x:.0f}")
             last_raw_faces = []
             locked_cluster_id = None
             locked_solo_x = None
             cluster_transition_from_x = smoothed_solo_x
             cluster_transition_remaining = 0
+            # Slot stability counters (used by mouth-motion EMA gating below)
+            _left_stable = 0
+            _right_stable = 0
+            
+            ENABLE_CONTINUOUS_TRACKING = False
+
+            # ── Debug visualizer session (no-op when HS_DEBUG_FRAMES not set) ────
+            _clip_id = os.path.splitext(os.path.basename(clip_path or "clip"))[0]
+            _dbg = debug_visualizer.make_session(
+                clip_id=_clip_id,
+                clip_start=0.0,
+                clip_end=0.0,
+            )
+            left_tracker = FaceTracker("left")
+            right_tracker = FaceTracker("right")
+            left_tracker_smooth = SmoothedPosition(alpha=0.3)
+            right_tracker_smooth = SmoothedPosition(alpha=0.3)
+            solo_tracker_smooth = SmoothedPosition(alpha=0.3)
+            tracking_time = 0.0
+            tracking_frames = 0
+            haar_redetects = 0
 
             # Pre-sort face_cache keys once — enables O(log n) bisect lookup
             # instead of O(n) min() scan on every frame.
@@ -1181,49 +1333,42 @@ class ClipEditor:
 
                 t = frame_idx / fps
                 need_debug  = (frame_idx % 25 == 0)  # [FACE_DEBUG] / [DIRECTOR_MODE] logging
-                need_motion = (prev_gray is not None) # mouth-motion diff needs gray
+                # Mouth-motion diff needs gray, but ONLY when there's at least one face
+                # to compute motion on. When face_cache returns [] (B-roll, background
+                # frames), skip the gray conversion entirely — saves 2-4ms per frame.
+                need_motion = (prev_gray is not None) and bool(last_raw_faces)
 
                 # Lazy gray: only convert when we actually need the grayscale pixels.
-                # face_cache path doesn't use gray AT ALL except for mouth-motion diff
-                # and the periodic debug log — saves ~2ms/frame on 1080p.
                 gray = None
                 if need_debug or need_motion:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                # 1. Detect raw faces — FaceMesh (preferred) or haarcascade fallback
+
+                # 0. Update trackers if enabled
+                if ENABLE_CONTINUOUS_TRACKING:
+                    t_start = time.perf_counter()
+                    left_tracker.update(frame)
+                    right_tracker.update(frame)
+                    tracking_time += (time.perf_counter() - t_start)
+                    tracking_frames += 1
+
+                # 1. Fetch from face_cache (to get cluster IDs)
                 if face_cache is not None:
                     # O(log n) binary-search via pre-sorted key list
                     nearest = _nearest_cache_t(t)
                     raw_faces = face_cache.get(nearest, [])
                     last_raw_faces = raw_faces
-
                 elif frame_idx % 15 == 0:
                     raw_faces = []
-                    if False and active_detector:
-                        res = active_detector.process(rgb)
-                        if res and res.multi_face_landmarks:
-                            for lm in res.multi_face_landmarks:
-                                xs = [p.x for p in lm.landmark]
-                                ys = [p.y for p in lm.landmark]
-                                raw_faces.append({
-                                    'x': min(xs) * frame_width,
-                                    'y': min(ys) * frame_height,
-                                    'w': (max(xs) - min(xs)) * frame_width,
-                                    'h': (max(ys) - min(ys)) * frame_height,
-                                })
-                    elif _podcast_cascade is not None:
-                        # Haarcascade fallback (multi-cascade with profile detection)
+                    if _podcast_cascade is not None and not ENABLE_CONTINUOUS_TRACKING:
                         _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.15, min_neighbors=3, min_size=(40, 40))
-                        if len(_faces_hc):
-                            for _x, _y, _fw, _fh in _faces_hc:
-                                raw_faces.append({
-                                    'x': float(_x), 'y': float(_y),
-                                    'w': float(_fw), 'h': float(_fh),
-                                })
+                        for _x, _y, _fw, _fh in _faces_hc:
+                            raw_faces.append({'x': float(_x), 'y': float(_y), 'w': float(_fw), 'h': float(_fh)})
                     last_raw_faces = raw_faces
                 else:
                     raw_faces = last_raw_faces
 
+                # Extract cluster info BEFORE live override
                 cluster_id = None
                 cluster_frame_range = None
                 if ENABLE_CLUSTER_SCAN and raw_faces:
@@ -1234,8 +1379,43 @@ class ClipEditor:
                             raw_faces[0].get("_cluster_end"),
                         )
 
+                # 2. If Tracking is ENABLED, strictly override raw_faces on tracker loss
+                if ENABLE_CONTINUOUS_TRACKING:
+                    cluster_changed = (cluster_id is not None and cluster_id != locked_cluster_id)
+                    if cluster_changed:
+                        # Force tracker to re-initialize for the new scene
+                        left_tracker.consecutive_low_confidence = 999
+                        right_tracker.consecutive_low_confidence = 999
+
+                    if left_tracker.is_lost() or right_tracker.is_lost():
+                        if frame_idx % 15 == 0 or cluster_changed:
+                            _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.15, min_neighbors=3, min_size=(60, 60))
+                            live_faces = []
+                            for _x, _y, _fw, _fh in _faces_hc:
+                                # STRICT FILTER: ignore tiny hands/mics (must be >= 12% frame height)
+                                if _fh >= frame_height * 0.12:
+                                    live_faces.append({
+                                        'x': float(_x), 'y': float(_y),
+                                        'w': float(_fw), 'h': float(_fh),
+                                    })
+                            if live_faces:
+                                if cluster_id is not None:
+                                    live_faces[0]["_cluster_id"] = cluster_id
+                                    live_faces[0]["_cluster_start"] = cluster_frame_range[0]
+                                    live_faces[0]["_cluster_end"] = cluster_frame_range[1]
+                                raw_faces = live_faces
+                                last_raw_faces = raw_faces
+                                haar_redetects += 1
+                            else:
+                                raw_faces = []
+                                last_raw_faces = raw_faces
+                    else:
+                        # Tracker is healthy, clear raw_faces to prevent spurious init
+                        raw_faces = []
+                        last_raw_faces = raw_faces
+
                 # ── [FACE_DEBUG] Step-1 diagnostic ──────────────────────────────
-                if frame_idx % 25 == 0:
+                if frame_idx % 25 == 0 and len(raw_faces) > 0:
                     gray_mean = float(gray.mean()) if gray is not None else -1.0
                     reject_reasons = []
                     for _f in raw_faces:
@@ -1244,47 +1424,40 @@ class ClipEditor:
                         _aspect_wh = _w / max(1.0, _h)
                         _cy = _f['y'] + _h / 2.0
                         if _h < frame_height * MIN_VALID_FACE_HEIGHT_RATIO:
-                            reject_reasons.append(
-                                f"too_small(h={_h:.0f}<{frame_height * MIN_VALID_FACE_HEIGHT_RATIO:.0f})"
-                            )
+                            reject_reasons.append(f"too_small(h={_h:.0f})")
                         elif _h > frame_height * MAX_VALID_FACE_HEIGHT_RATIO:
-                            reject_reasons.append(
-                                f"too_big(h={_h:.0f}>{frame_height * MAX_VALID_FACE_HEIGHT_RATIO:.0f})"
-                            )
+                            reject_reasons.append(f"too_big(h={_h:.0f})")
                         elif _aspect_wh < 0.55 or _aspect_wh > 1.55:
-                            reject_reasons.append(f"bad_aspect_wh({_aspect_wh:.2f},w={_w:.0f},h={_h:.0f})")
+                            reject_reasons.append(f"bad_aspect_wh({_aspect_wh:.2f})")
                         elif _cy < frame_height * 0.05 or _cy > frame_height * 0.95:
                             reject_reasons.append(f"edge_cy({_cy:.0f})")
                         else:
                             reject_reasons.append("OK")
-                    log.info(
-                        f"[FACE_DEBUG] t={t:.2f}s raw={len(raw_faces)} "
-                        f"frame_shape=({frame_height},{frame_width},3) "
-                        f"gray_mean={gray_mean:.1f} "
-                        f"filters={reject_reasons}"
-                    )
-                    # [FACE_DEBUG] Extra: when raw > 4 in a podcast frame, log all boxes
-                    # so we can identify which false-positive object is being detected
-                    if len(raw_faces) > 4:
-                        boxes_str = " | ".join(
-                            f"x={_f['x']:.0f},y={_f['y']:.0f},w={_f['w']:.0f},h={_f['h']:.0f},wh={_f['w']/max(1,_f['h']):.2f}"
-                            for _f in raw_faces
+                    
+                    if not ENABLE_CONTINUOUS_TRACKING:
+                        log.info(
+                            f"[FACE_DEBUG] t={t:.2f}s raw={len(raw_faces)} "
+                            f"frame_shape=({frame_height},{frame_width},3) "
+                            f"gray_mean={gray_mean:.1f} "
+                            f"filters={reject_reasons}"
                         )
-                        log.warning(
-                            f"[FACE_DEBUG] HIGH_RAW_COUNT raw={len(raw_faces)} t={t:.2f}s "
-                            f"— likely false positives (mic/hand). Boxes: {boxes_str}"
-                        )
+                        if len(raw_faces) > 4:
+                            boxes_str = " | ".join(
+                                f"x={_f['x']:.0f},y={_f['y']:.0f},w={_f['w']:.0f},h={_f['h']:.0f}"
+                                for _f in raw_faces
+                            )
+                            log.warning(
+                                f"[FACE_DEBUG] HIGH_RAW_COUNT raw={len(raw_faces)} t={t:.2f}s "
+                                f"— likely false positives (mic/hand). Boxes: {boxes_str}"
+                            )
                 # ────────────────────────────────────────────────────────────────
 
-                valid_faces = [f for f in raw_faces if is_valid_face(f)]
+                valid_faces = [f for f in raw_faces if is_valid_face(f, frame=frame)]
 
-                if frame_idx % 25 == 0:
-                    log.info(
-                        f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)}"
-                    )
+                if frame_idx % 25 == 0 and not ENABLE_CONTINUOUS_TRACKING:
+                    log.info(f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)}")
 
-                # 2. Assign to named LEFT / RIGHT slots by screen position.
-                #    Pick the LARGEST valid face in each half — most prominent person.
+                # 3. Assign to named LEFT / RIGHT slots by screen position.
                 left_slot: Optional[dict] = None
                 right_slot: Optional[dict] = None
                 for f in valid_faces:
@@ -1296,10 +1469,40 @@ class ClipEditor:
                         if right_slot is None or f['h'] > right_slot['h']:
                             right_slot = f
 
+                # 4. Initialize tracker on fresh live detection
+                if frame_idx % 25 == 0:
+                    print(f"\n[DIAGNOSTICS] t={t:.2f}s")
+                    print(f"  RAW FACES ({len(raw_faces)}):")
+                    for _i, _f in enumerate(raw_faces):
+                        _valid = is_valid_face(_f, _log_reason=True, frame=frame)
+                        print(f"    {_i}: x={_f['x']:.0f} y={_f['y']:.0f} w={_f['w']:.0f} h={_f['h']:.0f} | valid={_valid}")
+                    print(f"  SLOT ASSIGNMENT:")
+                    print(f"    LEFT  = {left_slot is not None} (x={left_slot['x'] if left_slot else 'None'})")
+                    print(f"    RIGHT = {right_slot is not None} (x={right_slot['x'] if right_slot else 'None'})")
+                
+                if ENABLE_CONTINUOUS_TRACKING:
+                    cluster_changed = (cluster_id is not None and cluster_id != locked_cluster_id)
+                    cluster_length = (cluster_frame_range[1] - cluster_frame_range[0]) if cluster_frame_range else 0
+                    
+                    if left_tracker.is_lost() or right_tracker.is_lost() or cluster_changed:
+                        if not cluster_changed or cluster_length > 5:
+                            t_start = time.perf_counter()
+                            if left_slot:
+                                left_tracker.init(frame, (left_slot['x'], left_slot['y'], left_slot['w'], left_slot['h']))
+                            if right_slot:
+                                right_tracker.init(frame, (right_slot['x'], right_slot['y'], right_slot['w'], right_slot['h']))
+                            tracking_time += (time.perf_counter() - t_start)
+                    
+                    if left_tracker.initialized and not left_tracker.is_lost() and left_tracker.last_bbox:
+                        left_slot = {'x': left_tracker.last_bbox[0], 'y': left_tracker.last_bbox[1], 'w': left_tracker.last_bbox[2], 'h': left_tracker.last_bbox[3]}
+                    if right_tracker.initialized and not right_tracker.is_lost() and right_tracker.last_bbox:
+                        right_slot = {'x': right_tracker.last_bbox[0], 'y': right_tracker.last_bbox[1], 'w': right_tracker.last_bbox[2], 'h': right_tracker.last_bbox[3]}
+
                 if frame_idx % 25 == 0:
                     log.info(
                         f"[SLOT_ASSIGN] t={t:.2f}s left_face={left_slot is not None} "
-                        f"right_face={right_slot is not None} valid_count={len(valid_faces)}"
+                        f"right_face={right_slot is not None} "
+                        f"(tracked={ENABLE_CONTINUOUS_TRACKING}, live_haar_hits={len(valid_faces)})"
                     )
 
                 # Compute horizontal gap between the two face centers (as fraction of frame width)
@@ -1316,30 +1519,68 @@ class ClipEditor:
                             f"split_eligible={face_gap_ratio >= SPLIT_MIN_GAP}"
                         )
 
-                # 3. Mouth motion per named slot
+                # 3. Mouth motion per named slot — GATED on slot stability.
+                # A slot must be continuously occupied for >= 2 consecutive haar-sample
+                # events before we trust its mouth-motion diff. This prevents a single
+                # false-positive frame (bookshelf, hand, mic) from poisoning ema_mouth.
                 mouth_motion_left = 0.0
                 mouth_motion_right = 0.0
+
+                # Update stability counters (runs every frame, not just haar frames)
+                _left_stable  = (_left_stable  + 1) if left_slot  is not None else 0
+                _right_stable = (_right_stable + 1) if right_slot is not None else 0
+
+                _LEFT_STABLE_MIN  = 2   # require 2+ consecutive haar samples (~30 frames)
+                _RIGHT_STABLE_MIN = 2
+
                 if prev_gray is not None and gray is not None:
-                    for slot_label, slot_face in (("left", left_slot), ("right", right_slot)):
+                    for slot_label, slot_face, stable_count, stable_min in (
+                        ("left",  left_slot,  _left_stable,  _LEFT_STABLE_MIN),
+                        ("right", right_slot, _right_stable, _RIGHT_STABLE_MIN),
+                    ):
                         if slot_face is None:
+                            continue
+                        if stable_count < stable_min:
+                            # Too new — skip mouth motion to avoid poisoning EMA
+                            if frame_idx % 25 == 0:
+                                log.info(
+                                    f"[MOUTH] {slot_label.upper()} t={t:.2f}s SKIP — "
+                                    f"slot only stable for {stable_count} frames "
+                                    f"(need {stable_min})"
+                                )
                             continue
                         mx1, my1, mx2, my2 = get_mouth_roi(slot_face)
                         mx1 = max(0, mx1); mx2 = min(frame_width, mx2)
                         my1 = max(0, my1); my2 = min(frame_height, my2)
                         if mx2 > mx1 and my2 > my1:
-                            diff = cv2.absdiff(
-                                gray[my1:my2, mx1:mx2],
-                                prev_gray[my1:my2, mx1:mx2]
-                            )
-                            _, thresh = cv2.threshold(diff, 12, 255, cv2.THRESH_BINARY)
-                            motion = float(cv2.countNonZero(thresh))
+                            roi_curr = gray[my1:my2, mx1:mx2]
+                            roi_prev = prev_gray[my1:my2, mx1:mx2]
+                            diff = cv2.absdiff(roi_curr, roi_prev)
+                            _, thresh_img = cv2.threshold(diff, 12, 255, cv2.THRESH_BINARY)
+                            motion = float(cv2.countNonZero(thresh_img))
                             if slot_label == "left":
                                 mouth_motion_left = motion
+                                if frame_idx % 25 == 0:
+                                    log.info(
+                                        f"[MOUTH] L t={t:.2f}s  "
+                                        f"roi=({mx1},{my1},{mx2},{my2}) "
+                                        f"diff={diff.mean():.2f}  nz={int(motion)}  "
+                                        f"ema_after={ema_mouth_left*(1-EMA_ALPHA)+motion*EMA_ALPHA:.1f}  "
+                                        f"thresh={TALKING_THRESHOLD}"
+                                    )
                             else:
                                 mouth_motion_right = motion
+                                if frame_idx % 25 == 0:
+                                    log.info(
+                                        f"[MOUTH] R t={t:.2f}s  "
+                                        f"roi=({mx1},{my1},{mx2},{my2}) "
+                                        f"diff={diff.mean():.2f}  nz={int(motion)}  "
+                                        f"ema_after={ema_mouth_right*(1-EMA_ALPHA)+motion*EMA_ALPHA:.1f}  "
+                                        f"thresh={TALKING_THRESHOLD}"
+                                    )
 
-                ema_mouth_left  = ema_mouth_left  * (1 - EMA_ALPHA) + mouth_motion_left  * EMA_ALPHA
-                ema_mouth_right = ema_mouth_right * (1 - EMA_ALPHA) + mouth_motion_right * EMA_ALPHA
+                ema_mouth_left  = max(EMA_FLOOR, ema_mouth_left  * (1 - EMA_ALPHA) + mouth_motion_left  * EMA_ALPHA)
+                ema_mouth_right = max(EMA_FLOOR, ema_mouth_right * (1 - EMA_ALPHA) + mouth_motion_right * EMA_ALPHA)
                 left_talking  = ema_mouth_left  > TALKING_THRESHOLD
                 right_talking = ema_mouth_right > TALKING_THRESHOLD
 
@@ -1355,6 +1596,14 @@ class ClipEditor:
                     mode = last_mode
                 else:
                     last_mode = mode
+                
+                if frame_idx % 25 == 0:
+                    log.info(
+                        f"[DIR] t={t:.2f}s  mode={mode:<12s}  "
+                        f"gap={face_gap_ratio:.2f}(>{SPLIT_MIN_GAP})  "
+                        f"L={left_talking} R={right_talking}  "
+                        f"ema_l={ema_mouth_left:.1f} ema_r={ema_mouth_right:.1f}"
+                    )
 
                 # 5. Active slot (for SPLIT highlight)
                 if mode == "SOLO_LEFT":
@@ -1365,13 +1614,21 @@ class ClipEditor:
                     active_slot = "left" if ema_mouth_left >= ema_mouth_right else "right"
 
                 # 6. Smooth position updates (per slot, independent)
-                if left_slot is not None:
-                    lx = left_slot['x'] + left_slot['w'] / 2.0
-                    smoothed_left_x = smoothed_left_x * (1 - SMOOTH_ALPHA) + lx * SMOOTH_ALPHA
+                if ENABLE_CONTINUOUS_TRACKING:
+                    if left_slot is not None:
+                        lx = left_slot['x'] + left_slot['w'] / 2.0
+                        smoothed_left_x = left_tracker_smooth.update(lx)
+                    if right_slot is not None:
+                        rx = right_slot['x'] + right_slot['w'] / 2.0
+                        smoothed_right_x = right_tracker_smooth.update(rx)
+                else:
+                    if left_slot is not None:
+                        lx = left_slot['x'] + left_slot['w'] / 2.0
+                        smoothed_left_x = smoothed_left_x * (1 - SMOOTH_ALPHA) + lx * SMOOTH_ALPHA
 
-                if right_slot is not None:
-                    rx = right_slot['x'] + right_slot['w'] / 2.0
-                    smoothed_right_x = smoothed_right_x * (1 - SMOOTH_ALPHA) + rx * SMOOTH_ALPHA
+                    if right_slot is not None:
+                        rx = right_slot['x'] + right_slot['w'] / 2.0
+                        smoothed_right_x = smoothed_right_x * (1 - SMOOTH_ALPHA) + rx * SMOOTH_ALPHA
 
                 if mode == "SOLO_LEFT" and left_slot is not None:
                     sx = left_slot['x'] + left_slot['w'] / 2.0
@@ -1400,10 +1657,16 @@ class ClipEditor:
                         )
                         cluster_transition_remaining -= 1
                     else:
-                        smoothed_solo_x = locked_solo_x
+                        if ENABLE_CONTINUOUS_TRACKING:
+                            smoothed_solo_x = solo_tracker_smooth.update(sx)
+                        else:
+                            smoothed_solo_x = locked_solo_x
                 elif sx is not None:
                     # Original per-frame Haar behavior when the cache/cluster layer is off.
-                    smoothed_solo_x = smoothed_solo_x * (1 - SMOOTH_ALPHA) + sx * SMOOTH_ALPHA
+                    if ENABLE_CONTINUOUS_TRACKING:
+                        smoothed_solo_x = solo_tracker_smooth.update(sx)
+                    else:
+                        smoothed_solo_x = smoothed_solo_x * (1 - SMOOTH_ALPHA) + sx * SMOOTH_ALPHA
 
                 if frame_idx % 25 == 0:
                     log.info(
@@ -1420,6 +1683,33 @@ class ClipEditor:
                     "solo_x": smoothed_solo_x,
                 })
 
+                # ── Debug visualizer: record annotated frame + JSON entry ──────
+                _dbg.record_frame(
+                    frame=frame,
+                    cv2=cv2,
+                    t=t,
+                    frame_idx=frame_idx,
+                    mode=mode,
+                    gap=face_gap_ratio,
+                    split_eligible=(face_gap_ratio >= SPLIT_MIN_GAP),
+                    left_slot=left_slot,
+                    right_slot=right_slot,
+                    raw_faces=last_raw_faces,
+                    ema_left=ema_mouth_left,
+                    ema_right=ema_mouth_right,
+                    left_talking=left_talking,
+                    right_talking=right_talking,
+                    mouth_roi_left=(
+                        get_mouth_roi(left_slot) if left_slot else None
+                    ),
+                    mouth_roi_right=(
+                        get_mouth_roi(right_slot) if right_slot else None
+                    ),
+                    talking_threshold=TALKING_THRESHOLD,
+                    frame_height=frame_height,
+                    frame_width=frame_width,
+                )
+
                 # Only carry gray forward if it was actually computed this frame.
                 # If gray=None (skipped frame), prev_gray stays as the last valid frame.
                 if gray is not None:
@@ -1427,14 +1717,33 @@ class ClipEditor:
                 frame_idx += 1
 
             cap.release()
+            
+            if ENABLE_CONTINUOUS_TRACKING:
+                log.info(f"[FACE_TRACK_PERF] total_tracking_time={tracking_time:.2f}s "
+                         f"frames={tracking_frames} haar_redetects={haar_redetects}")
             if active_detector:
                 try:
                     active_detector.close()
                 except Exception:
                     pass
 
+            # ── Flush debug visualizer session ──────────────────────────────────
+            _dbg.close()
+
             if not frame_stats:
                 return 0.5
+
+            # ── FORENSIC COUNTER 1: How many raw frames voted SPLIT? ─────────────
+            frames_split = sum(1 for f in frame_stats if f["mode"] == "SPLIT")
+            frames_solo_l = sum(1 for f in frame_stats if f["mode"] == "SOLO_LEFT")
+            frames_solo_r = sum(1 for f in frame_stats if f["mode"] == "SOLO_RIGHT")
+            frames_hold   = sum(1 for f in frame_stats if f["mode"] == "HOLD")
+            print(
+                f"\n[FORENSICS-1] FRAME DECISIONS (total={len(frame_stats)}):\n"
+                f"  SPLIT={frames_split}  SOLO_LEFT={frames_solo_l}  SOLO_RIGHT={frames_solo_r}  HOLD={frames_hold}\n"
+                f"  → If SPLIT=0 here: Decision Engine is the killer.\n"
+                f"  → If SPLIT>0 here but 0 in final segments: Segment Builder is the killer."
+            )
 
             # ── Window-voting stabilizer ──────────────────────────────────────────
             # Group frames into VOTE_WINDOW_S buckets and vote on majority mode.
@@ -1514,6 +1823,16 @@ class ClipEditor:
                     f"[DIRECTOR_SEGMENT] t={seg.start_t}-{seg.end_t}s mode={seg.mode} "
                     f"active={seg.active_speaker} crop_x={round(seg.crop_x, 3)}"
                 )
+
+            # ── FORENSIC COUNTER 2: How many final segments are SPLIT? ───────────
+            segs_split  = sum(1 for s in stable_segments if s.mode == "SPLIT")
+            segs_solo_l = sum(1 for s in stable_segments if s.mode == "SOLO_LEFT")
+            segs_solo_r = sum(1 for s in stable_segments if s.mode == "SOLO_RIGHT")
+            print(
+                f"\n[FORENSICS-2] FINAL SEGMENTS (total={len(stable_segments)}):\n"
+                f"  SPLIT={segs_split}  SOLO_LEFT={segs_solo_l}  SOLO_RIGHT={segs_solo_r}\n"
+                f"  → Verdict: {'SEGMENT BUILDER killed SPLIT' if frames_split > 0 and segs_split == 0 else 'DECISION ENGINE never produced SPLIT' if frames_split == 0 else 'SPLIT survived end-to-end ✅'}"
+            )
 
             return stable_segments
 

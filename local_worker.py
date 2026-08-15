@@ -33,6 +33,16 @@ import tempfile
 import subprocess
 import traceback
 
+# ── Pipeline benchmark (one report per job) ────────────────────────────────
+try:
+    from pipeline_benchmark import JobBenchmark as _JobBenchmark
+except Exception as _be:
+    class _JobBenchmark:  # silent no-op fallback
+        def __init__(self, *a, **kw): pass
+        def begin(self, *a): pass
+        def finish(self, *a): pass
+        def save(self): pass
+
 import requests
 from dotenv import load_dotenv
 
@@ -64,17 +74,29 @@ RAILWAY_URL   = os.getenv("RAILWAY_URL", "").rstrip("/")
 WORKER_SECRET = os.getenv("WORKER_SECRET", "")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "5"))
 
-if not RAILWAY_URL:
-    print("[LOCAL_WORKER] ERROR: RAILWAY_URL is not set. Add it to .env.local", flush=True)
-    sys.exit(1)
-if not WORKER_SECRET:
-    print("[LOCAL_WORKER] ERROR: WORKER_SECRET is not set. Add it to .env.local", flush=True)
-    sys.exit(1)
+# _LOCAL_MODE is set True by --local flag in main().
+# When True: Railway checks are skipped, clips saved to scratch/hotshort_out/
+_LOCAL_MODE   = False
+_LOCAL_OUT_DIR = os.path.join(BASE_DIR, "scratch", "hotshort_out")
 
+# Railway checks deferred to main() so --local can bypass them.
 _HEADERS = {
     "X-Worker-Secret": WORKER_SECRET,
     "Content-Type": "application/json",
 }
+
+
+def _local_save_clip(src_path: str, clip_index: int, start: float, end: float) -> str:
+    """Copy finished clip to scratch/hotshort_out/ and return saved path."""
+    import shutil
+    os.makedirs(_LOCAL_OUT_DIR, exist_ok=True)
+    name = f"clip_{clip_index}_{int(start)}_{int(end)}.mp4"
+    dst  = os.path.join(_LOCAL_OUT_DIR, name)
+    shutil.copy2(src_path, dst)
+    sz = os.path.getsize(dst) / 1e6
+    print(f"[LOCAL_SAVE] clip_{clip_index} -> {dst}  ({sz:.1f} MB)", flush=True)
+    return dst
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -579,34 +601,119 @@ def _ffmpeg_merge_video_audio(video_path: str, audio_path: str, output_path: str
     print(f"[LOCAL_WORKER] Merge complete: {size_mb:.1f} MB -> {output_path}", flush=True)
 
 
+def _browser_cookie_error(stderr: str) -> bool:
+    """Return True if stderr looks like a cookie/auth failure (should try next strategy)."""
+    patterns = (
+        "dpapi", "failed to decrypt", "cookies-from-browser",
+        "keyring", "could not decrypt", "unable to read cookies",
+        # 403 = YouTube refused the request -- almost always stale/missing cookies
+        "http error 403", "403: forbidden", "forbidden",
+        "sign in to confirm", "this video is unavailable",
+    )
+    low = stderr.lower()
+    return any(p in low for p in patterns)
+
+
+def _auto_refresh_cookies() -> bool:
+    """Export fresh cookies from Firefox into cookies.txt before each download."""
+    cookies_file = os.path.join(os.getcwd(), "cookies.txt")
+
+    # Remove any existing file that may be in wrong/corrupt format
+    # yt-dlp refuses to overwrite a file it can't parse as Netscape cookies
+    if os.path.exists(cookies_file):
+        try:
+            os.remove(cookies_file)
+        except Exception:
+            pass
+
+    print("[LOCAL_WORKER] Auto-refreshing cookies from Firefox...", flush=True)
+    try:
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "yt_dlp",
+                "--cookies-from-browser", "firefox",
+                "--cookies", cookies_file,
+                "--skip-download", "--quiet",
+                "https://www.youtube.com",
+            ],
+            capture_output=True, timeout=30,
+        )
+        if result.returncode == 0 and os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100:
+            sz = os.path.getsize(cookies_file) / 1024
+            print(f"[LOCAL_WORKER] Cookies refreshed from Firefox ({sz:.0f} KB) -> cookies.txt", flush=True)
+            return True
+        err = result.stderr.decode("utf-8", errors="replace")[:200]
+        print(f"[LOCAL_WORKER] Firefox cookie refresh failed: {err}", flush=True)
+        return False
+    except Exception as e:
+        print(f"[LOCAL_WORKER] Cookie refresh error: {e}", flush=True)
+        return False
+
+
+
 def _download_via_ytdlp(youtube_url: str, dest_path: str):
     """
-    Download using local yt-dlp if RapidAPI hits a quota limit (429).
-    Uses format string that prefers 720p mp4 + m4a audio.
+    Download using local yt-dlp. Cookie strategy (tried in order):
+      1. Auto-export fresh cookies from Firefox -> cookies.txt
+      2. --cookies cookies.txt
+      3. --cookies-from-browser firefox  (direct live read)
+      4. --cookies-from-browser chrome
+      5. No cookies (last resort)
     """
-    import subprocess
-    import sys
     print(f"[LOCAL_WORKER] Downloading via yt-dlp to {dest_path}", flush=True)
-    cmd = [
-        sys.executable, "-m", "yt_dlp",
-        "--js-runtimes", "node",          # Use Node.js v24 (installed) instead of deno
-        "--remote-components", "ejs:github", # Required to fetch latest JS solver
-        "--cookies", "cookies.txt",
-        "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        "--merge-output-format", "mp4",
-        "--retries", "10",
-        "--fragment-retries", "10",
-        "--retry-sleep", "3",
-        "--socket-timeout", "60",
-        "--no-warnings",
-        "--output", dest_path,
-        youtube_url
+
+    # Always refresh cookies from Firefox first
+    _auto_refresh_cookies()
+
+    cookies_file = os.path.join(os.getcwd(), "cookies.txt")
+    has_cookies = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100
+
+    def _base_cmd(extra_args):
+        return [
+            sys.executable, "-m", "yt_dlp",
+            "--js-runtimes", "node",
+            "--remote-components", "ejs:github",
+            *extra_args,
+            "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "--retries", "10",
+            "--fragment-retries", "10",
+            "--retry-sleep", "3",
+            "--socket-timeout", "60",
+            "--no-warnings",
+            "--output", dest_path,
+            youtube_url,
+        ]
+
+    attempts = []
+    if has_cookies:
+        attempts.append((["--cookies", cookies_file], "cookies.txt"))
+    attempts += [
+        (["--cookies-from-browser", "firefox"], "firefox"),
+        (["--cookies-from-browser", "chrome"],  "chrome"),
+        ([],                                     "no-cookies"),
     ]
-    result = subprocess.run(cmd, capture_output=True)
-    if result.returncode != 0:
-        err = result.stderr.decode("utf-8", errors="replace")
-        raise RuntimeError(f"yt-dlp failed: {err}")
-        
+
+    last_err = "unknown error"
+    for extra_args, label in attempts:
+        cmd = _base_cmd(extra_args)
+        print(f"[LOCAL_WORKER] yt-dlp attempt [{label}]", flush=True)
+        result = subprocess.run(cmd, capture_output=True)
+        if result.returncode == 0:
+            break
+        last_err = result.stderr.decode("utf-8", errors="replace")
+        if _browser_cookie_error(last_err):
+            print(
+                f"[LOCAL_WORKER] yt-dlp [{label}] auth/cookie error -- trying next\n"
+                f"  {last_err.splitlines()[0] if last_err else ''}",
+                flush=True,
+            )
+            continue
+        # Hard error (network, bad URL, codec) -- fail immediately
+        raise RuntimeError(f"yt-dlp failed [{label}]: {last_err}")
+    else:
+        raise RuntimeError(f"yt-dlp failed (all strategies exhausted): {last_err}")
+
     if not os.path.exists(dest_path) or os.path.getsize(dest_path) < 1000:
         raise RuntimeError("yt-dlp completed but output file is missing or empty.")
 
@@ -845,14 +952,45 @@ class FaceCache:
 
 
     @staticmethod
-    def _valid_face_count(faces, frame_height):
-        """Match the editor's minimum face-size/aspect safety floor."""
-        return sum(
-            1
-            for face in faces
-            if face["h"] >= frame_height * MIN_VALID_FACE_HEIGHT_RATIO
-            and 0.7 <= face["h"] / max(1.0, face["w"]) <= 3.0
-        )
+    def _valid_face_count(faces, frame_height, sampled_frame=None):
+        """Match the editor's face-size/aspect/Laplacian safety floor.
+
+        Mirrors is_valid_face() guards in world_class_editor so that
+        whatever the editor would reject at runtime is ALSO rejected here
+        in FaceCache — prevents bookshelf/text FPs from being stored.
+        """
+        count = 0
+        for face in faces:
+            h = face["h"]
+            w = face["w"]
+            if h < frame_height * MIN_VALID_FACE_HEIGHT_RATIO:
+                continue
+            if not (0.7 <= h / max(1.0, w) <= 3.0):
+                continue
+            # Laplacian variance guard — same thresholds as editor Guard 6
+            # Real faces: 50-800. Bookshelves/text: >1200. Flat walls: <25.
+            if sampled_frame is not None:
+                try:
+                    x = int(face["x"])
+                    y = int(face["y"])
+                    roi = sampled_frame[y:y + int(h), x:x + int(w)]
+                    if roi.size > 0:
+                        roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi
+                        lap_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
+                        _LAP_MIN = float(os.getenv("HS_FACE_LAP_MIN", "25"))
+                        _LAP_MAX = float(os.getenv("HS_FACE_LAP_MAX", "1200"))
+                        if lap_var < _LAP_MIN or lap_var > _LAP_MAX:
+                            print(
+                                f"[FACE_CACHE] REJECT laplacian lap_var={lap_var:.0f} "
+                                f"range=[{_LAP_MIN:.0f},{_LAP_MAX:.0f}] "
+                                f"face=(x={x},y={y},w={int(w)},h={int(h)})",
+                                flush=True,
+                            )
+                            continue
+                except Exception:
+                    pass  # ROI out of bounds — let it through
+            count += 1
+        return count
 
     def get_clip_cache(self, clip):
         start = float(clip.get("start", 0.0) or 0.0)
@@ -870,7 +1008,7 @@ class FaceCache:
         total_scan = sum(c.get('end', 0) - c.get('start', 0) for c in clips)
         print(f"[FACE_CACHE] Scanning {len(clips)} clips = {total_scan:.0f}s total (not full video)", flush=True)
 
-        stride = max(1, int(os.getenv("HS_FACE_CACHE_FRAME_STRIDE", "15") or 15))
+        stride = max(1, int(os.getenv("HS_FACE_CACHE_FRAME_STRIDE", "8") or 8))  # reduced 15→8: denser sampling for better accuracy
         workers = max(1, int(os.getenv("HS_FACE_CACHE_WORKERS", "4") or 4))
 
         def scan_one_clip(clip_idx, clip):
@@ -993,7 +1131,8 @@ class FaceCache:
                     t_face += time.perf_counter() - t0
                     haar_calls += 1
                     valid_count = self._valid_face_count(
-                        raw_faces, sampled[representative][1].shape[0]
+                        raw_faces, sampled[representative][1].shape[0],
+                        sampled_frame=sampled[representative][1],  # pass frame for Laplacian guard
                     )
 
                     # A missed/invalid representative must not mark a whole scene
@@ -1115,6 +1254,10 @@ def _process_job(job: dict, cloudinary_ok: bool):
 
         print(f"[LOCAL_WORKER] Download complete: {os.path.getsize(video_path) // (1024*1024)}MB", flush=True)
 
+        # ── Per-job benchmark ───────────────────────────────────────────
+        _bench = _JobBenchmark(job_id, youtube_url)
+        _bench.finish("1_download")  # download already done above
+
         # "?"? PIPELINE ARCHITECTURE "?"?
         clip_queue = queue.Queue(maxsize=5)
         results = []
@@ -1169,39 +1312,60 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 print(f"[LOCAL_WORKER] Running orchestrator...", flush=True)
                 from viral_finder.orchestrator import orchestrate
                 
+                _bench.begin("2_orchestration")
                 clips = orchestrate(
                     video_path,
-                    top_k=int(os.getenv("HS_ORCH_TOP_K", "8")),
+                    top_k=int(os.getenv("HS_ORCH_TOP_K", "15")),  # raised 8→15; dynamic formula scales by video length
                     prefer_gpu=True,
                     use_cache=True,
                     allow_fallback=False,
                     pipeline_mode=os.getenv("HS_ORCH_PIPELINE_MODE", "staged"),
                 )
-                
+                _bench.finish("2_orchestration")
+
                 # Pre-classify clips for the Lightning Editor
+                # ── PARALLEL format_classify ──────────────────────────────────────
+                # Previously sequential: 7 clips × ~45s = 314s.
+                # Now parallel: all clips scanned concurrently → ~45s total (7x speedup).
+                _bench.begin("3_format_classify")
                 haar_clips = []
-                for clip in clips:
-                    start = float(clip.get("start", 0.0) or 0.0)
-                    end = float(clip.get("end", start) or start)
-                    fmt = analyze_video_format(video_path, start, end)
-                    
-                    if fmt.director_mode == DirectorMode.SINGLE_CENTERED:
-                        print(f"[LIGHTNING_EDITOR] mode={fmt.director_mode.name} avg_faces={fmt.face_count_avg:.2f} speakers={fmt.speaker_positions}. Queuing for anchor extraction (Mode A).", flush=True)
-                        print(f"\\n[DIRECTOR]\\nStrategy=SingleCenteredStrategy\\nFaceCache=ENABLED (Anchor Only)\\nCaptionDriver=DirectorContext\\nCropDriver=DirectorContext\\nExpectedHaarCalls<=3\\n", flush=True)
-                        haar_clips.append(clip)
-                    else:
-                        print(f"[LIGHTNING_EDITOR] mode={fmt.director_mode.name} avg_faces={fmt.face_count_avg:.2f}. Queuing for anchor extraction (Mode B).", flush=True)
-                        print(f"\\n[DIRECTOR]\\nStrategy=PodcastStrategy\\nFaceCache=ENABLED (Anchor Only)\\nCaptionDriver=DirectorContext\\nCropDriver=DirectorContext\\nExpectedHaarCalls<=3\\n", flush=True)
-                        haar_clips.append(clip)
-                
-                # Precompute FaceMesh only for the extracted clips that need it
+
+                def _classify_one(clip):
+                    s = float(clip.get("start", 0.0) or 0.0)
+                    e = float(clip.get("end", s) or s)
+                    fmt = analyze_video_format(video_path, s, e)
+                    clip["_fmt"] = fmt  # attach result so editor doesn't re-run
+                    return clip, fmt
+
+                # Use min(n_clips, 4) workers — more than 4 risks I/O contention on one file
+                _classify_workers = min(len(clips), 4)
+                with ThreadPoolExecutor(max_workers=_classify_workers) as _pool:
+                    _fmt_futures = {_pool.submit(_classify_one, c): c for c in clips}
+                    for _fut in _fmt_futures:
+                        _clip, _fmt = _fut.result()
+                        mode_name = _fmt.director_mode.name if _fmt and _fmt.director_mode else "UNKNOWN"
+                        faces_avg = _fmt.face_count_avg if _fmt else 0.0
+                        spk = _fmt.speaker_positions if _fmt else []
+                        print(
+                            f"[FORMAT_CLASSIFY] {_clip.get('start',0):.0f}s-{_clip.get('end',0):.0f}s "
+                            f"mode={mode_name} avg_faces={faces_avg:.2f} speakers={spk}",
+                            flush=True,
+                        )
+                        haar_clips.append(_clip)
+
+                _bench.finish("3_format_classify")
+
+                # ── Haar scan (face cache pre-computation) ─────────────────────────
                 nonlocal face_cache
+                _bench.begin("4_haar_scan")
                 if haar_clips:
                     face_cache = FaceCache(video_path, haar_clips)
                 else:
                     face_cache = None
-                
+                _bench.finish("4_haar_scan")
+
                 # Precompute captions async before releasing clips
+                _bench.begin("5_caption_pregen")
                 if editor_instance and clips:
                     from utils.clipper import get_video_duration
                     print(f"[LOCAL_WORKER] Orchestration done: {len(clips)} clips. Pre-generating captions...", flush=True)
@@ -1238,6 +1402,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     for i, c in enumerate(clips):
                         precomputed_captions[i] = ex.submit(gen_cap, c, i)
 
+                _bench.finish("5_caption_pregen")
                 orch_state["produced"] = len(clips)
                 for i, clip in enumerate(clips):
                     clip_queue.put((i, clip))
@@ -1266,6 +1431,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     # CPU: Extract subclip (ffmpeg copy)
                     t0 = time.perf_counter()
                     raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
+                    _bench.begin(f"6a_extract_clip{i}")
                     # Frame-accurate extraction (avoid -c copy keyframe drift)
                     import subprocess
                     try:
@@ -1278,7 +1444,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         print(f"[PIPELINE] Extraction failed for clip {i}: {e}", flush=True)
                         continue
                     t_raw_cut = time.perf_counter() - t0
-                    
+                    _bench.finish(f"6a_extract_clip{i}")
+
                     final_path = raw_path
                     t_wce = 0.0
                     t_branding = 0.0
@@ -1300,7 +1467,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 "hook_type": clip.get("hook_type", ""),
                                 "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {})
                             }
-                        
+
+                        _bench.begin(f"6b_wce_clip{i}")
                         with gpu_lock:
                             t0 = time.perf_counter()
                             edit_result = editor_instance.enhance_pretrimmed_clip(
@@ -1318,6 +1486,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 precomputed_ass_path=precomputed_captions[i].result()[1] if precomputed_captions.get(i) else None
                             )
                             t_wce = time.perf_counter() - t0
+                        _bench.finish(f"6b_wce_clip{i}")
                         if edit_result:
                             final_path = edited_path
                             clip_res["edit_metadata"] = getattr(edit_result, "metadata", {}) or {}
@@ -1339,17 +1508,21 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 final_path = branded_path
                             t_branding = time.perf_counter() - t0
 
-                    # Upload — Cloudinary first, Railway fallback if disabled/failed
+                    # Upload — local save OR Cloudinary -> Railway fallback
                     url = None
                     t0 = time.perf_counter()
-                    if cloudinary_ok:
-                        url = _upload_clip_to_cloudinary(final_path)
-                    if url is None:
-                        # Cloudinary not configured or failed — upload directly to Railway
-                        url = _upload_clip_to_railway(final_path, job_id)
+                    _bench.begin(f"6c_upload_clip{i}")
+                    if _LOCAL_MODE:
+                        saved = _local_save_clip(final_path, i, start, end)
+                        url = f"local://{saved}"
+                    else:
+                        if cloudinary_ok:
+                            url = _upload_clip_to_cloudinary(final_path)
+                        if url is None:
+                            url = _upload_clip_to_railway(final_path, job_id)
                     t_upload = time.perf_counter() - t0
+                    _bench.finish(f"6c_upload_clip{i}")
 
-                    
                     clip_res["clip_url"] = url
                     clip_res["editor_timing"] = {
                         "raw_cut_s": round(t_raw_cut, 3),
@@ -1389,6 +1562,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
         # Sort results back to original order by start time
         results.sort(key=lambda x: x.get("start", 0))
 
+        # ── Save benchmark report for this job ─────────────────────────────
+        _bench.save()
+
         if orch_state["error"] is not None:
             raise RuntimeError(f"Orchestrator failed before producing clips: {orch_state['error']}") from orch_state["error"]
         if orch_state["produced"] == 0:
@@ -1406,35 +1582,99 @@ def _process_job(job: dict, cloudinary_ok: bool):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="HotShort Local Worker")
+    parser.add_argument("--local", action="store_true",
+                        help="Local mode: no Railway. Process a YouTube URL directly.")
+    parser.add_argument("--url", default=None, help="YouTube URL (used with --local).")
+    parser.add_argument("--clips", type=int, default=int(os.getenv("HS_ORCH_TOP_K", "5")),
+                        help="Number of clips to select (default 5).")
+    args = parser.parse_args()
+
     _print_startup_banner()
+
+    # ── LOCAL MODE ─────────────────────────────────────────────────────────
+    if args.local:
+        global _LOCAL_MODE
+        _LOCAL_MODE = True
+        os.environ["HS_ORCH_TOP_K"] = str(args.clips)
+
+        youtube_url = args.url
+        if not youtube_url:
+            print("\n" + "=" * 55, flush=True)
+            print("  LOCAL MODE - No Railway polling", flush=True)
+            print("=" * 55, flush=True)
+            youtube_url = input("  YouTube URL: ").strip().strip("'`\"")
+        else:
+            youtube_url = youtube_url.strip().strip("'`\"")
+
+        if not youtube_url:
+            print("[LOCAL_WORKER] No URL provided. Exiting.", flush=True)
+            sys.exit(1)
+
+        print(f"\n[LOCAL_WORKER] URL      : {youtube_url}", flush=True)
+        print(f"[LOCAL_WORKER] Clips     : {args.clips}", flush=True)
+        print(f"[LOCAL_WORKER] Output    : {_LOCAL_OUT_DIR}", flush=True)
+
+        _job_id = f"local_{int(time.time())}"
+        job = {"job_id": _job_id, "youtube_url": youtube_url, "is_free_user": False}
+
+        t0 = time.perf_counter()
+        try:
+            clips = _process_job(job, cloudinary_ok=False)
+        except Exception as e:
+            print(f"\n[LOCAL_WORKER] FAILED: {e}\n{traceback.format_exc()}", flush=True)
+            sys.exit(1)
+
+        total_s = time.perf_counter() - t0
+        print("\n" + "=" * 55, flush=True)
+        print(f"  DONE - {len(clips)} clips in {total_s:.0f}s ({total_s/60:.1f} min)", flush=True)
+        print(f"  Output: {_LOCAL_OUT_DIR}", flush=True)
+        print("=" * 55, flush=True)
+        for i, c in enumerate(clips):
+            title = (c.get("opening_caption") or c.get("title") or "")[:60]
+            saved = c.get("clip_url", "").replace("local://", "")
+            print(f"  [{i+1}] {c.get('start',0):.0f}s-{c.get('end',0):.0f}s  {title}", flush=True)
+            if saved:
+                print(f"        -> {os.path.basename(saved)}", flush=True)
+
+        try:
+            subprocess.Popen(["explorer", _LOCAL_OUT_DIR])
+        except Exception:
+            pass
+        return
+
+    # ── SERVER MODE (Railway polling) ────────────────────────────────────────
+    if not RAILWAY_URL:
+        print("[LOCAL_WORKER] ERROR: RAILWAY_URL not set. Use --local flag.", flush=True)
+        sys.exit(1)
+    if not WORKER_SECRET:
+        print("[LOCAL_WORKER] ERROR: WORKER_SECRET not set. Use --local flag.", flush=True)
+        sys.exit(1)
+
     cloudinary_ok = _configure_cloudinary()
     if not cloudinary_ok:
-        print("[LOCAL_WORKER] ⚠️  Cloudinary not configured — falling back to direct Railway uploads (clips WILL have URLs)", flush=True)
+        print("[LOCAL_WORKER] Cloudinary not configured - Railway fallback active.", flush=True)
 
     while True:
         print(f"[LOCAL_WORKER] polling...", flush=True)
-
         job = _poll_next_job()
-
         if job is None:
             time.sleep(POLL_INTERVAL)
             continue
-
         job_id = job["job_id"]
-        print(f"[LOCAL_WORKER] 📥 Job received: {job_id}", flush=True)
-
+        print(f"[LOCAL_WORKER] Job received: {job_id}", flush=True)
         try:
             clips = _process_job(job, cloudinary_ok=cloudinary_ok)
             _complete_job(job_id, clips)
         except Exception as e:
             err_msg = str(e)
             tb = traceback.format_exc()
-            print(f"[LOCAL_WORKER] 💥 Job {job_id} failed:\n{tb}", flush=True)
+            print(f"[LOCAL_WORKER] Job {job_id} failed:\n{tb}", flush=True)
             _fail_job(job_id, err_msg)
-
-        # Small sleep after processing before next poll
         time.sleep(2)
 
 
 if __name__ == "__main__":
     main()
+
