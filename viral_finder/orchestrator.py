@@ -1252,8 +1252,8 @@ def _final_quality_reject_reasons(candidate: Dict[str, Any]) -> List[str]:
     reasons: List[str] = []
     reasons.extend(_meaning_invariant_reject_reasons(candidate))
     
-    # Cortex-enabled candidates bypass structural NLP rejection rules.
-    if candidate.get("groq_moment") or candidate.get("cortex_enabled"):
+    # Cortex-enabled/Hook-hunter candidates bypass structural NLP rejection rules.
+    if candidate.get("groq_moment") or candidate.get("cortex_enabled") or candidate.get("hook_seed"):
         return reasons
         
     loop_state = str(candidate.get("loop_state", "") or "")
