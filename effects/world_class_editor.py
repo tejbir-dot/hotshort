@@ -460,11 +460,29 @@ class ClipEditor:
                 sys.stderr.write(exc.stderr)
                 if "Codec av1_cuvid is not supported with this chroma format" in exc.stderr:
                     _mark_av1_hwdecode_broken()
-            if not self._uses_cuda_decode(cmd):
-                raise
-            log.warning("[WCE] CUDA decode failed; retrying same FFmpeg command with CPU decode")
-            fallback_cmd = self._without_cuda_decode(cmd)
-            subprocess.run(fallback_cmd, check=True, stdout=subprocess.DEVNULL, stderr=sys.stderr, timeout=timeout_s)
+            
+            last_exc = exc
+            if self._uses_cuda_decode(cmd):
+                log.warning("[WCE] CUDA decode failed; retrying same FFmpeg command with CPU decode")
+                cmd = self._without_cuda_decode(cmd)
+                try:
+                    res = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=timeout_s)
+                    return
+                except subprocess.CalledProcessError as exc_decode:
+                    last_exc = exc_decode
+                    if exc_decode.stderr:
+                        sys.stderr.write(exc_decode.stderr)
+
+            if self._uses_nvenc_encode(cmd):
+                log.warning("[WCE] NVENC encode failed (session limit or unsupported params); retrying with CPU encode")
+                fallback_cmd = self._without_nvenc_encode(cmd)
+                try:
+                    subprocess.run(fallback_cmd, check=True, stdout=subprocess.DEVNULL, stderr=sys.stderr, timeout=timeout_s)
+                    return
+                except subprocess.CalledProcessError as exc_encode:
+                    last_exc = exc_encode
+                    
+            raise RuntimeError(f"FFmpeg failed with exit code {last_exc.returncode}:\n{last_exc.stderr}") from last_exc
 
     @staticmethod
     def _uses_cuda_decode(cmd: List[str]) -> bool:
@@ -476,6 +494,44 @@ class ClipEditor:
             and str(cmd[index + 1]).endswith("_cuvid")
             for index in range(len(cmd))
         )
+
+    @staticmethod
+    def _uses_nvenc_encode(cmd: List[str]) -> bool:
+        return any(
+            cmd[index] == "-c:v"
+            and index + 1 < len(cmd)
+            and str(cmd[index + 1]).endswith("_nvenc")
+            for index in range(len(cmd))
+        )
+
+    @staticmethod
+    def _without_nvenc_encode(cmd: List[str]) -> List[str]:
+        new_cmd = []
+        skip_next = False
+        for i, val in enumerate(cmd):
+            if skip_next:
+                skip_next = False
+                continue
+            if val == "h264_nvenc":
+                new_cmd.append("libx264")
+            elif val == "hevc_nvenc":
+                new_cmd.append("libx265")
+            elif val == "-preset" and i+1 < len(cmd) and cmd[i+1] in ("p1", "p2", "p3", "p4", "p5", "p6", "p7", "fast"):
+                new_cmd.append("-preset")
+                new_cmd.append("veryfast")
+                skip_next = True
+            elif val == "-rc":
+                skip_next = True
+            elif val == "vbr" and i > 0 and cmd[i-1] == "-rc":
+                continue
+            elif val == "-cq":
+                new_cmd.append("-crf")
+            elif val == "-b:v" and i+1 < len(cmd) and cmd[i+1] == "3M":
+                # Drop NVENC specific target bitrate logic for VBR
+                skip_next = True
+            else:
+                new_cmd.append(val)
+        return new_cmd
 
     @staticmethod
     def _without_cuda_decode(cmd: List[str]) -> List[str]:
