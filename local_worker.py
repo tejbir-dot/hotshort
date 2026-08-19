@@ -659,6 +659,11 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
       3. --cookies-from-browser firefox  (direct live read)
       4. --cookies-from-browser chrome
       5. No cookies (last resort)
+
+    JS runtime: Deno (~/.deno/bin/deno.exe) + EJS remote component so yt-dlp
+    can solve YouTube's n-challenge. Without this every client returns 403.
+    Player client forced to web_embedded,default (android_vr always 403s
+    without a GVS PO token).
     """
     print(f"[LOCAL_WORKER] Downloading via yt-dlp to {dest_path}", flush=True)
 
@@ -668,11 +673,27 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
     cookies_file = os.path.join(os.getcwd(), "cookies.txt")
     has_cookies = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100
 
+    # ── Locate Deno for n-challenge solving ───────────────────────────────────
+    _deno_default = os.path.join(os.path.expanduser("~"), ".deno", "bin", "deno.exe")
+    _deno_path = os.getenv("HS_DENO_PATH", _deno_default if os.path.exists(_deno_default) else "")
+    _js_runtime_args = (
+        ["--js-runtimes", f"deno:{_deno_path}", "--remote-components", "ejs:github"]
+        if _deno_path
+        else []
+    )
+    if _deno_path:
+        print(f"[LOCAL_WORKER] yt-dlp JS runtime: deno @ {_deno_path}", flush=True)
+    else:
+        print("[LOCAL_WORKER] WARNING: Deno not found — n-challenge may fail (403)", flush=True)
+
+    # web_embedded avoids android_vr which always 403s without GVS PO token
+    _player_client_args = ["--extractor-args", "youtube:player_client=web_embedded,default"]
+
     def _base_cmd(extra_args):
         return [
             sys.executable, "-m", "yt_dlp",
-            "--js-runtimes", "node",
-            "--remote-components", "ejs:github",
+            *_js_runtime_args,
+            *_player_client_args,
             *extra_args,
             "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "--merge-output-format", "mp4",
@@ -693,6 +714,7 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
         (["--cookies-from-browser", "chrome"],  "chrome"),
         ([],                                     "no-cookies"),
     ]
+
 
     last_err = "unknown error"
     for extra_args, label in attempts:
@@ -1290,7 +1312,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
             editor_instance = _editor_cls(_editor_work_dir)
             editor_cfg = _config_cls()
             # ── Pass distribution branding config so WCE merges it in-pass ──────
-            _branding_on = os.getenv("HS_APPLY_BRANDING", "1") == "1"
+            _branding_on = os.getenv("HS_APPLY_BRANDING", "0") == "1"
             editor_cfg.apply_distribution_branding = _branding_on
             editor_cfg.branding_watermark_path = (
                 os.path.join(BASE_DIR, "static", "branding", "logo.png")
