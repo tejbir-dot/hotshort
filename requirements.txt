@@ -80,3 +80,4 @@ webrtcvad==2.0.10
 llvmlite==0.42.0
 numba==0.59.1
 librosa==0.10.2.post1
+google-genai

@@ -530,7 +530,7 @@ def detect_ignitions(segments: List[Dict[str, Any]],
 try:
     from .ignition_memory import get_punch_weights
 except ImportError:
-    from ignition_memory import get_punch_weights
+    from ignition_memory import get_punch_weights  # type: ignore
 
 
 # def select_clip_start(ignitions: list, goal: str = "viral") -> dict:

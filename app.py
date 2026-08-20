@@ -590,13 +590,14 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
 def process_video_hybrid(youtube_url: str, job_id: str | None = None, timeout: int = 600) -> dict:
     is_free_user = True
     if job_id:
-        job = Job.query.filter_by(id=job_id).first()
-        if job:
-            user = User.query.get(job.user_id)
-            if user:
-                is_free_user = not get_free_status(user).get("is_paid")
-                
-
+        try:
+            job = Job.query.filter_by(id=job_id).first()
+            if job and job.user_id:
+                user = User.query.get(job.user_id)
+                if user:
+                    is_free_user = not get_free_status(user).get("is_paid")
+        except Exception:
+            pass
     """
     Hybrid orchestration entrypoint.
 

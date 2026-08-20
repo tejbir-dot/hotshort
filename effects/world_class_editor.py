@@ -29,6 +29,9 @@ class DirectorSegment:
     crop_x: float
     left_x: float
     right_x: float
+    # Per-frame face-tracking timeline: list of {t, solo_x, left_x, right_x}
+    # Used by _build_reframe_filter to generate smooth per-frame crop expressions.
+    frame_timeline: list = field(default_factory=list)
 
 # Global semaphore to ensure only one GPU encode runs at a time (e.g. for GTX 1630)
 _GPU_SEMAPHORE = threading.Semaphore(1)
@@ -477,7 +480,7 @@ class ClipEditor:
                 log.warning("[WCE] NVENC encode failed (session limit or unsupported params); retrying with CPU encode")
                 fallback_cmd = self._without_nvenc_encode(cmd)
                 try:
-                    subprocess.run(fallback_cmd, check=True, stdout=subprocess.DEVNULL, stderr=sys.stderr, timeout=timeout_s)
+                    subprocess.run(fallback_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=timeout_s)
                     return
                 except subprocess.CalledProcessError as exc_encode:
                     last_exc = exc_encode
@@ -1874,10 +1877,25 @@ class ClipEditor:
                 right_x=cur["right_x"],
             ))
 
+            # ── Attach per-frame timeline to each segment for smooth dynamic crop ──
+            # Each segment gets the subset of frame_stats that falls within its
+            # time window. _build_reframe_filter uses this to interpolate crop_x
+            # smoothly per-frame instead of using a single locked average.
+            for seg in stable_segments:
+                seg.frame_timeline = [
+                    {"t": f["t"] - seg.start_t,  # relative timestamp within segment
+                     "solo_x": f["solo_x"],
+                     "left_x": f["left_x"],
+                     "right_x": f["right_x"]}
+                    for f in frame_stats
+                    if seg.start_t <= f["t"] < seg.end_t
+                ]
+
             for seg in stable_segments:
                 log.info(
                     f"[DIRECTOR_SEGMENT] t={seg.start_t}-{seg.end_t}s mode={seg.mode} "
-                    f"active={seg.active_speaker} crop_x={round(seg.crop_x, 3)}"
+                    f"active={seg.active_speaker} crop_x={round(seg.crop_x, 3)} "
+                    f"frame_timeline_pts={len(seg.frame_timeline)}"
                 )
 
             # ── FORENSIC COUNTER 2: How many final segments are SPLIT? ───────────
@@ -1978,14 +1996,69 @@ class ClipEditor:
                 vf_parts.append(seg_in)
                 
                 if seg.mode in ("SOLO", "SOLO_LEFT", "SOLO_RIGHT"):
-                    # Disabled 1.05x cinematic zoom to prevent chopping off the top of the head
-                    SOLO_ZOOM = 1.0
-                    crop_h = max(2, int(src_h / SOLO_ZOOM)) & ~1
+                    # ── Per-frame dynamic crop via Overlay + Sendcmd ──────────────
+                    # FFmpeg `crop` filter does NOT support `sendcmd`, and `eval=frame`
+                    # crashes with AST stack limits (exit code -22) if > 15 terms.
+                    # FIX: Scale the video up, place it on a black canvas via `overlay`, 
+                    # and animate `overlay x` via `sendcmd`. `overlay` supports `sendcmd`!
+                    timeline = getattr(seg, 'frame_timeline', [])
+
+                    crop_h = max(2, src_h) & ~1
                     crop_w = max(2, int(round(crop_h * dst_ar))) & ~1
-                    c_x = int(round(_clamp(seg.crop_x - crop_w / 2.0, 0.0, src_w - crop_w))) & ~1
-                    c_y = max(0, int(round((src_h - crop_h) / 2.0))) & ~1
-                    chain = f"[v_{idx}_raw]crop={crop_w}:{crop_h}:{c_x}:{c_y},scale={dst_w}:{dst_h}:flags=lanczos,setsar=1[v_{idx}_out]"
+                    c_y = max(0, int(round((src_h - crop_h) * 0.35))) & ~1
+
+                    if timeline and len(timeline) >= 2:
+                        sf = dst_h / src_h
+                        scaled_w = int(src_w * sf) & ~1
+
+                        def _ox(kf):
+                            c_x = int(round(_clamp(kf['solo_x'] - crop_w / 2.0, 0.0, src_w - crop_w)))
+                            return int(-c_x * sf)
+
+                        KEYFRAME_STEP = max(1, len(timeline) // 25)
+                        raw_kfs = timeline[::KEYFRAME_STEP]
+                        if timeline[-1] not in raw_kfs:
+                            raw_kfs.append(timeline[-1])
+
+                        dedup_kfs = [raw_kfs[0]]
+                        for kf in raw_kfs[1:]:
+                            if _ox(kf) != _ox(dedup_kfs[-1]):
+                                dedup_kfs.append(kf)
+
+                        import tempfile as _tf
+                        sc_fd, sc_path = _tf.mkstemp(suffix=".txt", prefix="hs_crop_")
+                        try:
+                            with os.fdopen(sc_fd, 'w') as sc_f:
+                                for kf in dedup_kfs:
+                                    sc_f.write(f"{round(kf['t'], 4)} [enter] overlay x {_ox(kf)};\n")
+                        except Exception:
+                            os.close(sc_fd)
+
+                        sc_escaped = sc_path.replace('\\', '/').replace(':', '\\:')
+                        
+                        # Fix decimal floating issues with color duration
+                        seg_dur = round(seg.end_t - seg.start_t, 3) + 0.5
+                        
+                        log.info(
+                            f"[DYNAMIC_CROP_OVERLAY] seg_idx={idx} mode={seg.mode} "
+                            f"keyframes={len(dedup_kfs)} sendcmd={sc_path}"
+                        )
+                        chain = (
+                            f"color=c=black:s={dst_w}x{dst_h}:d={seg_dur}[bg_{idx}];"
+                            f"[v_{idx}_raw]scale={scaled_w}:{dst_h}:flags=lanczos,setsar=1,sendcmd=f='{sc_escaped}'[v_{idx}_scaled];"
+                            f"[bg_{idx}][v_{idx}_scaled]overlay=x={_ox(dedup_kfs[0])}:y=0[v_{idx}_out]"
+                        )
+                    else:
+                        c_x = int(round(_clamp(seg.crop_x - crop_w / 2.0, 0.0, src_w - crop_w))) & ~1
+                        log.info(
+                            f"[STATIC_CROP] seg_idx={idx} mode={seg.mode} "
+                            f"no timeline, fixed crop_x={c_x}"
+                        )
+                        chain = f"[v_{idx}_raw]crop={crop_w}:{crop_h}:{c_x}:{c_y},scale={dst_w}:{dst_h}:flags=lanczos,setsar=1[v_{idx}_out]"
+
+
                     vf_parts.append(chain)
+
                     
                 elif seg.mode == "ACTIVE_CENTER":
                     # Disabled 1.15x zoom to prevent chopping off the head

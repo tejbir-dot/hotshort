@@ -383,7 +383,7 @@ def test_arc_assembler_trace_uses_measured_hook_score_not_hook_hunter_confidence
         },
     )
 
-    orchestrator._run_arc_assembler_v2(ctx)
+    orchestrator._run_arc_assembler(ctx)
 
     clip = ctx.ranked_output[0]
     assert clip["hook_score"] == 0.0

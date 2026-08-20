@@ -39,7 +39,7 @@ def test_process_video_hybrid_uses_local_gpu_when_worker_unreachable(monkeypatch
     monkeypatch.setattr(
         app,
         "_orchestrate_via_local_gpu",
-        lambda youtube_url, job_id, timeout: {
+        lambda youtube_url, job_id, timeout, **kwargs: {
             "status": "local_gpu",
             "youtube_url": youtube_url,
             "job_id": job_id,
@@ -66,7 +66,7 @@ def test_process_video_hybrid_falls_back_to_runpod_when_worker_and_gpu_unavailab
     monkeypatch.setattr(
         app,
         "_orchestrate_via_runpod",
-        lambda youtube_url, job_id, timeout: {
+        lambda youtube_url, job_id, timeout, **kwargs: {
             "status": "runpod",
             "youtube_url": youtube_url,
             "job_id": job_id,

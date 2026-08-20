@@ -320,11 +320,20 @@ class OptimizedPassSelector:
 
                     # Check quality gate — forensic logging
                     if score < self.quality_gate:
+                        # Find candidate text for logging
+                        cand_text = getattr(candidate, 'text', '') or getattr(candidate, 'transcript', '') or ''
+                        if isinstance(cand_text, list):
+                            cand_text = " ".join([str(s.get('text','')) for s in cand_text if isinstance(s, dict)])
+                        cand_text = str(cand_text).replace('\n', ' ').strip()
+                        short_text = cand_text[:60] + "..." if len(cand_text) > 60 else cand_text
+                        cand_source = getattr(candidate, 'source', 'ultron_node')
+                        
                         logger.info(
-                            f"[QGATE_KILL] candidate_id={cid} "
-                            f"base_score={base_score:.4f} penalized_score={score:.4f} "
-                            f"gate={self.quality_gate:.4f} delta={delta:.4f} "
-                            f"semantic={semantic:.3f} punch={punch:.3f} curiosity={curiosity:.3f}"
+                            f"[QGATE_KILL] [Source: {cand_source}] id={cid} "
+                            f"base={base_score:.3f} pen={score:.3f} "
+                            f"gate={self.quality_gate:.2f} "
+                            f"sem={semantic:.3f} punch={punch:.3f} curio={curiosity:.3f} "
+                            f"| Text: '{short_text}'"
                         )
                         reject_reasons["quality_gate"] += 1
                         continue

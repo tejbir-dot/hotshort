@@ -16,6 +16,11 @@ try:
 except ImportError:
     def is_groq_enabled(): return False
 
+try:
+    from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
+except ImportError:
+    def is_gemini_enabled(): return False
+
 
 
 # ── English trigger phrases ──────────────────────────────────────────────────
@@ -221,8 +226,10 @@ def _run_sliding_window_detection(transcript_segments: List[Dict], log: logging.
 
 def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> List[Dict]:
     api_key = _get_groq_api_key()
-    if not api_key:
-        log.warning("Groq enabled but API key missing. Falling back to sliding window.")
+    gemini_enabled = is_gemini_enabled()
+    
+    if not api_key and not gemini_enabled:
+        log.warning("No API keys found for Trigger LLM. Falling back to sliding window.")
         return _run_sliding_window_detection(transcript_segments, log)
 
     # Chunk transcript into max 4-minute chunks to avoid massive token limits
@@ -249,9 +256,9 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
     import time as _time
 
     # ── BATCHED CALLS: send transcript in chunks to avoid 413/TPM limits ─────────────
-    # Full transcript (~275 segs × ~20 tokens ≈ 5500 tokens) can hit the 6000 TPM limit
-    # on free tiers, throwing a 413 error. We split into chunks and wait between them.
     all_triggers = []
+    
+    # User explicitly requested chunk-by-chunk processing.
     CHUNK_SIZE = 100
     chunks = [transcript_segments[i:i + CHUNK_SIZE] for i in range(0, len(transcript_segments), CHUNK_SIZE)]
     log.info(f"[TRIGGER_FORENSIC_LLM] Sending full transcript in {len(chunks)} chunks of max {CHUNK_SIZE} segs.")
@@ -261,8 +268,11 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
 
     for chunk_idx, segs_to_use in enumerate(chunks):
         if chunk_idx > 0:
-            log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 8 seconds before chunk {chunk_idx+1}/{len(chunks)} to respect TPM limits...")
-            _time.sleep(8.0)
+            if not gemini_enabled:
+                log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 8 seconds before chunk {chunk_idx+1}/{len(chunks)} to respect TPM limits...")
+                _time.sleep(8.0)
+            else:
+                log.info(f"[TRIGGER_FORENSIC_LLM] Preparing chunk {chunk_idx+1}/{len(chunks)} for Gemini...")
 
         transcript_text = ""
         for s in segs_to_use:
@@ -329,18 +339,24 @@ Transcript:
 
         for attempt in range(1, MAX_CHUNK_RETRIES + 1):
             try:
-                resp = post_groq_completions(
-                    payload={
-                        "model": _get_groq_model(),
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.1,
-                        "response_format": {"type": "json_object"}
-                    },
-                    timeout=_get_timeout(),
-                    max_retries=3
-                )
-                resp.raise_for_status()
-                data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
+                if gemini_enabled:
+                    raw_resp_text = post_gemini_completions(prompt=prompt, response_format_schema={"type": "json_object"})
+                    data = parse_gemini_json_safely(raw_resp_text)
+                else:
+                    resp = post_groq_completions(
+                        payload={
+                            "model": _get_groq_model(),
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.1,
+                            "response_format": {"type": "json_object"}
+                        },
+                        timeout=_get_timeout(),
+                        max_retries=3
+                    )
+                    if not resp.ok:
+                        raise requests.exceptions.HTTPError(f"{resp.status_code} Client Error: {resp.text}")
+                    data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
+                    
                 raw_triggers = data.get("triggers", [])
                 found_in_chunk = 0
                 for t in raw_triggers:

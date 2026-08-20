@@ -1,4 +1,6 @@
 import os
+import time
+import threading
 from viral_finder.cognition import Evidence, IntelligenceArtifact
 import json
 import logging
@@ -7,6 +9,62 @@ from typing import List, Dict, Any, Optional
 
 log = logging.getLogger("groq_cortex")
 
+class GroqKeyPool:
+    """
+    Multi-Key Round-Robin & Instant 429 Failover Pool for Free-Tier Groq APIs.
+    Supports comma-separated keys in GROQ_API_KEY / GROQ_API_KEYS and numbered keys GROQ_API_KEY_1..20.
+    """
+    _lock = threading.Lock()
+    _keys: List[str] = []
+    _index: int = 0
+    _last_logged_count: int = 0
+
+    @classmethod
+    def refresh_keys(cls) -> List[str]:
+        keys = []
+        # 1. Comma/semicolon separated in GROQ_API_KEY
+        raw = os.environ.get("GROQ_API_KEY", "")
+        for k in raw.replace(";", ",").split(","):
+            k = k.strip()
+            if k and k not in keys and k != "MISSING":
+                keys.append(k)
+        # 2. Comma/semicolon separated in GROQ_API_KEYS
+        raw_multi = os.environ.get("GROQ_API_KEYS", "")
+        for k in raw_multi.replace(";", ",").split(","):
+            k = k.strip()
+            if k and k not in keys and k != "MISSING":
+                keys.append(k)
+        # 3. Numbered variables GROQ_API_KEY_1 up to 20
+        for i in range(1, 21):
+            k = os.environ.get(f"GROQ_API_KEY_{i}", "").strip()
+            if k and k not in keys and k != "MISSING":
+                keys.append(k)
+        cls._keys = keys
+        if keys and not os.environ.get("GROQ_API_KEY", "").strip():
+            os.environ["GROQ_API_KEY"] = keys[0]
+        if len(keys) > 1 and len(keys) != cls._last_logged_count:
+            cls._last_logged_count = len(keys)
+            msg = f"\n⚡ [GROQ_POOL] Active Multi-Key Pool loaded with {len(keys)} API keys for instant 429 failover!\n"
+            print(msg, flush=True)
+            log.info(msg.strip())
+        return keys
+
+    @classmethod
+    def get_next_key(cls) -> str:
+        with cls._lock:
+            cls.refresh_keys()
+            if not cls._keys:
+                return ""
+            key = cls._keys[cls._index % len(cls._keys)]
+            cls._index += 1
+            return key
+
+    @classmethod
+    def get_all_keys(cls) -> List[str]:
+        with cls._lock:
+            cls.refresh_keys()
+            return list(cls._keys)
+
 def is_groq_enabled() -> bool:
     # Auto-disable during pytest runs to prevent test interference
     if os.environ.get("PYTEST_CURRENT_TEST"):
@@ -14,7 +72,89 @@ def is_groq_enabled() -> bool:
     return os.environ.get("HS_GROQ_CORTEX_ENABLED", "0").strip() == "1"
 
 def _get_groq_api_key() -> str:
-    return os.environ.get("GROQ_API_KEY", "").strip()
+    return GroqKeyPool.get_next_key()
+
+def post_groq_completions(payload: dict, timeout: int = None, max_retries: int = 4) -> requests.Response:
+    """
+    Execute POST request to Groq API with Multi-Key Round-Robin & Instant 429 Failover.
+    If a 429 occurs and another key is available in the pool, switches to the next key
+    immediately. If a full lap of the pool is exhausted, it sleeps before the next lap.
+    """
+    if timeout is None:
+        timeout = _get_timeout()
+    
+    keys_pool = GroqKeyPool.get_all_keys()
+    if not keys_pool:
+        raise ValueError("No GROQ_API_KEY configured in environment")
+    
+    # Scale retries dynamically so we can do at least 2 full laps of the entire pool
+    actual_retries = max(max_retries, len(keys_pool) * 2 + 1)
+    
+    response = None
+    for attempt in range(actual_retries):
+        current_key = GroqKeyPool.get_next_key()
+        headers = {
+            "Authorization": f"Bearer {current_key}",
+            "Content-Type": "application/json"
+        }
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=timeout
+            )
+            if response.status_code == 429:
+                if attempt == actual_retries - 1:
+                    return response # Last attempt failed, return the 429 response
+
+                # Did we just finish a full lap of the keys?
+                lap_completed = (len(keys_pool) > 0) and ((attempt + 1) % len(keys_pool) == 0)
+                
+                # If multiple keys exist AND we haven't finished a full lap yet, instant failover
+                if len(keys_pool) > 1 and not lap_completed:
+                    next_k = keys_pool[(GroqKeyPool._index) % len(keys_pool)] if keys_pool else "?"
+                    msg = f"⚡ [GROQ_POOL_FAILOVER] 429 Rate Limit hit on key '...{current_key[-6:]}' ➔ Shifting instantly to next API key '...{next_k[-6:]}' (Attempt {attempt+1}/{actual_retries})!"
+                    print(f"\n{msg}\n", flush=True)
+                    log.warning(msg)
+                    continue
+                
+                # Otherwise, we did a full lap (or only have 1 key), so we MUST sleep to reset tokens!
+                retry_tokens = response.headers.get("x-ratelimit-reset-tokens")
+                retry_reqs = response.headers.get("x-ratelimit-reset-requests")
+                retry_after_hdr = response.headers.get("Retry-After")
+                
+                # Log the exact limits for debugging
+                log.warning(f"Groq Limits for '...{current_key[-6:]}': ResetTokens={retry_tokens}s, ResetReqs={retry_reqs}s, RetryAfter={retry_after_hdr}s")
+                
+                retry_after = retry_tokens or retry_after_hdr
+                sleep_s = float(2 ** ((attempt // max(1, len(keys_pool))) + 1))
+                if retry_after:
+                    try:
+                        sleep_s = float(retry_after)
+                    except ValueError:
+                        pass
+                
+                # If sleep is huge (e.g. daily limit), we still cap it but log a big warning
+                if sleep_s > 60.0:
+                    log.error(f"[GROQ_POOL] DEAD KEY: API Key '...{current_key[-6:]}' requires {sleep_s}s cooldown! (Daily limit reached?)")
+                    sleep_s = 60.0
+                else:
+                    sleep_s = min(sleep_s, 60.0)
+
+                lap_msg = " (lap completed)" if len(keys_pool) > 1 else ""
+                log.warning(f"[GROQ_POOL] 429 Rate Limit{lap_msg}. Sleeping {sleep_s:.1f}s before next attempt ({attempt+2}/{actual_retries})...")
+                time.sleep(sleep_s)
+                continue
+                
+            return response
+        except requests.exceptions.RequestException as e:
+            if attempt == actual_retries - 1:
+                raise
+            log.warning(f"[GROQ_POOL] Request error on attempt {attempt+1}: {e}. Retrying in 1s...")
+            time.sleep(1.0)
+            
+    return response
 
 def _get_groq_model() -> str:
     return os.environ.get("HS_GROQ_MODEL", "llama-3.1-8b-instant").strip()
@@ -477,7 +617,8 @@ Return JSON ONLY in this exact format:
                 "original_end_idx": e_idx
             }
 
-        payload = {
+        # --- Build full prompt (system + user merged for Gemini, separate for Groq) ---
+        groq_payload = {
             "model": _get_groq_model(),
             "temperature": 0.1,
             "response_format": {"type": "json_object"},
@@ -486,49 +627,44 @@ Return JSON ONLY in this exact format:
                 {"role": "user", "content": json.dumps(groq_input, indent=2)}
             ]
         }
-        
-        max_retries = 3
-        for attempt in range(max_retries):
+        gemini_prompt = system_prompt + "\n\nHere is the input data:\n" + json.dumps(groq_input, indent=2)
+
+        # --- Batch retry: Try Gemini first, then fallback to Groq ---
+        _SURGEON_RETRY_DELAYS = [2, 4, 8]  # seconds between each retry attempt
+        _batch_success = False
+
+        for _retry_attempt in range(len(_SURGEON_RETRY_DELAYS) + 1):  # 1 initial + 3 retries
             try:
                 start_t = time.time()
-                response = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=60
-                )
-                latency = time.time() - start_t
-                audit_data["total_latency_ms"] += (latency * 1000)
-                
-                if response.status_code == 429:
-                    retry_after = response.headers.get("x-ratelimit-reset-tokens") or response.headers.get("Retry-After")
-                    sleep_s = float(2 ** (attempt + 1))  # 2, 4, 8
-                    if retry_after:
-                        try:
-                            sleep_s = min(float(retry_after), 15.0)
-                        except ValueError:
-                            pass
-                    sleep_s = min(sleep_s, 15.0)
-                    log.warning(f"[GROQ_SURGEON] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping {sleep_s:.1f}s...")
-                    time.sleep(sleep_s)
-                    continue
-                    
-                response.raise_for_status()
-                data = response.json()
-                content = data["choices"][0]["message"]["content"]
-                parsed = json.loads(content)
-                
-                usage = data.get("usage", {})
-                audit_data["input_tokens"] += usage.get("prompt_tokens", 0)
-                audit_data["output_tokens"] += usage.get("completion_tokens", 0)
-                
-                pt_per_cand = usage.get("prompt_tokens", 0) // len(batch) if len(batch) else 0
-                
+                # ── PRIMARY: Gemini Surgeon ────────────────────────────────────────────
+                from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
+                if is_gemini_enabled():
+                    log.info(f"[GROQ_SURGEON] Batch {batch_idx+1}: Routing to Gemini (primary).")
+                    raw_text = post_gemini_completions(prompt=gemini_prompt, response_format_schema={"type": "json_object"})
+                    latency = time.time() - start_t
+                    audit_data["total_latency_ms"] += (latency * 1000)
+                    parsed = parse_gemini_json_safely(raw_text)
+                else:
+                    # ── FALLBACK: Groq Surgeon ─────────────────────────────────────────
+                    log.info(f"[GROQ_SURGEON] Batch {batch_idx+1}: Gemini not available, using Groq.")
+                    response = post_groq_completions(payload=groq_payload, timeout=60, max_retries=4)
+                    latency = time.time() - start_t
+                    audit_data["total_latency_ms"] += (latency * 1000)
+                    response.raise_for_status()
+                    data = response.json()
+                    content = data["choices"][0]["message"]["content"]
+                    parsed = json.loads(content)
+                    usage = data.get("usage", {})
+                    audit_data["input_tokens"] += usage.get("prompt_tokens", 0)
+                    audit_data["output_tokens"] += usage.get("completion_tokens", 0)
+
+                pt_per_cand = 0  # Gemini doesn't expose token count the same way
+
                 for report in parsed.get("surgeon_reports", []):
                     cid = str(report.get("candidate_id", ""))
                     meta = batch_meta.get(cid, {})
                     dec = report.get("decision", "REJECT")
-                    
+
                     # Mathematical Extension from Segment Index
                     try:
                         payoff_idx = int(report.get("payoff_segment_index", -1))
@@ -540,12 +676,12 @@ Return JSON ONLY in this exact format:
                                 log.info(f"[SURGEON_EXTENSION] Extended candidate {cid} by +{report['end_adjustment_seconds']}s based on segment [{payoff_idx}]")
                     except (ValueError, TypeError):
                         pass
-                    
+
                     audit_data["decisions"][dec] = audit_data["decisions"].get(dec, 0) + 1
-                    
+
                     reason = str(report.get("rejection_reason", "none"))
                     c_source = str(report.get("core_idea_source", "UNKNOWN"))
-                    
+
                     log.info("\n[SURGEON_FORENSIC_CANDIDATE]")
                     log.info(f"candidate_id={cid}")
                     log.info(f"duration={round(meta.get('duration', 0.0), 2)}")
@@ -560,24 +696,24 @@ Return JSON ONLY in this exact format:
                     log.info(f"decision={dec}")
                     if dec in ["REJECT", "KEEP"]:
                         log.info(f"rejection_reason={reason}")
-                        
+
                     rej_type = str(report.get("rejection_type", "NONE"))
                     log.info(f"rejection_type={rej_type}")
-                    
+
                     for c in top_candidates:
                         if str(c.get("id", "")) == cid:
                             c["groq_surgeon"] = report
-                            
+
                             # Provide intelligence transport for Ranking decision math
                             from viral_finder.cognition import Evidence, IntelligenceArtifact
                             artifact = c.get("intelligence")
                             if not isinstance(artifact, IntelligenceArtifact):
                                 artifact = IntelligenceArtifact()
                                 c["intelligence"] = artifact
-                                
+
                             dev_score = float(report.get("development_score", 0)) / 10.0
                             res_score = float(report.get("resolution_strength", 0)) / 10.0
-                            
+
                             artifact.evidence_stream.extend([
                                 Evidence(type="usefulness", value=dev_score, producer="groq_surgeon", confidence=0.9),
                                 Evidence(type="completeness", value=res_score, producer="groq_surgeon", confidence=0.9),
@@ -585,20 +721,94 @@ Return JSON ONLY in this exact format:
                                 Evidence(type="memorability", value=0.8, producer="groq_surgeon", confidence=0.9),
                                 Evidence(type="shareability", value=0.8, producer="groq_surgeon", confidence=0.9),
                             ])
-                            
+
                             break
 
-                break  # Success
-                
+                _batch_success = True
+                break  # Success — exit retry loop
+
             except Exception as e:
-                if attempt < max_retries - 1:
-                    log.warning(f"[GROQ_SURGEON] Batch {batch_idx+1} Attempt {attempt+1} failed: {e}. Retrying in 5s...")
-                    import time
-                    time.sleep(5)
+                is_rate_limit = "429" in str(e) or (
+                    hasattr(e, "response") and getattr(e.response, "status_code", None) == 429
+                )
+                if _retry_attempt < len(_SURGEON_RETRY_DELAYS):
+                    sleep_s = _SURGEON_RETRY_DELAYS[_retry_attempt]
+                    if is_rate_limit:
+                        log.warning(
+                            f"[GROQ_SURGEON] Batch {batch_idx+1} rate-limited (429). "
+                            f"Attempt {_retry_attempt+1}/{len(_SURGEON_RETRY_DELAYS)+1}. "
+                            f"Cycling both keys then waiting {sleep_s}s before retry..."
+                        )
+                        # Force one full lap of the key pool to reset token counters
+                        for _ in range(len(GroqKeyPool.get_all_keys())):
+                            GroqKeyPool.get_next_key()
+                    else:
+                        log.warning(
+                            f"[GROQ_SURGEON] Batch {batch_idx+1} failed: {e}. "
+                            f"Attempt {_retry_attempt+1}/{len(_SURGEON_RETRY_DELAYS)+1}. "
+                            f"Retrying in {sleep_s}s..."
+                        )
+                    time.sleep(sleep_s)
                 else:
-                    log.error(f"[GROQ_SURGEON] Failed batch {batch_idx+1}: {e}")
-                    
-        if batch_idx < len(batches) - 1:
+                    # All retries exhausted — apply local heuristic fallback so candidates
+                    # are not silently left at completeness floor 0.35.
+                    log.error(
+                        f"[GROQ_SURGEON] Batch {batch_idx+1} permanently failed after "
+                        f"{len(_SURGEON_RETRY_DELAYS)+1} attempts: {e}. "
+                        f"Applying local heuristic fallback for {len(batch)} candidates."
+                    )
+                    from viral_finder.cognition import Evidence, IntelligenceArtifact
+                    for c in batch:
+                        cid = str(c.get("id", ""))
+                        meta = batch_meta.get(cid, {})
+                        dur = float(meta.get("duration", 0.0))
+
+                        # Short clips (<35s) most likely need extension — give them a KEEP
+                        # with conservative completeness so downstream can still extend.
+                        # Long clips already had NCE contracts — give them full credit.
+                        if dur < 35.0:
+                            fallback_dev = 0.6
+                            fallback_res = 0.6
+                            fallback_dec = "KEEP"
+                        else:
+                            fallback_dev = 0.75
+                            fallback_res = 0.75
+                            fallback_dec = "KEEP"
+
+                        fallback_report = {
+                            "candidate_id": cid,
+                            "decision": fallback_dec,
+                            "rejection_type": "NONE",
+                            "rejection_reason": "none",
+                            "development_score": round(fallback_dev * 10),
+                            "resolution_strength": round(fallback_res * 10),
+                            "core_idea_source": "FALLBACK_HEURISTIC",
+                            "_fallback_reason": "groq_surgeon_batch_rate_limited",
+                        }
+                        c["groq_surgeon"] = fallback_report
+
+                        artifact = c.get("intelligence")
+                        if not isinstance(artifact, IntelligenceArtifact):
+                            artifact = IntelligenceArtifact()
+                            c["intelligence"] = artifact
+
+                        artifact.evidence_stream.extend([
+                            Evidence(type="usefulness", value=fallback_dev, producer="groq_surgeon_fallback", confidence=0.6),
+                            Evidence(type="completeness", value=fallback_res, producer="groq_surgeon_fallback", confidence=0.6),
+                            Evidence(type="stop_scroll", value=0.80, producer="groq_surgeon_fallback", confidence=0.6),
+                            Evidence(type="memorability", value=0.70, producer="groq_surgeon_fallback", confidence=0.6),
+                            Evidence(type="shareability", value=0.70, producer="groq_surgeon_fallback", confidence=0.6),
+                        ])
+
+                        log.info(
+                            f"[SURGEON_FALLBACK] cid={cid} dur={dur:.1f}s "
+                            f"→ decision={fallback_dec} dev={fallback_dev} res={fallback_res} "
+                            f"(heuristic, no Groq)"
+                        )
+                        audit_data["decisions"][fallback_dec] = audit_data["decisions"].get(fallback_dec, 0) + 1
+
+        # Inter-batch cooldown: only when single-key mode (multi-key pool self-manages via post_groq_completions)
+        if batch_idx < len(batches) - 1 and len(GroqKeyPool.get_all_keys()) <= 1:
             time.sleep(1.5)
 
     total_tokens = audit_data["input_tokens"] + audit_data["output_tokens"]
@@ -853,7 +1063,7 @@ def find_moments_from_transcript(transcript_segments: list, video_duration: floa
         sleep_ms = 800
 
     for idx, chunk in enumerate(chunks):
-        if idx > 0 and sleep_ms > 0:
+        if idx > 0 and sleep_ms > 0 and len(GroqKeyPool.get_all_keys()) <= 1:
             time.sleep(sleep_ms / 1000.0)
 
         groq_input = []
@@ -952,55 +1162,26 @@ Now review these transcript segments:
 """.replace("{{TRANSCRIPT_JSON}}", prompt_json)
 
         response = None
-        for attempt in range(2):
-            try:
-                response = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": _get_groq_model(),
-                        "temperature": 0.2,
-                        "response_format": {"type": "json_object"},
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": system_prompt
-                            }
-                        ]
-                    },
-                    timeout=_get_timeout()
-                )
-                if response.status_code == 429:
-                    if attempt == 0:
-                        log.warning(f"[GROQ_DIRECTOR] window {idx} returned 429. Sleeping 2s before retry.")
-                        time.sleep(2.0)
-                        continue
-                    else:
-                        log.error(f"[GROQ_DIRECTOR] window {idx} failed: 429 Too Many Requests after retry.")
-                        break
-                response.raise_for_status()
-                break
-            except Exception as e:
-                is_429 = False
-                if hasattr(e, "response") and e.response is not None:
-                    if e.response.status_code == 429:
-                        is_429 = True
-                if is_429:
-                    if attempt == 0:
-                        log.warning(f"[GROQ_DIRECTOR] window {idx} raised 429. Sleeping 2s before retry.")
-                        time.sleep(2.0)
-                        continue
-                    else:
-                        log.error(f"[GROQ_DIRECTOR] window {idx} failed: 429 Too Many Requests after retry.")
-                        break
-                if attempt == 0:
-                    log.warning(f"[GROQ_DIRECTOR] window {idx} failed attempt 1: {e}. Retrying.")
-                    continue
-                log.error(f"[GROQ_DIRECTOR] window {idx} failed: {e}")
-                break
+        try:
+            response = post_groq_completions(
+                payload={
+                    "model": _get_groq_model(),
+                    "temperature": 0.2,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": system_prompt
+                        }
+                    ]
+                },
+                timeout=_get_timeout(),
+                max_retries=3
+            )
+            response.raise_for_status()
+        except Exception as e:
+            log.error(f"[GROQ_DIRECTOR] window {idx} failed: {e}")
+            continue
 
         if response is None or response.status_code != 200:
             continue
@@ -1179,71 +1360,41 @@ Transcript:
             ]
         }
         
-        max_retries = 3
-        batch_success = False
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=60
-                )
-                
-                if response.status_code == 429:
-                    retry_after = response.headers.get("x-ratelimit-reset-tokens") or response.headers.get("Retry-After")
-                    sleep_s = float(2 ** (attempt + 1))  # 2, 4, 8
-                    if retry_after:
-                        try:
-                            sleep_s = min(float(retry_after), 15.0)
-                        except ValueError:
-                            pass
-                    sleep_s = min(sleep_s, 15.0)
-                    log.warning(f"[GROQ_NARRATIVE] 429 Too Many Requests (batch {batch_idx+1}, attempt {attempt+1}/{max_retries}). Sleeping {sleep_s:.1f}s...")
-                    time.sleep(sleep_s)
-                    continue
-                    
-                response.raise_for_status()
-                data = response.json()
-                content = data["choices"][0]["message"]["content"]
-                parsed = parse_groq_json_safely(content)
-                num_parsed = len(parsed.get("segments", []))
-                
-                for seg in parsed.get("segments", []):
-                    try:
-                        sid = int(seg.get("id", -1))
-                        role = str(seg.get("role", "BUILD")).upper()
-                        if sid >= 0:
-                            master_roles_map[sid] = role
-                    except Exception:
-                        pass
-                
-                log.info("\n[NARRATIVE_TRACE]")
-                log.info(f"raw_response_length={len(content)}")
-                log.info(f"parsed_roles={num_parsed}")
-                log.info(f"master_roles_map_size={len(master_roles_map)}")
-                log.info(f"fallback_reason=NONE\n")
-                
-                batch_success = True
-                break  # break retry loop on success
-                
-            except Exception as e:
-                fallback_reason = str(e)
-                log.info("\n[NARRATIVE_TRACE]")
-                log.info(f"raw_response_length=FAIL")
-                log.info(f"parsed_roles=0")
-                log.info(f"master_roles_map_size={len(master_roles_map)}")
-                log.info(f"fallback_reason={fallback_reason}\n")
-                
-                if attempt < max_retries - 1:
-                    log.warning(f"[GROQ_NARRATIVE] Batch {batch_idx+1} Attempt {attempt+1} failed: {e}. Retrying in 5s...")
-                    import time
-                    time.sleep(5)
-                else:
-                    log.error(f"[GROQ_NARRATIVE] Failed to analyze narrative roles for batch {batch_idx+1}: {e}")
+        try:
+            response = post_groq_completions(payload=payload, timeout=60, max_retries=4)
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            parsed = parse_groq_json_safely(content)
+            num_parsed = len(parsed.get("segments", []))
+            
+            for seg in parsed.get("segments", []):
+                try:
+                    sid = int(seg.get("id", -1))
+                    role = str(seg.get("role", "BUILD")).upper()
+                    if sid >= 0:
+                        master_roles_map[sid] = role
+                except Exception:
+                    pass
+            
+            log.info("\n[NARRATIVE_TRACE]")
+            log.info(f"raw_response_length={len(content)}")
+            log.info(f"parsed_roles={num_parsed}")
+            log.info(f"master_roles_map_size={len(master_roles_map)}")
+            log.info(f"fallback_reason=NONE\n")
+            
+            batch_success = True
+        except Exception as e:
+            fallback_reason = str(e)
+            log.info("\n[NARRATIVE_TRACE]")
+            log.info(f"raw_response_length=FAIL")
+            log.info(f"parsed_roles=0")
+            log.info(f"master_roles_map_size={len(master_roles_map)}")
+            log.info(f"fallback_reason={fallback_reason}\n")
+            log.error(f"[GROQ_NARRATIVE] Failed to analyze narrative roles for batch {batch_idx+1}: {e}")
         
-        # Add a small delay between batches to avoid immediate 429
-        if batch_idx < len(batches) - 1:
+        # Add a small delay between batches to avoid immediate 429 (only if single key)
+        if batch_idx < len(batches) - 1 and len(GroqKeyPool.get_all_keys()) <= 1:
             import time
             time.sleep(1.5)
             
@@ -1333,50 +1484,33 @@ Return a JSON array of objects, one per clip, with:
             ]
         }
         
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                log.info(f"[SURGEON_REPAIR] Attempting repair for {len(batch)} clips (attempt {attempt+1}/{max_retries})")
-                r = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json=payload,
-                    timeout=_get_timeout()
-                )
-                if r.status_code == 429:
-                    sleep_s = 2.0 * (2 ** attempt)
-                    log.warning(f"[SURGEON_REPAIR] 429 Too Many Requests. Sleeping {sleep_s}s (attempt {attempt+1}/{max_retries})")
-                    time.sleep(sleep_s)
-                    continue
-                    
-                r.raise_for_status()
-                data = r.json()
-                content = data["choices"][0]["message"]["content"]
-                parsed = parse_groq_json_safely(content)
+        try:
+            log.info(f"[SURGEON_REPAIR] Attempting repair for {len(batch)} clips")
+            r = post_groq_completions(payload=payload, timeout=_get_timeout(), max_retries=5)
+            r.raise_for_status()
+            data = r.json()
+            content = data["choices"][0]["message"]["content"]
+            parsed = parse_groq_json_safely(content)
+            
+            if isinstance(parsed, dict) and "candidates" in parsed:
+                arr = parsed["candidates"]
+            elif isinstance(parsed, list):
+                arr = parsed
+            else:
+                arr = []
                 
-                if isinstance(parsed, dict) and "candidates" in parsed:
-                    arr = parsed["candidates"]
-                elif isinstance(parsed, list):
-                    arr = parsed
-                else:
-                    arr = []
-                    
-                for item in arr:
-                    cid = str(item.get("candidate_id", ""))
-                    if cid in batch_meta:
-                        orig_c = batch_meta[cid]
-                        orig_c["groq_surgeon"] = item
-                        orig_c["groq_surgeon"]["repair_applied"] = True
-                        repaired_results.append(orig_c)
-                        log.info(f"[SURGEON_REPAIR] Successfully repaired via EXTEND_RIGHT. quote='{item.get('proposed_payoff_quote', '')}'")
+            for item in arr:
+                cid = str(item.get("candidate_id", ""))
+                if cid in batch_meta:
+                    orig_c = batch_meta[cid]
+                    orig_c["groq_surgeon"] = item
+                    orig_c["groq_surgeon"]["repair_applied"] = True
+                    repaired_results.append(orig_c)
+                    log.info(f"[SURGEON_REPAIR] Successfully repaired via EXTEND_RIGHT. quote='{item.get('proposed_payoff_quote', '')}'")
+        except Exception as e:
+            log.error(f"[SURGEON_REPAIR] Error: {e}")
                 
-                break
-            except Exception as e:
-                log.error(f"[SURGEON_REPAIR] Error: {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(2.0 * (2 ** attempt))
-                    
-        if batch_idx < len(batches) - 1:
+        if batch_idx < len(batches) - 1 and len(GroqKeyPool.get_all_keys()) <= 1:
             time.sleep(2.0)
             
     return repaired_results

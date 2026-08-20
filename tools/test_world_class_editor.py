@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument("--transcript-json", default="", help="Path to transcript JSON list with start/end/text")
     parser.add_argument("--ratio", default="9:16", help="Target ratio, e.g. 9:16 or 1:1")
     parser.add_argument("--translate-to", default="", help="Optional caption translation target language code")
+    parser.add_argument("--branding", action="store_true", help="Test merged distribution branding")
     args = parser.parse_args()
 
     transcript = None
@@ -30,6 +31,9 @@ def main() -> None:
         enhance_audio=True,
         enable_active_speaker=True,
         enable_hook_speed_ramp=True,
+        apply_distribution_branding=args.branding,
+        branding_watermark_path=("static/branding/logo.png" if args.branding else ""),
+        branding_outro_path=("static/branding/outro.mp4" if args.branding else ""),
     )
     result = editor.enhance_pretrimmed_clip(
         input_path=args.input,
@@ -40,7 +44,7 @@ def main() -> None:
         config=config,
         clip_title="HotShort Test Hook",
     )
-    print(json.dumps({"output": result.output_path, "engagement_score": result.engagement_score}, indent=2))
+    print(json.dumps({"output": result.output_path, "engagement_score": result.engagement_score, "metadata": result.metadata}, indent=2))
 
 
 if __name__ == "__main__":

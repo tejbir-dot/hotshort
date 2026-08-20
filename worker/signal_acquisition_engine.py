@@ -89,7 +89,16 @@ def acquire_signal(source_url: str, profile: str = "balanced") -> Dict[str, Any]
             video_id = m.group(1) if m else source_url
             # attempt to load transcript using youtube_transcript_api
             from youtube_transcript_api import YouTubeTranscriptApi
-            raw = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
+            
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            try:
+                # Prefer explicit languages, but fall back gracefully
+                transcript_obj = transcript_list.find_transcript(['hi', 'en', 'es'])
+            except Exception:
+                # Fallback to whatever is available (auto-generated or other languages)
+                transcript_obj = next(iter(transcript_list))
+                
+            raw = transcript_obj.fetch()
             segs = [
                 {
                     "text": s.get("text", ""),

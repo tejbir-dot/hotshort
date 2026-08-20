@@ -293,31 +293,55 @@ def _unpack_transcribe_result(res):
 
 
 def _normalize_segment(segment):
-    """Normalize a segment into a dict with keys: start,end,text,confidence.
+    """Normalize a segment into a dict with keys: start,end,text,confidence,words.
 
     Handles dicts, objects with attributes, and iterable/generator wrappers.
+    The `words` list is preserved so downstream caption rendering gets
+    millisecond-accurate per-word timestamps from Whisper.
     """
     try:
         if segment is None:
-            return {"start": 0.0, "end": 0.0, "text": "", "confidence": 0.0}
+            return {"start": 0.0, "end": 0.0, "text": "", "confidence": 0.0, "words": []}
         # dict-like
         if isinstance(segment, dict):
             return {
                 "start": float(segment.get("start", 0.0) or 0.0),
                 "end": float(segment.get("end", 0.0) or 0.0),
                 "text": (segment.get("text", "") or "").strip(),
-                "confidence": float(segment.get("no_speech_prob", segment.get("confidence", 1.0) or 0.0))
+                "confidence": float(segment.get("no_speech_prob", segment.get("confidence", 1.0) or 0.0)),
+                "words": list(segment.get("words") or []),  # ← preserve word timestamps
             }
-        # object with attributes
+        # object with attributes (faster-whisper Segment namedtuple / dataclass)
         if hasattr(segment, "text") or hasattr(segment, "start"):
             text = getattr(segment, "text", "") or ""
             start = getattr(segment, "start", 0.0) or 0.0
             end = getattr(segment, "end", 0.0) or 0.0
             confidence = getattr(segment, "confidence", None)
             if confidence is None:
-                # some backends use no_speech_prob
                 confidence = getattr(segment, "no_speech_prob", 0.0)
-            return {"start": float(start), "end": float(end), "text": str(text).strip(), "confidence": float(confidence)}
+            # faster-whisper exposes words as segment.words (list of Word objects)
+            raw_words = getattr(segment, "words", None) or []
+            words_out = []
+            for w in raw_words:
+                if isinstance(w, dict):
+                    words_out.append({
+                        "word": w.get("word") or w.get("text", ""),
+                        "start": float(w.get("start", start) or start),
+                        "end": float(w.get("end", end) or end),
+                    })
+                elif hasattr(w, "word") or hasattr(w, "start"):
+                    words_out.append({
+                        "word": getattr(w, "word", getattr(w, "text", "")),
+                        "start": float(getattr(w, "start", start) or start),
+                        "end": float(getattr(w, "end", end) or end),
+                    })
+            return {
+                "start": float(start),
+                "end": float(end),
+                "text": str(text).strip(),
+                "confidence": float(confidence),
+                "words": words_out,  # ← preserve word timestamps
+            }
         # iterable / generator wrapper - try first inner item
         if hasattr(segment, "__iter__"):
             for item in segment:
@@ -325,9 +349,9 @@ def _normalize_segment(segment):
                 if norm and norm.get("text"):
                     return norm
         # fallback
-        return {"start": 0.0, "end": 0.0, "text": "", "confidence": 0.0}
+        return {"start": 0.0, "end": 0.0, "text": "", "confidence": 0.0, "words": []}
     except Exception:
-        return {"start": 0.0, "end": 0.0, "text": "", "confidence": 0.0}
+        return {"start": 0.0, "end": 0.0, "text": "", "confidence": 0.0, "words": []}
 
 def _ensure_cache_dir():
     if not os.path.exists(CACHE_DIR):
@@ -389,9 +413,15 @@ class EliteTranscriptCache:
         """Fetch from hot cache or disk (fast)"""
         # Tier 1: Hot cache (instant)
         if path in self.hot_cache:
+            segs = self.hot_cache[path]
+            # Guard: stale cache entries lack "words" → reject silently
+            if segs and "words" not in segs[0]:
+                _log("INFO", f"[CACHE] Hot cache STALE (no words key): {path} — forcing re-transcription")
+                del self.hot_cache[path]
+                return None
             _log("DEBUG", f"Cache HIT (hot): {path}")
-            return self.hot_cache[path]
-        
+            return segs
+
         # Tier 2: Disk cache via metadata (fast fingerprint match)
         fp = _file_fingerprint(path, model_name)
         if fp in self.metadata_index:
@@ -400,15 +430,23 @@ class EliteTranscriptCache:
                 with open(filepath, "r") as f:
                     data = json.load(f)
                     segments = data.get("segments", [])
-                    
+
+                    # Guard: reject stale cache entries that lack per-word timestamps.
+                    # Before the subtitle-sync fix, segments were stored without "words".
+                    # Serving them would silently cause subtitle drift.
+                    if segments and "words" not in segments[0]:
+                        _log("INFO", f"[CACHE] Disk cache STALE (no words key): {path} — forcing re-transcription")
+                        return None
+
                     # Move to hot cache
                     self._add_hot(path, segments)
                     _log("DEBUG", f"Cache HIT (disk): {path}")
                     return segments
             except:
                 pass
-        
+
         return None
+
     
     def set(self, path: str, model_name: str, segments: List[Dict]):
         """Save to hot cache and disk"""
@@ -690,7 +728,7 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
                 beam_size=1,                   # ⚡ Greedy search (fastest inference)
                 vad_filter=True,               # ⚡ Native VAD filters silence BEFORE inference
                 vad_parameters=vad_parameters,
-                word_timestamps=False,         # ⚡ Skip word-level (saves 15% time, unnecessary)
+                word_timestamps=True,          # ✅ Per-word ms-accurate timestamps for subtitles
                 language=WHISPER_LANGUAGE,       # ⚡ OPT-4: env-controlled (None = auto-detect)
                 condition_on_previous_text=False,  # ⚡ No context hallucination overhead
             )
@@ -713,10 +751,12 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
 
                 results.append({
                     "start": round(s.get("start", 0.0), 2),
-                    "end": round(s.get("end", 0.0), 2),
-                    "text": text,
-                    "confidence": s.get("confidence", 0.0)
+                    "end":   round(s.get("end", 0.0), 2),
+                    "text":  text,
+                    "confidence": s.get("confidence", 0.0),
+                    "words": s.get("words", []),  # ← Whisper per-word ms timestamps → subtitle sync
                 })
+
             
             # Elite logging: track actual performance
             elapsed = time.time() - start_time
@@ -755,9 +795,11 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
             if text:
                 results.append({
                     "start": round(s["start"], 2),
-                    "end": round(s["end"], 2),
-                    "text": text
+                    "end":   round(s["end"], 2),
+                    "text":  text,
+                    "words": s.get("words", []),  # ← preserve word timestamps for subtitle sync
                 })
+
 
     return results
 

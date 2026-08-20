@@ -5612,7 +5612,11 @@ def orchestrate(path: str,
 
     for i, c in enumerate(final_candidates):
         source = "groq_transcript_first" if c.get("groq_moment") else "candidate_generation"
-        log.info(f"CLIP {i+1}: source={source} hook_score={c.get('hook_score', 0.0)} payoff_score={c.get('payoff_score', 0.0)} duration={c.get('duration', 0.0)} final_score={c.get('final_score', 0.0)}")
+        _dur = round(float(c.get("end", 0.0) or 0.0) - float(c.get("start", 0.0) or 0.0), 1)
+        _hs  = c.get("hook_score", c.get("hook_strength", c.get("score", 0.0)))
+        _ps  = c.get("payoff_score", c.get("payoff_confidence", 0.0))
+        _fs  = c.get("viral_score", c.get("final_score", c.get("score", 0.0)))
+        log.info(f"CLIP {i+1}: source={source} hook_score={_hs} payoff_score={_ps} duration={_dur} final_score={_fs}")
         
         # Print Hook Selection Trace
         trace = c.get("hook_selection_trace", {})

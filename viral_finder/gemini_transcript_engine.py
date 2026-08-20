@@ -508,7 +508,7 @@ def _transcribe_segments_for_window(
         beam_size=int(max(1, beam_size)),
         vad_filter=False,
         word_timestamps=False,
-        language="en",
+        language=WHISPER_LANGUAGE,
         condition_on_previous_text=bool(with_context),
     )
     gen, _info = res if isinstance(res, (tuple, list)) else (res, None)
@@ -538,7 +538,7 @@ def _transcribe_baseline_vad(model, path: str, use_vad: bool, vad_params: Dict) 
         beam_size=1,
         vad_filter=bool(use_vad),
         word_timestamps=False,
-        language=WHISPER_LANGUAGE or "en",
+        language=WHISPER_LANGUAGE,
         condition_on_previous_text=False,
     )
     if use_vad:
@@ -901,7 +901,7 @@ def transcribe_turbo(
                 beam_size=1,
                 vad_filter=False,
                 word_timestamps=False,
-                language=WHISPER_LANGUAGE or "en",
+                language=WHISPER_LANGUAGE,
                 condition_on_previous_text=False,
             )
             _gen0 = _res0[0] if isinstance(_res0, (tuple, list)) else _res0
@@ -937,7 +937,7 @@ def transcribe_turbo(
                     beam_size=1,
                     vad_filter=bool(use_vad),
                     word_timestamps=False,
-                    language=WHISPER_LANGUAGE or "en",
+                    language=WHISPER_LANGUAGE,
                     condition_on_previous_text=False,
                 )
                 if use_vad:
@@ -989,7 +989,7 @@ def transcribe_turbo(
                         vad_filter=True,
                         vad_parameters=vad_params,
                         word_timestamps=False,
-                        language=WHISPER_LANGUAGE or "en",
+                        language=WHISPER_LANGUAGE,
                         condition_on_previous_text=False,
                     )
                     base = []
