@@ -4605,8 +4605,7 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
                         "[GROQ_CORTEX] groq_input_candidates_count=%d (ranked_output=%d, enriched_pool=%d)",
                         len(_pool), len(final_candidates), len(_groq_pool),
                     )
-                    
-                    groq_result = review_candidates_with_groq(_pool, full_transcript, ctx.candidate_threads)
+                    groq_result = review_candidates_with_groq(_pool, full_transcript, ctx.candidate_threads, creator_intent=ctx.creator_intent)
                     
                     import re
                     def _check_quote_valid(q, segments):
@@ -4864,6 +4863,19 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
                                             changed=False,
                                             impact="LOW"
                                         )
+
+                    # 🚨 INJECTING MISSING B-ROLL KEYWORDS 🚨
+                    # Map the Surgeon's 'idea_keywords' to 'b_roll_keywords' so world_class_editor can use them
+                    for c in groq_result:
+                        surgeon = c.get("groq_surgeon")
+                        if surgeon and surgeon.get("decision") in ["KEEP", "EXTEND_RIGHT"]:
+                            idea_kws = surgeon.get("idea_keywords", [])
+                            if idea_kws:
+                                cid = c.get("id", c.get("cid", "?"))
+                                for fc in final_candidates:
+                                    if fc.get("cid") == cid and cid != "?":
+                                        fc["b_roll_keywords"] = idea_kws
+                                        break
     
                     log.info("[GROQ_SURGEON] Phase 4: SURGEON_REPAIR execution active.")
                     rejected_for_repair = []
@@ -4905,7 +4917,7 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
         log.warning("[GROQ_CORTEX] Exception during review: %s", e)
     # ------------------------------------
 
-def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool):
+def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool, creator_intent: str = None):
     start = time.time()
     print("PIPELINE STAGE: start staged pipeline")
     has_tf_moments = False
@@ -4917,6 +4929,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         allow_fallback=bool(allow_fallback),
         prefer_gpu=bool(prefer_gpu),
         use_cache=bool(use_cache),
+        creator_intent=creator_intent
     )
     t0 = time.time()
     trace_enabled = _env_bool("HS_PIPELINE_TRACE", False)
@@ -5103,7 +5116,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
                     chunks_count = int((total_dur - overlap) // (chunk_len - overlap)) + 1
                 log.info(f"[GROQ_TRANSCRIPT_FIRST] chunks={chunks_count}")
 
-                moments = find_moments_from_transcript(transcript_source, total_dur)
+                moments = find_moments_from_transcript(transcript_source, total_dur, creator_intent=creator_intent)
                 log.info(f"[GROQ_TRANSCRIPT_FIRST] moments_found={len(moments)}")
 
                 injected_count = 0
@@ -5134,6 +5147,8 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
                         "title": m.get("title", ""),
                         "opening_caption": m.get("opening_caption", ""),
                         "clip_archetype": m.get("clip_archetype", ""),
+                        "content_genre": m.get("content_genre", "ENTERTAINMENT"),
+                        "b_roll_keywords": m.get("b_roll_keywords", []),
                         "editing_notes": m.get("editing_notes", {}),
                         "groq_moment": True,
                         "completeness_signal": m.get("completeness_signal", ""),
@@ -5450,7 +5465,8 @@ def orchestrate(path: str,
                  prefer_gpu: bool = True,
                  use_cache: bool = True,
                  allow_fallback: bool = False,
-                 pipeline_mode: Optional[str] = None) -> List[Dict]:
+                 pipeline_mode: Optional[str] = None,
+                 creator_intent: Optional[str] = None) -> List[Dict]:
     """
     High-level orchestration entrypoint.
     Modes:
@@ -5482,6 +5498,7 @@ def orchestrate(path: str,
                 prefer_gpu=prefer_gpu,
                 use_cache=use_cache,
                 allow_fallback=allow_fallback,
+                creator_intent=creator_intent,
             )
             if isinstance(_staged_result, tuple):
                 if len(_staged_result) == 5:

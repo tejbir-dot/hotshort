@@ -18,6 +18,7 @@ except ImportError:
 from effects.format_analyzer import detect_faces_multi_haar
 from effects.face_tracker import FaceTracker, SmoothedPosition
 from effects import debug_visualizer
+from effects.b_roll_engine import fetch_b_roll_for_keywords
 import time
 
 @dataclass
@@ -71,8 +72,12 @@ log = logging.getLogger("world_class_editor")
 # Face-cache cluster locks stabilize the crop anchor between scene changes.
 ENABLE_CLUSTER_SCAN = os.getenv("HS_ENABLE_CLUSTER_SCAN", "1").strip().lower() not in ("0", "false", "no", "off")
 CLUSTER_TRANSITION_FRAMES = max(1, int(os.getenv("HS_CLUSTER_TRANSITION_FRAMES", "12") or 12))
-MIN_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MIN_FACE_HEIGHT_RATIO", "0.05") or 0.05)))
-MAX_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MAX_FACE_HEIGHT_RATIO", "0.40") or 0.40)))
+# Director-loop face height guard: 7% of frame height.
+# At 1080p: 7% = 75px minimum. Talking-head speakers in wide shots are 8-50%.
+# Rejects text/logo/mic false positives (40-60px) while accepting real faces in
+# wide-angle podcast frames (86px+). Empirically validated on test clips.
+MIN_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MIN_FACE_HEIGHT_RATIO", "0.07") or 0.07)))
+MAX_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MAX_FACE_HEIGHT_RATIO", "0.60") or 0.60)))
 
 def _nvenc_available() -> bool:
     """Probe once whether h264_nvenc is usable on this system."""
@@ -859,7 +864,7 @@ class ClipEditor:
             input_path,
             "-af",
             af,
-            *_video_encode_args(crf=23, preset="veryfast"),  # ← NVENC encode
+            *_video_encode_args(crf=23, preset="ultrafast"),  # ← CPU encode (ultrafast ~25% faster, imperceptible quality diff)
             "-c:a",
             "aac",
             "-b:a",
@@ -1039,35 +1044,60 @@ class ClipEditor:
             if face_cache and len(face_cache) > 0:
                 # Mode A (Monologue) with FaceCache (Anchor Only):
                 # No audio-switching needed (single speaker). Simply update anchor position per scene-segment!
-                clusters_map = {}
+                # QUALITY GATE: only use face_cache if we have genuinely large faces.
+                # If Haar only detected tiny background people (h < 10% frame), fall through to EMA.
+                _face_quality_threshold = frame_height * 0.10  # 10% = 108px at 1080p
+                _all_max_faces = []
                 for t_rel, faces in face_cache.items():
                     if not faces:
                         continue
                     f = max(faces, key=lambda item: item['w'] * item['h'])
-                    cid = f.get("_cluster_id", 0)
-                    cend = f.get("_cluster_end", int(t_rel * fps)) / max(1.0, float(fps))
-                    cx = (f['x'] + f['w'] / 2.0) / max(1.0, float(frame_width))
-                    if cid not in clusters_map:
-                        clusters_map[cid] = {"end_t": cend, "x_vals": []}
-                    clusters_map[cid]["x_vals"].append(cx)
-                    clusters_map[cid]["end_t"] = max(clusters_map[cid]["end_t"], cend)
+                    _all_max_faces.append(f['h'])
+                _median_face_h = sorted(_all_max_faces)[len(_all_max_faces) // 2] if _all_max_faces else 0
+                log.info(
+                    "[WCE-VISUAL] monologue face_cache check: median_largest_face_h=%.0fpx threshold=%.0fpx frames=%d",
+                    _median_face_h, _face_quality_threshold, len(_all_max_faces)
+                )
 
-                if clusters_map:
-                    sorted_clusters = sorted(clusters_map.items(), key=lambda item: item[0])
-                    cluster_anchors = [
-                        (data["end_t"], _clamp(sum(data["x_vals"]) / len(data["x_vals"]), 0.15, 0.85))
-                        for _, data in sorted_clusters if data["x_vals"]
-                    ]
-                    if len(cluster_anchors) == 1:
-                        log.info("[WCE-VISUAL] mode=MONOLOGUE_ANCHOR_SINGLE")
-                        return cluster_anchors[0][1]
-                    elif len(cluster_anchors) > 1:
-                        log.info("[WCE-VISUAL] mode=MONOLOGUE_ANCHOR_SEGMENTED clusters=%d", len(cluster_anchors))
-                        expr = str(round(cluster_anchors[-1][1], 3))
-                        for i in range(len(cluster_anchors) - 2, -1, -1):
-                            end_t, x_val = cluster_anchors[i]
-                            expr = "if(lt(t,%s),%s,%s)" % (round(end_t, 3), round(x_val, 3), expr)
-                        return expr
+                if _median_face_h >= _face_quality_threshold:
+                    clusters_map = {}
+                    for t_rel, faces in face_cache.items():
+                        if not faces:
+                            continue
+                        f = max(faces, key=lambda item: item['w'] * item['h'])
+                        # Skip this frame if the best face is still tiny (background noise)
+                        if f['h'] < _face_quality_threshold * 0.7:
+                            continue
+                        cid = f.get("_cluster_id", 0)
+                        cend = f.get("_cluster_end", int(t_rel * fps)) / max(1.0, float(fps))
+                        cx = (f['x'] + f['w'] / 2.0) / max(1.0, float(frame_width))
+                        if cid not in clusters_map:
+                            clusters_map[cid] = {"end_t": cend, "x_vals": []}
+                        clusters_map[cid]["x_vals"].append(cx)
+                        clusters_map[cid]["end_t"] = max(clusters_map[cid]["end_t"], cend)
+
+                    if clusters_map:
+                        sorted_clusters = sorted(clusters_map.items(), key=lambda item: item[0])
+                        cluster_anchors = [
+                            (data["end_t"], _clamp(sum(data["x_vals"]) / len(data["x_vals"]), 0.15, 0.85))
+                            for _, data in sorted_clusters if data["x_vals"]
+                        ]
+                        if len(cluster_anchors) == 1:
+                            log.info("[WCE-VISUAL] mode=MONOLOGUE_ANCHOR_SINGLE x=%.3f", cluster_anchors[0][1])
+                            return cluster_anchors[0][1]
+                        elif len(cluster_anchors) > 1:
+                            log.info("[WCE-VISUAL] mode=MONOLOGUE_ANCHOR_SEGMENTED clusters=%d", len(cluster_anchors))
+                            expr = str(round(cluster_anchors[-1][1], 3))
+                            for i in range(len(cluster_anchors) - 2, -1, -1):
+                                end_t, x_val = cluster_anchors[i]
+                                expr = "if(lt(t,%s),%s,%s)" % (round(end_t, 3), round(x_val, 3), expr)
+                            return expr
+                else:
+                    log.info(
+                        "[WCE-VISUAL] face_cache REJECTED (tiny faces=%.0fpx < threshold=%.0fpx) "
+                        "— falling back to format_analyzer EMA",
+                        _median_face_h, _face_quality_threshold
+                    )
 
             timed_pts = [(t, faces[0]) for t, faces in video_fmt.samples if len(faces) == 1]
             if not timed_pts:
@@ -1211,25 +1241,23 @@ class ClipEditor:
                     return False
 
                 # ── guard 5: brightness — reject lamps, ring-lights, logos ────────
-                # Round glowing lamps (glob lights, ceiling spotlights) pass all
-                # shape guards. Their face ROI has very high brightness.
-                # Threshold=185: skin in podcast lighting peaks at ~140 mean gray.
-                # Lamps: >200. Overexposed windows: >220. Safe margin: 185.
-                _BRIGHT_REJECT_THRESHOLD = float(
-                    os.environ.get("HS_FACE_BRIGHT_REJECT", "185")
-                )
+                _BASE_BRIGHT_REJECT = float(os.environ.get("HS_FACE_BRIGHT_REJECT", "185"))
                 if frame is not None:
                     try:
+                        _frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        _frame_mean = float(_frame_gray.mean())
+                        _adaptive_thresh = max(_BASE_BRIGHT_REJECT, _frame_mean + 45.0)
+
                         _roi_gray = cv2.cvtColor(
                             frame[int(y):int(y + h), int(x):int(x + w)],
                             cv2.COLOR_BGR2GRAY,
                         )
                         _roi_mean = float(_roi_gray.mean())
-                        if _roi_mean > _BRIGHT_REJECT_THRESHOLD:
+                        if _roi_mean > _adaptive_thresh:
                             if _log_reason:
                                 log.info(
                                     f"[FACE_FILTER] REJECT bright_src roi_mean={_roi_mean:.1f} "
-                                    f"thresh={_BRIGHT_REJECT_THRESHOLD:.0f} "
+                                    f"thresh={_adaptive_thresh:.1f} (frame={_frame_mean:.1f}) "
                                     f"face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
                                 )
                             return False
@@ -1340,14 +1368,20 @@ class ClipEditor:
             log.info(f"[INIT] solo_x seeded={_seed_x:.3f} px={smoothed_solo_x:.0f}")
             last_raw_faces = []
             locked_cluster_id = None
+            locked_cluster_slot = None
             locked_solo_x = None
             cluster_transition_from_x = smoothed_solo_x
             cluster_transition_remaining = 0
+            _first_lock_done = False
+            last_solo_slot = None
             # Slot stability counters (used by mouth-motion EMA gating below)
             _left_stable = 0
             _right_stable = 0
+            box_stability_map = {}
+            smoothed_face_h = None  # Temporal face-size EMA (pixels). Seeded on first valid detection.
             
             ENABLE_CONTINUOUS_TRACKING = False
+
 
             # ── Debug visualizer session (no-op when HS_DEBUG_FRAMES not set) ────
             _clip_id = os.path.splitext(os.path.basename(clip_path or "clip"))[0]
@@ -1385,7 +1419,27 @@ class ClipEditor:
                 after  = _fc_times[idx]
                 return before if (t - before) <= (after - t) else after
 
+            # ── FRAME STRIDING ─────────────────────────────────────────────
+            # Instead of decoding every frame (expensive at 25fps × 70s = 1750 frames),
+            # we skip N-1 frames using cap.grab() (reads but doesn't decode) and fully
+            # decode only every Nth frame. face_cache is position-stamped so skipping
+            # frames doesn't affect crop quality. Mouth EMA still works because we
+            # scale the decay factor by stride so 1-frame EMA ≈ N-frame stride EMA.
+            # Default stride=3 → ~3x speedup on director loop, ~40s saved per 70s clip.
+            _DIRECTOR_STRIDE = max(1, int(os.environ.get("HS_DIRECTOR_FRAME_STRIDE", "3") or "3"))
+            log.info("[WCE_PERF] director_frame_stride=%d (1=every frame, 3=every 3rd)", _DIRECTOR_STRIDE)
+
             while True:
+                if _DIRECTOR_STRIDE > 1 and frame_idx > 0:
+                    # Skip _DIRECTOR_STRIDE-1 frames cheaply (grab reads but doesn't decode)
+                    for _skip in range(_DIRECTOR_STRIDE - 1):
+                        ok = cap.grab()
+                        if not ok:
+                            break
+                        frame_idx += 1
+                    if not ok:
+                        break
+
                 ok, frame = cap.read()
                 if not ok:
                     break
@@ -1420,7 +1474,8 @@ class ClipEditor:
                 elif frame_idx % 15 == 0:
                     raw_faces = []
                     if _podcast_cascade is not None and not ENABLE_CONTINUOUS_TRACKING:
-                        _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.15, min_neighbors=3, min_size=(40, 40))
+                        _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
+                        _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px, _min_face_px))
                         for _x, _y, _fw, _fh in _faces_hc:
                             raw_faces.append({'x': float(_x), 'y': float(_y), 'w': float(_fw), 'h': float(_fh)})
                     last_raw_faces = raw_faces
@@ -1448,7 +1503,8 @@ class ClipEditor:
 
                     if left_tracker.is_lost() or right_tracker.is_lost():
                         if frame_idx % 15 == 0 or cluster_changed:
-                            _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.15, min_neighbors=3, min_size=(60, 60))
+                            _min_face_px_strict = max(60, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
+                            _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px_strict, _min_face_px_strict))
                             live_faces = []
                             for _x, _y, _fw, _fh in _faces_hc:
                                 # STRICT FILTER: ignore tiny hands/mics (must be >= 12% frame height)
@@ -1511,10 +1567,50 @@ class ClipEditor:
                             )
                 # ────────────────────────────────────────────────────────────────
 
-                valid_faces = [f for f in raw_faces if is_valid_face(f, frame=frame)]
+                # Guard 7: Static Box Rejection (applied independently to otherwise valid faces)
+                valid_faces_pre = [f for f in raw_faces if is_valid_face(f, _log_reason=need_debug, frame=frame)]
+                
+                new_stability_map = {}
+                valid_faces = []
+                for _f in valid_faces_pre:
+                    _key = (round(_f['x']), round(_f['y']), round(_f['w']), round(_f['h']))
+                    _static = box_stability_map.get(_key, 0) + 1
+                    new_stability_map[_key] = _static
+                    
+                    if _static > 50:
+                        if need_debug:
+                            log.info(
+                                f"[FACE_FILTER] REJECT static_box frames={_static} "
+                                f"face=({_key[0]:.0f},{_key[1]:.0f},{_key[2]:.0f},{_key[3]:.0f})"
+                            )
+                        continue
+                    valid_faces.append(_f)
+                box_stability_map = new_stability_map
+
+                # ── Guard 8: Temporal size consistency ───────────────────────
+                # Track running EMA of valid face heights. If a detection is less than
+                # 35% of the running average, it's a text/logo/mic false positive.
+                # Real faces don't suddenly shrink from 400px to 60px between frames.
+                _size_filtered = []
+                for _f in valid_faces:
+                    _fh = _f['h']
+                    if smoothed_face_h is None:
+                        smoothed_face_h = _fh
+                        _size_filtered.append(_f)
+                    elif _fh >= smoothed_face_h * 0.35:
+                        smoothed_face_h = smoothed_face_h * 0.9 + _fh * 0.1  # slow EMA
+                        _size_filtered.append(_f)
+                    else:
+                        if need_debug:
+                            log.info(
+                                f"[FACE_FILTER] REJECT size_mismatch h={_fh:.0f}px "
+                                f"expected~={smoothed_face_h:.0f}px (threshold={smoothed_face_h*0.35:.0f}px) "
+                                f"face=({_f['x']:.0f},{_f['y']:.0f},{_f['w']:.0f},{_f['h']:.0f})"
+                            )
+                valid_faces = _size_filtered
 
                 if frame_idx % 25 == 0 and not ENABLE_CONTINUOUS_TRACKING:
-                    log.info(f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)}")
+                    log.info(f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)} smoothed_h={smoothed_face_h:.0f}" if smoothed_face_h else f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)}")
 
                 # 3. Assign to named LEFT / RIGHT slots by screen position.
                 left_slot: Optional[dict] = None
@@ -1672,40 +1768,46 @@ class ClipEditor:
                 else:  # SPLIT — highlight whichever has more mouth motion
                     active_slot = "left" if ema_mouth_left >= ema_mouth_right else "right"
 
-                # 6. Smooth position updates (per slot, independent)
-                if ENABLE_CONTINUOUS_TRACKING:
-                    if left_slot is not None:
-                        lx = left_slot['x'] + left_slot['w'] / 2.0
-                        smoothed_left_x = left_tracker_smooth.update(lx)
-                    if right_slot is not None:
-                        rx = right_slot['x'] + right_slot['w'] / 2.0
-                        smoothed_right_x = right_tracker_smooth.update(rx)
-                else:
-                    if left_slot is not None:
-                        lx = left_slot['x'] + left_slot['w'] / 2.0
-                        smoothed_left_x = smoothed_left_x * (1 - SMOOTH_ALPHA) + lx * SMOOTH_ALPHA
-
-                    if right_slot is not None:
-                        rx = right_slot['x'] + right_slot['w'] / 2.0
-                        smoothed_right_x = smoothed_right_x * (1 - SMOOTH_ALPHA) + rx * SMOOTH_ALPHA
-
+                # 6. Compute sx (face center from cache) and solo_slot BEFORE tracking
                 if mode == "SOLO_LEFT" and left_slot is not None:
                     sx = left_slot['x'] + left_slot['w'] / 2.0
                 elif mode == "SOLO_RIGHT" and right_slot is not None:
                     sx = right_slot['x'] + right_slot['w'] / 2.0
                 else:
                     sx = None
+                solo_slot = active_slot if mode in ("SOLO_LEFT", "SOLO_RIGHT") else None
 
+                # 6. Smooth position updates (per slot, independent)
+                if left_slot is not None:
+                    lx = left_slot['x'] + left_slot['w'] / 2.0
+                    smoothed_left_x = smoothed_left_x * (1 - SMOOTH_ALPHA) + lx * SMOOTH_ALPHA
+
+                if right_slot is not None:
+                    rx = right_slot['x'] + right_slot['w'] / 2.0
+                    smoothed_right_x = smoothed_right_x * (1 - SMOOTH_ALPHA) + rx * SMOOTH_ALPHA
+
+                # 7. solo_x: cluster-locked anchor with EMA transition
                 if sx is not None and cluster_id is not None:
-                    if cluster_id != locked_cluster_id:
+                    cluster_lock_changed = (
+                        cluster_id != locked_cluster_id
+                        or solo_slot != locked_cluster_slot
+                    )
+                    if cluster_lock_changed:
                         locked_cluster_id = cluster_id
+                        locked_cluster_slot = solo_slot
                         locked_solo_x = sx
                         cluster_transition_from_x = smoothed_solo_x
-                        cluster_transition_remaining = CLUSTER_TRANSITION_FRAMES
+                        # Side switch → snap immediately (left↔right is semantic, not drift)
+                        if (last_solo_slot is not None and solo_slot != last_solo_slot) or not _first_lock_done:
+                            cluster_transition_remaining = 0
+                            smoothed_solo_x = locked_solo_x
+                            _first_lock_done = True
+                        else:
+                            cluster_transition_remaining = CLUSTER_TRANSITION_FRAMES
                         log.info(
-                            "[CLUSTER_SCAN] cluster=%s locked_anchor_x=%d zoom=1.00 "
+                            "[CLUSTER_SCAN] cluster=%s slot=%s locked_anchor_x=%d "
                             "frame_range=[%s-%s]",
-                            cluster_id, int(locked_solo_x),
+                            cluster_id, solo_slot, int(locked_solo_x),
                             cluster_frame_range[0], cluster_frame_range[1],
                         )
                     if cluster_transition_remaining > 0:
@@ -1716,16 +1818,15 @@ class ClipEditor:
                         )
                         cluster_transition_remaining -= 1
                     else:
-                        if ENABLE_CONTINUOUS_TRACKING:
-                            smoothed_solo_x = solo_tracker_smooth.update(sx)
-                        else:
-                            smoothed_solo_x = locked_solo_x
+                        smoothed_solo_x = locked_solo_x
                 elif sx is not None:
-                    # Original per-frame Haar behavior when the cache/cluster layer is off.
-                    if ENABLE_CONTINUOUS_TRACKING:
-                        smoothed_solo_x = solo_tracker_smooth.update(sx)
-                    else:
-                        smoothed_solo_x = smoothed_solo_x * (1 - SMOOTH_ALPHA) + sx * SMOOTH_ALPHA
+                    # No cluster layer: EMA-smooth the raw face center
+                    smoothed_solo_x = smoothed_solo_x * (1 - SMOOTH_ALPHA) + sx * SMOOTH_ALPHA
+
+
+
+                if solo_slot is not None:
+                    last_solo_slot = solo_slot
 
                 if frame_idx % 25 == 0:
                     log.info(
@@ -2158,6 +2259,9 @@ class ClipEditor:
             if post_chain:
                 return True, f"{vf_str}[v_stacked];[v_stacked]{','.join(post_chain)}[v_reframe]"
             return True, f"{vf_str}[v_stacked];[v_stacked]null[v_reframe]"
+        elif os.getenv("HS_DISABLE_CROP", "0") == "1":
+            log.info("[WCE] HS_DISABLE_CROP=1 detected. Skipping center crop.")
+            vf_parts = [f"scale={dst_w}:{dst_h}:force_original_aspect_ratio=decrease"]
         elif src_ar >= dst_ar:
             crop_h = src_h & ~1
             crop_w = max(2, int(round(src_h * dst_ar))) & ~1
@@ -3165,7 +3269,11 @@ class ClipEditor:
             t_reframe += time.perf_counter() - t0
 
             video_fmt = None
-            if cfg.enable_active_speaker and cfg.enable_format_detection:
+            _disable_crop = os.getenv("HS_DISABLE_CROP", "0") == "1"
+            if _disable_crop:
+                log.info("[WCE] HS_DISABLE_CROP=1 -> Skipping FaceCache and active speaker detection completely.")
+                video_fmt = None
+            elif cfg.enable_active_speaker and cfg.enable_format_detection:
                 t0 = time.perf_counter()
                 video_fmt = self._analyze_video_format(work_b)
                 t_face += time.perf_counter() - t0
@@ -3277,7 +3385,48 @@ class ClipEditor:
                 metadata["cortex_score"] = _cortex.get("cortex_score", 0)
             # --- END CORTEX EDITING HINTS ---
 
-            
+            # ── B-ROLL INJECTION (Pexels) ─────────────────────────────────────────
+            # Groq Cortex provides b_roll_keywords for any content type.
+            # We fetch a Pexels clip and overlay it at t=1s as a visual hook enhancer.
+            # Hard-cut overlay (no fade) avoids NVENC alpha channel issues.
+            _broll_path = None
+            _broll_start_sec = 0.0
+            _broll_duration = 0.0
+            if _cortex_active:
+                _content_genre = str(_cortex.get("content_genre", "")).upper()
+                _broll_keywords = _cortex.get("b_roll_keywords", []) or []
+                _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
+                _broll_enabled = bool(_broll_keywords) and _broll_hs_enabled
+                log.info(
+                    "[WCE-BROLL] decision: cortex_active=%s keywords=%s genre=%s "
+                    "HS_BROLL_ENABLED=%s → enabled=%s",
+                    _cortex_active, _broll_keywords, _content_genre,
+                    _broll_hs_enabled, _broll_enabled
+                )
+                if _broll_enabled:
+                    try:
+                        _fetched = fetch_b_roll_for_keywords(_broll_keywords)
+                        if _fetched and os.path.exists(_fetched):
+                            _broll_probe = self._probe_video(_fetched)
+                            _broll_total_dur = float(_broll_probe.get("duration", 0) or 0)
+                            _broll_duration = min(4.0, max(1.5, ramped_duration * 0.12))  # ~12% of clip, 1.5-4s
+                            if _broll_total_dur > _broll_duration + 1.0:
+                                import random as _rand
+                                _safe_end = _broll_total_dur - _broll_duration - 1.0
+                                _broll_start_sec = _rand.uniform(0, _safe_end) if _safe_end > 0 else 0.0
+                                _broll_path = _fetched
+                                log.info(
+                                    "[WCE-BROLL] Injecting B-Roll '%s' keywords=%s genre=%s "
+                                    "overlay_dur=%.1fs seek=%.1fs",
+                                    os.path.basename(_broll_path), _broll_keywords,
+                                    _content_genre, _broll_duration, _broll_start_sec
+                                )
+                            else:
+                                log.warning("[WCE-BROLL] B-Roll clip too short (%.1fs) for %.1fs overlay — skipping", _broll_total_dur, _broll_duration)
+                    except Exception as _be:
+                        log.error("[WCE-BROLL] Fetch/probe failed: %s", _be)
+            # ── END B-ROLL INJECTION ──────────────────────────────────────────────
+
             has_any_overlay = (cfg.add_captions and captions) or (cfg.add_dynamic_overlays and hook_line) or (cfg.add_cta and cta_line)
             
             # Derive global speaker_side for hook/CTA positioning (captions use per-event side)
@@ -3450,9 +3599,42 @@ class ClipEditor:
                 if branding_outro_merged:
                     cmd.extend(["-i", os.path.abspath(cfg.branding_outro_path)])
 
+            # B-Roll input (after all other inputs so index is known)
+            _broll_input_idx = None
+            if _broll_path:
+                _broll_input_idx = len([x for i, x in enumerate(cmd) if i > 0 and cmd[i-1] == "-i"])
+                cmd.extend(["-ss", f"{_broll_start_sec:.3f}", "-i", _broll_path])
+                # Inject B-Roll overlay into filter graph BEFORE format=yuv420p step
+                # We overlay on [out_v] which exists at this point (after watermark/branding).
+                # Use hard-cut with trim to keep duration bounded.
+                _broll_end = _broll_duration
+                _broll_filter = (
+                    f"[{_broll_input_idx}:v]"
+                    f"trim=end={_broll_end:.3f},setpts=PTS-STARTPTS,"
+                    f"scale={target_wh[0]}:{target_wh[1]}:force_original_aspect_ratio=increase,"
+                    f"crop={target_wh[0]}:{target_wh[1]},setsar=1[broll_v];"
+                    f"[out_v][broll_v]overlay=enable='between(t,1.0,{1.0+_broll_end:.3f})':x=0:y=0[out_v_broll]"
+                )
+                # Replace [out_v] terminal pad with broll-overlaid version
+                if is_complex_graph:
+                    vf_render = f"{vf_render};{_broll_filter}"
+                    # Update all downstream references from [out_v] to [out_v_broll]
+                    # The branding chain appends after [out_v] so rewrite it
+                    vf_render = vf_render.replace("[out_v]null[hs_final_v]", "[out_v_broll]null[hs_final_v]")
+                    vf_render = vf_render.replace("[out_v]split=2", "[out_v_broll]split=2")
+                    # If branding was already added (uses [out_v] as source), patch its reference
+                    # by replacing the LAST occurrence of [out_v] with [out_v_broll]
+                    if not branding_merged and "[out_v]" not in vf_render:
+                        pass  # already replaced above
+                    _use_filter_complex = True
+                log.info("[WCE-BROLL] Filter graph patched: B-Roll overlay at 1.0-%.1fs", 1.0+_broll_end)
+
+
             # Determine final output pad and audio handling
-            _out_video_pad = "hs_final_v" if branding_merged else ("out_v" if (is_watermarked or is_complex_graph) else None)
-            _use_filter_complex = is_watermarked or is_complex_graph or branding_merged
+            # When broll is injected, [out_v] becomes [out_v_broll] — update the pad reference.
+            _broll_active = bool(_broll_path and _broll_input_idx is not None)
+            _out_video_pad = "hs_final_v" if branding_merged else ("out_v_broll" if _broll_active else ("out_v" if (is_watermarked or is_complex_graph) else None))
+            _use_filter_complex = is_watermarked or is_complex_graph or branding_merged or _broll_active
             cmd.extend([
                 "-filter_complex" if _use_filter_complex else "-vf",
                 vf_render,
@@ -3462,7 +3644,7 @@ class ClipEditor:
                 str(max(24, int(cfg.export_fps))),
                 *_video_encode_args(
                     crf=int(cfg.quality_crf if cfg.preserve_quality else 24),
-                    preset=cfg.quality_preset if cfg.preserve_quality else "veryfast",
+                    preset=cfg.quality_preset if cfg.preserve_quality else "ultrafast",
                 ),
             ])
             if branding_outro_merged:

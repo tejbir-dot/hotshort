@@ -363,7 +363,7 @@ def merge_groq_results_with_candidates(validated_clips: list, original_candidate
         
     return merged
 
-def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Dict], candidate_threads: Optional[Dict] = None) -> List[Dict]:
+def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Dict], candidate_threads: Optional[Dict] = None, creator_intent: str = None) -> List[Dict]:
     if not is_groq_enabled() or not full_transcript:
         return candidates
 
@@ -399,7 +399,25 @@ def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Di
     batch_size = 4
     batches = [top_candidates[i:i + batch_size] for i in range(0, len(top_candidates), batch_size)]
     
-    system_prompt = """You are HotShort Cortex: a world-class Narrative Surgeon for video clips.
+    # Build the Director's Lens + Decision Matrix block (appended AFTER Main Brain)
+    intent_lens_block = ""
+    if creator_intent:
+        intent_lens_block = f"""
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 DIRECTOR'S LENS (Creator Applied)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The creator has applied a specific lens to this video: "{creator_intent}"
+Your primary goal is to find the intersection of VIRAL MECHANICS and this CREATOR'S LENS.
+
+📊 DECISION MATRIX — Follow this priority order strictly:
+  PRIORITY 1 — THE JACKPOT: A moment that matches the Creator's Lens AND has strong viral potential (hook + emotion + payoff). Score these HIGHEST.
+  PRIORITY 2 — THE BACKUP: A moment with incredible viral potential that loosely or partially matches the Creator's Lens.
+  PRIORITY 3 — THE FAILSAFE: If the Creator's Lens topic is completely absent from the transcript, IGNORE the lens entirely and return the absolute best viral clips. NEVER return 0 clips. NEVER return a boring flat moment just because it matches the topic.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+
+    system_prompt = "You are HotShort Cortex: a world-class Narrative Surgeon for video clips." + """
 
 IMPORTANT:
 You have two text zones.
@@ -507,7 +525,11 @@ Return JSON ONLY in this exact format:
     }
   ]
 }
-"""
+""" + intent_lens_block
+
+    if creator_intent:
+        log.info(f"\n[SURGEON_ENGINE] 🎯 INJECTING DIRECTOR'S LENS: '{creator_intent}'")
+        log.info(f"[SURGEON_ENGINE] 🧠 Prompt Structure: Main Brain + Decision Matrix Failsafe Active\n")
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -947,16 +969,34 @@ def validate_groq_moments(moments: list, video_duration: float) -> list:
         m["insight_strength"] = round(insight_strength, 2)
         
         # allow score >= 60 if usefulness >= 75 or insight_strength >= 75
-        is_exceptional = (usefulness >= 75.0 or insight_strength >= 75.0)
-        
-        # check score against relaxed thresholds
+        # Chaos moments always have usefulness=0, insight_strength=0 by design.
+        # Use chaos_score as the primary pass signal for ENTERTAINMENT content.
+        raw_chaos_score = 0.0
+        try:
+            raw_chaos_score = float(m.get("chaos_score") or 0)
+            if raw_chaos_score <= 1.0 and raw_chaos_score > 0:
+                raw_chaos_score *= 100.0
+        except (ValueError, TypeError):
+            pass
+        is_chaos_moment = m.get("is_chaos_moment", False) or raw_chaos_score > 0
+
+        # For chaos moments: exceptional if chaos_score >= 70 (replaces usefulness/insight check)
+        if is_chaos_moment:
+            is_exceptional = raw_chaos_score >= 70.0
+            chaos_min_score = 65.0  # relaxed threshold for chaos/entertainment
+            effective_min = chaos_min_score
+        else:
+            is_exceptional = (usefulness >= 75.0 or insight_strength >= 75.0)
+            effective_min = min_score
+
+        # check score against effective thresholds
         if is_exceptional:
             if m["viral_score"] < 60.0:
                 log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=score_below_60_for_exceptional")
                 continue
         else:
-            if m["viral_score"] < min_score:
-                log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=score_below_minimum_{min_score}")
+            if m["viral_score"] < effective_min:
+                log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=score_below_minimum_{effective_min}")
                 continue
                 
         # allow incomplete payoff if clip_archetype is curiosity_loop, bold_claim, controversy, question, or prediction
@@ -969,7 +1009,13 @@ def validate_groq_moments(moments: list, video_duration: float) -> list:
             pass
             
         clip_archetype = str(m.get("clip_archetype") or "").strip().lower()
-        allowed_incomplete = {"curiosity_loop", "bold_claim", "controversy", "question", "prediction"}
+        # Chaos archetypes: the chaos IS the payoff — never reject for "incomplete"
+        chaos_archetypes = {
+            "chaotic_digression", "cursed_escalation", "unhinged_banter",
+            "absurd_roleplay", "out_of_context_gold", "recurring_bit_payoff",
+            "uncontrollable_reaction",
+        }
+        allowed_incomplete = {"curiosity_loop", "bold_claim", "controversy", "question", "prediction"} | chaos_archetypes
         if completeness < 72.0 and clip_archetype not in allowed_incomplete:
             log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=incomplete_payoff_for_archetype_{clip_archetype}")
             continue
@@ -978,7 +1024,14 @@ def validate_groq_moments(moments: list, video_duration: float) -> list:
         text_content = str(m.get("text") or m.get("reason") or m.get("title") or "")
         word_count = len(text_content.split())
         if word_count < 3:
-            is_strong = (m["viral_score"] >= 75.0 or usefulness >= 75.0 or insight_strength >= 75.0)
+            # For chaos clips: chaos_score >= 70 is the "strong" signal
+            # (usefulness=0, insight_strength=0 by design for entertainment)
+            is_strong = (
+                m["viral_score"] >= 75.0
+                or usefulness >= 75.0
+                or insight_strength >= 75.0
+                or (is_chaos_moment and raw_chaos_score >= 70.0)
+            )
             if not is_strong:
                 log.info(f"[GROQ_DIRECTOR_REJECT] candidate_id={cid} start={start} end={end} title={title} viral_score={m['viral_score']} usefulness={usefulness} insight_strength={insight_strength} reject_reason=sparse_context_and_weak_scores")
                 continue
@@ -1020,7 +1073,7 @@ def dedupe_moments(moments: list, threshold=0.70) -> list:
     return sorted(kept, key=lambda x: x["start"])
 
 
-def find_moments_from_transcript(transcript_segments: list, video_duration: float, max_clips: int = 8) -> list:
+def find_moments_from_transcript(transcript_segments: list, video_duration: float, max_clips: int = 8, creator_intent: str = None) -> list:
     if not is_groq_enabled():
         return []
 
@@ -1075,56 +1128,101 @@ def find_moments_from_transcript(transcript_segments: list, video_duration: floa
             })
             
         prompt_json = json.dumps(groq_input, indent=2)
-        
-        system_prompt = """
-You are HotShort Moment Director: a world-class short-form content director, retention psychologist, podcast editor, and content research lab.
 
-Your job is to read the provided transcript segments and identify the most valuable complete, standalone short-form moments.
-For each valuable moment, identify:
-- start (precise time in seconds where the speaker begins the thought/scene, do not cut mid-sentence)
-- end (precise time in seconds where the speaker finishes the payoff/takeaway, do not cut mid-sentence)
-- viral_score (0 to 100 based on hook, insight, usefulness, and narrative completeness)
-- usefulness (0 to 100 based on practical value or how actionable it is)
-- insight_strength (0 to 100 based on counterintuitive or deep thoughts)
-- completeness_score (0 to 100 score of stand-alone completeness)
-- completeness_signal ("RESOLVED" if the thought is fully concluded, or "UNRESOLVED_REQUIRES_EXTENSION" if it cuts off early)
-- psychology_scores (dict containing 0-100 scores answering: Would I stop scrolling? Is this surprising? Would I share this? Would I remember this?)
-- title (a punchy, curiosity-driven title for the clip)
-- opening_caption (the very first spoken phrase or a curiosity hook caption)
-- clip_archetype (choose from: practical_insight, warning, contrarian_take, story, framework, mistake, case_study, emotional_truth, tactical_steps)
-- hook_line (the hook line of the clip)
-- build (the build/context text)
-- payoff (the core payoff/takeaway of the clip)
-- why_valuable (why this clip is insightful, emotional, or practical for the audience)
-- why_people_keep_watching (retention driver)
-- editing_notes (pacing_note: fast/medium/slow, subtitle_style: classic|neon|beast|retro|minimal, face_priority: center)
+        # ── Content mode detection ──────────────────────────────────────────────
+        # Override via env: HS_CONTENT_MODE=entertainment  (or auto-detected from
+        # previous chunk's content_diagnosis.content_genre)
+        _env_mode = os.environ.get("HS_CONTENT_MODE", "").strip().lower()
+        _is_chaos_mode = (
+            _env_mode == "entertainment"
+            or any(
+                m.get("content_genre", "").upper() == "ENTERTAINMENT"
+                for m in all_unvalidated_moments[-5:]  # last 5 from prev chunks
+            )
+        )
 
-MOMENT VALIDITY RULES:
-- **CRITICAL: Duration MUST be between 30 and 45 seconds.**
-- **NEVER return a moment shorter than 20 seconds.**
-- Start must not be mid-sentence if avoidable.
-- End must include payoff/takeaway.
-- Reject fragments even if hook sounds good.
-- Prefer complete insight over aggressive hook.
-- For educational/founder podcasts, valuable clips can be:
-  practical insight, mistake correction, framework, warning, counterintuitive idea, tactical steps, story payoff.
+        # Build Director's Lens + Decision Matrix (always appended AFTER Main Brain, never before)
+        intent_lens_block = ""
+        if creator_intent:
+            intent_lens_block = f"""
 
-SCORING SCALE:
-- 85-100: Exceptional, viral gold, must-share.
-- 72-84: Strong, complete, highly valuable, educational, or emotional. (This is the passing range).
-- 60-71: Moderate quality, but perhaps missing a clear payoff or standalone clarity.
-- Below 60: Weak or incomplete.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 DIRECTOR'S LENS (Creator Applied)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The creator has applied a specific lens to this video: "{creator_intent}"
+Your primary goal is to find the intersection of CHAOS/VIRAL ENERGY and this CREATOR'S LENS.
 
-Return 0 to N moments.
-Never force moments. If none are strong, return 0 moments.
+📊 DECISION MATRIX — Follow this priority order strictly:
+  PRIORITY 1 — THE JACKPOT: A chaotic/viral moment that also matches the Creator's Lens. Score these HIGHEST.
+  PRIORITY 2 — THE BACKUP: A moment with incredible chaos/viral energy that loosely or partially matches the Lens.
+  PRIORITY 3 — THE FAILSAFE: If the Creator's Lens topic is completely absent from the transcript, IGNORE the lens entirely and return the most chaotic/viral moments available. NEVER return 0 clips.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
 
-OUTPUT JSON ONLY.
-No markdown. No explanation outside JSON.
+        if _is_chaos_mode:
+            system_prompt = """You are HotShort Chaos Director: a world-class short-form editor specialized in streaming, gaming, and variety entertainment content.
+
+Your ONLY job is to find moments that produce "WHAT DID I JUST HEAR?" or "HOW DID THEY GET HERE?" energy.
+These are NOT educational clips. They do NOT need to teach anything. They go viral purely because they are bizarre, cursed, chaotic, or absurd.
+
+
+For each chaos moment, identify:
+- start (precise time in seconds, do not cut mid-sentence if avoidable)
+- end (precise time in seconds, include the reaction/punchline)
+- viral_score (0 to 100 based on "WHAT DID I JUST HEAR?" energy ONLY)
+- chaos_score (0 to 100: How bizarre, unhinged, or chaotic is this moment?)
+- quotability (0 to 100: Will this exact phrase be quoted, memed, or screenshotted?)
+- reaction_energy (0 to 100: How intense is the reaction — laughter, screaming, shock, silence?)
+- out_of_context_shock (0 to 100: How insane does this sound WITHOUT surrounding context?)
+- escalation_wildness (0 to 100: How unexpected is the escalation from the previous normal conversation?)
+- usefulness (always 0 for chaos content — these clips are NOT informational)
+- insight_strength (always 0 for chaos content)
+- completeness_score (0 to 100 — did we capture the full chaos arc from trigger to peak reaction?)
+- completeness_signal ("RESOLVED" if reaction/punchline is captured, "UNRESOLVED_REQUIRES_EXTENSION" if cut early)
+- psychology_scores (stop_scrolling, shareability, surprise, memorability)
+- title (punchy, quotable title that matches the absurdity — NOT educational)
+- opening_caption (the exact shocking/cursed phrase that hooks the viewer)
+- clip_archetype (choose EXACTLY ONE from: chaotic_digression, cursed_escalation, unhinged_banter, absurd_roleplay, out_of_context_gold, recurring_bit_payoff, uncontrollable_reaction)
+- chaos_type (one of: topic_derailment, nickname_investigation, bizarre_accusation, fake_roleplay, uncontrollable_laughter, cursed_banter, impossible_escalation, out_of_context_statement)
+- hook_line (the exact line that signals the start of the chaos)
+- payoff (the peak cursed moment or reaction — this IS the payoff even if it teaches nothing)
+- why_viral (why this makes someone say "WHAT DID I JUST HEAR?" — be specific)
+- b_roll_keywords (2-3 visual keywords, can be absurd/funny)
+- editing_notes (pacing_note: fast/medium/slow, subtitle_style: beast|neon|retro|classic|minimal, face_priority: center)
+
+CHAOS MOMENT VALIDITY RULES:
+- **Duration: 15 to 60 seconds.** Chaos moments can be shorter than educational clips.
+- **MINIMUM 12 seconds.** Never return fragments under 12 seconds.
+- Start at the moment the conversation begins derailing, NOT before.
+- End MUST include the peak reaction (laughter, screaming, the cursed punchline, the shocked silence).
+- A moment is valid if it makes you say "WHAT DID I JUST HEAR?" — it does NOT need a lesson or payoff in the informational sense.
+- The chaos IS the payoff.
+- Reject generic gaming commentary. Reject normal conversation. Only flag GENUINE chaos.
+
+SCORING SCALE FOR CHAOS:
+- 85-100: Clip that people will repost saying "I cannot explain this out of context" — viral gold.
+- 70-84: Strong chaos moment, quotable, will stop scroll.
+- 60-69: Decent chaos, might work as a short.
+- Below 60: Generic or too mild — reject.
+
+CHAOS ARCHETYPES (you MUST pick exactly one):
+- chaotic_digression: Normal conversation suddenly derails into something completely unrelated and bizarre.
+- cursed_escalation: Harmless comment → increasingly unhinged chain reaction.
+- unhinged_banter: Roasting, absurd accusations, outrageous jokes between people.
+- absurd_roleplay: People start roleplaying bizarre scenarios (dictator, fake identities, surreal hypotheticals).
+- out_of_context_gold: A statement that sounds completely insane without surrounding context.
+- recurring_bit_payoff: A strange nickname/rumor/theory returns and peaks in absurdity.
+- uncontrollable_reaction: Someone completely loses composure — wheezing, screaming, crying from laughter, unable to speak.
+
+Return 0 to N moments. Never force moments. If none are genuinely chaotic, return 0.
+
+OUTPUT JSON ONLY. No markdown. No explanation outside JSON.
 
 Return this exact structure:
 {
   "content_diagnosis": {
-    "content_mode": "founder/startup | educational | podcast | mixed",
+    "content_mode": "streaming | gaming | variety | podcast",
+    "content_genre": "ENTERTAINMENT",
     "overall_clip_density": "low | medium | high",
     "estimated_valuable_clip_count": 0
   },
@@ -1132,24 +1230,34 @@ Return this exact structure:
     {
       "start": 12.3,
       "end": 45.6,
-      "viral_score": 86,
-      "usefulness": 88,
-      "insight_strength": 85,
-      "completeness_score": 84,
+      "viral_score": 88,
+      "chaos_score": 91,
+      "quotability": 87,
+      "reaction_energy": 85,
+      "out_of_context_shock": 93,
+      "escalation_wildness": 82,
+      "usefulness": 0,
+      "insight_strength": 0,
+      "completeness_score": 85,
       "completeness_signal": "RESOLVED",
       "psychology_scores": {
-        "stop_scrolling": 90,
-        "surprise": 85,
-        "shareability": 88,
-        "memorability": 92
+        "stop_scrolling": 92,
+        "shareability": 89,
+        "surprise": 95,
+        "memorability": 88
       },
-      "clip_archetype": "practical_insight",
+      "clip_archetype": "cursed_escalation",
+      "chaos_type": "impossible_escalation",
       "title": "...",
       "opening_caption": "...",
       "reason": "...",
+      "hook_line": "...",
+      "payoff": "...",
+      "why_viral": "...",
+      "b_roll_keywords": ["chaos", "reaction", "gaming"],
       "editing_notes": {
-        "pacing_note": "medium",
-        "subtitle_style": "classic",
+        "pacing_note": "fast",
+        "subtitle_style": "beast",
         "face_priority": "center"
       }
     }
@@ -1159,8 +1267,135 @@ Return this exact structure:
 
 Now review these transcript segments:
 {{TRANSCRIPT_JSON}}
-""".replace("{{TRANSCRIPT_JSON}}", prompt_json)
+""".replace("{{TRANSCRIPT_JSON}}", prompt_json) + intent_lens_block
+            log.info(f"[GROQ_DIRECTOR] window {idx}: using ENTERTAINMENT_CHAOS prompt mode")
 
+        else:
+            # ── STANDARD EDUCATIONAL / PROFESSIONAL MODE ────────────────────────
+            system_prompt = """You are HotShort Moment Director — a world-class short-form content editor who thinks like Alex Hormozi's offer team, Iman Gadzhi's retention engineers, and a MrBeast editor combined.
+
+You don't think like an academic. You think like a CREATOR. You know the exact moments that stop the scroll, create an open loop in the brain, and make someone send a clip to a friend saying "bro you NEED to see this."
+
+Your job: read transcript segments and find the most powerful standalone short-form moments.
+
+For each moment, identify:
+- start (precise start time in seconds — begin at the HOOK, not before)
+- end (precise end time in seconds — end at the PAYOFF, never cut it early)
+- viral_score (0 to 100 — the SCROLL STOP TEST: would you stop mid-swipe for this?)
+- hook_strength (0 to 100 — how powerful is the opening line as a SHORT-FORM HOOK specifically?)
+- identity_challenge (0 to 100 — does this make the viewer question their current identity or choices?)
+- promise_clarity (0 to 100 — how clear and specific is the value promise?)
+- usefulness (0 to 100 — how actionable is this for the average viewer?)
+- insight_strength (0 to 100 — how counterintuitive or genuinely surprising is this?)
+- completeness_score (0 to 100 — does the clip have both a HOOK and a PAYOFF?)
+- completeness_signal ("RESOLVED" or "UNRESOLVED_REQUIRES_EXTENSION")
+- psychology_scores:
+    - stop_scrolling (would you stop mid-swipe?)
+    - curiosity_gap (does the hook create an open loop the brain must close?)
+    - shareability (would someone forward this to a friend?)
+    - memorability (will this be in their head tomorrow?)
+    - identity_pressure (does this make the viewer feel like they're missing out or doing it wrong?)
+- title (short, punchy, scroll-stopping — think Hormozi tweet, not academic title)
+- opening_caption (the EXACT hook line — the first words a new viewer hears. This must be a scroll-stopper.)
+- clip_archetype (choose from: pattern_interrupt, curiosity_gap_hook, bold_promise, social_proof_contrast, identity_challenge, before_after_moment, practical_insight, contrarian_take, mistake_reveal, warning, framework, case_study, emotional_truth, tactical_steps, story_payoff)
+- hook_line (the opening line that stops the scroll)
+- build (what context/proof comes next)
+- payoff (the resolution — the "a-ha" moment or the concrete takeaway)
+- why_people_STOP_scrolling (the psychological trigger that halts the scroll — be specific: "Creates belief conflict because...", "Identity challenge because viewer who does X will feel called out...")
+- why_people_KEEP_watching (the open loop or curiosity gap that keeps them locked in)
+- b_roll_keywords (2-3 visual keywords for stock footage)
+- editing_notes (pacing_note: fast/medium/slow, subtitle_style: classic|neon|beast|retro|minimal, face_priority: center)
+
+CLIP ARCHETYPES (pick the best fit):
+- pattern_interrupt: "If you're [X] and you're not doing [Y], you're leaving [Z] on the table" — Hormozi identity-interrupt
+- curiosity_gap_hook: Names the thing, withholds the HOW — brain MUST stay to resolve it (Gadzhi formula)
+- bold_promise: Specific number + timeline + "without X" — "I went from 0 to $1M in 90 days without funding"
+- social_proof_contrast: Rich/poor, winner/loser contrast — "Every successful person does THIS. Most people do THAT."
+- identity_challenge: Directly challenges viewer's current self-concept
+- before_after_moment: The inflection point where everything changed — "everything was different after this"
+- practical_insight: Actionable, concrete, specific — changes what viewer does tomorrow
+- contrarian_take: The unpopular opinion that is actually correct — creates cognitive dissonance
+- mistake_reveal: Viewer realizes they are doing something wrong RIGHT NOW
+- warning: Stakes-driven urgency — "if you keep doing X, you will lose Y"
+- framework: A named system or mental model the viewer can immediately apply
+- case_study: A specific story with a concrete outcome and lesson
+- emotional_truth: A deeply felt observation that creates "I felt that" connection
+- tactical_steps: Step-by-step actionable sequence
+- story_payoff: The emotional or insight resolution of a narrative
+
+MOMENT VALIDITY RULES:
+- **Duration: 25 to 60 seconds.** Short-form can be longer if the value is there.
+- **NEVER return a moment shorter than 20 seconds.**
+- The HOOK must be in the first 3 seconds of the clip.
+- The PAYOFF must be included — never cut before the "a-ha" moment.
+- Reject a clip if it has a great hook but no payoff. Reject if it has payoff but no hook.
+- One complete IDEA per clip — not a summary, not a list. ONE thing.
+
+SCORING SCALE (THE HORMOZI TEST):
+- 88-100: Viral gold. Would stop me mid-scroll. Would make me send it to 3 friends. (Less than 5% of content)
+- 75-87: Very strong. Scroll-stopping hook, clear payoff, genuinely valuable. Post this.
+- 65-74: Decent clip. Interesting but not urgent. Missing either a sharp hook or a strong payoff.
+- Below 65: Generic. Skip.
+
+Return 0 to N moments. NEVER force moments. If nothing passes the Hormozi test, return 0.
+OUTPUT JSON ONLY. No markdown. No text outside JSON.
+
+Return this exact structure:
+{
+  "content_diagnosis": {
+    "content_mode": "founder/startup | educational | podcast | self-improvement | mixed",
+    "content_genre": "ENTERTAINMENT | EDUCATION | PROFESSIONAL",
+    "overall_clip_density": "low | medium | high",
+    "estimated_valuable_clip_count": 0,
+    "hook_quality": "weak | moderate | strong | exceptional",
+    "creator_archetype": "hormozi | gadzhi | mrbeast | generic"
+  },
+  "moments": [
+    {
+      "start": 12.3,
+      "end": 45.6,
+      "viral_score": 88,
+      "hook_strength": 91,
+      "identity_challenge": 85,
+      "promise_clarity": 87,
+      "usefulness": 84,
+      "insight_strength": 82,
+      "completeness_score": 90,
+      "completeness_signal": "RESOLVED",
+      "psychology_scores": {
+        "stop_scrolling": 92,
+        "curiosity_gap": 88,
+        "shareability": 85,
+        "memorability": 89,
+        "identity_pressure": 84
+      },
+      "clip_archetype": "pattern_interrupt",
+      "title": "...",
+      "opening_caption": "...",
+      "hook_line": "...",
+      "build": "...",
+      "payoff": "...",
+      "why_people_STOP_scrolling": "...",
+      "why_people_KEEP_watching": "...",
+      "reason": "...",
+      "b_roll_keywords": ["startup", "money", "chart"],
+      "editing_notes": {
+        "pacing_note": "fast",
+        "subtitle_style": "beast",
+        "face_priority": "center"
+      }
+    }
+  ],
+  "rejected_moments": []
+}
+
+Now review these transcript segments:
+{{TRANSCRIPT_JSON}}
+""".replace("{{TRANSCRIPT_JSON}}", prompt_json) + intent_lens_block
+
+        if creator_intent:
+            log.info(f"\n[AI_ENGINE] 🎯 INJECTING DIRECTOR'S LENS: '{creator_intent}'")
+            log.info(f"[AI_ENGINE] 🧠 Prompt Structure: Main Brain + Decision Matrix Failsafe Active\n")
         response = None
         try:
             response = post_groq_completions(
@@ -1195,26 +1430,69 @@ Now review these transcript segments:
                 chunk_moments = parsed["moments"]
                 if not isinstance(chunk_moments, list):
                     chunk_moments = []
-                
+
+                # Extract content_genre and propagate to moments
+                diagnosis = parsed.get("content_diagnosis", {})
+                genre = diagnosis.get("content_genre", "ENTERTAINMENT")
+                is_chaos_chunk = genre.upper() == "ENTERTAINMENT" or _is_chaos_mode
+                for m in chunk_moments:
+                    if isinstance(m, dict):
+                        m["content_genre"] = genre
+                        m["is_chaos_moment"] = is_chaos_chunk
+                        # ── Chaos Evidence routing (AGENTS.md: no silent signal loss) ──
+                        # Chaos scores must propagate through IntelligenceArtifact so they
+                        # influence downstream ranking — they cannot be silently dropped.
+                        if is_chaos_chunk:
+                            from viral_finder.cognition import Evidence, IntelligenceArtifact
+                            artifact = m.get("intelligence")
+                            if not isinstance(artifact, IntelligenceArtifact):
+                                artifact = IntelligenceArtifact()
+                                m["intelligence"] = artifact
+                            raw_chaos    = float(m.get("chaos_score", 0) or 0)
+                            raw_quot     = float(m.get("quotability", 0) or 0)
+                            raw_reaction = float(m.get("reaction_energy", 0) or 0)
+                            raw_ooc      = float(m.get("out_of_context_shock", 0) or 0)
+                            raw_wild     = float(m.get("escalation_wildness", 0) or 0)
+                            # Normalise to [0,1]
+                            def _n(v): return v / 100.0 if v > 1.0 else v
+                            artifact.evidence_stream.extend([
+                                Evidence(type="chaos_score",         value=_n(raw_chaos),    producer="groq_chaos_director", confidence=0.90),
+                                Evidence(type="quotability",          value=_n(raw_quot),     producer="groq_chaos_director", confidence=0.90),
+                                Evidence(type="reaction_energy",      value=_n(raw_reaction), producer="groq_chaos_director", confidence=0.90),
+                                Evidence(type="out_of_context_shock", value=_n(raw_ooc),      producer="groq_chaos_director", confidence=0.88),
+                                Evidence(type="escalation_wildness",  value=_n(raw_wild),     producer="groq_chaos_director", confidence=0.88),
+                                Evidence(type="stop_scroll",          value=_n(float(m.get("psychology_scores", {}).get("stop_scrolling", 0) or 0)), producer="groq_chaos_director", confidence=0.90),
+                                Evidence(type="shareability",         value=_n(float(m.get("psychology_scores", {}).get("shareability", 0) or 0)),    producer="groq_chaos_director", confidence=0.90),
+                            ])
+                            log.info(
+                                f"[CHAOS_EVIDENCE] moment={m.get('title','?')[:40]} "
+                                f"chaos_score={raw_chaos:.0f} quotability={raw_quot:.0f} "
+                                f"reaction_energy={raw_reaction:.0f} ooc_shock={raw_ooc:.0f} "
+                                f"escalation={raw_wild:.0f} "
+                                f"archetype={m.get('clip_archetype','?')}"
+                            )
+
                 # Apply per-chunk limit
                 try:
                     max_moments_per_chunk = int(os.environ.get("HS_GROQ_DIRECTOR_MAX_MOMENTS_PER_CHUNK", "5").strip())
                 except ValueError:
                     max_moments_per_chunk = 5
-                
+
                 chunk_moments = chunk_moments[:max_moments_per_chunk]
-                
+
                 # Store unvalidated chunk moments for rescue fallback
                 all_unvalidated_moments.extend(chunk_moments)
-                
+
                 validated_chunk = validate_groq_moments(chunk_moments, video_duration)
                 all_raw_moments.extend(validated_chunk)
-                log.info(f"[GROQ_DIRECTOR] window {idx}: found {len(validated_chunk)} valid moments out of {len(chunk_moments)}")
+                log.info(f"[GROQ_DIRECTOR] window {idx}: found {len(validated_chunk)} valid moments out of {len(chunk_moments)} (chaos_mode={is_chaos_chunk})")
                 for m in validated_chunk:
                     cid = m.get("candidate_id") or m.get("id") or "unknown"
                     psy = m.get("psychology_scores", {})
-                    log.info(f"   ?'? [HOOK_FOUND] id={cid} stop_scrolling={psy.get('stop_scrolling','?')} surprise={psy.get('surprise','?')} share={psy.get('shareability','?')} title='{m.get('title','?')}'")
-
+                    if m.get("is_chaos_moment"):
+                        log.info(f"   🔥 [CHAOS_HOOK_FOUND] id={cid} chaos={m.get('chaos_score','?')} quot={m.get('quotability','?')} archetype={m.get('clip_archetype','?')} title='{m.get('title','?')}'")
+                    else:
+                        log.info(f"   ✨ [HOOK_FOUND] id={cid} stop_scrolling={psy.get('stop_scrolling','?')} surprise={psy.get('surprise','?')} share={psy.get('shareability','?')} title='{m.get('title','?')}'")
             else:
                 log.info(f"[GROQ_DIRECTOR] window {idx}: no moments returned or failed to parse JSON")
         except Exception as e:

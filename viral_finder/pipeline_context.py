@@ -13,6 +13,7 @@ class PipelineContext:
     allow_fallback: bool
     prefer_gpu: bool = True
     use_cache: bool = True
+    creator_intent: Optional[str] = None
     transcript: List[Dict[str, Any]] = field(default_factory=list)
     audio_features: List[Dict[str, Any]] = field(default_factory=list)
     visual_features: List[Dict[str, Any]] = field(default_factory=list)

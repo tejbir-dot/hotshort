@@ -768,3 +768,189 @@ class PodcastAnalyzer(DomainAnalyzer):
         # Normalize variation (some variation is good, too much is bad)
         normalized_variation = min(variation / avg_length, 1.0)
         return max(0, 1 - normalized_variation)  # Higher variation = lower score
+
+
+class EntertainmentChaosAnalyzer(DomainAnalyzer):
+    """
+    Specialized analyzer for streaming, gaming, and variety entertainment content.
+
+    This analyzer detects moments that produce 'WHAT DID I JUST HEAR?' energy —
+    moments that are NOT educational but go viral purely because they are bizarre,
+    cursed, unhinged, or absurdly out-of-context.
+
+    Scoring axes (0.0–1.0):
+        chaos_score          — How bizarre/unhinged is this moment?
+        quotability          — Will this phrase be quoted, memed, or screenshotted?
+        reaction_energy      — How intense is the reaction (laughter/screaming/shock)?
+        escalation_wildness  — How unexpected is the escalation from previous context?
+        out_of_context_shock — How insane does this sound WITHOUT surrounding context?
+    """
+
+    # ── Chaos marker lexicons ────────────────────────────────────────────────
+    _CHAOS_MARKERS = [
+        "wait what", "hold on", "bro what", "that came out of nowhere",
+        "how did we get here", "that's wild", "no way", "the audacity",
+        "chat is he serious", "clip that", "someone clip that", "that's a clip",
+        "i'm dead", "i'm dying", "i can't breathe", "i'm wheezing", "i lost it",
+        "stop stop stop", "not this again", "here we go again",
+        "that sounds so wrong", "out of context", "i know how that sounds",
+        "[laughing]", "[screaming]", "[wheezing]", "[gasping]",
+        # Hinglish
+        "yaar ye kya ho gaya", "bhai sun", "ruk ruk ruk", "pagal hai tu",
+        "teri toh", "bhai ye kya kar raha hai", "iska dimag kharab hai",
+        "bhai hasi aa rahi hai", "ye clip karo", "phir wahi baat",
+        "ye banda phir", "aur bhai sun", "abhi toh aur suno",
+    ]
+
+    _REACTION_MARKERS = [
+        "[laughing]", "[screaming]", "[wheezing]", "[gasping]", "[crying]",
+        "i can't", "i'm dead", "stop", "bro", "chat",
+        # Hinglish
+        "[hansi]", "[cheekh]", "bhai ruk", "yaar band kar", "nahi nahi nahi",
+    ]
+
+    _ESCALATION_MARKERS = [
+        "and then", "but then", "it gets worse", "now hear me out",
+        "wait it gets better", "okay so then", "no no no listen",
+        "aur phir kya hua", "phir bolta hai", "abhi toh aur suno",
+        "woh toh kuch aur hi bola",
+    ]
+
+    _RECURRING_BIT_MARKERS = [
+        "not this again", "here we go again", "every time", "this guy again",
+        "back to this", "as always", "phir wahi baat", "phir se ye shuru",
+        "ye toh hamesha aisa karta hai", "ek baar phir",
+    ]
+
+    _BANTER_MARKERS = [
+        "i'm not gonna lie", "bro that's crazy", "you're actually insane",
+        "you're cooked", "the audacity", "did he actually", "he really said",
+        "pagal hai tu", "teri toh", "tu normal nahi hai", "iska dimag kharab hai",
+        "genuine mein", "iska scene kya hai",
+    ]
+
+    def __init__(self):
+        self._marker_sets = {
+            "chaos":      self._CHAOS_MARKERS,
+            "reaction":   self._REACTION_MARKERS,
+            "escalation": self._ESCALATION_MARKERS,
+            "recurring":  self._RECURRING_BIT_MARKERS,
+            "banter":     self._BANTER_MARKERS,
+        }
+
+    # ── Public interface ─────────────────────────────────────────────────────
+
+    def analyze_content(self, content: str) -> Dict[str, Any]:
+        """Analyze streaming/gaming content for chaos and virality potential."""
+        content_lower = content.lower()
+
+        chaos_score         = self._score_chaos(content_lower)
+        quotability         = self._score_quotability(content_lower)
+        reaction_energy     = self._score_reaction_energy(content_lower)
+        escalation_wildness = self._score_escalation(content_lower)
+        out_of_context_shock= self._score_out_of_context(content_lower)
+        recurring_bit_score = self._score_recurring_bit(content_lower)
+
+        # Composite entertainment virality score
+        entertainment_score = (
+            chaos_score         * 0.30
+            + quotability       * 0.25
+            + reaction_energy   * 0.20
+            + escalation_wildness * 0.15
+            + out_of_context_shock * 0.10
+        )
+
+        detected_archetypes = self._detect_archetypes(content_lower)
+
+        return {
+            "domain":                "entertainment_chaos",
+            "chaos_score":           round(chaos_score, 4),
+            "quotability":           round(quotability, 4),
+            "reaction_energy":       round(reaction_energy, 4),
+            "escalation_wildness":   round(escalation_wildness, 4),
+            "out_of_context_shock":  round(out_of_context_shock, 4),
+            "recurring_bit_score":   round(recurring_bit_score, 4),
+            "entertainment_score":   round(entertainment_score, 4),
+            "detected_archetypes":   detected_archetypes,
+            "content_type":          self._classify_chaos_type(content_lower),
+            "confidence":            0.82,
+        }
+
+    # ── Private scoring helpers ──────────────────────────────────────────────
+
+    def _count_markers(self, text: str, marker_list: List[str]) -> int:
+        return sum(1 for m in marker_list if m in text)
+
+    def _score_chaos(self, text: str) -> float:
+        """How many chaos/unhinged markers appear?"""
+        hits = self._count_markers(text, self._CHAOS_MARKERS)
+        return min(1.0, hits / 5.0)
+
+    def _score_quotability(self, text: str) -> float:
+        """Quotability: short punchy lines, banter hits, cursed phrases."""
+        banter_hits = self._count_markers(text, self._BANTER_MARKERS)
+        # Short sentences with high-impact words score higher
+        sentences = [s.strip() for s in text.split(".") if s.strip()]
+        short_punchy = sum(1 for s in sentences if 3 <= len(s.split()) <= 12)
+        punchy_ratio = short_punchy / max(1, len(sentences))
+        return min(1.0, (banter_hits * 0.15) + (punchy_ratio * 0.6))
+
+    def _score_reaction_energy(self, text: str) -> float:
+        """How many uncontrollable-reaction markers appear?"""
+        hits = self._count_markers(text, self._REACTION_MARKERS)
+        # Also score on exclamation density
+        excl_count = text.count("!")
+        return min(1.0, (hits / 4.0) + (excl_count / 20.0))
+
+    def _score_escalation(self, text: str) -> float:
+        """Does the text show escalating chain reactions?"""
+        hits = self._count_markers(text, self._ESCALATION_MARKERS)
+        return min(1.0, hits / 3.0)
+
+    def _score_out_of_context(self, text: str) -> float:
+        """Would a random line sound completely insane without context?"""
+        ooc_signals = [
+            "out of context", "clip that", "that sounds wrong",
+            "ye clip karo", "twitter pe daal do", "don't clip that",
+        ]
+        hits = self._count_markers(text, ooc_signals)
+        # Also reward very short but impactful sentences with no setup
+        words = text.split()
+        isolated_shock_lines = sum(
+            1 for s in text.split(".")
+            if any(m in s.lower() for m in ["what", "bro", "kya", "yaar"])
+            and len(s.split()) < 8
+        )
+        return min(1.0, hits * 0.4 + isolated_shock_lines * 0.1)
+
+    def _score_recurring_bit(self, text: str) -> float:
+        """Is this part of a recurring bit that returns and escalates?"""
+        hits = self._count_markers(text, self._RECURRING_BIT_MARKERS)
+        return min(1.0, hits / 2.0)
+
+    def _detect_archetypes(self, text: str) -> List[str]:
+        """Return all detected chaos archetypes for this content."""
+        found = []
+        checks = {
+            "chaotic_digression":    ("wait what", "hold on", "ruk ruk ruk", "yaar ye kya"),
+            "cursed_escalation":     ("and then", "it gets worse", "abhi toh aur suno"),
+            "unhinged_banter":       ("pagal hai tu", "you're cooked", "bro that's crazy"),
+            "uncontrollable_reaction": ("[laughing]", "[screaming]", "i'm dead", "bhai hasi"),
+            "out_of_context_gold":   ("clip that", "out of context", "ye clip karo"),
+            "recurring_bit_payoff":  ("here we go again", "not this again", "phir wahi baat"),
+        }
+        for archetype, signals in checks.items():
+            if any(sig in text for sig in signals):
+                found.append(archetype)
+        return found if found else ["generic_entertainment"]
+
+    def _classify_chaos_type(self, text: str) -> str:
+        """Classify the dominant chaos pattern."""
+        scores = {
+            "uncontrollable_laughter": self._count_markers(text, self._REACTION_MARKERS),
+            "cursed_banter":           self._count_markers(text, self._BANTER_MARKERS),
+            "impossible_escalation":   self._count_markers(text, self._ESCALATION_MARKERS),
+            "recurring_bit_peak":      self._count_markers(text, self._RECURRING_BIT_MARKERS),
+        }
+        best = max(scores, key=scores.get)
+        return best if scores[best] > 0 else "topic_derailment"

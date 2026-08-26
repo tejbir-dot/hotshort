@@ -1256,7 +1256,18 @@ class FaceCache:
 def _process_job(job: dict, cloudinary_ok: bool):
     job_id      = job["job_id"]
     youtube_url = job.get("youtube_url") or job.get("video_url", "")
+    video_format = job.get("video_format", "center_crop")
     is_free     = False if os.getenv("HS_UNLIMITED_MODE", "0") == "1" else job.get("is_free_user", False)
+    
+    if video_format == "blur_background":
+        os.environ["HS_DISABLE_BG_BLUR"] = "0"
+        os.environ["HS_DISABLE_CROP"] = "1"
+    elif video_format == "original_with_black_bars":
+        os.environ["HS_DISABLE_BG_BLUR"] = "1"
+        os.environ["HS_DISABLE_CROP"] = "1"
+    elif video_format == "center_crop":
+        os.environ["HS_DISABLE_BG_BLUR"] = "1"
+        os.environ["HS_DISABLE_CROP"] = "0"
 
     print(f"[LOCAL_WORKER] dYZ Processing job {job_id}: {youtube_url[:80]}", flush=True)
 
@@ -1342,45 +1353,50 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     use_cache=True,
                     allow_fallback=False,
                     pipeline_mode=os.getenv("HS_ORCH_PIPELINE_MODE", "staged"),
+                    creator_intent=job.get("creator_intent")
                 )
                 _bench.finish("2_orchestration")
 
                 # Pre-classify clips for the Lightning Editor
                 # ── PARALLEL format_classify ──────────────────────────────────────
-                # Previously sequential: 7 clips × ~45s = 314s.
-                # Now parallel: all clips scanned concurrently → ~45s total (7x speedup).
                 _bench.begin("3_format_classify")
                 haar_clips = []
 
-                def _classify_one(clip):
-                    s = float(clip.get("start", 0.0) or 0.0)
-                    e = float(clip.get("end", s) or s)
-                    fmt = analyze_video_format(video_path, s, e)
-                    clip["_fmt"] = fmt  # attach result so editor doesn't re-run
-                    return clip, fmt
+                if video_format in ("blur_background", "original_with_black_bars"):
+                    print(f"[FORMAT] {video_format} selected — skipping FaceCache entirely, no crop tracking needed", flush=True)
+                    for c in clips:
+                        c["_fmt"] = None
+                        c["director_mode"] = None
+                        c["focus_x"] = 0.5
+                else:
+                    def _classify_one(clip):
+                        s = float(clip.get("start", 0.0) or 0.0)
+                        e = float(clip.get("end", s) or s)
+                        fmt = analyze_video_format(video_path, s, e)
+                        clip["_fmt"] = fmt  # attach result so editor doesn't re-run
+                        return clip, fmt
 
-                # Use min(n_clips, 4) workers — more than 4 risks I/O contention on one file
-                _classify_workers = min(len(clips), 4)
-                with ThreadPoolExecutor(max_workers=_classify_workers) as _pool:
-                    _fmt_futures = {_pool.submit(_classify_one, c): c for c in clips}
-                    for _fut in _fmt_futures:
-                        _clip, _fmt = _fut.result()
-                        mode_name = _fmt.director_mode.name if _fmt and _fmt.director_mode else "UNKNOWN"
-                        faces_avg = _fmt.face_count_avg if _fmt else 0.0
-                        spk = _fmt.speaker_positions if _fmt else []
-                        print(
-                            f"[FORMAT_CLASSIFY] {_clip.get('start',0):.0f}s-{_clip.get('end',0):.0f}s "
-                            f"mode={mode_name} avg_faces={faces_avg:.2f} speakers={spk}",
-                            flush=True,
-                        )
-                        haar_clips.append(_clip)
+                    _classify_workers = min(len(clips), 4)
+                    with ThreadPoolExecutor(max_workers=_classify_workers) as _pool:
+                        _fmt_futures = {_pool.submit(_classify_one, c): c for c in clips}
+                        for _fut in _fmt_futures:
+                            _clip, _fmt = _fut.result()
+                            mode_name = _fmt.director_mode.name if _fmt and _fmt.director_mode else "UNKNOWN"
+                            faces_avg = _fmt.face_count_avg if _fmt else 0.0
+                            spk = _fmt.speaker_positions if _fmt else []
+                            print(
+                                f"[FORMAT_CLASSIFY] {_clip.get('start',0):.0f}s-{_clip.get('end',0):.0f}s "
+                                f"mode={mode_name} avg_faces={faces_avg:.2f} speakers={spk}",
+                                flush=True,
+                            )
+                            haar_clips.append(_clip)
 
                 _bench.finish("3_format_classify")
 
                 # ── Haar scan (face cache pre-computation) ─────────────────────────
                 nonlocal face_cache
                 _bench.begin("4_haar_scan")
-                if haar_clips:
+                if haar_clips and video_format == "center_crop":
                     face_cache = FaceCache(video_path, haar_clips)
                 else:
                     face_cache = None
@@ -1609,6 +1625,8 @@ def main():
     parser.add_argument("--local", action="store_true",
                         help="Local mode: no Railway. Process a YouTube URL directly.")
     parser.add_argument("--url", default=None, help="YouTube URL (used with --local).")
+    parser.add_argument("--intent", default=None, help="Creator Intent (used with --local).")
+    parser.add_argument("--format", choices=["center_crop", "blur_background", "original_with_black_bars"], default=None, help="Video Format (used with --local).")
     parser.add_argument("--clips", type=int, default=int(os.getenv("HS_ORCH_TOP_K", "5")),
                         help="Number of clips to select (default 5).")
     args = parser.parse_args()
@@ -1622,24 +1640,50 @@ def main():
         os.environ["HS_ORCH_TOP_K"] = str(args.clips)
 
         youtube_url = args.url
+        creator_intent = args.intent
         if not youtube_url:
             print("\n" + "=" * 55, flush=True)
             print("  LOCAL MODE - No Railway polling", flush=True)
             print("=" * 55, flush=True)
             youtube_url = input("  YouTube URL: ").strip().strip("'`\"")
+            creator_intent = input("  Creator Intent (optional): ").strip()
+            print("\n  Select Video Format:")
+            print("  1) center_crop (Dynamic Mode A/B Face Tracking) [DEFAULT]")
+            print("  2) blur_background (16:9 Uncropped with Cinematic Blur)")
+            print("  3) original_with_black_bars (16:9 Uncropped with Black Padding)")
+            format_choice = input("  Choice [1-3]: ").strip()
+            
+            if format_choice == "2":
+                video_format = "blur_background"
+            elif format_choice == "3":
+                video_format = "original_with_black_bars"
+            else:
+                video_format = "center_crop"
         else:
             youtube_url = youtube_url.strip().strip("'`\"")
+            if not creator_intent:
+                creator_intent = None
+            video_format = args.format if args.format else "center_crop"
 
         if not youtube_url:
             print("[LOCAL_WORKER] No URL provided. Exiting.", flush=True)
             sys.exit(1)
 
         print(f"\n[LOCAL_WORKER] URL      : {youtube_url}", flush=True)
+        if creator_intent:
+            print(f"[LOCAL_WORKER] Intent   : {creator_intent}", flush=True)
+        print(f"[LOCAL_WORKER] Format    : {video_format}", flush=True)
         print(f"[LOCAL_WORKER] Clips     : {args.clips}", flush=True)
         print(f"[LOCAL_WORKER] Output    : {_LOCAL_OUT_DIR}", flush=True)
 
         _job_id = f"local_{int(time.time())}"
-        job = {"job_id": _job_id, "youtube_url": youtube_url, "is_free_user": False}
+        job = {
+            "job_id": _job_id, 
+            "youtube_url": youtube_url, 
+            "creator_intent": creator_intent if creator_intent else None,
+            "video_format": video_format,
+            "is_free_user": False
+        }
 
         t0 = time.perf_counter()
         try:

@@ -169,6 +169,7 @@ def handler(event):
     )
     transcript = input_data.get("transcript") or []
     is_free_user = input_data.get("is_free_user", False)
+    creator_intent = input_data.get("creator_intent")
 
     cloud_provider = input_data.get("cloud_provider", {})
     if cloud_provider and isinstance(cloud_provider, dict):
@@ -353,6 +354,7 @@ def handler(event):
                     use_cache=True,
                     allow_fallback=False,
                     pipeline_mode=os.environ.get("HS_ORCH_PIPELINE_MODE", None),
+                    creator_intent=creator_intent,
                 )
 
                 video_duration = get_video_duration(video_path)
@@ -454,10 +456,12 @@ def handler(event):
                                     "title": clip.get("title", ""),
                                     "hook_type": clip.get("hook_type", ""),
                                     "cortex_score": clip.get("cortex_score", 0),
+                                    "b_roll_keywords": clip.get("b_roll_keywords", []),
+                                    "content_genre": clip.get("content_genre", "ENTERTAINMENT"),
                                     "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {}),
                                     "editing_notes": clip.get("editing_notes", {}),
                                 }
-                                print(f"[WORKER] Cortex hints loaded for clip {i}: hook_type={clip.get('hook_type', '-')}")
+                                print(f"[WORKER] Cortex hints loaded for clip {i}: hook_type={clip.get('hook_type', '-')} b_roll_keywords={clip.get('b_roll_keywords', [])}")
 
                             # Prefer Groq title/opening_caption for hook overlay
                             clip_title_str = (

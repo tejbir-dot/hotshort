@@ -2663,6 +2663,7 @@ def analyze_video():
     Creates a Job and redirects to `/results/<job_id>` (instead of returning JSON).
     """
     youtube_url = (request.form.get("youtube_url") or "").strip()
+    creator_intent = (request.form.get("creator_intent") or "").strip()
     if not youtube_url:
         flash("Please provide a YouTube URL", "error")
         return redirect(url_for("dashboard"))
@@ -2708,6 +2709,7 @@ def analyze_video():
             user_id=int(user_id),
             status="pending",
             video_path=youtube_url,
+            creator_intent=creator_intent if creator_intent else None,
             analysis_data=json.dumps(
                 {
                     "job_id": job_id,
@@ -2772,12 +2774,14 @@ def v2_analyze():
 
     job_id = str(uuid.uuid4())[:12]
     profile = (data.get("profile") or DEFAULT_WORKER_PROFILE or "balanced").strip().lower()
+    creator_intent = (data.get("creator_intent") or "").strip()
     try:
         job = Job(
             id=job_id,
             user_id=int(user_id),
             status="pending",
             video_path=source_url,
+            creator_intent=creator_intent if creator_intent else None,
             analysis_data=json.dumps(
                 {
                     "job_id": job_id,
@@ -2950,6 +2954,7 @@ def api_jobs_next():
         "job_id": job.id,
         "youtube_url": youtube_url,
         "is_free_user": is_free,
+        "creator_intent": job.creator_intent
     })
 
 

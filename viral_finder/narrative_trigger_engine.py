@@ -23,34 +23,214 @@ except ImportError:
 
 
 
-# ── English trigger phrases ──────────────────────────────────────────────────
+# ── English trigger phrases (Creator-Psychology aware) ──────────────────────
+# These patterns are used by top creators (Hormozi, Gadzhi, MrBeast editors)
+# to stop the scroll and force the brain to keep watching.
+
 _BELIEF_REVERSAL = (
     "most people think",
+    "most people miss",
+    "everyone thinks",
     "but actually",
     "but the truth is",
     "in reality",
     "however",
+    "contrary to what",
+    "the opposite is true",
+    "you've been lied to",
+    "what they don't tell you",
+    "nobody talks about this",
+    "this is not what you think",
 )
 _SECRET_REVELATION = (
     "the secret is",
     "what nobody tells you",
     "the real reason",
     "here is the truth",
+    "the thing nobody says",
+    "what they don't want you to know",
+    "the hidden",
+    "i discovered",
+    "i figured out",
+    "the key insight",
+    "the one thing",
+    "what changed everything",
+    "i never told anyone this",
 )
 _MISTAKE_EXPLANATION = (
     "the biggest mistake",
     "people get this wrong",
     "everyone does this wrong",
+    "stop doing",
+    "you're doing it wrong",
+    "this is killing your",
+    "this is why you're failing",
+    "if you're still doing",
+    "the worst thing you can do",
+    "never do this",
+    "i wasted years",
+    "i lost everything because",
 )
 _STRONG_CLAIM = (
     "the truth is",
     "the problem is",
     "the reality is",
     "the reason is",
+    "here's why",
+    "this is why",
+    "i'll be honest",
+    "let me be real",
+    "unpopular opinion",
+    "hot take",
+    "controversial opinion",
+    "no one wants to hear this",
+    "this will make you uncomfortable",
 )
 
-# ── Hindi / Hinglish trigger phrases ─────────────────────────────────────────
-# Belief Reversal: "log sochte hain", "lekin sach ye hai", "asal mein"
+# ── PATTERN INTERRUPT — Scroll-stopper hooks (Hormozi / Gadzhi style) ──────────
+# "If you're X, stop" / "The ONLY reason you haven't Y" — forces identity check
+_PATTERN_INTERRUPT = (
+    "if you're not doing",
+    "if you're still",
+    "the only reason you haven't",
+    "the reason you're broke",
+    "the reason you're stuck",
+    "why you keep failing",
+    "stop scrolling",
+    "pay attention",
+    "listen carefully",
+    "this changed my life",
+    "this will change your life",
+    "i wish someone told me this",
+    "everything changed when",
+    "i went from",
+    "from zero to",
+    "this is the difference between",
+    "what separates",
+    "the gap between",
+)
+_PATTERN_INTERRUPT_HI = (
+    "agar tu abhi bhi",
+    "agar tu ye nahi kar raha",
+    "ye sun le dhyan se",
+    "bas ek kaam kar",
+    "ye meri zindagi badal di",
+    "kash koi mujhe pehle batata",
+    "jab se maine ye kiya",
+    "meri life tab badli jab",
+    "jo fark hota hai woh",
+    "iss ek cheez ne sab badal diya",
+    "tu broke kyu hai",
+    "tu kyun stuck hai",
+    "sar uthake sun",
+)
+
+# ── CURIOSITY GAP — Open loops that force the brain to keep watching ──────────
+# "Here's what nobody tells you..." / "The reason is surprising" — cognitive itch
+_CURIOSITY_GAP = (
+    "here's the thing",
+    "here's what's crazy",
+    "here's what most people don't realize",
+    "and this is the part that blew my mind",
+    "and this is where it gets interesting",
+    "but here's the twist",
+    "you won't believe",
+    "the crazy part is",
+    "what shocked me was",
+    "what most people don't know",
+    "the surprising thing is",
+    "what nobody talks about",
+    "the part that nobody mentions",
+    "here's what changes everything",
+    "this is the part that matters",
+    "but wait",
+)
+_CURIOSITY_GAP_HI = (
+    "aur ye sun ke tujhe shock lagega",
+    "aur yahan pe mazedaar cheez ye hai",
+    "ek baat jo koi nahi batata",
+    "aur ye wala part sab ignore karte hain",
+    "ab yahan twist aata hai",
+    "lekin yahan pe sab galat ho jaate hain",
+    "ye wali baat sun le",
+    "interesting baat ye hai ki",
+    "aur yahi cheez sab miss kar dete hain",
+    "soch ke dekh",
+    "tu sochega nahi",
+    "par ye part sabse important hai",
+)
+
+# ── BOLD PROMISE — High-value claim upfront (Hormozi offer-first style) ──────
+# "I made $1M doing X" / "This one thing tripled my revenue" — proof-backed hook
+_BOLD_PROMISE = (
+    "this one thing",
+    "this single thing",
+    "i made",
+    "we made",
+    "went from",
+    "grew from",
+    "tripled",
+    "doubled",
+    "ten x",
+    "10x",
+    "100x",
+    "in just",
+    "in 30 days",
+    "in 90 days",
+    "in one year",
+    "without",
+    "you don't need",
+    "you don't have to",
+    "you only need",
+    "the simplest way",
+    "the fastest way",
+    "the easiest way",
+)
+_BOLD_PROMISE_HI = (
+    "maine itne paise kamaye",
+    "sirf ek cheez ne",
+    "mera revenue double ho gaya",
+    "sirf 30 din mein",
+    "bina X ke bhi ho sakta hai",
+    "tujhe ye nahi chahiye",
+    "ye sabse aasaan tarika hai",
+    "ye sabse tez tarika hai",
+    "ye ek kaam karega",
+    "itne log galti karte hain",
+)
+
+# ── SOCIAL PROOF HOOK — Contrast-based credibility (Gadzhi / founder style) ──
+# "Every successful person does X" / "People who make $X all have this in common"
+_SOCIAL_PROOF_HOOK = (
+    "every successful",
+    "all successful",
+    "people who make",
+    "the top 1 percent",
+    "the top one percent",
+    "billionaires do this",
+    "millionaires do this",
+    "rich people know",
+    "poor people think",
+    "successful people all",
+    "the common thread",
+    "what they all have in common",
+    "what winners do",
+    "what losers do",
+    "the difference is",
+)
+_SOCIAL_PROOF_HOOK_HI = (
+    "jo log successful hain",
+    "top log ye karte hain",
+    "ameer log ye sochte hain",
+    "garib log ye sochte hain",
+    "sab successful logo mein ek baat common hai",
+    "winner aur loser mein ye fark hota hai",
+    "har ek successful banda ye karta hai",
+    "jo log paise kamaa rahe hain",
+)
+
+# ── Hindi / Hinglish trigger phrases ──────────────────────────────────────────
+# Belief Reversal
 _BELIEF_REVERSAL_HI = (
     "log sochte hain",
     "log mante hain",
@@ -63,8 +243,13 @@ _BELIEF_REVERSAL_HI = (
     "हकीकत ये है",
     "par sach ye hai",
     "but sach ye hai",
+    "sabko lagta hai",
+    "duniya manti hai",
+    "logo ko lagta hai",
+    "yeh sach nahi hai",
+    "ulta hai asal mein",
 )
-# Secret Revelation: "raaz ye hai", "koi nahi batata"
+# Secret Revelation
 _SECRET_REVELATION_HI = (
     "raaz ye hai",
     "asli raaz",
@@ -76,8 +261,12 @@ _SECRET_REVELATION_HI = (
     "कोई नहीं बताता",
     "सबसे बड़ी बात",
     "sach baat ye hai",
+    "ye wala secret",
+    "asli cheez ye hai",
+    "hidden cheez",
+    "ye sab se important baat hai",
 )
-# Mistake Explanation: "sabse badi galti", "log galat karte hain"
+# Mistake Explanation
 _MISTAKE_EXPLANATION_HI = (
     "sabse badi galti",
     "log galat karte hain",
@@ -87,8 +276,12 @@ _MISTAKE_EXPLANATION_HI = (
     "लोग गलत करते हैं",
     "ye sab galat kar rahe hain",
     "isko galat samajhte hain",
+    "tune galti ki",
+    "yahi galti sab karte hain",
+    "band kar ye kaam",
+    "tu yahi kar raha hai na",
 )
-# Strong Claim: "sach ye hai", "problem ye hai"
+# Strong Claim
 _STRONG_CLAIM_HI = (
     "sach ye hai",
     "problem ye hai",
@@ -100,6 +293,9 @@ _STRONG_CLAIM_HI = (
     "वजह ये है",
     "seedhi baat",
     "simple baat",
+    "main seedha bolunga",
+    "sachchi baat ye hai",
+    "honest rehna chahta hoon",
 )
 
 _PAYOFF = (
@@ -109,6 +305,14 @@ _PAYOFF = (
     "at the end of the day",
     "what this means is",
     "to summarize",
+    "the bottom line",
+    "what this comes down to",
+    "the takeaway is",
+    "so what this means for you",
+    "here's what to do",
+    "so here's the thing",
+    "the lesson here",
+    "what i want you to take away",
 )
 
 _PAYOFF_HI = (
@@ -117,14 +321,218 @@ _PAYOFF_HI = (
     "kul milakar",
     "baat ye hai ki",
     "iska nateeja",
+    "toh tu kya kare",
+    "yahi seekhna hai",
+    "summary ye hai",
+    "short mein bolunga",
+    "ek baar aur samajh le",
+)
+
+# ── CHAOS / ENTERTAINMENT trigger phrases ─────────────────────────────────────
+# These are specifically for streaming, gaming, variety content where the
+# viral moment is NOT educational but "WHAT DID I JUST HEAR?" energy.
+
+# chaos_digression: Normal conversation suddenly derails into something bizarre.
+_CHAOS_DIGRESSION = (
+    "wait what",
+    "hold on",
+    "that came out of nowhere",
+    "how did we get here",
+    "bro what are you talking about",
+    "where did that come from",
+    "this is not related but",
+    "okay but randomly",
+    "i have a question",
+    "actually wait",
+)
+_CHAOS_DIGRESSION_HI = (
+    "yaar ye kya ho gaya",
+    "bhai sun",
+    "ek second",
+    "ye kahan se aaya",
+    "bhai baat kahan se kahan pahunch gayi",
+    "ruk ruk ruk",
+    "ek minute",
+    "alag topic pe aao",
+    "lekin ye bata",
+    "suddenly",
+    "suddenly kya",
+)
+
+# cursed_escalation: One harmless comment starts a chain leading somewhere bizarre.
+_CURSED_ESCALATION = (
+    "it keeps getting worse",
+    "and then he said",
+    "and it gets worse",
+    "and then",
+    "okay so then",
+    "but then get this",
+    "now hear me out",
+    "wait it gets better",
+    "no no no listen",
+    "okay okay okay",
+)
+_CURSED_ESCALATION_HI = (
+    "aur phir kya hua",
+    "phir bolta hai",
+    "phir us ne bola",
+    "aur bhai sun",
+    "aur mazedaar baat",
+    "abhi toh aur suno",
+    "iske aage sunoge toh",
+    "no no sun",
+    "abhi batata hoon",
+    "woh toh kuch aur hi bola",
+)
+
+# absurd_banter: Outrageous, shocking, or wildly inappropriate jokes between people.
+_ABSURD_BANTER = (
+    "i'm not gonna lie",
+    "bro that's crazy",
+    "you're actually insane",
+    "that's wild",
+    "no way",
+    "you're cooked",
+    "bro is cooked",
+    "you're cooked bro",
+    "bro what",
+    "that's actually terrible",
+    "i can't believe",
+    "did he actually",
+    "he really said",
+    "the audacity",
+    "chat is he serious",
+)
+_ABSURD_BANTER_HI = (
+    "pagal hai tu",
+    "teri toh",
+    "bhai ye kya kar raha hai",
+    "seriously yaar",
+    "tu normal nahi hai",
+    "bhai seedha bol",
+    "chat dekho",
+    "iska dimag kharab hai",
+    "bhai ye banda",
+    "ye log pagal hain",
+    "kya bol raha hai bhai",
+    "genuine mein",
+    "yaar sun toh",
+    "iska scene kya hai",
+    "bhai ye toh gayi baat",
+)
+
+# uncontrollable_reaction: Someone loses composure — laughing, screaming, wheezing.
+_UNCONTROLLABLE_REACTION = (
+    "[laughing]",
+    "[screaming]",
+    "[wheezing]",
+    "[gasping]",
+    "[moaning]",
+    "[crying]",
+    "[dying]",
+    "i can't",
+    "i'm dead",
+    "i'm dying",
+    "i'm crying",
+    "stop stop stop",
+    "bro i'm dead",
+    "chat he's dead",
+    "he's crying",
+    "i can't breathe",
+    "i'm wheezing",
+    "i lost it",
+    "bro i lost it",
+)
+_UNCONTROLLABLE_REACTION_HI = (
+    "[hansi]",
+    "[cheekh]",
+    "bhai ruk",
+    "yaar band kar",
+    "bhai hasi aa rahi hai",
+    "ruk yaar",
+    "nahi nahi nahi",
+    "bhai mujhe hasi aa rahi hai",
+    "yaar mujhe ro raha hai hasi se",
+    "band karo yaar",
+    "bhai ye toh limit ho gayi",
+)
+
+# out_of_context_statement: A random line that sounds completely insane alone.
+_OUT_OF_CONTEXT = (
+    "out of context",
+    "context aside",
+    "without context",
+    "that sounds so wrong out of context",
+    "okay without context",
+    "clip that",
+    "someone clip that",
+    "that's a clip",
+    "chat clip that",
+    "please don't clip that",
+    "that's going on twitter",
+    "i know how that sounds",
+    "that came out wrong",
+)
+_OUT_OF_CONTEXT_HI = (
+    "ye clip karo",
+    "bhai ye clip ho gaya",
+    "context nahi pata isko",
+    "ye toh context ke bahar hai",
+    "bhai ye sun ke kuch aur lagta hai",
+    "twitter pe daal do",
+    "clip ho gaya",
+    "ye mat daalna kahi",
+    "bhai galat lagta hai",
+)
+
+# recurring_bit: A strange nickname / rumor / theory that keeps returning.
+_RECURRING_BIT = (
+    "not this again",
+    "here we go again",
+    "he's doing it again",
+    "every time",
+    "this guy again",
+    "not him again",
+    "back to this",
+    "the legend",
+    "the infamous",
+    "as always",
+    "the usual",
+    "bring it back",
+    "we talked about this",
+    "not again bro",
+)
+_RECURRING_BIT_HI = (
+    "phir wahi baat",
+    "ye banda phir",
+    "phir se ye shuru",
+    "ye toh hamesha aisa karta hai",
+    "ek baar phir",
+    "arey phir se",
+    "ye wala topic phir aaya",
+    "bhai ye toh classic hai",
+    "isko toh pata hi tha",
+    "ye toh guaranteed tha",
 )
 
 _TRIGGER_MAP = {
-    "belief_reversal":    _BELIEF_REVERSAL    + _BELIEF_REVERSAL_HI,
-    "secret_revelation":  _SECRET_REVELATION  + _SECRET_REVELATION_HI,
-    "mistake_explanation":_MISTAKE_EXPLANATION + _MISTAKE_EXPLANATION_HI,
-    "strong_claim":       _STRONG_CLAIM       + _STRONG_CLAIM_HI,
-    "payoff":             _PAYOFF             + _PAYOFF_HI,
+    "belief_reversal":        _BELIEF_REVERSAL      + _BELIEF_REVERSAL_HI,
+    "secret_revelation":      _SECRET_REVELATION    + _SECRET_REVELATION_HI,
+    "mistake_explanation":    _MISTAKE_EXPLANATION  + _MISTAKE_EXPLANATION_HI,
+    "strong_claim":           _STRONG_CLAIM         + _STRONG_CLAIM_HI,
+    "payoff":                 _PAYOFF               + _PAYOFF_HI,
+    # ── Creator-Psychology Hooks (Hormozi / Gadzhi / top creator patterns) ────
+    "pattern_interrupt":      _PATTERN_INTERRUPT    + _PATTERN_INTERRUPT_HI,
+    "curiosity_gap":          _CURIOSITY_GAP        + _CURIOSITY_GAP_HI,
+    "bold_promise":           _BOLD_PROMISE         + _BOLD_PROMISE_HI,
+    "social_proof_hook":      _SOCIAL_PROOF_HOOK    + _SOCIAL_PROOF_HOOK_HI,
+    # ── Chaos / Entertainment triggers ──────────────────────────────────────
+    "chaos_digression":       _CHAOS_DIGRESSION     + _CHAOS_DIGRESSION_HI,
+    "cursed_escalation":      _CURSED_ESCALATION    + _CURSED_ESCALATION_HI,
+    "absurd_banter":          _ABSURD_BANTER        + _ABSURD_BANTER_HI,
+    "uncontrollable_reaction":_UNCONTROLLABLE_REACTION + _UNCONTROLLABLE_REACTION_HI,
+    "out_of_context_statement":_OUT_OF_CONTEXT      + _OUT_OF_CONTEXT_HI,
+    "recurring_bit":          _RECURRING_BIT        + _RECURRING_BIT_HI,
 }
 
 # Contrast markers — English + Hindi Devanagari + Hinglish romanized
@@ -250,19 +658,9 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
 
     from viral_finder.cognition import TriggerArtifact
     import uuid
-
-    from viral_finder.cognition import TriggerArtifact
-    import uuid
     import time as _time
 
-    # ── BATCHED CALLS: send transcript in chunks to avoid 413/TPM limits ─────────────
     all_triggers = []
-    
-    # User explicitly requested chunk-by-chunk processing.
-    CHUNK_SIZE = 100
-    chunks = [transcript_segments[i:i + CHUNK_SIZE] for i in range(0, len(transcript_segments), CHUNK_SIZE)]
-    log.info(f"[TRIGGER_FORENSIC_LLM] Sending full transcript in {len(chunks)} chunks of max {CHUNK_SIZE} segs.")
-
     failed_chunks: list[int] = []  # track which chunk indices fully failed
     MAX_CHUNK_RETRIES = 3
 
@@ -278,39 +676,89 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
         for s in segs_to_use:
             transcript_text += f"[{s.get('start', 0):.1f}-{s.get('end', 0):.1f}] {s.get('text', '')}\n"
 
-        prompt = f"""You are an expert AI editor analyzing a video transcript.
-Find "Narrative Triggers" in the text. Narrative Triggers include both semantic and structural moments where the speaker:
-1. "belief_reversal": Challenges a common belief ("most people think... but actually")
-2. "secret_revelation": Reveals a secret ("the real reason is", "nobody tells you this")
-3. "mistake_explanation": Explains a mistake ("everyone does this wrong", "biggest mistake")
-4. "strong_claim": Makes a strong definitive claim ("the reality is", "the problem is")
-5. "payoff": The punchline, reward, or main takeaway ("so basically", "the point is")
-6. "complete_thought": A cohesive thought from start to finish that can stand alone.
+        prompt = f"""You are an expert short-form content editor with the combined instincts of Alex Hormozi's offer team, Iman Gadzhi's retention engineers, and a MrBeast editor.
+Your job: find "Narrative Triggers" — moments where the brain STOPS scrolling and locks in.
 
-The transcript is in English, Hindi, or Hinglish.
-Identify the exact timestamps where these triggers occur.
+You think like a CONTENT CREATOR, not an academic. You know what hooks people, what creates open loops, what makes someone stop mid-scroll and say "wait, I need to hear this."
 
-CRITICAL INSTRUCTION: For every trigger you find, you MUST also provide deep psychological metrics on a scale of 0.0 to 100.0 (e.g., 91.4, 87.2, 73.0):
-- stop_scroll: How likely is this moment to stop someone from scrolling?
-- curiosity: How much does this make the viewer want to keep watching?
-- memorability: How memorable is this phrase?
-- shareability: How likely is a user to share this?
-- novelty: How new or surprising is this information?
-- clarity: How clear is the speaker's point?
+Find triggers in two categories:
+
+CATEGORY A — INFORMATIONAL / CREATOR HOOKS (education, podcast, founder, self-improvement content):
+These are the patterns top creators use to hijack attention:
+
+1. "belief_reversal": Challenges what the viewer already believes. The brain MUST resolve the contradiction.
+   Examples: "most people think X... but actually Y", "everyone says X, but I made millions doing the opposite", "you've been lied to about X"
+
+2. "secret_revelation": Reveals hidden information the viewer feels they should have known. Creates FOMO.
+   Examples: "the real reason X isn't working for you", "what nobody tells you", "the thing they don't want you to know", "I discovered something that changed everything"
+
+3. "mistake_explanation": Makes the viewer realize they are doing something wrong RIGHT NOW. Immediate stakes.
+   Examples: "this is why you're failing", "stop doing X", "the worst thing you can do is X (and everyone does it)", "I wasted years doing this wrong"
+
+4. "strong_claim": A bold, definitive, often controversial statement that demands attention.
+   Examples: "unpopular opinion", "I'll be real with you", "no one wants to hear this but", "this will make you uncomfortable"
+
+5. "payoff": The resolution, takeaway, or reward the viewer has been waiting for.
+   Examples: "so basically", "the takeaway is", "here's what to do", "the bottom line"
+
+6. "complete_thought": A self-contained idea that stands alone as a clip.
+
+7. "pattern_interrupt": An identity challenge that makes the viewer check themselves. Forces self-reflection.
+   HORMOZI FORMULA: "If you're [identity] and you're not doing [X], you are leaving [Y] on the table."
+   Examples: "if you're still doing X", "the only reason you haven't Y yet is", "this is the difference between winners and losers", "I went from 0 to $1M and here's the ONE thing", "i wish someone told me this"
+
+8. "curiosity_gap": Creates an open loop the brain CANNOT close without watching more. Cognitive itch.
+   GADZHI FORMULA: Name the thing, then withhold HOW — the brain must stay to resolve it.
+   Examples: "here's the thing nobody mentions", "and this is where it gets crazy", "but here's the twist", "you won't believe what happened", "the crazy part is", "but wait"
+
+9. "bold_promise": A specific, measurable, results-driven claim backed by proof. High-contrast value delivery.
+   HORMOZI OFFER FRAMEWORK: Specificity (numbers) + Timeline + Without (objection removal)
+   Examples: "I made X in Y days doing exactly this", "this one thing tripled my revenue", "in 30 days without X", "you don't need money/connections/experience to do this"
+
+10. "social_proof_hook": Uses contrast between successful and unsuccessful people to trigger identity anxiety.
+    Examples: "every successful person does this one thing", "rich people know X, poor people think Y", "what winners do vs what losers do", "the common thread among all self-made millionaires"
+
+CATEGORY B — CHAOS / ENTERTAINMENT (streaming, gaming, variety content):
+These are NOT educational. They go viral purely because they are bizarre, cursed, or absurd:
+
+11. "chaos_digression": Normal conversation suddenly derails into something completely bizarre ("wait what", "ruk ruk ruk", "bhai sun", "yaar ye kya ho gaya")
+12. "cursed_escalation": One harmless comment starts a chain that keeps getting more unhinged ("and then he said", "it gets worse", "abhi toh aur suno")
+13. "absurd_banter": Outrageous roasting or jokes that make you say "WHAT?" ("pagal hai tu", "you're actually insane", "bro that's crazy")
+14. "uncontrollable_reaction": Someone completely loses composure ("[laughing]", "[screaming]", "i'm dead", "bhai hasi aa rahi hai")
+15. "out_of_context_statement": A line that sounds completely insane without context ("clip that", "ye clip karo", "that came out wrong")
+16. "recurring_bit": A strange nickname/theory/accusation that keeps returning ("here we go again", "phir wahi baat")
+
+The transcript is in English, Hindi, or Hinglish. It may be from any content type.
+Identify the exact timestamps where these triggers occur — BOTH creator hooks and chaos triggers.
+
+CRITICAL INSTRUCTION: For every trigger you find, you MUST provide psychological metrics (0.0 to 100.0):
+
+For INFORMATIONAL / CREATOR triggers (types 1-10):
+- stop_scroll: How hard does this STOP the scroll? (Think: would you stop mid-swipe?)
+- curiosity: How strong is the open loop? (Is the brain forced to keep watching to resolve it?)
+- memorability: Will this phrase stick in someone's head hours later?
+- shareability: Would someone send this to a friend saying "bro watch this"?
+- novelty: Is this genuinely surprising or counterintuitive?
+- hook_strength: How powerful is this as a SHORT-FORM HOOK specifically? (Hormozi test: does it make you stop?)
+- identity_challenge: Does this make the viewer question their current identity or choices?
 - belief_reversal: How strongly does this challenge a common belief?
-- emotional_charge: How much emotion does this evoke?
+- emotional_charge: How much emotion (urgency, fear, hope, anger) does this evoke?
 
-CRITICAL INSTRUCTION: A viral video MUST have a setup (hook) and a resolution (payoff). You MUST actively look for and include triggers of type "payoff" and "complete_thought". Do not just return hooks. If there are conclusions or takeaways, flag them as "payoff"!
+For CHAOS triggers (types 11-16), score INSTEAD:
+- stop_scroll, chaos_score, quotability, reaction_energy, escalation_wildness, out_of_context_shock, emotional_charge, shareability
 
-CRITICAL INSTRUCTION: You MUST also provide a "reason" (1 short sentence) explaining exactly WHY you selected this trigger and what makes it powerful.
+CRITICAL RULE FOR CREATOR HOOKS: The strongest clips have a hook that creates TENSION (the viewer doesn't have the answer yet) and a payoff that RESOLVES it. Flag both. Don't just find hooks — find the matching payoff too.
+CRITICAL RULE FOR CHAOS: The chaos IS the payoff. No educational value needed.
+CRITICAL INSTRUCTION: Provide a "reason" — 1 sentence explaining exactly why this is a powerful trigger.
 
-Return ONLY valid JSON in this format:
+Return ONLY valid JSON:
 {{
+    "content_mode": "informational" or "entertainment_chaos" or "mixed",
     "triggers": [
         {{
-            "type": "belief_reversal", 
-            "start": 12.5, 
-            "end": 15.0, 
+            "type": "pattern_interrupt",
+            "start": 12.5,
+            "end": 15.0,
             "phrase": "the exact phrase from transcript",
             "confidence": 0.0_to_100.0,
             "psychology": {{
@@ -319,11 +767,17 @@ Return ONLY valid JSON in this format:
                 "memorability": 0.0_to_100.0,
                 "shareability": 0.0_to_100.0,
                 "novelty": 0.0_to_100.0,
-                "clarity": 0.0_to_100.0,
+                "hook_strength": 0.0_to_100.0,
+                "identity_challenge": 0.0_to_100.0,
                 "belief_reversal": 0.0_to_100.0,
-                "emotional_charge": 0.0_to_100.0
+                "emotional_charge": 0.0_to_100.0,
+                "chaos_score": 0.0_to_100.0,
+                "quotability": 0.0_to_100.0,
+                "reaction_energy": 0.0_to_100.0,
+                "escalation_wildness": 0.0_to_100.0,
+                "out_of_context_shock": 0.0_to_100.0
             }},
-            "reason": "Your specific 1-sentence explanation for why this phrase is a powerful trigger"
+            "reason": "1-sentence explanation of why this is a powerful trigger — be specific, not generic"
         }}
     ]
 }}
@@ -379,13 +833,15 @@ Transcript:
                         f" | conf={conf:.2f}"
                         f" | time={t.get('start'):.1f}-{t.get('end'):.1f}s"
                         f" | stop_scroll={psy.get('stop_scroll', 0.0):.2f}"
+                        f" hook_strength={psy.get('hook_strength', 0.0):.2f}"
+                        f" identity_challenge={psy.get('identity_challenge', 0.0):.2f}"
                         f" curiosity={psy.get('curiosity', 0.0):.2f}"
                         f" memorability={psy.get('memorability', 0.0):.2f}"
                         f" shareability={psy.get('shareability', 0.0):.2f}"
-                        f" novelty={psy.get('novelty', 0.0):.2f}"
-                        f" clarity={psy.get('clarity', 0.0):.2f}"
                         f" belief_reversal={psy.get('belief_reversal', 0.0):.2f}"
                         f" emotional_charge={psy.get('emotional_charge', 0.0):.2f}"
+                        f" chaos_score={psy.get('chaos_score', 0.0):.2f}"
+                        f" quotability={psy.get('quotability', 0.0):.2f}"
                         f" | reason='{t.get('reason', '')}'"
                         f" | phrase='{t.get('phrase', '')[:80]}'"
                     )

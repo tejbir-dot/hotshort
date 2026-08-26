@@ -61,6 +61,7 @@ class Job(db.Model):
     video_path = db.Column(db.String(300), nullable=True)
     transcript = db.Column(db.Text, nullable=True)
     analysis_data = db.Column(db.Text, nullable=True)  # JSON string of analysis results
+    creator_intent = db.Column(db.Text, nullable=True) # Custom prompt for clip extraction
     status = db.Column(db.String(50), default="pending")  # pending, processing, completed, failed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
