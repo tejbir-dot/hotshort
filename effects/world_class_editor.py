@@ -1960,15 +1960,14 @@ class ClipEditor:
                         smoothed_solo_x = locked_solo_x
                 elif sx is not None:
                     # No cluster layer: Use Physics Engine instead of EMA for raw face center
-                    smoothed_solo_x, vel_solo = apply_deadzone_physics(smoothed_solo_x, vel_solo, sx, frame_width)
+                    smoothed_solo_x, vel_solo = apply_deadzone_physics(smoothed_solo_x, vel_solo, sx, frame_width, "SOLO", frame_idx)
                 else:
-                    _, vel_solo = apply_deadzone_physics(smoothed_solo_x, vel_solo, None, frame_width)
-
+                    _, vel_solo = apply_deadzone_physics(smoothed_solo_x, vel_solo, None, frame_width, "SOLO", frame_idx)
 
                 if solo_slot is not None:
                     last_solo_slot = solo_slot
 
-                if frame_idx % 25 == 0:
+                if frame_idx % 150 == 0:
                     log.info(
                         f"[DIRECTOR_MODE] t={t:.2f}s mode={mode} active_slot={active_slot} "
                         f"L_x={int(smoothed_left_x)} R_x={int(smoothed_right_x)} solo_x={int(smoothed_solo_x)}"
