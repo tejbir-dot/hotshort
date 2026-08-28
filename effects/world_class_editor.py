@@ -935,18 +935,30 @@ class ClipEditor:
                 face_xs = []
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 faces = detect_faces_multi_haar(gray, cv2, scale_factor=1.15, min_neighbors=3, min_size=(40, 40))
+                # Minimum face height for podcast classification: 8% of frame height.
+                # Gaming/scene objects and tiny background faces are typically <7%.
+                _min_face_h_classify = max(40, int(h * 0.08))
                 for x, y, fw, fh in faces:
-                    if 40 < fw < 500 and 0.05 < (y + fh / 2.0) / h < 0.95:
-                        # Guard: reject bright light sources (lamps, ring-lights, globes).
-                        # These pass all shape filters but have very high ROI brightness.
-                        # Real skin: gray mean 55-145. Lamps: >185.
-                        try:
-                            _roi_mean = float(gray[int(y):int(y + fh), int(x):int(x + fw)].mean())
-                        except Exception:
-                            _roi_mean = 0.0
-                        if _roi_mean > 185.0:
-                            continue  # bright object — not a face
-                        face_xs.append(_clamp((x + fw / 2.0) / float(w), 0.0, 1.0))
+                    # Guard: too small or off vertical edges
+                    if fh < _min_face_h_classify:
+                        continue
+                    if not (0.05 < (y + fh / 2.0) / h < 0.95):
+                        continue
+                    # Guard: reject center-zone detections (0.42-0.58 cx ratio).
+                    # In 2-person podcasts, speakers are on left/right sides (not center).
+                    # Center-zone faces are almost always FPs (game objects, tables, etc.).
+                    _cx_ratio = (x + fw / 2.0) / float(w)
+                    if 0.42 <= _cx_ratio <= 0.58:
+                        continue  # center FP — skip for podcast classification
+                    # Guard: reject bright light sources (lamps, ring-lights, globes).
+                    # Real skin: gray mean 55-145. Lamps: >185.
+                    try:
+                        _roi_mean = float(gray[int(y):int(y + fh), int(x):int(x + fw)].mean())
+                    except Exception:
+                        _roi_mean = 0.0
+                    if _roi_mean > 185.0:
+                        continue  # bright object — not a face
+                    face_xs.append(_clamp(_cx_ratio, 0.0, 1.0))
 
                 if face_xs:
                     samples.append((target_frame / fps, face_xs))
@@ -969,11 +981,25 @@ class ClipEditor:
 
         left_xs  = [x for x in all_xs if x < 0.45]
         right_xs = [x for x in all_xs if x > 0.55]
-        is_bimodal = len(left_xs) >= 1 and len(right_xs) >= 1
+        # Per-frame bimodal check: count frames where BOTH a left AND right face
+        # were detected simultaneously. This is more robust than pooling all xs.
+        frames_with_both = sum(
+            1 for _, fxs in samples
+            if any(x < 0.45 for x in fxs) and any(x > 0.55 for x in fxs)
+        )
+        co_occ_rate = frames_with_both / max(1, len(samples))
+        is_bimodal = (
+            (len(left_xs) >= 2 and len(right_xs) >= 2) or  # enough face samples on both sides
+            (co_occ_rate >= 0.15)                           # OR >=15% frames had both speakers
+        )
+        log.info(
+            "[WCE-FORMAT] bimodal_check: left=%d right=%d co_occ_frames=%d/%d (%.2f) is_bimodal=%s",
+            len(left_xs), len(right_xs), frames_with_both, len(samples), co_occ_rate, is_bimodal
+        )
 
-        if is_bimodal or avg_faces >= 1.15:
-            lc = (sum(left_xs) / len(left_xs)) if left_xs else 0.30
-            rc = (sum(right_xs) / len(right_xs)) if right_xs else 0.70
+        if is_bimodal:
+            lc = (sum(left_xs) / len(left_xs)) if left_xs else 0.25
+            rc = (sum(right_xs) / len(right_xs)) if right_xs else 0.75
             spk_positions = [round(lc, 3), round(rc, 3)]
             single_sides = [
                 "L" if faces[0] < 0.5 else "R"
@@ -1382,6 +1408,12 @@ class ClipEditor:
             
             ENABLE_CONTINUOUS_TRACKING = False
 
+            # ── Mode switch gating state ──────────────────────────────────────────
+            # Tracks how many consecutive frames a pending mode switch has been requested.
+            # Only commits after HS_MIN_SWITCH_FRAMES frames to prevent FP jitter.
+            import types as _types
+            _decide_mode_state = _types.SimpleNamespace(pending_mode=None, pending_count=0)
+
 
             # ── Debug visualizer session (no-op when HS_DEBUG_FRAMES not set) ────
             _clip_id = os.path.splitext(os.path.basename(clip_path or "clip"))[0]
@@ -1613,16 +1645,29 @@ class ClipEditor:
                     log.info(f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)} smoothed_h={smoothed_face_h:.0f}" if smoothed_face_h else f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)}")
 
                 # 3. Assign to named LEFT / RIGHT slots by screen position.
+                # Guard: in podcast format, reject faces in the dead-center zone (42-58% cx).
+                # These are almost always FPs (tables, guests walking behind, UI elements).
                 left_slot: Optional[dict] = None
                 right_slot: Optional[dict] = None
+                _is_podcast_fmt = (video_fmt is not None and video_fmt.format_type == "podcast")
                 for f in valid_faces:
                     cx = f['x'] + f['w'] / 2.0
+                    cx_ratio = cx / frame_width
+                    # In podcast mode, center-zone detections are FPs — skip them
+                    if _is_podcast_fmt and 0.42 <= cx_ratio <= 0.58:
+                        if need_debug:
+                            log.info(
+                                f"[FACE_FILTER] REJECT podcast_center_zone cx_ratio={cx_ratio:.2f} "
+                                f"face=({f['x']:.0f},{f['y']:.0f},{f['w']:.0f},{f['h']:.0f})"
+                            )
+                        continue
                     if cx < frame_width / 2.0:
                         if left_slot is None or f['h'] > left_slot['h']:
                             left_slot = f
                     else:
                         if right_slot is None or f['h'] > right_slot['h']:
                             right_slot = f
+
 
                 # 4. Initialize tracker on fresh live detection
                 if frame_idx % 25 == 0:
@@ -1746,12 +1791,37 @@ class ClipEditor:
                     )
 
                 # 4. Decide mode using strict video-editor logic
-                mode = decide_mode_v2(left_slot, right_slot, left_talking, right_talking, face_gap_ratio)
-                if mode == "HOLD":
+                raw_mode = decide_mode_v2(left_slot, right_slot, left_talking, right_talking, face_gap_ratio)
+                if raw_mode == "HOLD":
                     mode = last_mode
                 else:
-                    last_mode = mode
-                
+                    # ── Mode Switch Gating ──────────────────────────────────────
+                    # Require the new SOLO mode to be sustained for MIN_SWITCH_FRAMES
+                    # before committing. This prevents one-frame FP detections from
+                    # flipping the camera to the wrong speaker.
+                    _MIN_SWITCH_FRAMES = int(os.environ.get("HS_MIN_SWITCH_FRAMES", "12"))
+                    if raw_mode != last_mode and raw_mode in ("SOLO_LEFT", "SOLO_RIGHT"):
+                        _pending_mode = getattr(_decide_mode_state, "pending_mode", None)
+                        _pending_count = getattr(_decide_mode_state, "pending_count", 0)
+                        if _pending_mode == raw_mode:
+                            _pending_count += 1
+                        else:
+                            _pending_mode = raw_mode
+                            _pending_count = 1
+                        _decide_mode_state.pending_mode = _pending_mode
+                        _decide_mode_state.pending_count = _pending_count
+                        if _pending_count >= _MIN_SWITCH_FRAMES:
+                            mode = raw_mode
+                            last_mode = mode
+                            _decide_mode_state.pending_count = 0
+                        else:
+                            mode = last_mode  # hold until sustained
+                    else:
+                        mode = raw_mode
+                        last_mode = mode
+                        _decide_mode_state.pending_mode = None
+                        _decide_mode_state.pending_count = 0
+
                 if frame_idx % 25 == 0:
                     log.info(
                         f"[DIR] t={t:.2f}s  mode={mode:<12s}  "
@@ -1759,6 +1829,7 @@ class ClipEditor:
                         f"L={left_talking} R={right_talking}  "
                         f"ema_l={ema_mouth_left:.1f} ema_r={ema_mouth_right:.1f}"
                     )
+
 
                 # 5. Active slot (for SPLIT highlight)
                 if mode == "SOLO_LEFT":
