@@ -1378,15 +1378,61 @@ class ClipEditor:
             _seed_x = float(statistics.median(_spk)) if _spk else 0.5
 
             # Seed last_mode from format_analyzer dominant speaker side.
-            # If median speaker position > 0.55 (right half), start SOLO_RIGHT; else SOLO_LEFT.
-            # Prevents t=0 frames from wrongly cropping to the wrong side before any face is detected.
-            last_mode = "SOLO_RIGHT" if _seed_x > 0.55 else "SOLO_LEFT"
+            # If median speaker position is far left (<0.38) → SOLO_LEFT,
+            # far right (>0.62) → SOLO_RIGHT, otherwise ACTIVE_CENTER.
+            # ACTIVE_CENTER is safer: it keeps the full frame visible until
+            # the first real Haar detection fires (frame 0 or frame 5).
+            if _seed_x < 0.38:
+                last_mode = "SOLO_LEFT"
+            elif _seed_x > 0.62:
+                last_mode = "SOLO_RIGHT"
+            else:
+                last_mode = "ACTIVE_CENTER"  # safe fallback — no face bias at start
             log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
+
 
             ema_mouth_left = 0.0
             ema_mouth_right = 0.0
             smoothed_left_x = frame_width * 0.25
             smoothed_right_x = frame_width * 0.75
+            
+            # Physics Engine state variables
+            vel_left = 0.0
+            vel_right = 0.0
+            vel_solo = 0.0
+            
+            def apply_deadzone_physics(cam_x, vel, target_x, f_width, log_prefix="SOLO", f_idx=0):
+                if target_x is None or target_x == 0:
+                    return cam_x, vel * 0.85
+                
+                deadzone = f_width * 0.10  # 20% total safe zone (10% each side)
+                dist = target_x - cam_x
+                
+                state_str = "TRIPOD_LOCK"
+                if abs(dist) < deadzone:
+                    vel *= 0.5  # Tripod mode: heavy friction inside safe zone
+                else:
+                    state_str = "SPRING_PAN"
+                    overshoot = abs(dist) - deadzone
+                    # Guardrail 2: Hard cap on overshoot to prevent False-Positive spikes from exploding force
+                    overshoot = min(overshoot, f_width * 0.3) 
+                    
+                    # Non-linear spring tension
+                    force = (overshoot ** 1.2) * 0.005 
+                    vel += force * (1 if dist > 0 else -1)
+                
+                vel *= 0.82  # Global friction to prevent endless bouncing
+                cam_x += vel
+                
+                # Guardrail 1: Boundary Clamping to prevent camera from leaving the 16:9 canvas
+                cam_x = max(f_width * 0.1, min(f_width * 0.9, cam_x))
+                
+                # Concrete tracking log so user can see it working!
+                if f_idx % 50 == 0:
+                    log.info(f"[CAPCUT_TRACKER] {log_prefix} State={state_str} Dist={int(dist)}px Vel={vel:.2f} CamX={int(cam_x)}")
+                    
+                return cam_x, vel
+
             # Seed solo_x from format_analyzer speaker_positions (not hardcoded center).
             # When director loop finds 0 faces (B-roll, small face, etc.), the crop
             # still starts at the correct position rather than defaulting to logo-zone.
@@ -1503,12 +1549,27 @@ class ClipEditor:
                     nearest = _nearest_cache_t(t)
                     raw_faces = face_cache.get(nearest, [])
                     last_raw_faces = raw_faces
-                elif frame_idx % 15 == 0:
+                elif frame_idx % 5 == 0:
+                    # ── Haar detection: every 5 processed frames (was 15 — too stale).
+                    # Frame 0 always runs AND enforces a strict 15% minimum height to
+                    # prevent b-roll thumbnails / dog paintings from poisoning the
+                    # initial last_raw_faces that gets reused for the next 4 frames.
                     raw_faces = []
                     if _podcast_cascade is not None and not ENABLE_CONTINUOUS_TRACKING:
                         _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
                         _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px, _min_face_px))
+                        _strict_first_frame = (frame_idx == 0)
                         for _x, _y, _fw, _fh in _faces_hc:
+                            # On frame 0: reject anything smaller than 15% frame height.
+                            # This prevents initial b-roll/painting FPs from locking
+                            # last_raw_faces before any real face is seen.
+                            if _strict_first_frame and _fh < frame_height * 0.15:
+                                if need_debug:
+                                    log.info(
+                                        f"[FACE_FILTER] REJECT frame0_too_small h={_fh:.0f}px "
+                                        f"min={frame_height*0.15:.0f}px — likely b-roll thumbnail"
+                                    )
+                                continue
                             raw_faces.append({'x': float(_x), 'y': float(_y), 'w': float(_fw), 'h': float(_fh)})
                     last_raw_faces = raw_faces
                 else:
@@ -1787,7 +1848,7 @@ class ClipEditor:
                 left_talking  = ema_mouth_left  > TALKING_THRESHOLD
                 right_talking = ema_mouth_right > TALKING_THRESHOLD
 
-                if frame_idx % 25 == 0:
+                if frame_idx % 150 == 0:
                     log.info(
                         f"[TALKING] t={t:.2f}s L_ema={ema_mouth_left:.1f} R_ema={ema_mouth_right:.1f} "
                         f"L_talk={left_talking} R_talk={right_talking} thresh={TALKING_THRESHOLD}"
@@ -1851,14 +1912,18 @@ class ClipEditor:
                     sx = None
                 solo_slot = active_slot if mode in ("SOLO_LEFT", "SOLO_RIGHT") else None
 
-                # 6. Smooth position updates (per slot, independent)
+                # 6. Smooth position updates (per slot, independent) via Physics Engine
                 if left_slot is not None:
                     lx = left_slot['x'] + left_slot['w'] / 2.0
-                    smoothed_left_x = smoothed_left_x * (1 - SMOOTH_ALPHA) + lx * SMOOTH_ALPHA
+                    smoothed_left_x, vel_left = apply_deadzone_physics(smoothed_left_x, vel_left, lx, frame_width, "LEFT", frame_idx)
+                else:
+                    _, vel_left = apply_deadzone_physics(smoothed_left_x, vel_left, None, frame_width, "LEFT", frame_idx)
 
                 if right_slot is not None:
                     rx = right_slot['x'] + right_slot['w'] / 2.0
-                    smoothed_right_x = smoothed_right_x * (1 - SMOOTH_ALPHA) + rx * SMOOTH_ALPHA
+                    smoothed_right_x, vel_right = apply_deadzone_physics(smoothed_right_x, vel_right, rx, frame_width, "RIGHT", frame_idx)
+                else:
+                    _, vel_right = apply_deadzone_physics(smoothed_right_x, vel_right, None, frame_width, "RIGHT", frame_idx)
 
                 # 7. solo_x: cluster-locked anchor with EMA transition
                 if sx is not None and cluster_id is not None:
@@ -1894,9 +1959,10 @@ class ClipEditor:
                     else:
                         smoothed_solo_x = locked_solo_x
                 elif sx is not None:
-                    # No cluster layer: EMA-smooth the raw face center
-                    smoothed_solo_x = smoothed_solo_x * (1 - SMOOTH_ALPHA) + sx * SMOOTH_ALPHA
-
+                    # No cluster layer: Use Physics Engine instead of EMA for raw face center
+                    smoothed_solo_x, vel_solo = apply_deadzone_physics(smoothed_solo_x, vel_solo, sx, frame_width)
+                else:
+                    _, vel_solo = apply_deadzone_physics(smoothed_solo_x, vel_solo, None, frame_width)
 
 
                 if solo_slot is not None:
