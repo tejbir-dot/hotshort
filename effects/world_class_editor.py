@@ -1604,19 +1604,21 @@ class ClipEditor:
                 
                 new_stability_map = {}
                 valid_faces = []
+                _is_podcast_fmt = (video_fmt is not None and video_fmt.format_type == "podcast")
                 for _f in valid_faces_pre:
                     _key = (round(_f['x']), round(_f['y']), round(_f['w']), round(_f['h']))
                     _static = box_stability_map.get(_key, 0) + 1
                     new_stability_map[_key] = _static
                     
-                    # Temporarily disabled per user request
-                    # if _static > 50:
-                    #     if need_debug:
-                    #         log.info(
-                    #             f"[FACE_FILTER] REJECT static_box frames={_static} "
-                    #             f"face=({_key[0]:.0f},{_key[1]:.0f},{_key[2]:.0f},{_key[3]:.0f})"
-                    #         )
-                    #     continue
+                    # Reject if perfectly static for 50 frames (UI element/logo),
+                    # UNLESS it's a podcast where speakers sit very still.
+                    if _static > 50 and not _is_podcast_fmt:
+                        if need_debug:
+                            log.info(
+                                f"[FACE_FILTER] REJECT static_box frames={_static} "
+                                f"face=({_key[0]:.0f},{_key[1]:.0f},{_key[2]:.0f},{_key[3]:.0f})"
+                            )
+                        continue
                     valid_faces.append(_f)
                 box_stability_map = new_stability_map
 
