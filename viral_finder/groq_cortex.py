@@ -65,7 +65,92 @@ class GroqKeyPool:
             cls.refresh_keys()
             return list(cls._keys)
 
+
+def _build_campaign_signal_library(creator_intent: str) -> str:
+    """
+    Domain-aware viral signal injector.
+    
+    Detects known campaign brands/topics in creator_intent and returns a
+    structured VIRAL SIGNAL LIBRARY block that primes the LLM with expert
+    knowledge about what makes content in that domain stop-the-scroll.
+    
+    Without this, the LLM just text-matches the creator's words.
+    With this, it becomes a genuine expert in that niche's viral patterns.
+    """
+    if not creator_intent:
+        return ""
+    
+    intent_lower = creator_intent.lower()
+    
+    # ── Lovable / No-Code / Vibe Coding Campaign ──────────────────────────────
+    _LOVABLE_KEYWORDS = ["lovable", "no-code", "no code", "nocode", "vibe coding", 
+                         "vibe code", "without coding", "without code", "build without coding"]
+    if any(kw in intent_lower for kw in _LOVABLE_KEYWORDS):
+        return """
+\ud83d\udcda CAMPAIGN SIGNAL LIBRARY: Lovable / No-Code / Vibe Coding
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+You are now an expert in Lovable and the no-code movement. You know exactly what makes
+this audience (non-technical founders, indie hackers, entrepreneurs who can't code) stop scrolling.
+
+\ud83c\udfaf HIGH-RETENTION MOMENT FINGERPRINTS (Prioritize these exact patterns):
+
+FINGERPRINT 1 \u2014 THE IDEA-TO-PRODUCT SPEED MOMENT
+  What it sounds like: "I built this in [X hours/days]...", "I had no technical background and...", 
+  "I went from idea to live product in...", "I shipped my first version without writing a single line"
+  Why it stops the scroll: Creates IDENTITY CHALLENGE for viewers who say "I can't build startups because I can't code"
+  Viral trigger: BELIEF REVERSAL + TIME COMPRESSION (impossible result, shocking speed)
+
+FINGERPRINT 2 \u2014 THE REVENUE REVELATION
+  What it sounds like: "We hit $[X] MRR...", "Our first paying customers came from...", 
+  "I charged before I even had a product...", "From zero to [milestone] in [timeframe]"
+  Why it stops the scroll: SOCIAL PROOF CONTRAST \u2014 viewer compares their inaction to someone's action
+  Viral trigger: IDENTITY PRESSURE + BEFORE/AFTER contrast
+
+FINGERPRINT 3 \u2014 THE GATEKEEPING DESTRUCTION MOMENT  
+  What it sounds like: "You don't need a CTO to...", "Engineers told me this was impossible but...",
+  "The old way required [expensive/complex thing], now you just...", "I fired my development agency"
+  Why it stops the scroll: Reveals that the viewer has been gatekept by false beliefs
+  Viral trigger: CONTRARIAN TAKE + AUTHORITY CHALLENGE
+
+FINGERPRINT 4 \u2014 THE LOVABLE SPECIFIC DEMO MOMENT
+  What it sounds like: describing the exact prompt they typed, a specific feature built in minutes,
+  "I just described what I wanted in plain English...", "It built the whole thing from a voice note"
+  Why it stops the scroll: TANGIBLE PROOF that the barrier-to-entry is gone
+  Viral trigger: PRACTICAL INSIGHT + DEMO SHOCK
+
+FINGERPRINT 5 \u2014 THE EMOTIONAL FOUNDER TRUTH
+  What it sounds like: "I always had this idea but was scared to...", "I felt like an outsider at every tech event...",
+  "My co-founder was going to quit because...", "The moment I realized I could actually do this"
+  Why it stops the scroll: Creates "I FELT THAT" connection with every non-technical person who has a business idea
+  Viral trigger: EMOTIONAL TRUTH + IDENTITY VALIDATION
+
+\ud83d\udeab WHAT TO REJECT FOR THIS CAMPAIGN:
+  - Generic startup advice with no Lovable/no-code angle
+  - Technical jargon that a non-technical founder would tune out
+  - Slow-paced context-setting with no identity hook in first 5 seconds
+
+\ud83c\udfc6 SCORING BOOST: Add +15 viral score to any moment matching Fingerprints 1-5 above.
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+"""
+
+    # ── Alex Hormozi / Acquisition.com Campaign ───────────────────────────────
+    _HORMOZI_KEYWORDS = ["hormozi", "acquisition.com", "gym launch", "offer", "acquisition"]
+    if any(kw in intent_lower for kw in _HORMOZI_KEYWORDS):
+        return """
+\ud83d\udcda CAMPAIGN SIGNAL LIBRARY: Alex Hormozi / Offer Engineering
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+Prioritize moments with: PATTERN INTERRUPT openings, identity challenges ("if you're doing X, you're leaving money on table"),
+specific numbers + timelines ("$0 to $100M"), contrarian takes on common business beliefs, and tactical "do this exact thing" instructions.
+High-retention = starts with identity threat, delivers specific tactical payoff.
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+"""
+
+    # ── Default: no domain signals, return empty ──────────────────────────────
+    return ""
+
+
 def is_groq_enabled() -> bool:
+
     # Auto-disable during pytest runs to prevent test interference
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return False
@@ -402,6 +487,11 @@ def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Di
     # Build the Director's Lens + Decision Matrix block (appended AFTER Main Brain)
     intent_lens_block = ""
     if creator_intent:
+        # ── Campaign Intelligence Layer ───────────────────────────────────────
+        # If creator_intent mentions known campaign brands/topics, inject a
+        # domain-specific VIRAL SIGNAL LIBRARY that makes the LLM an expert
+        # in that topic's viral patterns — not just a text repeater.
+        _campaign_signals = _build_campaign_signal_library(creator_intent)
         intent_lens_block = f"""
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -409,7 +499,7 @@ def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Di
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 The creator has applied a specific lens to this video: "{creator_intent}"
 Your primary goal is to find the intersection of VIRAL MECHANICS and this CREATOR'S LENS.
-
+{_campaign_signals}
 📊 DECISION MATRIX — Follow this priority order strictly:
   PRIORITY 1 — THE JACKPOT: A moment that matches the Creator's Lens AND has strong viral potential (hook + emotion + payoff). Score these HIGHEST.
   PRIORITY 2 — THE BACKUP: A moment with incredible viral potential that loosely or partially matches the Creator's Lens.
@@ -1144,6 +1234,8 @@ def find_moments_from_transcript(transcript_segments: list, video_duration: floa
         # Build Director's Lens + Decision Matrix (always appended AFTER Main Brain, never before)
         intent_lens_block = ""
         if creator_intent:
+            # ── Campaign Intelligence Layer ─────────────────────────────────────
+            _campaign_signals = _build_campaign_signal_library(creator_intent)
             intent_lens_block = f"""
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1151,7 +1243,7 @@ def find_moments_from_transcript(transcript_segments: list, video_duration: floa
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 The creator has applied a specific lens to this video: "{creator_intent}"
 Your primary goal is to find the intersection of CHAOS/VIRAL ENERGY and this CREATOR'S LENS.
-
+{_campaign_signals}
 📊 DECISION MATRIX — Follow this priority order strictly:
   PRIORITY 1 — THE JACKPOT: A chaotic/viral moment that also matches the Creator's Lens. Score these HIGHEST.
   PRIORITY 2 — THE BACKUP: A moment with incredible chaos/viral energy that loosely or partially matches the Lens.
