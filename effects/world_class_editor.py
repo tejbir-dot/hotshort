@@ -1709,22 +1709,15 @@ class ClipEditor:
                     log.info(f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)} smoothed_h={smoothed_face_h:.0f}" if smoothed_face_h else f"[FACE_DEBUG] t={t:.2f}s valid={len(valid_faces)} / raw={len(raw_faces)}")
 
                 # 3. Assign to named LEFT / RIGHT slots by screen position.
-                # Guard: in podcast format, reject faces in the dead-center zone (42-58% cx).
-                # These are almost always FPs (tables, guests walking behind, UI elements).
+                # Guard: in podcast format, reject faces in the dead-center zone (42-58% cx)
+                # ONLY when we already have both a left AND right face detected.
+                # A single centered speaker (monologue on podcast-classified clip) must NOT be rejected.
                 left_slot: Optional[dict] = None
                 right_slot: Optional[dict] = None
                 _is_podcast_fmt = (video_fmt is not None and video_fmt.format_type == "podcast")
                 for f in valid_faces:
                     cx = f['x'] + f['w'] / 2.0
                     cx_ratio = cx / frame_width
-                    # In podcast mode, center-zone detections are FPs — skip them
-                    if _is_podcast_fmt and 0.42 <= cx_ratio <= 0.58:
-                        if need_debug:
-                            log.info(
-                                f"[FACE_FILTER] REJECT podcast_center_zone cx_ratio={cx_ratio:.2f} "
-                                f"face=({f['x']:.0f},{f['y']:.0f},{f['w']:.0f},{f['h']:.0f})"
-                            )
-                        continue
                     if cx < frame_width / 2.0:
                         if left_slot is None or f['h'] > left_slot['h']:
                             left_slot = f
@@ -1732,17 +1725,14 @@ class ClipEditor:
                         if right_slot is None or f['h'] > right_slot['h']:
                             right_slot = f
 
+                # Post-assignment: if podcast AND we have BOTH slots AND there's a 3rd spurious center face
+                # → already handled by best-of-side selection above (left_slot/right_slot are the biggest)
 
-                # 4. Initialize tracker on fresh live detection
-                if frame_idx % 25 == 0:
-                    print(f"\n[DIAGNOSTICS] t={t:.2f}s")
-                    print(f"  RAW FACES ({len(raw_faces)}):")
-                    for _i, _f in enumerate(raw_faces):
-                        _valid = is_valid_face(_f, _log_reason=True, frame=frame)
-                        print(f"    {_i}: x={_f['x']:.0f} y={_f['y']:.0f} w={_f['w']:.0f} h={_f['h']:.0f} | valid={_valid}")
-                    print(f"  SLOT ASSIGNMENT:")
-                    print(f"    LEFT  = {left_slot is not None} (x={left_slot['x'] if left_slot else 'None'})")
-                    print(f"    RIGHT = {right_slot is not None} (x={right_slot['x'] if right_slot else 'None'})")
+                if frame_idx % 150 == 0:
+                    log.info(
+                        f"[SLOT_DEBUG] t={t:.2f}s left={'YES' if left_slot else 'NONE'} "
+                        f"right={'YES' if right_slot else 'NONE'} valid_total={len(valid_faces)} podcast_fmt={_is_podcast_fmt}"
+                    )
                 
                 if ENABLE_CONTINUOUS_TRACKING:
                     cluster_changed = (cluster_id is not None and cluster_id != locked_cluster_id)
