@@ -16,6 +16,12 @@ try:
 except ImportError:
     bolt = None
 from effects.format_analyzer import detect_faces_multi_haar
+try:
+    from effects.yolo_detector import detect_faces_yolo, is_yolo_available
+    _YOLO_ENABLED = True
+except ImportError:
+    _YOLO_ENABLED = False
+    detect_faces_yolo = None
 from effects.face_tracker import FaceTracker, SmoothedPosition
 from effects import debug_visualizer
 from effects.b_roll_engine import fetch_b_roll_for_keywords
@@ -1557,17 +1563,26 @@ class ClipEditor:
                     raw_faces = []
                     if _podcast_cascade is not None and not ENABLE_CONTINUOUS_TRACKING:
                         _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
-                        _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px, _min_face_px))
+
+                        # ── PRIMARY: YOLOv8-face (97% accuracy, handles side faces) ──────
+                        _faces_raw = []
+                        if _YOLO_ENABLED and detect_faces_yolo is not None:
+                            _faces_raw = detect_faces_yolo(frame, conf_threshold=0.45, min_size=(_min_face_px, _min_face_px))
+                            if frame_idx == 0:
+                                log.info(f"[YOLO_DETECT] frame0 yolo_faces={len(_faces_raw)}")
+
+                        # ── FALLBACK: Haar if YOLO returned nothing or unavailable ────────
+                        if not _faces_raw:
+                            _faces_hc = detect_faces_multi_haar(_cv2.cvtColor(frame, _cv2.COLOR_BGR2GRAY) if frame is not None else gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px, _min_face_px))
+                            _faces_raw = list(_faces_hc)
+
                         _strict_first_frame = (frame_idx == 0)
-                        for _x, _y, _fw, _fh in _faces_hc:
-                            # On frame 0: reject anything smaller than 15% frame height.
-                            # This prevents initial b-roll/painting FPs from locking
-                            # last_raw_faces before any real face is seen.
+                        for _x, _y, _fw, _fh in _faces_raw:
                             if _strict_first_frame and _fh < frame_height * 0.15:
                                 if need_debug:
                                     log.info(
                                         f"[FACE_FILTER] REJECT frame0_too_small h={_fh:.0f}px "
-                                        f"min={frame_height*0.15:.0f}px — likely b-roll thumbnail"
+                                        f"min={frame_height*0.15:.0f}px -- likely b-roll thumbnail"
                                     )
                                 continue
                             raw_faces.append({'x': float(_x), 'y': float(_y), 'w': float(_fw), 'h': float(_fh)})
@@ -1597,10 +1612,19 @@ class ClipEditor:
                     if left_tracker.is_lost() or right_tracker.is_lost():
                         if frame_idx % 15 == 0 or cluster_changed:
                             _min_face_px_strict = max(60, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
-                            _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px_strict, _min_face_px_strict))
+
+                            # ── PRIMARY: YOLOv8 re-detect ────────────────────────────────────
+                            _live_raw = []
+                            if _YOLO_ENABLED and detect_faces_yolo is not None:
+                                _live_raw = detect_faces_yolo(frame, conf_threshold=0.50, min_size=(_min_face_px_strict, _min_face_px_strict))
+
+                            # ── FALLBACK: Haar if YOLO found nothing ─────────────────────────
+                            if not _live_raw:
+                                _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px_strict, _min_face_px_strict))
+                                _live_raw = list(_faces_hc)
+
                             live_faces = []
-                            for _x, _y, _fw, _fh in _faces_hc:
-                                # STRICT FILTER: ignore tiny hands/mics (must be >= 12% frame height)
+                            for _x, _y, _fw, _fh in _live_raw:
                                 if _fh >= frame_height * 0.12:
                                     live_faces.append({
                                         'x': float(_x), 'y': float(_y),
