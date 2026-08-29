@@ -1259,7 +1259,7 @@ These are NOT educational clips. They do NOT need to teach anything. They go vir
 
 
 For each chaos moment, identify:
-- start (precise time in seconds, do not cut mid-sentence if avoidable)
+- start (precise time in seconds — MUST align to the START of a complete sentence. NEVER begin mid-sentence. If chaos starts mid-sentence, pull start back to where that sentence begins.)
 - end (precise time in seconds, include the reaction/punchline)
 - viral_score (0 to 100 based on "WHAT DID I JUST HEAR?" energy ONLY)
 - chaos_score (0 to 100: How bizarre, unhinged, or chaotic is this moment?)
@@ -1286,6 +1286,7 @@ CHAOS MOMENT VALIDITY RULES:
 - **Duration: 15 to 60 seconds.** Chaos moments can be shorter than educational clips.
 - **MINIMUM 12 seconds.** Never return fragments under 12 seconds.
 - Start at the moment the conversation begins derailing, NOT before.
+- **SENTENCE BOUNDARY RULE (CRITICAL): `start` MUST begin at the START of a complete sentence. NEVER start mid-sentence. If the chaos trigger begins mid-sentence, pull `start` backward to the beginning of that sentence. The first word a viewer hears must be the first word of a complete thought.**
 - End MUST include the peak reaction (laughter, screaming, the cursed punchline, the shocked silence).
 - A moment is valid if it makes you say "WHAT DID I JUST HEAR?" — it does NOT need a lesson or payoff in the informational sense.
 - The chaos IS the payoff.
