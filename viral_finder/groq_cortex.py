@@ -544,7 +544,7 @@ Only REJECT when:
 
 Available Actions:
 - KEEP: The candidate is perfect. The idea is complete with development and resolution.
-- MOVE_HOOK: The candidate started too early with filler, or missed the true hook just before it. Move the hook.
+- MOVE_HOOK: The candidate started too early with filler, or missed the true hook just before it. Move the hook. The new `hook_segment_index` MUST point to the segment that begins at a sentence boundary — never mid-sentence.
 - EXTEND_RIGHT: The idea resolves, but the resolution is located later in ZONE B.
 
 CRITICAL EMERGENCY OVERRIDE:
@@ -1371,7 +1371,7 @@ You don't think like an academic. You think like a CREATOR. You know the exact m
 Your job: read transcript segments and find the most powerful standalone short-form moments.
 
 For each moment, identify:
-- start (precise start time in seconds — begin at the HOOK, not before)
+- start (precise start time in seconds — begin at the HOOK, not before. MUST align to the START of a complete sentence. If the hook moment begins mid-sentence, pull start back to where that sentence begins.)
 - end (precise end time in seconds — end at the PAYOFF, never cut it early)
 - viral_score (0 to 100 — the SCROLL STOP TEST: would you stop mid-swipe for this?)
 - hook_strength (0 to 100 — how powerful is the opening line as a SHORT-FORM HOOK specifically?)
@@ -1422,6 +1422,7 @@ MOMENT VALIDITY RULES:
 - The PAYOFF must be included — never cut before the "a-ha" moment.
 - Reject a clip if it has a great hook but no payoff. Reject if it has payoff but no hook.
 - One complete IDEA per clip — not a summary, not a list. ONE thing.
+- **SENTENCE BOUNDARY RULE (CRITICAL): The `start` time MUST begin at the START of a complete sentence. NEVER begin a clip mid-sentence. If the most viral moment starts in the middle of a sentence (e.g., "...and that's why you need to"), you MUST move `start` backward to the beginning of that sentence (e.g., "The reason most people fail is..."). A viewer's first word must be the first word of a complete thought. Violating this rule makes the clip feel broken and instantly drops watch-time.**
 
 SCORING SCALE (THE HORMOZI TEST):
 - 88-100: Viral gold. Would stop me mid-scroll. Would make me send it to 3 friends. (Less than 5% of content)
