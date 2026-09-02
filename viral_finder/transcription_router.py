@@ -94,11 +94,11 @@ def choose_transcription_engine(
     Intelligent routing based on computational complexity.
     
     Decision tree (priority order):
-    1. Duration > 600s → GPU (long videos need speed)
-    2. Segment count > 120 → GPU (complex content)
-    3. Speech density > 75% → GPU (more tokens = more compute)
-    4. Silence ratio < 2% → CPU tiny (mostly speech, simple model)
-    5. Else → CPU base parallel (balanced)
+    1. Duration > 600s -> GPU (long videos need speed)
+    2. Segment count > 120 -> GPU (complex content)
+    3. Speech density > 75% -> GPU (more tokens = more compute)
+    4. Silence ratio < 2% -> CPU tiny (mostly speech, simple model)
+    5. Else -> CPU base parallel (balanced)
     
     Args:
         duration: Video duration in seconds
@@ -123,46 +123,46 @@ def choose_transcription_engine(
         log.info("[ROUTER] -> GPU (forced RunPod transcription)")
         return ENGINE_RUNPOD_GPU
     
-    # Rule 1: Long videos → GPU (need speed)
+    # Rule 1: Long videos -> GPU (need speed)
     if duration > DURATION_LONG_MIN:
         log.info(
-            "[ROUTER] → GPU (duration=%.1fs > %.1fs)",
+            "[ROUTER] -> GPU (duration=%.1fs > %.1fs)",
             duration,
             DURATION_LONG_MIN,
         )
         return ENGINE_RUNPOD_GPU
     
-    # Rule 2: Many segments → GPU (complex content)
+    # Rule 2: Many segments -> GPU (complex content)
     if segment_count is not None and segment_count > SEGMENT_COUNT_RUNPOD_THRESHOLD:
         log.info(
-            "[ROUTER] → GPU (segment_count=%d > %d)",
+            "[ROUTER] -> GPU (segment_count=%d > %d)",
             segment_count,
             SEGMENT_COUNT_RUNPOD_THRESHOLD,
         )
         return ENGINE_RUNPOD_GPU
     
-    # Rule 3: HIGH SPEECH DENSITY → GPU (more tokens = more compute)
+    # Rule 3: HIGH SPEECH DENSITY -> GPU (more tokens = more compute)
     # This is the KEY: speech_density > 0.75 means expensive processing
     if speech_density is not None and speech_density > SPEECH_DENSITY_HIGH_THRESHOLD:
         log.info(
-            "[ROUTER] → GPU (speech_density=%.2f > %.2f means high compute complexity)",
+            "[ROUTER] -> GPU (speech_density=%.2f > %.2f means high compute complexity)",
             speech_density,
             SPEECH_DENSITY_HIGH_THRESHOLD,
         )
         return ENGINE_RUNPOD_GPU
     
-    # Rule 4: Very low silence ratio → CPU tiny (mostly speech, simple model OK)
+    # Rule 4: Very low silence ratio -> CPU tiny (mostly speech, simple model OK)
     if silence_ratio is not None and silence_ratio < SILENCE_RATIO_CPU_THRESHOLD:
         log.info(
-            "[ROUTER] → CPU tiny (silence_ratio=%.2f < %.2f, mostly speech)",
+            "[ROUTER] -> CPU tiny (silence_ratio=%.2f < %.2f, mostly speech)",
             silence_ratio,
             SILENCE_RATIO_CPU_THRESHOLD,
         )
         return ENGINE_CPU_TINY
     
-    # Rule 5: Default → CPU base parallel (balanced)
+    # Rule 5: Default -> CPU base parallel (balanced)
     log.info(
-        "[ROUTER] → CPU base parallel (balanced default | duration=%.1fs, silence=%.2f, speech=%.2f)",
+        "[ROUTER] -> CPU base parallel (balanced default | duration=%.1fs, silence=%.2f, speech=%.2f)",
         duration,
         silence_ratio if silence_ratio is not None else 0.0,
         speech_density if speech_density is not None else 0.0,

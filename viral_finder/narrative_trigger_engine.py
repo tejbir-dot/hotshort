@@ -941,7 +941,7 @@ def build_narrative_contracts(triggers: List[Dict]) -> List[Any]:
     Pairing algorithm:
       - For each hook, find the highest-scoring payoff trigger within [10s, 180s]
       - A payoff can only resolve ONE hook (greedy: best contract_score wins)
-      - Unresolved hooks: contract stored with resolution_score=0.0 → penalized in UVS
+      - Unresolved hooks: contract stored with resolution_score=0.0 -> penalized in UVS
     """
     import uuid
     import logging
@@ -1041,7 +1041,7 @@ def build_narrative_contracts(triggers: List[Dict]) -> List[Any]:
             trace_id=str(uuid.uuid4()),
         )
         log.info(
-            f"[NCE] CONTRACT: {contract.hook_type}@{contract.hook_start:.1f}s → "
+            f"[NCE] CONTRACT: {contract.hook_type}@{contract.hook_start:.1f}s -> "
             f"{contract.payoff_type}@{float(best_payoff.get('start', 0)):.1f}s | "
             f"debt={contract.debt_score:.3f} resolution={contract.resolution_score:.3f} "
             f"score={contract.contract_score:.3f}"

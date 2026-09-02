@@ -155,7 +155,7 @@ class SystemObserver:
                     lines.append(f"   Scores: {score_str}")
                 lines.append("   History:")
                 for h in c["history"]:
-                    lines.append(f"     → {h}")
+                    lines.append(f"     -> {h}")
 
             lines.append("\n" + "=" * 60)
             return "\n".join(lines)

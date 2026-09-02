@@ -464,9 +464,9 @@ def _compute_dynamic_top_k(duration_s: float, triggers: list) -> int:
     dynamic = min(max(duration_clips, trigger_clips), 18)   # cap at 18 (was 15)
     dynamic = max(dynamic, 3)                                # floor at 3
     print(
-        f"[DYNAMIC_TOP_K] duration={duration_s:.0f}s → duration_clips={duration_clips} "
-        f"high_conf_triggers={high_conf} → trigger_clips={trigger_clips} "
-        f"→ top_k={dynamic}",
+        f"[DYNAMIC_TOP_K] duration={duration_s:.0f}s -> duration_clips={duration_clips} "
+        f"high_conf_triggers={high_conf} -> trigger_clips={trigger_clips} "
+        f"-> top_k={dynamic}",
         flush=True,
     )
     return dynamic
@@ -1915,7 +1915,7 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
 
     new_standalone_candidates = []
     if unresolved_triggers:
-        log.info(f"[TRIGGER_INJECT] 🚀 {len(unresolved_triggers)} unresolved triggers → generating standalone candidates")
+        log.info(f"[TRIGGER_INJECT] 🚀 {len(unresolved_triggers)} unresolved triggers -> generating standalone candidates")
         # One trigger per candidate to preserve strict narrative identity
         unresolved_triggers.sort(key=lambda t: float(t.get("start", 0.0)))
         clusters = [[tr] for tr in unresolved_triggers]
@@ -2097,7 +2097,7 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
             "contract_seed": True,
             "hook_strength": round(getattr(contract, "debt_score", 0.5), 4),
             "select_pass": "contract",
-            "label": f"Contract: {getattr(contract, 'hook_type', '?')}→{getattr(contract, 'payoff_type', '?')}",
+            "label": f"Contract: {getattr(contract, 'hook_type', '?')}->{getattr(contract, 'payoff_type', '?')}",
             "trigger_type": getattr(contract, "hook_type", "strong_claim"),
             "_injected_from_contract": True,
             "_contract_score": getattr(contract, "contract_score", 0.0),
@@ -2129,7 +2129,7 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
             
         contract_candidates.append(cand)
         log.info(f"[NCE_INJECT] Contract candidate {c_start:.2f}-{c_end:.2f} "
-                 f"[{getattr(contract, 'hook_type', '?')}→{getattr(contract, 'payoff_type', '?')}] "
+                 f"[{getattr(contract, 'hook_type', '?')}->{getattr(contract, 'payoff_type', '?')}] "
                  f"contract_score={getattr(contract, 'contract_score', 0):.3f} "
                  f"nce_payoff_pin={round(float(c_payoff_end), 2)}s")
 
@@ -2177,7 +2177,7 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
             )
             print(
                 f"[NCE_PIN] ✓ strict-pass {cand_s:.1f}-{cand_e:.1f}s "
-                f"→ payoff pinned at {best_pin:.1f}s (contract_score={best_score:.3f})",
+                f"-> payoff pinned at {best_pin:.1f}s (contract_score={best_score:.3f})",
                 flush=True,
             )
 
@@ -2419,11 +2419,11 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
     # continuation decision can never prevent creation of a hook candidate.
     _susp_thread_by_trace: Dict[str, Any] = {}
     # STORY THREADS: the first stateful narrative primitive in HotShort.
-    # Each StoryThread holds one open narrative contract (hook → payoff).
+    # Each StoryThread holds one open narrative contract (hook -> payoff).
     # Before emitting a new candidate, we ask every active thread:
     #   "Does this segment continue you?"
-    # If yes → suppress new candidate (same story, let existing arc grow).
-    # If no  → create new thread (genuinely new story).
+    # If yes -> suppress new candidate (same story, let existing arc grow).
+    # If no  -> create new thread (genuinely new story).
     # Threads expire when resolved OR when > horizon_s seconds old.
     _arc_horizon_s = _env_float("HS_HOOK_MEMORY_HORIZON_S", 120.0)
     _story_continuity_threshold = _env_float("HS_HOOK_STORY_CONTINUITY_THR", 0.30)
@@ -2510,7 +2510,7 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
 
             # ── STORY MEMORY CLASSIFICATION (no suppression) ────────────────────
             # Ask every active StoryThread: "does this segment continue you?"
-            # This is CLASSIFICATION ONLY. It records the hook→thread relationship
+            # This is CLASSIFICATION ONLY. It records the hook->thread relationship
             # and grows the arc (add_development_point), but it MUST NOT prevent
             # creation of the hook candidate below. Story-duplicate suppression is
             # deferred to the dedup/ranking stage so that no valid hook hypothesis
@@ -2634,8 +2634,8 @@ def _run_global_hook_hunter(ctx: PipelineContext) -> None:
     # now exists in `hooks`, including story-continuations. Suppression happens
     # HERE, never at discovery, so a continuation decision can never prevent a
     # candidate from being created. Two independent dedup gates:
-    #   1. story_duplicate    → same narrative arc (semantic continuation)
-    #   2. _is_duplicate_seed → same time window as an existing candidate
+    #   1. story_duplicate    -> same narrative arc (semantic continuation)
+    #   2. _is_duplicate_seed -> same time window as an existing candidate
     # The max_global_hooks cap is applied to INJECTED independent hooks (not to the
     # pre-dedup list) so a suppressed duplicate can never consume a slot and thereby
     # silently discard a real, independent hook.
@@ -3405,7 +3405,7 @@ def _run_ranking(ctx: PipelineContext) -> None:
         narrative_score = _clamp01((0.55 * trigger_score) + (0.45 * trigger_density) + _t_bonus)
 
         # ── STREAM F: Narrative Contract Score ───────────────────────────────────
-        # Does this clip span a complete hook→payoff debt cycle?
+        # Does this clip span a complete hook->payoff debt cycle?
         # A fully resolved contract boosts UVS. An unresolved hook gets a mild penalty.
         cand_s = float(cand.get("start", 0.0) or 0.0)
         cand_e = float(cand.get("end", cand_s) or cand_s)
@@ -3566,7 +3566,7 @@ def _run_ranking(ctx: PipelineContext) -> None:
 
     # ── Hook-origin floor boost ──────────────────────────────────────────────
     # Hook Hunter clips are injected AFTER semantic scoring, so they carry
-    # semantic=0 / engagement=0 / curiosity=0 → base_viral_score ≈ 0.
+    # semantic=0 / engagement=0 / curiosity=0 -> base_viral_score ≈ 0.
     # Without a floor they always rank last and get cut before arc assembly.
     # Grant them a minimum viral_score equal to their raw hook_score so they
     # compete fairly with strict candidates.
@@ -4242,7 +4242,7 @@ def _run_story_completion(ctx: PipelineContext) -> None:
                 "segment_idx": pin_idx,
             }
             _write_decision(c, "payoff_target", target, "STORY_COMPLETION")
-            c["completeness_signal"] = "RESOLVED"  # LOOP_GATE reads this → lifts completeness cap from 0.35 → 0.70+
+            c["completeness_signal"] = "RESOLVED"  # LOOP_GATE reads this -> lifts completeness cap from 0.35 -> 0.70+
             _cid = c.get("cid", "?")
             _src = "contract_seed" if c.get("contract_seed") else "strict-pass"
             log.info(
@@ -4260,13 +4260,13 @@ def _run_story_completion(ctx: PipelineContext) -> None:
             continue
 
         # ── PAYOFF_RESOLVER: build candidate window (90s) ─────────────────────
-        # Window expanded from 60s → 90s so payoffs in longer arcs (60-90s clips)
+        # Window expanded from 60s -> 90s so payoffs in longer arcs (60-90s clips)
         # are actually visible to Tier1/Tier2 search.
         candidate_window = []
         for tmp_j in range(hook_idx, len(transcript)):
             tmp_seg_s = float(transcript[tmp_j].get("start", 0.0))
             tmp_seg_e = float(transcript[tmp_j].get("end", tmp_seg_s))
-            if (tmp_seg_e - hook_start) > 90.0:  # expanded: 60s → 90s
+            if (tmp_seg_e - hook_start) > 90.0:  # expanded: 60s -> 90s
                 break
             candidate_window.append({
                 "idx": tmp_j,
@@ -4301,7 +4301,7 @@ def _run_story_completion(ctx: PipelineContext) -> None:
             _rcid = str(c.get("cid", "?"))
             _hook_preview = (transcript[hook_idx].get("text", "") or "")[:50]
             print(
-                f"[STORY_COMPLETION] PayoffResolver → cid={_rcid} hook='{_hook_preview}' window={len(candidate_window)}segs",
+                f"[STORY_COMPLETION] PayoffResolver -> cid={_rcid} hook='{_hook_preview}' window={len(candidate_window)}segs",
                 flush=True,
             )
             try:
@@ -4395,7 +4395,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             
         # ── CLIP GEOMETRY: hook_start + best trigger in window ────────────────
         # ROOT DESIGN:
-        #   NCE payoff timestamp = narrative analysis signal → flows to SCORING only
+        #   NCE payoff timestamp = narrative analysis signal -> flows to SCORING only
         #   Clip geometry = independently chosen from Groq trigger psychology scores
         #
         # Given hook_start T, we look for the highest-scored payoff/complete_thought
@@ -4416,7 +4416,7 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
         )
         c["_nce_payoff_for_scoring"] = round(nce_payoff_end, 2)
 
-        # Scan ALL Groq triggers in window → pick highest psychology score
+        # Scan ALL Groq triggers in window -> pick highest psychology score
         # Groq already told us which moments are most memorable + shareable.
         # Trust it. The best clip ending = highest scored trigger in the window.
         best_end: float = 0.0
@@ -4441,14 +4441,14 @@ def _run_arc_assembler_v2(ctx: PipelineContext) -> None:
             arc_end = best_end
             c["_arc_resolution"] = "BEST_GROQ_TRIGGER"
             log.info(
-                "[ARC_ASSEMBLER] hook=%.2f → best_end=%.2f (score=%.3f) cid=%s",
+                "[ARC_ASSEMBLER] hook=%.2f -> best_end=%.2f (score=%.3f) cid=%s",
                 arc_start, arc_end, best_score, c.get("cid", "?"),
             )
         else:
             arc_end = arc_start + (_MIN_DUR + _MAX_DUR) / 2.0
             c["_arc_resolution"] = "WINDOW_MIDPOINT"
             log.info(
-                "[ARC_ASSEMBLER] hook=%.2f → no trigger in [%.0f,%.0f] → midpoint %.2f cid=%s",
+                "[ARC_ASSEMBLER] hook=%.2f -> no trigger in [%.0f,%.0f] -> midpoint %.2f cid=%s",
                 arc_start, window_lo, window_hi, arc_end, c.get("cid", "?"),
             )
 
@@ -4537,8 +4537,8 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
     has_tf_moments = any(c.get('groq_moment') for c in final_candidates)
     # --- HOTSHORT CORTEX (GROQ) LAYER ---
     # Pass the RICHER pre-filter pool to Groq, not just the aggressive top-k.
-    # If Groq returns clips → use them as final_candidates.
-    # If Groq returns empty + fail_open → keep original final_candidates.
+    # If Groq returns clips -> use them as final_candidates.
+    # If Groq returns empty + fail_open -> keep original final_candidates.
     try:
         from viral_finder.groq_cortex import is_groq_enabled, review_candidates_with_groq, _get_groq_api_key
         _groq_api_key = _get_groq_api_key()
@@ -4552,15 +4552,15 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
                     # so it sees correct 90s boundaries, not pre-assembly 6s fragments.
                     # Without this, EXTEND_RIGHT fires on wrong clips and CID matching fails.
                     _pool = list(final_candidates)
-                    log.info("[GROQ_POOL_FIX] experiment_mode=1 → using final_candidates (arc-assembled) for Surgeon input")
+                    log.info("[GROQ_POOL_FIX] experiment_mode=1 -> using final_candidates (arc-assembled) for Surgeon input")
                 else:
                     _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
                 
                 # ── SURGEON GATING: Emergency-Only ────────────────────────────────────────
                 # Only send candidates to Surgeon that NEED it:
-                #   (a) clip duration < 35s  → likely cut short, no payoff yet
-                #   (b) no payoff signal     → missing arc resolution
-                # Healthy long clips skip Surgeon entirely → saves TPM + latency.
+                #   (a) clip duration < 35s  -> likely cut short, no payoff yet
+                #   (b) no payoff signal     -> missing arc resolution
+                # Healthy long clips skip Surgeon entirely -> saves TPM + latency.
                 _SURGEON_MIN_DUR = 35.0
                 _payoff_trigger_types = {"payoff", "complete_thought"}
 
@@ -4591,7 +4591,7 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
 
                 log.info(
                     f"[GROQ_SURGEON_GATE] pool={len(_all_pool)}"
-                    f" → surgeon_queue={len(_needs_surgeon)} (short_or_no_payoff)"
+                    f" -> surgeon_queue={len(_needs_surgeon)} (short_or_no_payoff)"
                     f" | skipped={len(_skipped_surgeon)} (healthy long clips)"
                 )
                 _pool = _needs_surgeon
@@ -5013,7 +5013,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     )
     if _dyn_top_k != ctx.top_k:
         log.info(
-            "[DYNAMIC_TOP_K] Overriding top_k: %d → %d (duration=%.0fs triggers=%d)",
+            "[DYNAMIC_TOP_K] Overriding top_k: %d -> %d (duration=%.0fs triggers=%d)",
             ctx.top_k, _dyn_top_k, total_dur, len(ctx.narrative_triggers or []),
         )
         ctx.top_k = _dyn_top_k
@@ -5238,7 +5238,7 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         trace.exit("L10B_PAYOFF_DECISION", dict(ctx.stage_stats.get("L10B_PAYOFF_DECISION", {}) or {}))
 
     # ── FIX1: ARC ASSEMBLER before RANKING ─────────────────────────────────────
-    # Previously: Ranking (L4528) → Arc Assembler (L4575)
+    # Previously: Ranking (L4528) -> Arc Assembler (L4575)
     # Bug: ranking judged pre-assembly clips that don't exist in final output.
     # Fix: Assembler runs first (Transform), then Ranking judges the real clips (Judge).
     if trace:

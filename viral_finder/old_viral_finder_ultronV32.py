@@ -292,5 +292,5 @@ def find_viral_moments(path, top_k=4):
     # Update ULTRON brain from the BEST clip
     reinforce(memory, winners[0])
 
-    print(f"[V32 ULTRON] DONE → {len(winners)} clips ✓")
+    print(f"[V32 ULTRON] DONE -> {len(winners)} clips ✓")
     return winners

@@ -45,6 +45,6 @@ def get_punch_weights():
             weights[punch] = 1.0
         else:
             success_rate = data["success"] / data["count"]
-            weights[punch] = round(1.0 + success_rate, 3)  # 1.0 → 2.0
+            weights[punch] = round(1.0 + success_rate, 3)  # 1.0 -> 2.0
 
     return weights

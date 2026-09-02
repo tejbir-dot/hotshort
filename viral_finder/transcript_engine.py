@@ -414,7 +414,7 @@ class EliteTranscriptCache:
         # Tier 1: Hot cache (instant)
         if path in self.hot_cache:
             segs = self.hot_cache[path]
-            # Guard: stale cache entries lack "words" → reject silently
+            # Guard: stale cache entries lack "words" -> reject silently
             if segs and "words" not in segs[0]:
                 _log("INFO", f"[CACHE] Hot cache STALE (no words key): {path} — forcing re-transcription")
                 del self.hot_cache[path]
@@ -754,7 +754,7 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
                     "end":   round(s.get("end", 0.0), 2),
                     "text":  text,
                     "confidence": s.get("confidence", 0.0),
-                    "words": s.get("words", []),  # ← Whisper per-word ms timestamps → subtitle sync
+                    "words": s.get("words", []),  # ← Whisper per-word ms timestamps -> subtitle sync
                 })
 
             

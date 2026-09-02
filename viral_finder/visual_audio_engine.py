@@ -94,10 +94,8 @@ def analyze_audio(path: str, sr: int = 16000, frame_length: int = 2048, hop_leng
 from concurrent.futures import ThreadPoolExecutor
 
 # --- INTELLIGENCE UPGRADES ---
-# (1) Face Detection for Close-up Score
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-)
+  # (1) Face Detection for Close-up Score (Migrated to external InsightFace)
+
 
 
 class AsyncVideoReader:

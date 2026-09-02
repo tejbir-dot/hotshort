@@ -81,3 +81,7 @@ llvmlite==0.42.0
 numba==0.59.1
 librosa==0.10.2.post1
 google-genai
+
+# GPU Face Detection (InsightFace SCRFD via ONNX Runtime)
+insightface
+onnxruntime-gpu

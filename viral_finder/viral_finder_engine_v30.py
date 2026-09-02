@@ -116,7 +116,7 @@ def extract_transcript(video_path: str) -> List[Dict]:
 
         lang = max(lang_probs, key=lang_probs.get)
 
-        # Whisper returns lang token ID sometimes → fix it
+        # Whisper returns lang token ID sometimes -> fix it
         if not isinstance(lang, str):
             lang = "en"
 
@@ -163,7 +163,7 @@ def extract_transcript(video_path: str) -> List[Dict]:
         # ==================================================
         # CASE B: FALLBACK MODE (NO TIMESTAMPS)
         # ==================================================
-        print("[TRANSCRIPT] No segments → Fallback mode activated")
+        print("[TRANSCRIPT] No segments -> Fallback mode activated")
 
         # Try getting the full decoded text
         fallback_text = ""
@@ -181,7 +181,7 @@ def extract_transcript(video_path: str) -> List[Dict]:
         lines = [ln.strip() for ln in raw_lines if ln.strip()]
 
         if len(lines) == 0:
-            print("[TRANSCRIPT] Empty fallback → no transcript")
+            print("[TRANSCRIPT] Empty fallback -> no transcript")
             return []
 
         # merge short lines to avoid useless micro-segments
@@ -527,7 +527,7 @@ def find_viral_moments(path, top_k=TOP_K):
     prev_text = None  # <-- For ULTRON brain chaining
 
     # --------------------------------------------------
-    # MAIN LOOP — each transcript segment → 1 viral candidate
+    # MAIN LOOP — each transcript segment -> 1 viral candidate
     # --------------------------------------------------
     for seg in trs:
         text = seg["text"]
@@ -602,7 +602,7 @@ def find_viral_moments(path, top_k=TOP_K):
     # sort by final virality
     out.sort(key=lambda x: x["score"], reverse=True)
 
-    log(f"[V30 ENGINE] DONE → {len(out[:top_k])} clips ✓")
+    log(f"[V30 ENGINE] DONE -> {len(out[:top_k])} clips ✓")
 
     return out[:top_k]
 

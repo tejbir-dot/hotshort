@@ -46,6 +46,13 @@ except Exception as _be:
 import requests
 from dotenv import load_dotenv
 
+try:
+    from effects.mediapipe_detector import detect_faces_mediapipe, is_mediapipe_available
+    _MEDIAPIPE_ENABLED = True
+except ImportError:
+    _MEDIAPIPE_ENABLED = False
+    detect_faces_mediapipe = None
+
 # ── Load local env ────────────────────────────────────────────────────────────
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -936,7 +943,7 @@ class FaceCache:
         else:
             self._done = True
         
-    def _detect(self, cascade, frame):
+    def _detect(self, frame):
         raw_mean = float(frame.mean())
         print(
             f"[DETECT_DEBUG] frame_shape={frame.shape} dtype={frame.dtype} "
@@ -945,6 +952,29 @@ class FaceCache:
         )
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+        # ── PRIMARY: MediaPipe ──
+        if _MEDIAPIPE_ENABLED and detect_faces_mediapipe is not None:
+            faces = detect_faces_mediapipe(frame, conf_threshold=0.45, min_size=(40, 40))
+            
+            # Adjustment scan if score is low or no faces found
+            if not faces or any(getattr(f, 'score', 1.0) < 0.65 for f in faces):
+                gray_for_clahe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                enhanced_gray = clahe.apply(gray_for_clahe)
+                enhanced_bgr = cv2.cvtColor(enhanced_gray, cv2.COLOR_GRAY2BGR)
+                
+                faces_retry = detect_faces_mediapipe(enhanced_bgr, conf_threshold=0.45, min_size=(40, 40))
+                # Only use retry if it found faces and they have better/equal scores
+                if faces_retry and (not faces or max(getattr(f, 'score', 0) for f in faces_retry) > max(getattr(f, 'score', 0) for f in faces)):
+                    faces = faces_retry
+                    
+            print(f"[DETECT_RAW] mediapipe_faces={len(faces)}", flush=True)
+            return [
+                {"x": float(f[0]), "y": float(f[1]), "w": float(f[2]), "h": float(f[3]), "score": getattr(f, 'score', 1.0)}
+                for f in faces
+            ]
+
+        # ── FALLBACK: Haar ──
         # CLAHE: if frame is overexposed (gray_mean > 180), Haar cannot see contrast.
         # Locally normalise contrast before detection — recovers faces on blown-out segments.
         _OVEREXPOSED_THRESHOLD = 180
@@ -956,7 +986,7 @@ class FaceCache:
 
         faces = detect_faces_multi_haar(gray, cv2, scale_factor=1.15, min_neighbors=3, min_size=(40, 40))
         print(
-            f"[DETECT_RAW] cascade_empty={cascade.empty() if cascade else False} "
+            f"[DETECT_RAW] "
             f"gray_shape={gray.shape} gray_dtype={gray.dtype} "
             f"gray_mean={gray.mean():.1f} clahe={clahe_applied}",
             flush=True,
@@ -985,13 +1015,16 @@ class FaceCache:
         for face in faces:
             h = face["h"]
             w = face["w"]
+            score = face.get("score", 1.0)
+            if score < 0.65:
+                continue
             if h < frame_height * MIN_VALID_FACE_HEIGHT_RATIO:
                 continue
             if not (0.7 <= h / max(1.0, w) <= 3.0):
                 continue
             # Laplacian variance guard — same thresholds as editor Guard 6
             # Real faces: 50-800. Bookshelves/text: >1200. Flat walls: <25.
-            if sampled_frame is not None:
+            if sampled_frame is not None and not _MEDIAPIPE_ENABLED:
                 try:
                     x = int(face["x"])
                     y = int(face["y"])
@@ -1051,9 +1084,7 @@ class FaceCache:
             cap = cv2.VideoCapture(self.video_path)
             t_open += time.perf_counter() - t0
             local_fps = cap.get(cv2.CAP_PROP_FPS) or fps or 25.0
-            cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            )
+            # Cascade initialization removed (OpenCV 5.0 compatibility)
 
             start_frame = int(start * local_fps)
             end_frame = int(end * local_fps)
@@ -1149,7 +1180,7 @@ class FaceCache:
                     t_rep += time.perf_counter() - t0
                     
                     t0 = time.perf_counter()
-                    raw_faces = self._detect(cascade, sampled[representative][1])
+                    raw_faces = self._detect(sampled[representative][1])
                     t_face += time.perf_counter() - t0
                     haar_calls += 1
                     valid_count = self._valid_face_count(
@@ -1158,29 +1189,43 @@ class FaceCache:
                     )
 
                     # A missed/invalid representative must not mark a whole scene
-                    # as faceless. This is intentionally based on valid_count, not
-                    # just Haar's raw false-positive count.
-                    if valid_count == 0:
+                    # as faceless, AND we must actively search for multiple speakers.
+                    # If we found less than 2 faces, search up to 3 more frames in the cluster
+                    # to see if a better frame yields 2 faces (podcast format).
+                    best_raw_faces = raw_faces
+                    best_valid_count = valid_count
+
+                    if best_valid_count < 2:
                         retries = [idx for idx in cluster if idx != representative]
                         retries.sort(key=lambda idx: abs(idx - representative))
-                        print(
-                            f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} cluster={cluster_id} "
-                            f"redetect_triggered=True reason=representative_valid_count_0 "
-                            f"raw_count={len(raw_faces)} valid_count={valid_count} "
-                            f"min_face_height_ratio={MIN_VALID_FACE_HEIGHT_RATIO:.2f} "
-                            f"attempts={min(len(retries), MIN_CLUSTER_REDETECT_ATTEMPTS)}",
-                            flush=True,
-                        )
+                        
+                        if len(retries) > 0 and best_valid_count == 0:
+                            print(
+                                f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} cluster={cluster_id} "
+                                f"redetect_triggered=True reason=representative_valid_count_0 "
+                                f"raw_count={len(raw_faces)} valid_count={valid_count} "
+                                f"min_face_height_ratio={MIN_VALID_FACE_HEIGHT_RATIO:.2f} "
+                                f"attempts={min(len(retries), MIN_CLUSTER_REDETECT_ATTEMPTS)}",
+                                flush=True,
+                            )
+                            
                         for retry_idx in retries[:MIN_CLUSTER_REDETECT_ATTEMPTS]:
                             t0 = time.perf_counter()
-                            raw_faces = self._detect(cascade, sampled[retry_idx][1])
+                            r_faces = self._detect(sampled[retry_idx][1])
                             t_face += time.perf_counter() - t0
                             haar_calls += 1
-                            valid_count = self._valid_face_count(
-                                raw_faces, sampled[retry_idx][1].shape[0]
+                            r_valid = self._valid_face_count(
+                                r_faces, sampled[retry_idx][1].shape[0],
+                                sampled_frame=sampled[retry_idx][1]
                             )
-                            if valid_count > 0:
-                                break
+                            if r_valid > best_valid_count:
+                                best_valid_count = r_valid
+                                best_raw_faces = r_faces
+                                if best_valid_count >= 2:
+                                    break
+                    
+                    raw_faces = best_raw_faces
+                    valid_count = best_valid_count
 
                     t0 = time.perf_counter()
                     # Copy each result so callers cannot mutate a shared cluster bbox.
@@ -1334,6 +1379,25 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 if _branding_on else ""
             )
 
+        # ── Director Autopsy: Load Channel DNA ────────────────────────────────
+        # Derive a stable channel_id from the video URL (e.g. youtube.com/@ChannelName)
+        # This way every recurring channel gets its own calibrated profile.
+        _autopsy_obj = None
+        try:
+            from effects.director_autopsy import load_and_apply_channel_dna
+            import urllib.parse as _urlparse
+            _yt_parsed   = _urlparse.urlparse(youtube_url)
+            _channel_raw = (_yt_parsed.path or "").strip("/").split("/")[0] or job_id[:16]
+            _channel_id  = _channel_raw or "default"
+            _autopsy_obj = load_and_apply_channel_dna(_channel_id)
+            print(
+                f"[LOCAL_WORKER] Channel DNA loaded: {_channel_id} "
+                f"(runs={_autopsy_obj.profile.get('runs', 0)})",
+                flush=True
+            )
+        except Exception as _ae:
+            print(f"[LOCAL_WORKER] Director Autopsy load skipped: {_ae}", flush=True)
+
         # Start Global Face Cache (will be instantiated later)
         face_cache = None
 
@@ -1373,6 +1437,22 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         s = float(clip.get("start", 0.0) or 0.0)
                         e = float(clip.get("end", s) or s)
                         fmt = analyze_video_format(video_path, s, e)
+                        
+                        # 🚀 SPACEX FIX: Bulletproof formatting
+                        _genre = str(clip.get("content_genre", "")).upper()
+                        # User insight: For podcasts, a blind 50/50 split is geometrically superior 
+                        # to a center crop (monologue) because stacking left+right halves perfectly 
+                        # converts 16:9 into 9:16 without losing any horizontal context.
+                        if _genre in ("PODCAST", "INTERVIEW"):
+                            from effects.format_analyzer import DirectorMode
+                            if fmt and fmt.format_type != "podcast":
+                                log.warning(f"[SPACEX FIX] Cortex tagged {_genre} but analyzer said {fmt.format_type}. Forcing BLIND SPLIT (50/50).")
+                                fmt.format_type = "podcast"
+                                fmt.director_mode = DirectorMode.SPLIT
+                                fmt.face_count_avg = max(2.0, fmt.face_count_avg)
+                                # Default left speaker to 25% of screen width, right to 75%
+                                fmt.speaker_positions = [0.25, 0.75]
+                                
                         clip["_fmt"] = fmt  # attach result so editor doesn't re-run
                         return clip, fmt
 
@@ -1527,7 +1607,70 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         _bench.finish(f"6b_wce_clip{i}")
                         if edit_result:
                             final_path = edited_path
+                            
+                            # 🚀 SILENCE KILLER POST-PROCESSING
+                            try:
+                                from effects.silence_killer import run_silence_killer
+                                nosilence_path = final_path.replace(".mp4", "_nosilence.mp4")
+                                if run_silence_killer(final_path, nosilence_path):
+                                    import shutil
+                                    # Swap paths to keep final_path intact for upload
+                                    shutil.move(nosilence_path, final_path)
+                            except Exception as e:
+                                log.error(f"[SILENCE_KILLER] Post-processing failed: {e}", exc_info=True)
+                                
                             clip_res["edit_metadata"] = getattr(edit_result, "metadata", {}) or {}
+
+                        # ── Director Autopsy: post-render analysis ──────────────
+                        if _autopsy_obj is not None:
+                            try:
+                                _clip_meta    = getattr(edit_result, "metadata", {}) or {}
+                                _clip_fmt     = _clip_meta.get("video_format", "unknown")
+                                # ── Get clip_id from the metadata field WCE now writes ──
+                                _clip_wce_id  = _clip_meta.get("wce_debug_clip_id", "")
+
+                                # ── Extract scene-cut timestamps from face_cache ──────
+                                # The face_cache stores _cluster_id per frame. Cluster
+                                # boundaries = scene cuts. Convert to timestamps (seconds).
+                                _scene_cuts_ts = []
+                                try:
+                                    _fc_clip = face_cache.get_clip_cache(clip) if face_cache else {}
+                                    _last_cid = None
+                                    for _ts in sorted(_fc_clip.keys()):
+                                        _faces = _fc_clip[_ts]
+                                        if _faces:
+                                            _cid = _faces[0].get("_cluster_id")
+                                            if _cid is not None and _cid != _last_cid and _last_cid is not None:
+                                                _scene_cuts_ts.append(float(_ts))
+                                            _last_cid = _cid
+                                except Exception:
+                                    pass
+
+                                if _clip_wce_id:
+                                    from effects.director_autopsy import run_post_render_autopsy
+                                    _ap_report = run_post_render_autopsy(
+                                        _autopsy_obj,
+                                        clip_id=_clip_wce_id,
+                                        clip_format=_clip_fmt,
+                                        scene_seg_cuts=_scene_cuts_ts or None,
+                                    )
+                                    if _ap_report and _ap_report.get("total_score") is not None:
+                                        clip_res["autopsy"] = {
+                                            "score": round(_ap_report["total_score"], 1),
+                                            "flags": _ap_report.get("flags", []),
+                                            "profile": _ap_report.get("profile_params", {}),
+                                        }
+                                        print(
+                                            f"[AUTOPSY] clip={i} score={_ap_report['total_score']:.1f}/100 "
+                                            f"scene_cuts={len(_scene_cuts_ts)} "
+                                            f"flags={_ap_report.get('flags', [])}",
+                                            flush=True
+                                        )
+                                else:
+                                    print(f"[AUTOPSY] clip={i} skipped — debug mode off (HS_DEBUG_FRAMES not set)", flush=True)
+                            except Exception as _aex:
+                                import traceback as _tb
+                                print(f"[AUTOPSY] post-render failed: {_aex}\n{_tb.format_exc()}", flush=True)
                         
                     # Branding
                     # If WCE merged branding into its pass, skip the separate call.

@@ -9,6 +9,7 @@ import sys
 import time
 import uuid
 import threading
+import numpy as np
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Tuple, Union
 try:
@@ -16,15 +17,59 @@ try:
 except ImportError:
     bolt = None
 from effects.format_analyzer import detect_faces_multi_haar
+
+# ── Face Detector priority chain: InsightFace (GPU) → MediaPipe (CPU) ──────
+# InsightFace SCRFD runs on CUDA via ONNX Runtime: ~8x faster than MediaPipe.
+# If InsightFace is not installed / GPU unavailable, auto-falls back to MediaPipe.
+_INSIGHTFACE_ENABLED = False
+detect_faces_insightface = None
 try:
-    from effects.yolo_detector import detect_faces_yolo, is_yolo_available
-    _YOLO_ENABLED = True
+    from effects.insightface_detector import detect_faces_insightface, is_insightface_available
+    _INSIGHTFACE_ENABLED = is_insightface_available()
+    if _INSIGHTFACE_ENABLED:
+        import logging as _log_if
+        _log_if.getLogger(__name__).info("[WCE] InsightFace GPU detector active ✓")
+except Exception:
+    pass
+
+_MEDIAPIPE_ENABLED = False
+detect_faces_mediapipe = None
+try:
+    from effects.mediapipe_detector import detect_faces_mediapipe, is_mediapipe_available
+    _MEDIAPIPE_ENABLED = True
 except ImportError:
-    _YOLO_ENABLED = False
-    detect_faces_yolo = None
+    pass
+
+def _detect_faces_best(frame_bgr, conf_threshold=0.45, min_size=(40, 40)):
+    """
+    Unified face detection: InsightFace GPU → MediaPipe CPU → empty list.
+    Drop-in for all detect_faces_mediapipe call sites.
+    """
+    if _INSIGHTFACE_ENABLED and detect_faces_insightface is not None:
+        result = detect_faces_insightface(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
+        if result:
+            return result
+        # If InsightFace returns nothing, try MediaPipe (handles edge cases)
+    if _MEDIAPIPE_ENABLED and detect_faces_mediapipe is not None:
+        faces = detect_faces_mediapipe(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
+        
+        # Adjustment scan if score is low or no faces found
+        if not faces or any(getattr(f, 'score', 1.0) < 0.65 for f in faces):
+            import cv2
+            gray_for_clahe = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced_gray = clahe.apply(gray_for_clahe)
+            enhanced_bgr = cv2.cvtColor(enhanced_gray, cv2.COLOR_GRAY2BGR)
+            
+            faces_retry = detect_faces_mediapipe(enhanced_bgr, conf_threshold=conf_threshold, min_size=min_size)
+            if faces_retry and (not faces or max(getattr(f, 'score', 0) for f in faces_retry) > max(getattr(f, 'score', 0) for f in faces)):
+                faces = faces_retry
+                
+        return faces
+    return []
 from effects.face_tracker import FaceTracker, SmoothedPosition
 from effects import debug_visualizer
-from effects.b_roll_engine import fetch_b_roll_for_keywords
+from effects.broll_engine import fetch_broll_asset
 import time
 
 @dataclass
@@ -1190,17 +1235,8 @@ class ClipEditor:
                 except Exception as _e:
                     log.warning(f"[FACE_DEBUG] FaceMesh init failed: {_e}")
 
-            # Haarcascade fallback — used when MediaPipe is unavailable
+            # Haarcascade fallback — completely removed in favor of strict YOLOv8.
             _podcast_cascade = None
-            if active_detector is None:
-                try:
-                    import cv2 as _cv2
-                    _podcast_cascade = _cv2.CascadeClassifier(
-                        _cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-                    )
-                    log.info("[FACE_DEBUG] detector=haarcascade_fallback")
-                except Exception as _e:
-                    log.warning(f"[FACE_DEBUG] haarcascade fallback also failed: {_e}")
 
             def is_valid_face(det, _log_reason=False, frame=None):
                 """Filter: reject mics, hands, logos, background objects.
@@ -1301,8 +1337,8 @@ class ClipEditor:
                         #   Laplacian variance > 1200.
                         # Flat walls / plain background have near-zero edges:
                         #   Laplacian variance < 25.
-                        _LAP_MIN = float(os.environ.get("HS_FACE_LAP_MIN", "25"))
-                        _LAP_MAX = float(os.environ.get("HS_FACE_LAP_MAX", "1200"))
+                        _LAP_MIN = 0.0 if _MEDIAPIPE_ENABLED else float(os.environ.get("HS_FACE_LAP_MIN", "25"))
+                        _LAP_MAX = 9999.0 if _MEDIAPIPE_ENABLED else float(os.environ.get("HS_FACE_LAP_MAX", "1200"))
                         _lap_var = float(
                             cv2.Laplacian(_roi_gray, cv2.CV_64F).var()
                         )
@@ -1317,6 +1353,18 @@ class ClipEditor:
 
                     except Exception:
                         pass  # ROI out-of-bounds on edge clips — skip gracefully
+
+                # ── guard 7: ML Confidence ──
+                # MediaPipe gives score 0.0-1.0. Haar gives no score (fallback to 1.0).
+                # Reject detections with score < 0.65
+                score = float(det.get('score', 1.0))
+                if score < 0.65:
+                    if _log_reason:
+                        log.info(
+                            f"[FACE_FILTER] REJECT low_confidence score={score:.2f} "
+                            f"face=({x:.0f},{y:.0f},{w:.0f},{h:.0f})"
+                        )
+                    return False
 
                 if _log_reason:
                     log.info(
@@ -1343,27 +1391,30 @@ class ClipEditor:
                 if right_face and not left_face:
                     return "SOLO_RIGHT"
 
+                # ── Ghost Drift Guard ──────────────────────────────────────────────
+                # If gap is extremely small (< 10%) both slots are on the same face.
+                # Ghost dedup in CSRT catches this most of the time, but as a last
+                # resort: treat as single speaker with higher EMA.
+                if face_gap_ratio < 0.10:
+                    return "SOLO_LEFT" if ema_mouth_left >= ema_mouth_right else "SOLO_RIGHT"
+
                 # Both faces present — check minimum horizontal gap
                 if face_gap_ratio < SPLIT_MIN_GAP:
-                    # Too close together (e.g. leaning in, wide-angle shot) — SOLO on talker
+                    # Too close together — SOLO on talker
                     if left_talking and not right_talking:
                         return "SOLO_LEFT"
                     if right_talking and not left_talking:
                         return "SOLO_RIGHT"
-                    # Both talking or both silent while close → SOLO on whoever has more motion
+                    # Both talking or both silent while close
+                    # If EMA signals are both very low (< 3x floor), it's noise — HOLD
+                    if ema_mouth_left < EMA_FLOOR * 3 and ema_mouth_right < EMA_FLOOR * 3:
+                        return "HOLD"
                     return "SOLO_LEFT" if ema_mouth_left >= ema_mouth_right else "SOLO_RIGHT"
 
-                # Both well-separated — now check talking state
-                if left_talking and right_talking:
-                    return "SPLIT"
-                if left_talking and not right_talking:
-                    return "SOLO_LEFT"
-                if right_talking and not left_talking:
-                    return "SOLO_RIGHT"
-
-                # Both present, well-separated, but NEITHER talking (natural pause).
-                # Don't snap to SPLIT during silence — stay SOLO on last active to avoid jarring cut.
-                return "SOLO_LEFT" if ema_mouth_left >= ema_mouth_right else "SOLO_RIGHT"
+                # Both well-separated -> VISUAL PODCAST FORMAT DETECTED
+                # Since they are visually separated by a large margin, keep SPLIT mode active 
+                # continuously. This captures both the active speaker and the listener's reactions.
+                return "SPLIT"
 
             def get_mouth_roi(face):
                 """Lower 28% of face bounding box = mouth region."""
@@ -1401,6 +1452,15 @@ class ClipEditor:
             ema_mouth_right = 0.0
             smoothed_left_x = frame_width * 0.25
             smoothed_right_x = frame_width * 0.75
+
+            # ── Scene-Cut Detector state ──────────────────────────────────────────
+            # Detects hard camera-angle changes via perceptual frame diff.
+            # On cut: trackers are wiped, EMA reset, fresh detection forced.
+            # SCENE_CUT_DIFF_THRESHOLD: mean absolute diff of 64x64 frames in [0,255].
+            # Typical same-shot diff: 2-8. Hard cut diff: 25-80.
+            SCENE_CUT_DIFF_THRESHOLD = float(os.environ.get("HS_SCENE_CUT_THRESHOLD", "22"))
+            _prev_frame_small = None  # 64x64 grayscale of previous decoded frame
+            _is_scene_cut = False     # set True on the cut frame, consumed once
             
             # Physics Engine state variables
             vel_left = 0.0
@@ -1411,7 +1471,10 @@ class ClipEditor:
                 if target_x is None or target_x == 0:
                     return cam_x, vel * 0.85
                 
-                deadzone = f_width * 0.10  # 20% total safe zone (10% each side)
+                # The Deadzone (Tripod Anchor): 15% of the 9:16 frame width
+                # 9:16 crop width is roughly f_width * (9/16) * (16/9) / (16/9)? No, it's roughly 0.316 * f_width.
+                # 15% of that is about 4.7% of f_width. We'll set a deadzone of f_width * 0.05 (10% total width).
+                deadzone = f_width * 0.05 
                 dist = target_x - cam_x
                 
                 state_str = "TRIPOD_LOCK"
@@ -1420,14 +1483,15 @@ class ClipEditor:
                 else:
                     state_str = "SPRING_PAN"
                     overshoot = abs(dist) - deadzone
-                    # Guardrail 2: Hard cap on overshoot to prevent False-Positive spikes from exploding force
+                    # Guardrail: Hard cap on overshoot to prevent False-Positive spikes from exploding force
                     overshoot = min(overshoot, f_width * 0.3) 
                     
-                    # Non-linear spring tension
-                    force = (overshoot ** 1.2) * 0.005 
+                    # Non-linear spring tension (Hooke's Law: x^1.5)
+                    spring_tension_constant = 0.0008
+                    force = (overshoot ** 1.5) * spring_tension_constant 
                     vel += force * (1 if dist > 0 else -1)
                 
-                vel *= 0.82  # Global friction to prevent endless bouncing
+                vel *= 0.85  # Critical Damping to prevent rubber-banding/bouncing
                 cam_x += vel
                 
                 # Guardrail 1: Boundary Clamping to prevent camera from leaving the 16:9 canvas
@@ -1458,7 +1522,7 @@ class ClipEditor:
             box_stability_map = {}
             smoothed_face_h = None  # Temporal face-size EMA (pixels). Seeded on first valid detection.
             
-            ENABLE_CONTINUOUS_TRACKING = False
+            ENABLE_CONTINUOUS_TRACKING = True
 
             # ── Mode switch gating state ──────────────────────────────────────────
             # Tracks how many consecutive frames a pending mode switch has been requested.
@@ -1467,6 +1531,33 @@ class ClipEditor:
             _decide_mode_state = _types.SimpleNamespace(pending_mode=None, pending_count=0)
 
 
+            # ── FRAME STRIDING ──────────────────────────────────────────
+            # Instead of decoding every frame (expensive at 25fps × 70s = 1750 frames),
+            # we skip N-1 frames using cap.grab() (reads but doesn't decode) and fully
+            # decode only every Nth frame. face_cache is position-stamped so skipping
+            # frames doesn't affect crop quality. Mouth EMA still works because we
+            # scale the decay factor by stride so 1-frame EMA ≈ N-frame stride EMA.
+            # Default stride=3 → ~3x speedup on director loop, ~40s saved per 70s clip.
+            _DIRECTOR_STRIDE = max(1, int(os.environ.get("HS_DIRECTOR_FRAME_STRIDE", "3") or "3"))
+            log.info("[WCE_PERF] director_frame_stride=%d (1=every frame, 3=every 3rd)", _DIRECTOR_STRIDE)
+
+            # ── WebRTC VAD Pre-compute ──────────────────────────────────
+            # Runs ONCE before the frame loop (∼0.2s per clip).
+            # Produces per-frame voice-activity gate: {frame_idx: bool}
+            # If VAD says silence → mouth_motion is zeroed → EMA can't accumulate
+            # jacket/wall ghost noise. Kills ghost-talking at the source.
+            _vad_gate: dict = {}
+            try:
+                from effects.vad_speaker import compute_vad_gate
+                _total_frames_est = int(fps * (cap.get(cv2.CAP_PROP_FRAME_COUNT) / max(fps, 1)))
+                _vad_gate = compute_vad_gate(
+                    clip_path=clip_path,
+                    video_fps=fps,
+                    total_frames=max(_total_frames_est, 1),
+                )
+            except Exception as _vad_err:
+                log.warning(f"[VAD] Pre-compute failed (continuing without): {_vad_err}")
+
             # ── Debug visualizer session (no-op when HS_DEBUG_FRAMES not set) ────
             _clip_id = os.path.splitext(os.path.basename(clip_path or "clip"))[0]
             _dbg = debug_visualizer.make_session(
@@ -1474,8 +1565,9 @@ class ClipEditor:
                 clip_start=0.0,
                 clip_end=0.0,
             )
-            left_tracker = FaceTracker("left")
-            right_tracker = FaceTracker("right")
+            # Ghost Tracking Memory: 60 frames (~2 seconds) of patience before dropping a speaker
+            left_tracker = FaceTracker("left", confidence_floor=60)
+            right_tracker = FaceTracker("right", confidence_floor=60)
             left_tracker_smooth = SmoothedPosition(alpha=0.3)
             right_tracker_smooth = SmoothedPosition(alpha=0.3)
             solo_tracker_smooth = SmoothedPosition(alpha=0.3)
@@ -1529,11 +1621,42 @@ class ClipEditor:
                     break
 
                 t = frame_idx / fps
-                need_debug  = (frame_idx % 25 == 0)  # [FACE_DEBUG] / [DIRECTOR_MODE] logging
-                # Mouth-motion diff needs gray, but ONLY when there's at least one face
-                # to compute motion on. When face_cache returns [] (B-roll, background
-                # frames), skip the gray conversion entirely — saves 2-4ms per frame.
+                need_debug  = (frame_idx % 25 == 0)
                 need_motion = (prev_gray is not None) and bool(last_raw_faces)
+
+                # ── Scene-Cut Detection ──────────────────────────────────────────
+                # Compare a tiny 64x64 thumbnail to the previous frame.
+                # Hard cuts cause large mean pixel diff → wipe trackers immediately.
+                _is_scene_cut = False
+                _frame_small = cv2.resize(
+                    cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 64),
+                    interpolation=cv2.INTER_AREA
+                ).astype(np.float32)
+                if _prev_frame_small is not None:
+                    _diff_val = float(np.mean(np.abs(_frame_small - _prev_frame_small)))
+                    if _diff_val > SCENE_CUT_DIFF_THRESHOLD:
+                        _is_scene_cut = True
+                        log.info(
+                            f"[SCENE_CUT] t={t:.2f}s diff={_diff_val:.1f} > {SCENE_CUT_DIFF_THRESHOLD} "
+                            f"→ HARD CUT detected — wiping trackers + resetting EMA"
+                        )
+                        # ── Tracker Wipe ────────────────────────────────────────
+                        left_tracker.initialized  = False
+                        right_tracker.initialized = False
+                        left_tracker.consecutive_low_confidence  = 999
+                        right_tracker.consecutive_low_confidence = 999
+                        left_tracker.last_bbox  = None
+                        right_tracker.last_bbox = None
+                        # ── EMA Reset (no momentum bleed into new scene) ─────────
+                        ema_mouth_left  = 0.0
+                        ema_mouth_right = 0.0
+                        # ── Mode Switch State Reset ──────────────────────────────
+                        _decide_mode_state.pending_mode  = None
+                        _decide_mode_state.pending_count = 0
+                        # prev_gray reset so mouth diff doesn't fire false on first frame
+                        prev_gray = None
+                        last_raw_faces = []
+                _prev_frame_small = _frame_small
 
                 # Lazy gray: only convert when we actually need the grayscale pixels.
                 gray = None
@@ -1550,44 +1673,43 @@ class ClipEditor:
                     tracking_frames += 1
 
                 # 1. Fetch from face_cache (to get cluster IDs)
+                raw_faces = []
                 if face_cache is not None:
                     # O(log n) binary-search via pre-sorted key list
                     nearest = _nearest_cache_t(t)
                     raw_faces = face_cache.get(nearest, [])
                     last_raw_faces = raw_faces
-                elif frame_idx % 5 == 0:
-                    # ── Haar detection: every 5 processed frames (was 15 — too stale).
-                    # Frame 0 always runs AND enforces a strict 15% minimum height to
-                    # prevent b-roll thumbnails / dog paintings from poisoning the
-                    # initial last_raw_faces that gets reused for the next 4 frames.
-                    raw_faces = []
-                    if _podcast_cascade is not None and not ENABLE_CONTINUOUS_TRACKING:
-                        _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
+                
+                # If cache was empty or we process every 5 frames without cache, run MediaPipe
+                if not raw_faces and frame_idx % 5 == 0:
+                    _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
 
-                        # ── PRIMARY: YOLOv8-face (97% accuracy, handles side faces) ──────
-                        _faces_raw = []
-                        if _YOLO_ENABLED and detect_faces_yolo is not None:
-                            _faces_raw = detect_faces_yolo(frame, conf_threshold=0.45, min_size=(_min_face_px, _min_face_px))
-                            if frame_idx == 0:
-                                log.info(f"[YOLO_DETECT] frame0 yolo_faces={len(_faces_raw)}")
+                    # ── GPU/CPU Face Detection (InsightFace → MediaPipe fallback) ──
+                    _faces_raw = []
+                    if _INSIGHTFACE_ENABLED or _MEDIAPIPE_ENABLED:
+                        _faces_raw = _detect_faces_best(frame, conf_threshold=0.45, min_size=(_min_face_px, _min_face_px))
+                        if frame_idx == 0:
+                            detector_name = "InsightFace" if _INSIGHTFACE_ENABLED else "MediaPipe"
+                            log.info(f"[FACE_DETECT] frame0 detector={detector_name} faces={len(_faces_raw)}")
 
-                        # ── FALLBACK: Haar if YOLO returned nothing or unavailable ────────
-                        if not _faces_raw:
-                            _faces_hc = detect_faces_multi_haar(_cv2.cvtColor(frame, _cv2.COLOR_BGR2GRAY) if frame is not None else gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px, _min_face_px))
-                            _faces_raw = list(_faces_hc)
-
-                        _strict_first_frame = (frame_idx == 0)
-                        for _x, _y, _fw, _fh in _faces_raw:
-                            if _strict_first_frame and _fh < frame_height * 0.15:
-                                if need_debug:
-                                    log.info(
-                                        f"[FACE_FILTER] REJECT frame0_too_small h={_fh:.0f}px "
-                                        f"min={frame_height*0.15:.0f}px -- likely b-roll thumbnail"
-                                    )
-                                continue
-                            raw_faces.append({'x': float(_x), 'y': float(_y), 'w': float(_fw), 'h': float(_fh)})
+                    _strict_first_frame = (frame_idx == 0)
+                    for _fb in _faces_raw:
+                        _x, _y, _fw, _fh = _fb
+                        if _strict_first_frame and _fh < frame_height * 0.15:
+                            if need_debug:
+                                log.info(
+                                    f"[FACE_FILTER] REJECT frame0_too_small h={_fh:.0f}px "
+                                    f"min={frame_height*0.15:.0f}px -- likely b-roll thumbnail"
+                                )
+                            continue
+                        raw_faces.append({
+                            'x': float(_x), 'y': float(_y), 'w': float(_fw), 'h': float(_fh),
+                            'nose_x': getattr(_fb, 'nose_x', None),
+                            'nose_y': getattr(_fb, 'nose_y', None),
+                            'score': getattr(_fb, 'score', 1.0)
+                        })
                     last_raw_faces = raw_faces
-                else:
+                elif not raw_faces:
                     raw_faces = last_raw_faces
 
                 # Extract cluster info BEFORE live override
@@ -1601,34 +1723,52 @@ class ClipEditor:
                             raw_faces[0].get("_cluster_end"),
                         )
 
-                # 2. If Tracking is ENABLED, strictly override raw_faces on tracker loss
+                # 2. If Tracking is ENABLED, handle scene-cut + tracker loss
                 if ENABLE_CONTINUOUS_TRACKING:
-                    cluster_changed = (cluster_id is not None and cluster_id != locked_cluster_id)
-                    if cluster_changed:
-                        # Force tracker to re-initialize for the new scene
-                        left_tracker.consecutive_low_confidence = 999
+                    # On a detected hard scene cut, force cluster_changed so the
+                    # redetect path runs SYNCHRONOUSLY on this exact frame.
+                    cluster_changed = _is_scene_cut or (
+                        cluster_id is not None and cluster_id != locked_cluster_id
+                    )
+                    if cluster_changed and not _is_scene_cut:
+                        # Cluster boundary (not a visual hard cut) — same wipe
+                        left_tracker.consecutive_low_confidence  = 999
                         right_tracker.consecutive_low_confidence = 999
 
-                    if left_tracker.is_lost() or right_tracker.is_lost():
+                    # Run MediaPipe redetection if we're lost OR if we're currently coasting (ghost tracking)
+                    _needs_redetect = (
+                        left_tracker.is_lost() or right_tracker.is_lost() or 
+                        left_tracker.consecutive_low_confidence > 0 or right_tracker.consecutive_low_confidence > 0
+                    )
+                    
+                    if _needs_redetect:
                         if frame_idx % 15 == 0 or cluster_changed:
                             _min_face_px_strict = max(60, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
 
-                            # ── PRIMARY: YOLOv8 re-detect ────────────────────────────────────
+                            # ── PRIMARY: MediaPipe re-detect ────────────────────────────────────
+                            # Use 0.35 (not 0.50) — format classifier already confirmed faces exist.
+                            # 0.50 is too strict for side-profile or partially lit faces.
                             _live_raw = []
-                            if _YOLO_ENABLED and detect_faces_yolo is not None:
-                                _live_raw = detect_faces_yolo(frame, conf_threshold=0.50, min_size=(_min_face_px_strict, _min_face_px_strict))
+                            if _INSIGHTFACE_ENABLED or _MEDIAPIPE_ENABLED:
+                                _live_raw = _detect_faces_best(frame, conf_threshold=0.35, min_size=(_min_face_px_strict, _min_face_px_strict))
 
-                            # ── FALLBACK: Haar if YOLO found nothing ─────────────────────────
+                            # ── FALLBACK: Haar if MediaPipe found nothing ─────────────────────────
                             if not _live_raw:
-                                _faces_hc = detect_faces_multi_haar(gray, _cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px_strict, _min_face_px_strict))
+                                # Ensure gray is available for Haar (may have been skipped for this frame)
+                                _haar_gray = gray if gray is not None else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                                _faces_hc = detect_faces_multi_haar(_haar_gray, cv2, scale_factor=1.10, min_neighbors=5, min_size=(_min_face_px_strict, _min_face_px_strict))
                                 _live_raw = list(_faces_hc)
 
                             live_faces = []
-                            for _x, _y, _fw, _fh in _live_raw:
+                            for _fb in _live_raw:
+                                _x, _y, _fw, _fh = _fb
                                 if _fh >= frame_height * 0.12:
                                     live_faces.append({
                                         'x': float(_x), 'y': float(_y),
                                         'w': float(_fw), 'h': float(_fh),
+                                        'nose_x': getattr(_fb, 'nose_x', None),
+                                        'nose_y': getattr(_fb, 'nose_y', None),
+                                        'score': getattr(_fb, 'score', 1.0)
                                     })
                             if live_faces:
                                 if cluster_id is not None:
@@ -1762,7 +1902,11 @@ class ClipEditor:
                     cluster_changed = (cluster_id is not None and cluster_id != locked_cluster_id)
                     cluster_length = (cluster_frame_range[1] - cluster_frame_range[0]) if cluster_frame_range else 0
                     
-                    if left_tracker.is_lost() or right_tracker.is_lost() or cluster_changed:
+                    _needs_reinit = (
+                        left_tracker.is_lost() or right_tracker.is_lost() or cluster_changed or
+                        left_tracker.consecutive_low_confidence > 0 or right_tracker.consecutive_low_confidence > 0
+                    )
+                    if _needs_reinit:
                         if not cluster_changed or cluster_length > 5:
                             t_start = time.perf_counter()
                             if left_slot:
@@ -1776,6 +1920,33 @@ class ClipEditor:
                     if right_tracker.initialized and not right_tracker.is_lost() and right_tracker.last_bbox:
                         right_slot = {'x': right_tracker.last_bbox[0], 'y': right_tracker.last_bbox[1], 'w': right_tracker.last_bbox[2], 'h': right_tracker.last_bbox[3]}
 
+                    # ── Ghost Dedup Guard ─────────────────────────────────────────────
+                    # If CSRT locks both trackers onto the SAME physical face, their
+                    # centers will be nearly identical. Null the weaker slot so SOLO
+                    # mode targets the correct face instead of a phantom position.
+                    if left_slot is not None and right_slot is not None:
+                        _l_cx = left_slot['x'] + left_slot['w'] / 2.0
+                        _r_cx = right_slot['x'] + right_slot['w'] / 2.0
+                        _ghost_gap = abs(_r_cx - _l_cx) / frame_width
+                        
+                        # Also guard against B-roll / screen shots: if both slots are
+                        # in the center zone (30%-70% frame width), no real podcast split
+                        # is possible — treat as single speaker.
+                        _both_centered = (0.30 < _l_cx / frame_width < 0.70 and
+                                          0.30 < _r_cx / frame_width < 0.70)
+                        
+                        if _ghost_gap < 0.12 or _both_centered:
+                            # Keep the slot with the larger face (more likely real face)
+                            if left_slot.get('h', 0) >= right_slot.get('h', 0):
+                                right_slot = None
+                                right_tracker.consecutive_low_confidence = 999
+                            else:
+                                left_slot = None
+                                left_tracker.consecutive_low_confidence = 999
+                            if frame_idx % 25 == 0:
+                                reason = "same_face" if _ghost_gap < 0.12 else "both_centered_broll"
+                                log.info(f"[GHOST_DEDUP] t={t:.2f}s {reason} gap={_ghost_gap:.2f} → weaker_slot_cleared")
+
                 if frame_idx % 25 == 0:
                     log.info(
                         f"[SLOT_ASSIGN] t={t:.2f}s left_face={left_slot is not None} "
@@ -1787,8 +1958,12 @@ class ClipEditor:
                 # This is the key gate for SPLIT mode — faces must be clearly separated
                 face_gap_ratio = 0.0
                 if left_slot is not None and right_slot is not None:
-                    left_cx  = left_slot['x']  + left_slot['w']  / 2.0
-                    right_cx = right_slot['x'] + right_slot['w'] / 2.0
+                    left_cx = left_slot.get('nose_x')
+                    if left_cx is None:
+                        left_cx = left_slot['x'] + left_slot['w'] / 2.0
+                    right_cx = right_slot.get('nose_x')
+                    if right_cx is None:
+                        right_cx = right_slot['x'] + right_slot['w'] / 2.0
                     face_gap_ratio = max(0.0, right_cx - left_cx) / frame_width
                     if frame_idx % 25 == 0:
                         log.info(
@@ -1857,6 +2032,12 @@ class ClipEditor:
                                         f"thresh={TALKING_THRESHOLD}"
                                     )
 
+                # ── VAD Gate: zero mouth motion if audio is silent at this frame ──
+                # Kills ghost-tracking: if nobody is speaking in audio, EMA can't rise.
+                if _vad_gate and not _vad_gate.get(frame_idx, True):
+                    mouth_motion_left  = 0.0
+                    mouth_motion_right = 0.0
+
                 ema_mouth_left  = max(EMA_FLOOR, ema_mouth_left  * (1 - EMA_ALPHA) + mouth_motion_left  * EMA_ALPHA)
                 ema_mouth_right = max(EMA_FLOOR, ema_mouth_right * (1 - EMA_ALPHA) + mouth_motion_right * EMA_ALPHA)
                 left_talking  = ema_mouth_left  > TALKING_THRESHOLD
@@ -1919,22 +2100,30 @@ class ClipEditor:
 
                 # 6. Compute sx (face center from cache) and solo_slot BEFORE tracking
                 if mode == "SOLO_LEFT" and left_slot is not None:
-                    sx = left_slot['x'] + left_slot['w'] / 2.0
+                    sx = left_slot.get('nose_x')
+                    if sx is None:
+                        sx = left_slot['x'] + left_slot['w'] / 2.0
                 elif mode == "SOLO_RIGHT" and right_slot is not None:
-                    sx = right_slot['x'] + right_slot['w'] / 2.0
+                    sx = right_slot.get('nose_x')
+                    if sx is None:
+                        sx = right_slot['x'] + right_slot['w'] / 2.0
                 else:
                     sx = None
                 solo_slot = active_slot if mode in ("SOLO_LEFT", "SOLO_RIGHT") else None
 
                 # 6. Smooth position updates (per slot, independent) via Physics Engine
                 if left_slot is not None:
-                    lx = left_slot['x'] + left_slot['w'] / 2.0
+                    lx = left_slot.get('nose_x')
+                    if lx is None:
+                        lx = left_slot['x'] + left_slot['w'] / 2.0
                     smoothed_left_x, vel_left = apply_deadzone_physics(smoothed_left_x, vel_left, lx, frame_width, "LEFT", frame_idx)
                 else:
                     _, vel_left = apply_deadzone_physics(smoothed_left_x, vel_left, None, frame_width, "LEFT", frame_idx)
 
                 if right_slot is not None:
-                    rx = right_slot['x'] + right_slot['w'] / 2.0
+                    rx = right_slot.get('nose_x')
+                    if rx is None:
+                        rx = right_slot['x'] + right_slot['w'] / 2.0
                     smoothed_right_x, vel_right = apply_deadzone_physics(smoothed_right_x, vel_right, rx, frame_width, "RIGHT", frame_idx)
                 else:
                     _, vel_right = apply_deadzone_physics(smoothed_right_x, vel_right, None, frame_width, "RIGHT", frame_idx)
@@ -2021,6 +2210,7 @@ class ClipEditor:
                     talking_threshold=TALKING_THRESHOLD,
                     frame_height=frame_height,
                     frame_width=frame_width,
+                    scene_cut=_is_scene_cut,
                 )
 
                 # Only carry gray forward if it was actually computed this frame.
@@ -2849,7 +3039,7 @@ class ClipEditor:
                 tagged.append((longest_idx, "Highlight"))
 
         for idx, style in tagged:
-            words[idx] = f"{{\\r{style}}}{words[idx]}{{\\r}}"
+            words[idx] = f"{{\\r{style}\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}}{words[idx]}{{\\r}}"
         return " ".join(words)
 
     def generate_caption_file(self, input_path: str, source_start: float, source_end: float, transcript: list, config, clip_title: str, cortex_hints: dict, precomputed_narrative: dict = None) -> str:
@@ -3059,15 +3249,15 @@ class ClipEditor:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            f"Style: Caption,Montserrat,80,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Hook,Outfit,55,{hook_color},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,20,20,80,1",
-            f"Style: Highlight,Montserrat,80,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: HookWord,Montserrat,80,&H00FFAAFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Danger,Montserrat,80,&H006666FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Success,Montserrat,80,&H00AAFF88,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: CTA,Montserrat,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
+            f"Style: Caption,Montserrat Black,95,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Hook,Outfit,65,{hook_color},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,20,20,80,1",
+            f"Style: Highlight,Montserrat Black,95,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: HookWord,Montserrat Black,95,&H00FFAAFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Danger,Montserrat Black,95,&H006666FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Success,Montserrat Black,95,&H00AAFF88,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: CTA,Montserrat Black,50,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
             # KaraokeWord: slightly smaller, used for the inactive (ghost) state of karaoke
-            f"Style: KaraokeGhost,Montserrat,80,&H00E0E0E0,&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: KaraokeGhost,Montserrat Black,95,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -3094,7 +3284,7 @@ class ClipEditor:
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            parts.append("{\\rHighlight}" + w_esc + "{\\r}")
+                            parts.append("{\\rHighlight\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}" + w_esc + "{\\r}")
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
                             
@@ -3111,7 +3301,7 @@ class ClipEditor:
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            parts.append("{\\rHighlight}" + w_esc + "{\\r}")
+                            parts.append("{\\rHighlight\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}" + w_esc + "{\\r}")
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
                             
@@ -3407,6 +3597,56 @@ class ClipEditor:
                 passes_saved += 1
             metadata["hook_ramp"] = {"window_s": round(ramp_window, 3), "speed": round(cfg.hook_ramp_speed, 3)}
 
+            # ── B-ROLL INJECTION (Pollinations.ai) ─────────────────────────────────────────
+            _broll_path = None
+            _broll_start_sec = 0.0
+            _broll_duration = 0.0
+            if _cortex_active:
+                _content_genre = str(_cortex.get("content_genre", "")).upper()
+                _broll_prompt = _cortex.get("b_roll_prompt", "")
+                _broll_keywords = _cortex.get("b_roll_keywords", []) or []
+                _broll_timestamp = _cortex.get("b_roll_timestamp", 1.0)
+                
+                # Support legacy keywords if prompt isn't provided
+                if not _broll_prompt and _broll_keywords:
+                    _broll_prompt = "cinematic high quality " + " ".join(_broll_keywords[:2])
+                
+                _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
+                _broll_enabled = bool(_broll_prompt) and _broll_hs_enabled
+                log.info(
+                    "[WCE-BROLL] decision: cortex_active=%s prompt='%s' genre=%s "
+                    "HS_BROLL_ENABLED=%s → enabled=%s",
+                    _cortex_active, _broll_prompt, _content_genre,
+                    _broll_hs_enabled, _broll_enabled
+                )
+                if _broll_enabled:
+                    try:
+                        import uuid
+                        broll_out_jpg = os.path.join(self.work_dir, f"broll_tmp_{uuid.uuid4().hex}.jpg")
+                        _fetched = fetch_broll_asset(_broll_prompt, broll_out_jpg, width=2160, height=3840)
+                        
+                        if _fetched and os.path.exists(_fetched):
+                            tmp_files.append(_fetched)
+                            
+                            try:
+                                _broll_start_sec = float(_broll_timestamp)
+                            except (ValueError, TypeError):
+                                _broll_start_sec = 1.0
+                                
+                            _broll_start_sec = max(0.5, min(_broll_start_sec, ramped_duration - 2.0))
+                            _broll_duration = min(4.0, max(1.5, ramped_duration * 0.12))  # ~12% of clip, 1.5-4s
+                            _broll_path = _fetched
+                            
+                            log.info(
+                                "[WCE-BROLL] Injecting AI B-Roll '%s' prompt='%s' genre=%s "
+                                "overlay_dur=%.1fs seek=%.1fs",
+                                os.path.basename(_broll_path), _broll_prompt,
+                                _content_genre, _broll_duration, _broll_start_sec
+                            )
+                    except Exception as _be:
+                        log.error("[WCE-BROLL] Fetch/probe failed: %s", _be)
+            # ── END B-ROLL INJECTION ──────────────────────────────────────────────
+
             hook_zoom_filter = _hook_zoom_filter_expr(cfg, ramped_duration)
             if hook_zoom_filter:
                 passes_saved += 1
@@ -3474,6 +3714,65 @@ class ClipEditor:
             else:
                 focus_x = 0.5
             is_complex_graph, vf = self._build_reframe_filter(work_meta, target_wh, focus_x, cfg, boring_mode)
+            
+            # ── B-ROLL INJECTION (Pollinations.ai) ─────────────────────────────────────────
+            _broll_path = None
+            _broll_start_sec = 0.0
+            _broll_duration = 0.0
+            if _cortex_active:
+                _content_genre = str(_cortex.get("content_genre", "")).upper()
+                _broll_prompt = _cortex.get("b_roll_prompt", "")
+                _broll_keywords = _cortex.get("b_roll_keywords", []) or []
+                _broll_timestamp = _cortex.get("b_roll_timestamp", 1.0)
+                
+                # Support legacy keywords if prompt isn't provided
+                if not _broll_prompt and _broll_keywords:
+                    _broll_prompt = "cinematic high quality " + " ".join(_broll_keywords[:2])
+                
+                _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
+                _broll_enabled = bool(_broll_prompt) and _broll_hs_enabled
+                log.info(
+                    "[WCE-BROLL] decision: cortex_active=%s prompt='%s' genre=%s "
+                    "HS_BROLL_ENABLED=%s → enabled=%s",
+                    _cortex_active, _broll_prompt, _content_genre,
+                    _broll_hs_enabled, _broll_enabled
+                )
+                if _broll_enabled:
+                    try:
+                        from effects.broll_engine import fetch_broll_asset
+                        
+                        _broll_duration = min(4.0, max(1.5, ramped_duration * 0.12))  # ~12% of clip, 1.5-4s
+                        
+                        # Save image in work_dir
+                        import uuid
+                        broll_out_jpg = os.path.join(self.work_dir, f"broll_tmp_{uuid.uuid4().hex}.jpg")
+                        _fetched = fetch_broll_asset(_broll_prompt, broll_out_jpg, width=2160, height=3840)
+                        
+                        if _fetched and os.path.exists(_fetched):
+                            tmp_files.append(_fetched)
+                            
+                            try:
+                                _broll_start_sec = float(_broll_timestamp)
+                            except (ValueError, TypeError):
+                                _broll_start_sec = 1.0
+                                
+                            _broll_start_sec = max(0.5, min(_broll_start_sec, ramped_duration - 2.0))
+                            _broll_path = _fetched
+                            log.info(
+                                "\n\n"
+                                "========================================================\n"
+                                "🎬 [B-ROLL PIPELINE TRIGGERED] 🎬\n"
+                                f"► Clip Duration: {ramped_duration:.1f}s\n"
+                                f"► Trigger Prompt: {_broll_prompt}\n"
+                                f"► Image Path: {os.path.basename(_broll_path)}\n"
+                                f"► Display Duration: {_broll_duration:.1f}s (12% dynamic scale)\n"
+                                f"► Start Time: {_broll_start_sec:.1f}s\n"
+                                "========================================================"
+                            )
+                    except Exception as _be:
+                        log.error("[WCE-BROLL] Fetch failed: %s", _be)
+            # ── END B-ROLL INJECTION ───────────────────────────────────────────────────────
+
             t_reframe += time.perf_counter() - t0
             af = self._build_audio_filter(cfg)
 
@@ -3537,48 +3836,6 @@ class ClipEditor:
                 metadata["cortex_hook_type"] = _cortex.get("hook_type", "")
                 metadata["cortex_score"] = _cortex.get("cortex_score", 0)
             # --- END CORTEX EDITING HINTS ---
-
-            # ── B-ROLL INJECTION (Pexels) ─────────────────────────────────────────
-            # Groq Cortex provides b_roll_keywords for any content type.
-            # We fetch a Pexels clip and overlay it at t=1s as a visual hook enhancer.
-            # Hard-cut overlay (no fade) avoids NVENC alpha channel issues.
-            _broll_path = None
-            _broll_start_sec = 0.0
-            _broll_duration = 0.0
-            if _cortex_active:
-                _content_genre = str(_cortex.get("content_genre", "")).upper()
-                _broll_keywords = _cortex.get("b_roll_keywords", []) or []
-                _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
-                _broll_enabled = bool(_broll_keywords) and _broll_hs_enabled
-                log.info(
-                    "[WCE-BROLL] decision: cortex_active=%s keywords=%s genre=%s "
-                    "HS_BROLL_ENABLED=%s → enabled=%s",
-                    _cortex_active, _broll_keywords, _content_genre,
-                    _broll_hs_enabled, _broll_enabled
-                )
-                if _broll_enabled:
-                    try:
-                        _fetched = fetch_b_roll_for_keywords(_broll_keywords)
-                        if _fetched and os.path.exists(_fetched):
-                            _broll_probe = self._probe_video(_fetched)
-                            _broll_total_dur = float(_broll_probe.get("duration", 0) or 0)
-                            _broll_duration = min(4.0, max(1.5, ramped_duration * 0.12))  # ~12% of clip, 1.5-4s
-                            if _broll_total_dur > _broll_duration + 1.0:
-                                import random as _rand
-                                _safe_end = _broll_total_dur - _broll_duration - 1.0
-                                _broll_start_sec = _rand.uniform(0, _safe_end) if _safe_end > 0 else 0.0
-                                _broll_path = _fetched
-                                log.info(
-                                    "[WCE-BROLL] Injecting B-Roll '%s' keywords=%s genre=%s "
-                                    "overlay_dur=%.1fs seek=%.1fs",
-                                    os.path.basename(_broll_path), _broll_keywords,
-                                    _content_genre, _broll_duration, _broll_start_sec
-                                )
-                            else:
-                                log.warning("[WCE-BROLL] B-Roll clip too short (%.1fs) for %.1fs overlay — skipping", _broll_total_dur, _broll_duration)
-                    except Exception as _be:
-                        log.error("[WCE-BROLL] Fetch/probe failed: %s", _be)
-            # ── END B-ROLL INJECTION ──────────────────────────────────────────────
 
             has_any_overlay = (cfg.add_captions and captions) or (cfg.add_dynamic_overlays and hook_line) or (cfg.add_cta and cta_line)
             
@@ -3653,11 +3910,29 @@ class ClipEditor:
                 if is_complex_graph:
                     vf_render = f"{vf_render};[v_fmt]null[out_v]"
 
-            # ── Distribution branding: merge blur-bg + watermark + outro into this pass ──
-            # Eliminates the separate _apply_distribution_branding() call (saves ~26s/clip)
-            # and avoids double-encode quality loss. Flag is set by local_worker.py.
+            # ── Audio Mix, Video Transition, Outro Concat, and Branding ──
+            # Prepare transition assets on-demand if enabled
+            enable_transitions = str(os.environ.get("HS_TRANSITIONS_ENABLED", "1")).lower() in ("1", "true", "yes", "on")
+            _leak_input_idx   = None
+            _swoosh_input_idx = None
+            _click_input_idx  = None
+            leak_path   = None
+            swoosh_path = None
+            click_path  = None
+            if enable_transitions and ramped_duration >= 2.0:
+                try:
+                    from effects.generate_transitions import ensure_transition_assets
+                    leak_path, swoosh_path, click_path = ensure_transition_assets()
+                except Exception as ex:
+                    log.warning(f"[TRANSITION] Failed to prepare transition assets: {ex}")
+                    enable_transitions = False
+
             branding_merged = False
             branding_outro_merged = False
+            _has_outro = False
+            _outro_input_idx = None
+            _bwm_idx = None
+            
             if cfg.apply_distribution_branding and cfg.branding_watermark_path:
                 _bwm = os.path.abspath(cfg.branding_watermark_path).replace("\\", "/")
                 _has_outro = bool(
@@ -3665,9 +3940,36 @@ class ClipEditor:
                     and os.path.exists(cfg.branding_outro_path)
                     and os.path.getsize(cfg.branding_outro_path) > 1000
                 )
-                # Input index tracking: 0=clip, 1=wm_icon (if is_watermarked), else not present
-                _bwm_idx = 2 if is_watermarked else 1   # index for branding logo.png
-                _outro_idx = _bwm_idx + 1               # index for outro.mp4
+                branding_merged = True
+
+            # Calculate deterministic input indexes
+            next_idx = 1
+            if is_watermarked:
+                _wm_input_idx = next_idx
+                next_idx += 1
+            if branding_merged:
+                _bwm_idx = next_idx
+                next_idx += 1
+                if _has_outro:
+                    _outro_input_idx = next_idx
+                    next_idx += 1
+            if enable_transitions and leak_path and swoosh_path:
+                _leak_input_idx = next_idx
+                next_idx += 1
+                _swoosh_input_idx = next_idx
+                next_idx += 1
+                if click_path:
+                    _click_input_idx = next_idx
+                    next_idx += 1
+            
+            # B-Roll input (after all other inputs so index is known)
+            _broll_input_idx = None
+            if _broll_path:
+                _broll_input_idx = next_idx
+                next_idx += 1
+
+            # Build branding chain
+            if branding_merged:
                 _disable_bg_blur = os.getenv("HS_DISABLE_BG_BLUR", "1").strip() != "0"
                 if _disable_bg_blur:
                     log.info("[WCE_PERF] Background blur set to 0 (disabled via HS_DISABLE_BG_BLUR=1) -> using instant black padding!")
@@ -3691,41 +3993,130 @@ class ClipEditor:
                             "crop=1080:1920,boxblur=20"
                         )
                     # Build branding chain appended onto [out_v]
-                    # Step 1: cinematic blur background
                     _brand_chain = (
                         f";[out_v]split=2[hs_blur_src][hs_vid_raw]"
                         f";[hs_blur_src]{_blur_chain}[hs_bg]"
                         f";[hs_vid_raw]scale=1080:1920:force_original_aspect_ratio=decrease[hs_fg]"
                         f";[hs_bg][hs_fg]overlay=(W-w)/2:(H-h)/2[hs_merged]"
-                        # Step 2: branding watermark overlay
                         f";[{_bwm_idx}:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[hs_wm]"
                         f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[hs_main_v]"
                     )
                 vf_render = f"{vf_render}{_brand_chain}"
 
-                if _has_outro:
-                    # Step 3: outro concat
-                    vf_render += (
-                        f";[{_outro_idx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
-                        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[hs_outro_v]"
-                        f";[0:a]aresample=44100,aformat=channel_layouts=stereo[hs_main_a_r]"
-                        f";[{_outro_idx}:a]aresample=44100,aformat=channel_layouts=stereo[hs_outro_a_r]"
-                        f";[hs_main_v][hs_main_a_r][hs_outro_v][hs_outro_a_r]"
-                        f"concat=n=2:v=1:a=1[hs_final_v][hs_final_a]"
-                    )
-                    branding_outro_merged = True
-                    log.info("[WCE] Branding+outro merged into WCE pass (single encode)")
+            # If any time-based overlays are active (B-Roll or Transitions), we must normalize PTS to 0.
+            # Otherwise exact_seek offsets will break overlay between() timings.
+            _broll_active = bool(_broll_path and _broll_input_idx is not None)
+            _needs_time_norm = _broll_active or (enable_transitions and _leak_input_idx is not None)
+            
+            if _needs_time_norm and not is_complex_graph:
+                if vf_render:
+                    vf_render = f"[0:v]setpts=PTS-STARTPTS,{vf_render}[out_v]"
                 else:
-                    vf_render += ";[hs_main_v]null[hs_final_v]"
-                    log.info("[WCE] Branding merged into WCE pass (no outro found at %s)", cfg.branding_outro_path)
+                    vf_render = f"[0:v]setpts=PTS-STARTPTS[out_v]"
+                is_complex_graph = True
 
-                branding_merged = True
+            if _broll_active:
+                from effects.broll_engine import get_ken_burns_filter
+                _broll_end = _broll_duration
+                _kb_filter = get_ken_burns_filter(start_time=_broll_start_sec, duration=_broll_end, width=target_wh[0], height=target_wh[1])
+                
+                _broll_filter = (
+                    f"[{_broll_input_idx}:v]{_kb_filter}[broll_v];"
+                    f"[out_v][broll_v]overlay=enable='between(t,{_broll_start_sec:.3f},{_broll_start_sec+_broll_end:.3f})':x=0:y=0:eof_action=pass[out_v_broll]"
+                )
+                
+                vf_render = f"{vf_render};{_broll_filter}"
+                vf_render = vf_render.replace("[out_v]null[hs_final_v]", "[out_v_broll]null[hs_final_v]")
+                vf_render = vf_render.replace("[out_v]split=2", "[out_v_broll]split=2")
+                log.info(
+                    "\n\n"
+                    "🔧 [B-ROLL FILTER GRAPH INJECTED]\n"
+                    f"► Overlay Timeline: T={_broll_start_sec:.1f}s to T={_broll_start_sec+_broll_end:.3f}s\n"
+                    f"► Ken Burns Zoom: Enabled (Scale 1.0 -> 1.15)\n"
+                    "--------------------------------------------------------"
+                )
 
+            # Determine base video pad of the main clip before transition/outro
+            _pre_trans_pad = "hs_main_v" if branding_merged else ("out_v_broll" if _broll_active else ("out_v" if (is_watermarked or is_complex_graph) else "0:v:0"))
+            
+            # Apply transition overlay to video
+            _post_trans_pad = _pre_trans_pad
+            if enable_transitions and _leak_input_idx is not None:
+                trans_w = work_meta.get("width", 1920)
+                trans_h = work_meta.get("height", 1080)
+                if branding_merged:
+                    trans_w, trans_h = 1080, 1920
+                elif is_complex_graph:
+                    trans_w, trans_h = target_wh[0], target_wh[1]
+                
+                vf_render += (
+                    f";[{_leak_input_idx}:v]scale={trans_w}:{trans_h}:force_original_aspect_ratio=decrease,"
+                    f"pad={trans_w}:{trans_h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuva420p,colorchannelmixer=aa=0.85[hs_leak_v]"
+                    f";[{_pre_trans_pad}][hs_leak_v]overlay=enable='between(t,0,1.0)':x=0:y=0:eof_action=pass[hs_v_trans]"
+                )
+                _post_trans_pad = "hs_v_trans"
+                log.info(f"[WCE] Light leak transition blended into WCE pass (resolution={trans_w}x{trans_h})")
+
+            # Determine base audio pad of the main clip before transition mixing/outro
+            af_base = af if (af and af != "null") else "anull"
+            fade_start = max(0.0, float(ramped_duration) - 0.05)
+            if needs_trim:
+                af_base = f"{af_base},afade=t=out:st={fade_start:.3f}:d=0.05"
+            
+            _main_audio_pad = "0:a"
+            if _swoosh_input_idx is not None:
+                vf_render += (
+                    f";[0:a]{af_base},aresample=44100,aformat=channel_layouts=stereo[hs_main_a_base]"
+                    f";[{_swoosh_input_idx}:a]volume=1.5,aresample=44100,aformat=channel_layouts=stereo[hs_swoosh_a]"
+                )
+                if _click_input_idx is not None:
+                    # Camera click: play at t=0, volume 2.5
+                    vf_render += (
+                        f";[{_click_input_idx}:a]volume=2.5,aresample=44100,"
+                        f"aformat=channel_layouts=stereo,adelay=0|0[hs_click_a]"
+                        f";[hs_main_a_base][hs_swoosh_a][hs_click_a]amix=inputs=3:duration=first:dropout_transition=0:normalize=0[hs_main_a_mixed]"
+                    )
+                else:
+                    vf_render += (
+                        f";[hs_main_a_base][hs_swoosh_a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[hs_main_a_mixed]"
+                    )
+                _main_audio_pad = "hs_main_a_mixed"
+                log.info("[WCE] Swoosh + Camera Click transition audio mixed into WCE pass")
+
+            complex_audio_merged = (_swoosh_input_idx is not None)
+
+            # Apply outro concatenation if needed
+            if _has_outro:
+                # We resample the main audio stream
+                if _swoosh_input_idx is not None:
+                    # Already mixed and resampled to hs_main_a_mixed
+                    vf_render += f";[{_main_audio_pad}]anull[hs_main_a_r]"
+                else:
+                    vf_render += f";[0:a]{af_base},aresample=44100,aformat=channel_layouts=stereo[hs_main_a_r]"
+                
+                # Outro concatenation
+                vf_render += (
+                    f";[{_outro_input_idx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
+                    f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[hs_outro_v]"
+                    f";[{_outro_input_idx}:a]aresample=44100,aformat=channel_layouts=stereo[hs_outro_a_r]"
+                    f";[{_post_trans_pad}][hs_main_a_r][hs_outro_v][hs_outro_a_r]"
+                    f"concat=n=2:v=1:a=1[hs_final_v][hs_final_a]"
+                )
+                branding_outro_merged = True
+                log.info("[WCE] Outro merged into WCE pass (single encode)")
+            else:
+                vf_render += f";[{_post_trans_pad}]null[hs_final_v]"
+                if _swoosh_input_idx is not None:
+                    vf_render += f";[{_main_audio_pad}]anull[hs_final_a]"
+                    complex_audio_merged = True
+                log.info("[WCE] Output pads set up (no outro)")
+
+            # Formulate final input command
             cmd = [
                 "ffmpeg",
                 "-y",
                 "-nostdin",
-                *_hwaccel_decode_args(work_b),   # GPU decode when supported by input codec
+                *_hwaccel_decode_args(work_b),
             ]
             fast_seek = 0.0
             exact_seek = 0.0
@@ -3733,66 +4124,38 @@ class ClipEditor:
                 fast_seek = max(0.0, render_trim_in - 5.0)
                 exact_seek = render_trim_in - fast_seek
                 cmd.extend(["-ss", f"{fast_seek:.3f}"])
-            
             cmd.extend(["-i", work_b])
-            
             if exact_seek > 0.001:
                 cmd.extend(["-ss", f"{exact_seek:.3f}"])
-                
             if render_trim_out > render_trim_in and render_trim_out < float((work_meta.get("duration") or render_trim_out) or render_trim_out) - 0.001:
-                # duration to encode is (render_trim_out - render_trim_in)
                 encode_duration = render_trim_out - render_trim_in
                 cmd.extend(["-t", f"{encode_duration:.3f}"])
 
             if is_watermarked:
                 cmd.extend(["-i", wm_path])
-
             if branding_merged:
                 cmd.extend(["-i", os.path.abspath(cfg.branding_watermark_path)])
                 if branding_outro_merged:
                     cmd.extend(["-i", os.path.abspath(cfg.branding_outro_path)])
-
-            # B-Roll input (after all other inputs so index is known)
-            _broll_input_idx = None
+            if enable_transitions and leak_path and swoosh_path:
+                cmd.extend(["-i", leak_path])
+                cmd.extend(["-i", swoosh_path])
+                if click_path and _click_input_idx is not None:
+                    cmd.extend(["-i", click_path])
             if _broll_path:
-                _broll_input_idx = len([x for i, x in enumerate(cmd) if i > 0 and cmd[i-1] == "-i"])
-                cmd.extend(["-ss", f"{_broll_start_sec:.3f}", "-i", _broll_path])
-                # Inject B-Roll overlay into filter graph BEFORE format=yuv420p step
-                # We overlay on [out_v] which exists at this point (after watermark/branding).
-                # Use hard-cut with trim to keep duration bounded.
-                _broll_end = _broll_duration
-                _broll_filter = (
-                    f"[{_broll_input_idx}:v]"
-                    f"trim=end={_broll_end:.3f},setpts=PTS-STARTPTS,"
-                    f"scale={target_wh[0]}:{target_wh[1]}:force_original_aspect_ratio=increase,"
-                    f"crop={target_wh[0]}:{target_wh[1]},setsar=1[broll_v];"
-                    f"[out_v][broll_v]overlay=enable='between(t,1.0,{1.0+_broll_end:.3f})':x=0:y=0[out_v_broll]"
-                )
-                # Replace [out_v] terminal pad with broll-overlaid version
-                if is_complex_graph:
-                    vf_render = f"{vf_render};{_broll_filter}"
-                    # Update all downstream references from [out_v] to [out_v_broll]
-                    # The branding chain appends after [out_v] so rewrite it
-                    vf_render = vf_render.replace("[out_v]null[hs_final_v]", "[out_v_broll]null[hs_final_v]")
-                    vf_render = vf_render.replace("[out_v]split=2", "[out_v_broll]split=2")
-                    # If branding was already added (uses [out_v] as source), patch its reference
-                    # by replacing the LAST occurrence of [out_v] with [out_v_broll]
-                    if not branding_merged and "[out_v]" not in vf_render:
-                        pass  # already replaced above
-                    _use_filter_complex = True
-                log.info("[WCE-BROLL] Filter graph patched: B-Roll overlay at 1.0-%.1fs", 1.0+_broll_end)
-
+                # Images for B-roll need loop 1. We limit duration to avoid infinite loops.
+                cmd.extend(["-loop", "1", "-t", f"{_broll_duration+1.0:.3f}", "-i", _broll_path])
 
             # Determine final output pad and audio handling
-            # When broll is injected, [out_v] becomes [out_v_broll] — update the pad reference.
-            _broll_active = bool(_broll_path and _broll_input_idx is not None)
-            _out_video_pad = "hs_final_v" if branding_merged else ("out_v_broll" if _broll_active else ("out_v" if (is_watermarked or is_complex_graph) else None))
-            _use_filter_complex = is_watermarked or is_complex_graph or branding_merged or _broll_active
+            _use_complex_audio = branding_outro_merged or complex_audio_merged
+            _out_video_pad = "hs_final_v" if (branding_merged or _has_outro or enable_transitions) else ("out_v_broll" if _broll_active else ("out_v" if (is_watermarked or is_complex_graph) else None))
+            _use_filter_complex = is_watermarked or is_complex_graph or branding_merged or _broll_active or _use_complex_audio or enable_transitions
+            
             cmd.extend([
                 "-filter_complex" if _use_filter_complex else "-vf",
                 vf_render,
                 "-map", f"[{_out_video_pad}]" if _out_video_pad else "0:v:0",
-                "-map", "[hs_final_a]" if branding_outro_merged else "0:a:0?",
+                "-map", "[hs_final_a]" if _use_complex_audio else "0:a:0?",
                 "-r",
                 str(max(24, int(cfg.export_fps))),
                 *_video_encode_args(
@@ -3800,17 +4163,17 @@ class ClipEditor:
                     preset=cfg.quality_preset if cfg.preserve_quality else "ultrafast",
                 ),
             ])
-            if branding_outro_merged:
-                # Audio already handled in filter graph via concat — just encode
+            
+            if _use_complex_audio:
                 cmd += ["-c:a", "aac", "-b:a", _get_export_audio_bitrate()]
             elif bool(work_meta.get("has_audio")):
                 af_render = af
-                fade_start = max(0.0, float(ramped_duration) - 0.05)
                 if needs_trim:
                     af_render = f"{af_render},afade=t=out:st={fade_start:.3f}:d=0.05"
                 cmd += ["-af", af_render, "-c:a", "aac", "-b:a", _get_export_audio_bitrate()]
             else:
                 cmd += ["-an"]
+            
             cmd.append(output_path)
             ffmpeg_passes += 1
             
@@ -3832,6 +4195,8 @@ class ClipEditor:
             metadata["engagement_score"] = round(score, 2)
             metadata["captions_count"] = len(captions)
             metadata["branding_merged_into_wce"] = branding_merged
+            # Autopsy link: tells local_worker which debug_out/{id}/decisions.json to analyze
+            metadata["wce_debug_clip_id"] = os.path.splitext(os.path.basename(input_path or "clip"))[0]
             metadata["visual_effect_graph"] = {
                 "single_encode_path": True,
                 "ffmpeg_passes": int(ffmpeg_passes),

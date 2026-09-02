@@ -523,7 +523,7 @@ Otherwise, mark it as "CLIP_ONLY".
 
 If your extracted idea depends on information found only in ZONE B, RETURN REJECT.
 
-Your job is to evaluate whether a video clip forms a complete Narrative Arc: Core Idea → Development → Resolution.
+Your job is to evaluate whether a video clip forms a complete Narrative Arc: Core Idea -> Development -> Resolution.
 
 A valid payoff must resolve the core idea introduced in the hook (whether it's a claim, story, belief reversal, or question).
 
@@ -772,7 +772,8 @@ Return JSON ONLY in this exact format:
 
                 pt_per_cand = 0  # Gemini doesn't expose token count the same way
 
-                for report in parsed.get("surgeon_reports", []):
+                reports_list = parsed if isinstance(parsed, list) else parsed.get("surgeon_reports", [])
+                for report in reports_list:
                     cid = str(report.get("candidate_id", ""))
                     meta = batch_meta.get(cid, {})
                     dec = report.get("decision", "REJECT")
@@ -914,7 +915,7 @@ Return JSON ONLY in this exact format:
 
                         log.info(
                             f"[SURGEON_FALLBACK] cid={cid} dur={dur:.1f}s "
-                            f"→ decision={fallback_dec} dev={fallback_dev} res={fallback_res} "
+                            f"-> decision={fallback_dec} dev={fallback_dev} res={fallback_res} "
                             f"(heuristic, no Groq)"
                         )
                         audit_data["decisions"][fallback_dec] = audit_data["decisions"].get(fallback_dec, 0) + 1
@@ -1300,7 +1301,7 @@ SCORING SCALE FOR CHAOS:
 
 CHAOS ARCHETYPES (you MUST pick exactly one):
 - chaotic_digression: Normal conversation suddenly derails into something completely unrelated and bizarre.
-- cursed_escalation: Harmless comment → increasingly unhinged chain reaction.
+- cursed_escalation: Harmless comment -> increasingly unhinged chain reaction.
 - unhinged_banter: Roasting, absurd accusations, outrageous jokes between people.
 - absurd_roleplay: People start roleplaying bizarre scenarios (dictator, fake identities, surreal hypotheticals).
 - out_of_context_gold: A statement that sounds completely insane without surrounding context.

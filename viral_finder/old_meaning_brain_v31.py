@@ -78,7 +78,7 @@ def meaning_brain_score(text, prev_text=None):
         denom = np.linalg.norm(emb) * np.linalg.norm(prev_emb)
         sim = (dot / denom) if denom > 0 else 0
 
-        novelty_score = 1.0 - sim  # more different → more viral
+        novelty_score = 1.0 - sim  # more different -> more viral
         novelty_score = float(np.clip(novelty_score, 0.0, 1.0))
     else:
         novelty_score = 0.5  # neutral if no context available

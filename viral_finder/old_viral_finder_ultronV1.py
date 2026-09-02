@@ -94,7 +94,7 @@ def extract_transcript(path):
         return segments
 
     # CASE 2 — fallback equal split
-    print("[TRANSCRIPT] No timestamps → ULTRON fallback mode")
+    print("[TRANSCRIPT] No timestamps -> ULTRON fallback mode")
     full = res.text.strip()
     lines = [ln.strip() for ln in full.split(".") if ln.strip()]
 

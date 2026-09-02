@@ -19,9 +19,9 @@ from utils.narrative_intelligence import (
 def fuse(hook: float, audio: float, motion: float) -> float:
     """
     🌌 Ultron V33-X Cosmic Fusion
-    - hook   → ignition (curiosity spark)
-    - audio  → emotional pressure
-    - motion → visual stimulation
+    - hook   -> ignition (curiosity spark)
+    - audio  -> emotional pressure
+    - motion -> visual stimulation
     
     Intelligence upgrades:
     - non-linear hook damping (prevents premature endings)
@@ -39,7 +39,7 @@ def fuse(hook: float, audio: float, motion: float) -> float:
     hook_energy = hook ** 0.75   # soften sharp spikes
 
     # --- 2. Sustained energy field ---
-    # If audio & motion both present → narrative is alive
+    # If audio & motion both present -> narrative is alive
     sustain = (audio * motion) ** 0.5
 
     # --- 3. Emotional pressure ---

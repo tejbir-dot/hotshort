@@ -307,9 +307,9 @@ def viral_editor_god_mode(input_path: str, seg: Dict[str, Any], out_path: str) -
     text = (seg.get("text") or "").strip()
     motion = float(seg.get("motion", 0.0))
 
-    # map motion → zoom factor
-    # 0–40   → 1.03–1.10
-    # 40–80  → 1.10–1.18
+    # map motion -> zoom factor
+    # 0–40   -> 1.03–1.10
+    # 40–80  -> 1.10–1.18
     base_zoom = DEFAULT_ZOOM_MIN + (DEFAULT_ZOOM_MAX - DEFAULT_ZOOM_MIN) * min(motion, 80.0) / 80.0
 
     _log(f"START — len={duration:.1f}s, motion={motion:.2f}, zoom={base_zoom:.3f}")
@@ -331,7 +331,7 @@ def viral_editor_god_mode(input_path: str, seg: Dict[str, Any], out_path: str) -
         rc, out, err = _run_ffmpeg(trim_cmd)
         if rc != 0:
             # fallback: re-encode trim
-            _log("Fast trim failed → reencode trim…")
+            _log("Fast trim failed -> reencode trim…")
             trim_cmd2 = [
                 FFMPEG_BIN,
                 "-ss", f"{start:.3f}",
@@ -358,7 +358,7 @@ def viral_editor_god_mode(input_path: str, seg: Dict[str, Any], out_path: str) -
         # 4) build filter_complex
         filter_complex = build_filter_complex(ass_path, main_zoom=base_zoom, glow_strength=DEFAULT_GLOW_STRENGTH)
 
-        # 5) render (NVENC → x264 fallback, subtitles → no-sub fallback)
+        # 5) render (NVENC -> x264 fallback, subtitles -> no-sub fallback)
 
         def _render_with(subs_enabled: bool, use_nvenc: bool) -> Tuple[int, bytes, bytes]:
             vf = f"scale={sw}:{sh},crop={cw}:{ch}:{cx}:{cy}"
@@ -418,7 +418,7 @@ def viral_editor_god_mode(input_path: str, seg: Dict[str, Any], out_path: str) -
 
             # if subtitles clearly at fault, skip further subtitle attempts
             if "subtitles" in err_text or "Unable to parse option value" in err_text:
-                _log("Subtitle filter seems broken in FFmpeg → falling back to no-subs mode.")
+                _log("Subtitle filter seems broken in FFmpeg -> falling back to no-subs mode.")
                 # continue loop; next iterations will include no-subs modes
                 continue
 
@@ -446,4 +446,4 @@ if __name__ == "__main__":
     }
     _log("CLI test…")
     viral_editor_god_mode(args.input, seg, args.out)
-    _log("Done →", args.out)
+    _log("Done ->", args.out)

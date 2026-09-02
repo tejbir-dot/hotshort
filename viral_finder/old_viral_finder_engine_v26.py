@@ -132,9 +132,9 @@ def extract_transcript(video_path: str) -> List[Dict]:
             return segments
 
         # -------------------------------------------------------
-        # CASE B: NO SEGMENTS → FALLBACK TO EQUAL-SPLIT
+        # CASE B: NO SEGMENTS -> FALLBACK TO EQUAL-SPLIT
         # -------------------------------------------------------
-        log("[TRANSCRIPT] No segments → Fallback mode activated")
+        log("[TRANSCRIPT] No segments -> Fallback mode activated")
 
         # decode plain text (no timestamps)
         fallback_opts = whisper.DecodingOptions(
@@ -380,7 +380,7 @@ def find_viral_moments(path, top_k=5):
         })
 
     out.sort(key=lambda x: x["score"], reverse=True)
-    log(f"[V26 ENGINE] DONE → {len(out[:top_k])} viral clips found ✓")
+    log(f"[V26 ENGINE] DONE -> {len(out[:top_k])} viral clips found ✓")
     return out[:top_k]
 # =====================================================
 # FACE CENTER
@@ -505,6 +505,6 @@ if __name__ == "__main__":
 
     for i, c in enumerate(clips):
         out_path = f"outputs/clip_{i}.mp4"
-        print(f"[EDITOR] Rendering Clip {i} →", out_path)
+        print(f"[EDITOR] Rendering Clip {i} ->", out_path)
         render_clip(video, c, out_path)
         print("DONE ✓")
