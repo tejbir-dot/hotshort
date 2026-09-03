@@ -37,8 +37,10 @@ _CUDA_BROKEN  = False   # Set True when cuDNN inference fails → switch to CPU-
 _thread_local = threading.local()
 
 MODEL_NAME    = os.environ.get("HS_INSIGHTFACE_MODEL", "buffalo_sc")
-DET_SIZE_CFG  = int(os.environ.get("HS_INSIGHTFACE_DET_SIZE", "320"))
+DET_SIZE_CFG  = int(os.environ.get("HS_INSIGHTFACE_DET_SIZE", "640"))
 IF_ENABLED    = os.environ.get("HS_INSIGHTFACE_ENABLED", "1") not in ("0", "false", "no")
+
+_init_lock    = threading.Lock()
 
 _PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
@@ -104,13 +106,14 @@ def _get_app():
                 sys.stdout.close()
                 sys.stdout = self._original_stdout
 
-        with _SuppressStdout():
-            app = FaceAnalysis(
-                name=MODEL_NAME,
-                providers=_providers,          # probe-determined: CUDA or CPU-only
-                allowed_modules=["detection"],
-            )
-            app.prepare(ctx_id=0, det_size=(DET_SIZE_CFG, DET_SIZE_CFG))
+        with _init_lock:
+            with _SuppressStdout():
+                app = FaceAnalysis(
+                    name=MODEL_NAME,
+                    providers=_providers,          # probe-determined: CUDA or CPU-only
+                    allowed_modules=["detection"],
+                )
+                app.prepare(ctx_id=0, det_size=(DET_SIZE_CFG, DET_SIZE_CFG))
 
         active = _device_name
         log.info(
@@ -135,14 +138,25 @@ def _reinit_cpu_only():
     try:
         from insightface.app import FaceAnalysis
         import logging as _logging
+        import sys
         _logging.getLogger("insightface").setLevel(_logging.WARNING)
 
-        app = FaceAnalysis(
-            name=MODEL_NAME,
-            providers=["CPUExecutionProvider"],
-            allowed_modules=["detection"],
-        )
-        app.prepare(ctx_id=0, det_size=(DET_SIZE_CFG, DET_SIZE_CFG))
+        class _SuppressStdout:
+            def __enter__(self):
+                self._original_stdout = sys.stdout
+                sys.stdout = open(os.devnull, 'w')
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                sys.stdout.close()
+                sys.stdout = self._original_stdout
+
+        with _init_lock:
+            with _SuppressStdout():
+                app = FaceAnalysis(
+                    name=MODEL_NAME,
+                    providers=["CPUExecutionProvider"],
+                    allowed_modules=["detection"],
+                )
+                app.prepare(ctx_id=0, det_size=(DET_SIZE_CFG, DET_SIZE_CFG))
         _thread_local.if_app = app
         log.info(
             "[INSIGHTFACE] cuDNN unavailable -- reinitialized on CPU. "

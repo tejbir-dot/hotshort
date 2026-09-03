@@ -19,6 +19,8 @@ Optional:
 """
 
 import os
+os.environ["HS_DEBUG_FRAMES"] = "./debug_out"
+
 import sys
 
 # Inject local bundled bin/ directory (containing dav1d FFmpeg) into PATH
@@ -47,11 +49,28 @@ import requests
 from dotenv import load_dotenv
 
 try:
+    from effects.insightface_detector import detect_faces_insightface, is_insightface_available
+    _INSIGHTFACE_ENABLED = is_insightface_available()
+except Exception:
+    _INSIGHTFACE_ENABLED = False
+    detect_faces_insightface = None
+
+try:
     from effects.mediapipe_detector import detect_faces_mediapipe, is_mediapipe_available
     _MEDIAPIPE_ENABLED = True
 except ImportError:
     _MEDIAPIPE_ENABLED = False
     detect_faces_mediapipe = None
+
+def _detect_faces_best(frame_bgr, conf_threshold=0.45, min_size=(40, 40)):
+    if _INSIGHTFACE_ENABLED and detect_faces_insightface is not None:
+        result = detect_faces_insightface(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
+        if result:
+            return result
+    if _MEDIAPIPE_ENABLED and detect_faces_mediapipe is not None:
+        return detect_faces_mediapipe(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
+    return []
+
 
 # ── Load local env ────────────────────────────────────────────────────────────
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -952,9 +971,9 @@ class FaceCache:
         )
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # ── PRIMARY: MediaPipe ──
-        if _MEDIAPIPE_ENABLED and detect_faces_mediapipe is not None:
-            faces = detect_faces_mediapipe(frame, conf_threshold=0.45, min_size=(40, 40))
+        # ── PRIMARY: Unified Detector (InsightFace -> MediaPipe) ──
+        if _INSIGHTFACE_ENABLED or _MEDIAPIPE_ENABLED:
+            faces = _detect_faces_best(frame, conf_threshold=0.45, min_size=(40, 40))
             
             # Adjustment scan if score is low or no faces found
             if not faces or any(getattr(f, 'score', 1.0) < 0.65 for f in faces):
@@ -963,7 +982,7 @@ class FaceCache:
                 enhanced_gray = clahe.apply(gray_for_clahe)
                 enhanced_bgr = cv2.cvtColor(enhanced_gray, cv2.COLOR_GRAY2BGR)
                 
-                faces_retry = detect_faces_mediapipe(enhanced_bgr, conf_threshold=0.45, min_size=(40, 40))
+                faces_retry = _detect_faces_best(enhanced_bgr, conf_threshold=0.45, min_size=(40, 40))
                 # Only use retry if it found faces and they have better/equal scores
                 if faces_retry and (not faces or max(getattr(f, 'score', 0) for f in faces_retry) > max(getattr(f, 'score', 0) for f in faces)):
                     faces = faces_retry
@@ -1257,7 +1276,7 @@ class FaceCache:
                     t_abs = round(fn / local_fps, 2)
                     t_rel = round(max(0.0, t_abs - start), 2)
                     t0 = time.perf_counter()
-                    raw_faces = self._detect(cascade, frame)
+                    raw_faces = self._detect(frame)
                     t_face += time.perf_counter() - t0
                     haar_calls += 1
                     if raw_faces:
@@ -1446,7 +1465,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         if _genre in ("PODCAST", "INTERVIEW"):
                             from effects.format_analyzer import DirectorMode
                             if fmt and fmt.format_type != "podcast":
-                                log.warning(f"[SPACEX FIX] Cortex tagged {_genre} but analyzer said {fmt.format_type}. Forcing BLIND SPLIT (50/50).")
+                                print(f"[SPACEX FIX] Cortex tagged {_genre} but analyzer said {fmt.format_type}. Forcing BLIND SPLIT (50/50).")
                                 fmt.format_type = "podcast"
                                 fmt.director_mode = DirectorMode.SPLIT
                                 fmt.face_count_avg = max(2.0, fmt.face_count_avg)
@@ -1495,15 +1514,20 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         end   = float(clip.get("end", start + 30))
                         clip_transcript = clip.get("transcript") or clip.get("captions") or _full_transcript or []
                         clip_title = clip.get("opening_caption") or clip.get("title") or clip.get("text", "")
-                        cortex_hints = {"cortex_enabled": True} if clip.get("cortex_enabled") else None
-                        if cortex_hints:
-                            cortex_hints.update({
+                        cortex_hints = None
+                        if clip.get("cortex_enabled") or clip.get("b_roll_prompt") or clip.get("b_roll_keywords"):
+                            cortex_hints = {
+                                "cortex_enabled": True,
                                 "editing_notes": clip.get("editing_notes", {}),
                                 "opening_caption": clip.get("opening_caption", ""),
                                 "title": clip.get("title", ""),
                                 "hook_type": clip.get("hook_type", ""),
-                                "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {})
-                            })
+                                "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {}),
+                                "content_genre": clip.get("content_genre", ""),
+                                "b_roll_prompt": clip.get("b_roll_prompt", ""),
+                                "b_roll_keywords": clip.get("b_roll_keywords", []),
+                                "b_roll_timestamp": clip.get("b_roll_timestamp", 1.0)
+                            }
                         ass_path = editor_instance.generate_caption_file(
                             input_path=video_path,
                             source_start=start,
@@ -1576,14 +1600,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         clip_title = clip.get("opening_caption") or clip.get("title") or clip.get("text", "")
                         
                         cortex_hints = None
-                        if clip.get("cortex_enabled"):
+                        if clip.get("cortex_enabled") or clip.get("b_roll_prompt") or clip.get("b_roll_keywords"):
                             cortex_hints = {
                                 "cortex_enabled": True,
                                 "editing_notes": clip.get("editing_notes", {}),
                                 "opening_caption": clip.get("opening_caption", ""),
                                 "title": clip.get("title", ""),
                                 "hook_type": clip.get("hook_type", ""),
-                                "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {})
+                                "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {}),
+                                "content_genre": clip.get("content_genre", ""),
+                                "b_roll_prompt": clip.get("b_roll_prompt", ""),
+                                "b_roll_keywords": clip.get("b_roll_keywords", []),
+                                "b_roll_timestamp": clip.get("b_roll_timestamp", 1.0)
                             }
 
                         _bench.begin(f"6b_wce_clip{i}")
@@ -1617,7 +1645,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                     # Swap paths to keep final_path intact for upload
                                     shutil.move(nosilence_path, final_path)
                             except Exception as e:
-                                log.error(f"[SILENCE_KILLER] Post-processing failed: {e}", exc_info=True)
+                                print(f"[SILENCE_KILLER] Post-processing failed: {e}", flush=True)
                                 
                             clip_res["edit_metadata"] = getattr(edit_result, "metadata", {}) or {}
 

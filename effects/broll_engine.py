@@ -32,12 +32,13 @@ def fetch_broll_asset(keyword: str, output_path: str, width: int = 1080, height:
         log.error(f"[BROLL] Failed to fetch B-Roll asset: {e}")
         return None
 
-def get_ken_burns_filter(start_time: float, duration: float, width: int = 1080, height: int = 1920) -> str:
+def get_ken_burns_filter(start_time: float, duration: float, width: int = 1080, height: int = 1920, anchor_x: float = 0.5, anchor_y: float = 0.5) -> str:
     """
     Returns the buttery-smooth FFmpeg Ken Burns filter string.
     Uses the scale-before-zoom trick to eliminate pixel-rounding jitter.
+    anchor_x and anchor_y (0.0 to 1.0) define the zoom center.
     """
     # scale to massive resolution to fix zoompan integer truncation jitter
     # d is duration in frames (assumed 30fps)
     frames = int(max(duration, 5.0) * 30)
-    return f"scale=4320:7680,zoompan=z='min(zoom+0.0015,1.5)':d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps=30"
+    return f"scale=4320:7680,zoompan=z='min(zoom+0.0015,1.5)':d={frames}:x='(iw*{anchor_x})-(iw/zoom/2)':y='(ih*{anchor_y})-(ih/zoom/2)':s={width}x{height}:fps=30"

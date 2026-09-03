@@ -84,6 +84,7 @@ class DirectorSegment:
     # Per-frame face-tracking timeline: list of {t, solo_x, left_x, right_x}
     # Used by _build_reframe_filter to generate smooth per-frame crop expressions.
     frame_timeline: list = field(default_factory=list)
+    apply_zoom: bool = False
 
 # Global semaphore to ensure only one GPU encode runs at a time (e.g. for GTX 1630)
 _GPU_SEMAPHORE = threading.Semaphore(1)
@@ -137,6 +138,7 @@ def _nvenc_available() -> bool:
         log.info("[WCE] NVENC forced via HS_FORCE_NVENC=1")
         return True
     if force_env in ("0", "false", "no"):
+        log.warning("[WCE] NVENC forcibly disabled via HS_FORCE_NVENC")
         return False
     if not hasattr(_nvenc_available, "_cached"):
         try:
@@ -1909,9 +1911,11 @@ class ClipEditor:
                     if _needs_reinit:
                         if not cluster_changed or cluster_length > 5:
                             t_start = time.perf_counter()
-                            if left_slot:
+                            # Never init a CSRT tracker from a ghost slot — synthetic
+                            # positions are format_classify estimates, not real bboxes.
+                            if left_slot and not left_slot.get('_synthetic', False):
                                 left_tracker.init(frame, (left_slot['x'], left_slot['y'], left_slot['w'], left_slot['h']))
-                            if right_slot:
+                            if right_slot and not right_slot.get('_synthetic', False):
                                 right_tracker.init(frame, (right_slot['x'], right_slot['y'], right_slot['w'], right_slot['h']))
                             tracking_time += (time.perf_counter() - t_start)
                     
@@ -1954,6 +1958,49 @@ class ClipEditor:
                         f"(tracked={ENABLE_CONTINUOUS_TRACKING}, live_haar_hits={len(valid_faces)})"
                     )
 
+                # ── PODCAST GHOST SUPPLEMENT ─────────────────────────────────────────────
+                # When format_classify confirms 2 speakers but only 1 is live-detected,
+                # synthesize the missing slot from video_fmt.speaker_positions.
+                # Root cause this fixes:
+                #   CLUSTER_SCAN picks 1 representative frame per cluster → often only 1
+                #   clearly-frontal face → face_cache has 1 face per timestamp → director
+                #   loop never gets right_slot → SPLIT never triggers despite PODCAST fmt.
+                # Ghost slots: counted for face_gap_ratio (enables SPLIT), but SKIPPED
+                # for mouth-motion EMA and CSRT tracker init so no phantom talking occurs.
+                _pod_spk = video_fmt.speaker_positions if video_fmt else []
+                if (_is_podcast_fmt and len(_pod_spk) >= 2 and
+                        (left_slot is None) != (right_slot is None)):  # exactly 1 real slot
+                    _ref_face = left_slot if left_slot is not None else right_slot
+                    _ghost_h  = _ref_face['h']
+                    _ghost_w  = _ref_face['w']
+                    _ghost_y  = _ref_face['y']
+                    _left_ref_px  = _pod_spk[0] * frame_width
+                    _right_ref_px = _pod_spk[1] * frame_width
+                    if left_slot is not None and right_slot is None:
+                        right_slot = {
+                            'x': _right_ref_px - _ghost_w / 2.0, 'y': _ghost_y,
+                            'w': _ghost_w, 'h': _ghost_h,
+                            'nose_x': _right_ref_px, 'score': 0.3,
+                            '_synthetic': True,
+                        }
+                        if frame_idx % 50 == 0:
+                            log.info(
+                                f"[GHOST_SUPPLEMENT] t={t:.2f}s ghost_RIGHT at "
+                                f"x={_right_ref_px:.0f}px (from format_classify pos={_pod_spk[1]:.3f})"
+                            )
+                    elif right_slot is not None and left_slot is None:
+                        left_slot = {
+                            'x': _left_ref_px - _ghost_w / 2.0, 'y': _ghost_y,
+                            'w': _ghost_w, 'h': _ghost_h,
+                            'nose_x': _left_ref_px, 'score': 0.3,
+                            '_synthetic': True,
+                        }
+                        if frame_idx % 50 == 0:
+                            log.info(
+                                f"[GHOST_SUPPLEMENT] t={t:.2f}s ghost_LEFT at "
+                                f"x={_left_ref_px:.0f}px (from format_classify pos={_pod_spk[0]:.3f})"
+                            )
+
                 # Compute horizontal gap between the two face centers (as fraction of frame width)
                 # This is the key gate for SPLIT mode — faces must be clearly separated
                 face_gap_ratio = 0.0
@@ -1993,6 +2040,8 @@ class ClipEditor:
                     ):
                         if slot_face is None:
                             continue
+                        if slot_face.get('_synthetic', False):
+                            continue  # ghost slot — no real mouth ROI to measure
                         if stable_count < stable_min:
                             # Too new — skip mouth motion to avoid poisoning EMA
                             if frame_idx % 25 == 0:
@@ -2352,6 +2401,17 @@ class ClipEditor:
                 f"  → Verdict: {'SEGMENT BUILDER killed SPLIT' if frames_split > 0 and segs_split == 0 else 'DECISION ENGINE never produced SPLIT' if frames_split == 0 else 'SPLIT survived end-to-end ✅'}"
             )
 
+            # --- KEN BURNS ZOOM TRIGGER ENGINE ---
+            for idx, s in enumerate(stable_segments):
+                if s.mode in ("SOLO", "SOLO_LEFT", "SOLO_RIGHT"):
+                    dur = s.end_t - s.start_t
+                    # Trigger 1: The Hook (First segment, punchy retention push-in)
+                    if idx == 0 and dur >= 2.0:
+                        s.apply_zoom = True
+                    # Trigger 2: Long Monologue (prevent boredom)
+                    elif dur >= 8.0:
+                        s.apply_zoom = True
+
             return stable_segments
 
         return _clamp(
@@ -2440,6 +2500,25 @@ class ClipEditor:
                 vf_parts.append(seg_in)
                 
                 if seg.mode in ("SOLO", "SOLO_LEFT", "SOLO_RIGHT"):
+                    if getattr(seg, 'apply_zoom', False):
+                        timeline = getattr(seg, 'frame_timeline', [])
+                        median_x = seg.crop_x
+                        if timeline:
+                            import statistics
+                            median_x = statistics.median([kf['solo_x'] for kf in timeline])
+                        
+                        anchor_x = float(median_x) / float(src_w)
+                        anchor_y = 0.40 # Eyes are slightly above center
+                        dur = seg.end_t - seg.start_t
+                        
+                        from effects.broll_engine import get_ken_burns_filter
+                        kb_filter = get_ken_burns_filter(seg.start_t, dur, width=dst_w, height=dst_h, anchor_x=anchor_x, anchor_y=anchor_y)
+                        
+                        log.info(f"[KEN_BURNS_CLIP] seg_idx={idx} mode={seg.mode} anchor_x={anchor_x:.3f}")
+                        chain = f"[v_{idx}_raw]{kb_filter}[v_{idx}_out]"
+                        vf_parts.append(chain)
+                        continue
+
                     # ── Per-frame dynamic crop via Overlay + Sendcmd ──────────────
                     # FFmpeg `crop` filter does NOT support `sendcmd`, and `eval=frame`
                     # crashes with AST stack limits (exit code -22) if > 15 terms.
@@ -3425,6 +3504,7 @@ class ClipEditor:
         precomputed_face_cache: Optional[Dict[float, List[Dict[str, float]]]] = None,
         precomputed_ass_path: Optional[str] = None,
     ) -> EditResult:
+        import uuid
         cfg = config or ClipEditConfig()
         _ensure_dir(os.path.dirname(output_path) or ".")
         tmp_files: List[str] = []
@@ -3609,8 +3689,25 @@ class ClipEditor:
                 
                 # Support legacy keywords if prompt isn't provided
                 if not _broll_prompt and _broll_keywords:
-                    _broll_prompt = "cinematic high quality " + " ".join(_broll_keywords[:2])
-                
+                    try:
+                        from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
+                        if is_gemini_enabled() and os.environ.get("HS_GEMINI_BROLL", "1") == "1":
+                            _g_prompt = (
+                                f"Create a vivid 10-word Midjourney style prompt for a cinematic background video based on the keywords: {', '.join(_broll_keywords)}.\n"
+                                f"Context: This is for a '{_content_genre}' clip. Only describe visual elements. No text or logos.\n"
+                                "Return JSON: {\"broll_prompt\": \"Cinematic 4k ...\"}"
+                            )
+                            _raw = post_gemini_completions(prompt=_g_prompt, response_format_schema={"type": "json_object"})
+                            _parsed = parse_gemini_json_safely(_raw)
+                            _broll_prompt = _parsed.get("broll_prompt", "")
+                            if _broll_prompt:
+                                log.info(f"[WCE-BROLL] Gemini generated prompt: {_broll_prompt}")
+                    except Exception as e:
+                        log.warning(f"[WCE-BROLL] Gemini prompt generation failed: {e}")
+                        
+                if not _broll_prompt:
+                    _fallback_kw = " ".join(_broll_keywords[:2]) if _broll_keywords else "video clip"
+                    _broll_prompt = f"cinematic high quality {_fallback_kw}"
                 _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
                 _broll_enabled = bool(_broll_prompt) and _broll_hs_enabled
                 log.info(
@@ -3621,7 +3718,6 @@ class ClipEditor:
                 )
                 if _broll_enabled:
                     try:
-                        import uuid
                         broll_out_jpg = os.path.join(self.work_dir, f"broll_tmp_{uuid.uuid4().hex}.jpg")
                         _fetched = fetch_broll_asset(_broll_prompt, broll_out_jpg, width=2160, height=3840)
                         
@@ -3634,7 +3730,7 @@ class ClipEditor:
                                 _broll_start_sec = 1.0
                                 
                             _broll_start_sec = max(0.5, min(_broll_start_sec, ramped_duration - 2.0))
-                            _broll_duration = min(4.0, max(1.5, ramped_duration * 0.12))  # ~12% of clip, 1.5-4s
+                            _broll_duration = min(3.0, max(2.0, ramped_duration * 0.12))  # ~12% of clip, 2-3s max
                             _broll_path = _fetched
                             
                             log.info(
@@ -3727,7 +3823,25 @@ class ClipEditor:
                 
                 # Support legacy keywords if prompt isn't provided
                 if not _broll_prompt and _broll_keywords:
-                    _broll_prompt = "cinematic high quality " + " ".join(_broll_keywords[:2])
+                    try:
+                        from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
+                        if is_gemini_enabled() and os.environ.get("HS_GEMINI_BROLL", "1") == "1":
+                            _g_prompt = (
+                                f"Create a vivid 10-word Midjourney style prompt for a cinematic background video based on the keywords: {', '.join(_broll_keywords)}.\n"
+                                f"Context: This is for a '{_content_genre}' clip. Only describe visual elements. No text or logos.\n"
+                                "Return JSON: {\"broll_prompt\": \"Cinematic 4k ...\"}"
+                            )
+                            _raw = post_gemini_completions(prompt=_g_prompt, response_format_schema={"type": "json_object"})
+                            _parsed = parse_gemini_json_safely(_raw)
+                            _broll_prompt = _parsed.get("broll_prompt", "")
+                            if _broll_prompt:
+                                log.info(f"[WCE-BROLL] Gemini generated prompt: {_broll_prompt}")
+                    except Exception as e:
+                        log.warning(f"[WCE-BROLL] Gemini prompt generation failed: {e}")
+                        
+                if not _broll_prompt:
+                    _fallback_kw = " ".join(_broll_keywords[:2]) if _broll_keywords else "video clip"
+                    _broll_prompt = f"cinematic high quality {_fallback_kw}"
                 
                 _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
                 _broll_enabled = bool(_broll_prompt) and _broll_hs_enabled
@@ -3741,10 +3855,9 @@ class ClipEditor:
                     try:
                         from effects.broll_engine import fetch_broll_asset
                         
-                        _broll_duration = min(4.0, max(1.5, ramped_duration * 0.12))  # ~12% of clip, 1.5-4s
+                        _broll_duration = min(3.0, max(2.0, ramped_duration * 0.12))  # ~12% of clip, 2-3s max
                         
                         # Save image in work_dir
-                        import uuid
                         broll_out_jpg = os.path.join(self.work_dir, f"broll_tmp_{uuid.uuid4().hex}.jpg")
                         _fetched = fetch_broll_asset(_broll_prompt, broll_out_jpg, width=2160, height=3840)
                         
@@ -4041,6 +4154,9 @@ class ClipEditor:
             
             # Apply transition overlay to video
             _post_trans_pad = _pre_trans_pad
+            _trans_t = max(0.0, _broll_start_sec - 0.2) if _broll_active else 0.0
+            _trans_delay_ms = int(_trans_t * 1000)
+            
             if enable_transitions and _leak_input_idx is not None:
                 trans_w = work_meta.get("width", 1920)
                 trans_h = work_meta.get("height", 1080)
@@ -4052,10 +4168,10 @@ class ClipEditor:
                 vf_render += (
                     f";[{_leak_input_idx}:v]scale={trans_w}:{trans_h}:force_original_aspect_ratio=decrease,"
                     f"pad={trans_w}:{trans_h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuva420p,colorchannelmixer=aa=0.85[hs_leak_v]"
-                    f";[{_pre_trans_pad}][hs_leak_v]overlay=enable='between(t,0,1.0)':x=0:y=0:eof_action=pass[hs_v_trans]"
+                    f";[{_pre_trans_pad}][hs_leak_v]overlay=enable='between(t,{_trans_t:.3f},{_trans_t+1.0:.3f})':x=0:y=0:eof_action=pass[hs_v_trans]"
                 )
                 _post_trans_pad = "hs_v_trans"
-                log.info(f"[WCE] Light leak transition blended into WCE pass (resolution={trans_w}x{trans_h})")
+                log.info(f"[WCE] Light leak transition blended into WCE pass at t={_trans_t:.2f}s")
 
             # Determine base audio pad of the main clip before transition mixing/outro
             af_base = af if (af and af != "null") else "anull"
@@ -4067,13 +4183,13 @@ class ClipEditor:
             if _swoosh_input_idx is not None:
                 vf_render += (
                     f";[0:a]{af_base},aresample=44100,aformat=channel_layouts=stereo[hs_main_a_base]"
-                    f";[{_swoosh_input_idx}:a]volume=1.5,aresample=44100,aformat=channel_layouts=stereo[hs_swoosh_a]"
+                    f";[{_swoosh_input_idx}:a]volume=1.5,aresample=44100,aformat=channel_layouts=stereo,adelay={_trans_delay_ms}|{_trans_delay_ms}[hs_swoosh_a]"
                 )
                 if _click_input_idx is not None:
-                    # Camera click: play at t=0, volume 2.5
+                    # Camera click
                     vf_render += (
                         f";[{_click_input_idx}:a]volume=2.5,aresample=44100,"
-                        f"aformat=channel_layouts=stereo,adelay=0|0[hs_click_a]"
+                        f"aformat=channel_layouts=stereo,adelay={_trans_delay_ms}|{_trans_delay_ms}[hs_click_a]"
                         f";[hs_main_a_base][hs_swoosh_a][hs_click_a]amix=inputs=3:duration=first:dropout_transition=0:normalize=0[hs_main_a_mixed]"
                     )
                 else:
@@ -4081,7 +4197,7 @@ class ClipEditor:
                         f";[hs_main_a_base][hs_swoosh_a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[hs_main_a_mixed]"
                     )
                 _main_audio_pad = "hs_main_a_mixed"
-                log.info("[WCE] Swoosh + Camera Click transition audio mixed into WCE pass")
+                log.info(f"[WCE] Swoosh + Camera Click mixed at t={_trans_t:.2f}s")
 
             complex_audio_merged = (_swoosh_input_idx is not None)
 

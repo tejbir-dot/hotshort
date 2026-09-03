@@ -6,11 +6,27 @@ from effects.director_strategy import DirectorMode
 from dataclasses import dataclass, field
 
 try:
+    from effects.insightface_detector import detect_faces_insightface, is_insightface_available
+    _INSIGHTFACE_ENABLED = is_insightface_available()
+except Exception:
+    _INSIGHTFACE_ENABLED = False
+    detect_faces_insightface = None
+
+try:
     from effects.mediapipe_detector import detect_faces_mediapipe, is_mediapipe_available
     _MEDIAPIPE_ENABLED = True
 except ImportError:
     _MEDIAPIPE_ENABLED = False
     detect_faces_mediapipe = None
+
+def _detect_faces_best(frame_bgr, conf_threshold=0.45, min_size=(40, 40)):
+    if _INSIGHTFACE_ENABLED and detect_faces_insightface is not None:
+        result = detect_faces_insightface(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
+        if result:
+            return result
+    if _MEDIAPIPE_ENABLED and detect_faces_mediapipe is not None:
+        return detect_faces_mediapipe(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
+    return []
 
 log = logging.getLogger(__name__)
 
@@ -128,8 +144,8 @@ def analyze_video_format(clip_path: str, start_s: float = 0.0, end_s: float = 0.
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             face_xs = []
             
-            if _MEDIAPIPE_ENABLED and detect_faces_mediapipe is not None:
-                faces = detect_faces_mediapipe(frame, conf_threshold=0.40, min_size=(40, 40))
+            if _INSIGHTFACE_ENABLED or _MEDIAPIPE_ENABLED:
+                faces = _detect_faces_best(frame, conf_threshold=0.40, min_size=(40, 40))
             else:
                 faces = detect_faces_multi_haar(gray, cv2, scale_factor=1.1, min_neighbors=2, min_size=(40, 40))
                 
