@@ -2094,7 +2094,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             # Extract raw text from transcript dictionaries if necessary
                             _clip_transcript = clip.get("transcript") or clip.get("captions") or []
                             if isinstance(_clip_transcript, list):
-                                _clip_text = " ".join([w.get("word", "") for w in _clip_transcript])
+                                _clip_text = " ".join([str(w.get("word") or w.get("text") or "").strip() for w in _clip_transcript if isinstance(w, dict)])
+                                if not _clip_text.strip():
+                                    _clip_text = " ".join([str(w) for w in _clip_transcript if isinstance(w, str)])
                             else:
                                 _clip_text = str(_clip_transcript)
                             

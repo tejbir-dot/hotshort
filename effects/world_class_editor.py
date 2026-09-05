@@ -4498,7 +4498,7 @@ class ClipEditor:
                     #   scale+crop           → fit to target resolution (portrait 9:16)
                     #   fade in + fade out   → cinematic burn-on effect
                     _clip_filter = (
-                        f"setpts=PTS-STARTPTS+{_b_start:.3f}/TB,"
+                        f"setpts=PTS-STARTPTS,"
                         f"scale={_tw}:{_th}:force_original_aspect_ratio=increase,"
                         f"crop={_tw}:{_th},"
                         f"fps=30,format=yuv420p,"
