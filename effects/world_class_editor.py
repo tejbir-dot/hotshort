@@ -1452,6 +1452,8 @@ class ClipEditor:
 
             ema_mouth_left = 0.0
             ema_mouth_right = 0.0
+            fake_face_frames_left = 0
+            fake_face_frames_right = 0
             smoothed_left_x = frame_width * 0.25
             smoothed_right_x = frame_width * 0.75
 
@@ -2103,6 +2105,28 @@ class ClipEditor:
                         f"right_face={right_slot is not None} "
                         f"(tracked={ENABLE_CONTINUOUS_TRACKING}, live_haar_hits={len(valid_faces)})"
                     )
+
+                # ── GHOST KILLER (Fake Face Expiry) ──────────────────────────────
+                # If a face lacks landmarks (nose_y is None) AND has zero mouth motion
+                # (ema < 0.05), it's probably a statue, poster, or background noise.
+                # If this persists for 60 frames (2s), nuke the slot.
+                if left_slot is not None and left_slot.get('nose_y') is None and ema_mouth_left < 0.05:
+                    fake_face_frames_left += 1
+                    if fake_face_frames_left > 60:
+                        log.warning(f"[GHOST_KILLER] t={t:.2f}s LEFT face is a fake/poster (no nose, no motion for 60 frames). Nuking slot!")
+                        left_slot = None
+                        left_tracker.consecutive_low_confidence = 999
+                else:
+                    fake_face_frames_left = 0
+
+                if right_slot is not None and right_slot.get('nose_y') is None and ema_mouth_right < 0.05:
+                    fake_face_frames_right += 1
+                    if fake_face_frames_right > 60:
+                        log.warning(f"[GHOST_KILLER] t={t:.2f}s RIGHT face is a fake/poster (no nose, no motion for 60 frames). Nuking slot!")
+                        right_slot = None
+                        right_tracker.consecutive_low_confidence = 999
+                else:
+                    fake_face_frames_right = 0
 
                 # ── PODCAST GHOST SUPPLEMENT (Healing #1: Ghost Expiry) ──────────
                 # When format_classify confirms 2 speakers but only 1 is live-detected,
