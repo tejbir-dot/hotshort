@@ -4216,16 +4216,11 @@ class ClipEditor:
             # ── Audio Mix, Video Transition, Outro Concat, and Branding ──
             # Prepare transition assets on-demand if enabled
             enable_transitions = str(os.environ.get("HS_TRANSITIONS_ENABLED", "1")).lower() in ("1", "true", "yes", "on")
-            _leak_input_idx   = None
-            _swoosh_input_idx = None
-            _click_input_idx  = None
-            leak_path   = None
-            swoosh_path = None
-            click_path  = None
+            _trans_assets = None
             if enable_transitions and ramped_duration >= 2.0:
                 try:
                     from effects.generate_transitions import ensure_transition_assets
-                    leak_path, swoosh_path, click_path = ensure_transition_assets()
+                    _trans_assets = ensure_transition_assets() # (leak_path, swoosh_path, click_path)
                 except Exception as ex:
                     log.warning(f"[TRANSITION] Failed to prepare transition assets: {ex}")
                     enable_transitions = False
@@ -4256,14 +4251,31 @@ class ClipEditor:
                 if _has_outro:
                     _outro_input_idx = next_idx
                     next_idx += 1
-            if enable_transitions and leak_path and swoosh_path:
-                _leak_input_idx = next_idx
-                next_idx += 1
-                _swoosh_input_idx = next_idx
-                next_idx += 1
-                if click_path:
-                    _click_input_idx = next_idx
-                    next_idx += 1
+            
+            _transitions_to_apply = [] # List of dicts: {"t": float, "leak": idx, "swoosh": idx, "click": idx}
+            if _trans_assets:
+                # Decide which timestamps get a transition
+                _trans_times = []
+                if enable_transitions:
+                    _trans_times.append(0.0)
+                if _broll_paths:
+                    for b_cut in _broll_cuts:
+                        t_broll = max(0.0, float(b_cut[0]) - 0.2)
+                        # Ensure no overlap with previous transitions (e.g., at least 1.5s gap)
+                        if not _trans_times or (t_broll - _trans_times[-1] > 1.5):
+                            _trans_times.append(t_broll)
+                
+                # Assign input indices for each transition
+                leak_path, swoosh_path, click_path = _trans_assets
+                for t_val in _trans_times:
+                    t_obj = {"t": t_val, "leak": next_idx, "swoosh": next_idx + 1}
+                    next_idx += 2
+                    if click_path:
+                        t_obj["click"] = next_idx
+                        next_idx += 1
+                    else:
+                        t_obj["click"] = None
+                    _transitions_to_apply.append(t_obj)
             
             # B-Roll input (after all other inputs so index is known)
             _broll_input_indices = []
@@ -4312,7 +4324,7 @@ class ClipEditor:
             # If any time-based overlays are active (B-Roll or Transitions), we must normalize PTS to 0.
             # Otherwise exact_seek offsets will break overlay between() timings.
             _broll_active = bool(_broll_paths and _broll_input_indices)
-            _needs_time_norm = _broll_active or (enable_transitions and _leak_input_idx is not None)
+            _needs_time_norm = _broll_active or (len(_transitions_to_apply) > 0)
             
             if _needs_time_norm and not is_complex_graph:
                 if vf_render:
@@ -4430,11 +4442,8 @@ class ClipEditor:
 
             # Apply transition overlay to video
             _post_trans_pad = _pre_trans_pad
-            # Light leak should always stay at the start of the clip (t=0.0)
-            _trans_t = 0.0
-            _trans_delay_ms = 0
             
-            if enable_transitions and _leak_input_idx is not None:
+            if _transitions_to_apply:
                 trans_w = work_meta.get("width", 1920)
                 trans_h = work_meta.get("height", 1080)
                 if branding_merged:
@@ -4442,13 +4451,15 @@ class ClipEditor:
                 elif is_complex_graph:
                     trans_w, trans_h = target_wh[0], target_wh[1]
                 
-                vf_render += (
-                    f";[{_leak_input_idx}:v]scale={trans_w}:{trans_h}:force_original_aspect_ratio=decrease,"
-                    f"pad={trans_w}:{trans_h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuva420p,colorchannelmixer=aa=0.85[hs_leak_v]"
-                    f";[{_pre_trans_pad}][hs_leak_v]overlay=enable='between(t,{_trans_t:.3f},{_trans_t+1.0:.3f})':x=0:y=0:eof_action=pass[hs_v_trans]"
-                )
-                _post_trans_pad = "hs_v_trans"
-                log.info(f"[WCE] Light leak transition blended into WCE pass at t={_trans_t:.2f}s")
+                for i, t_obj in enumerate(_transitions_to_apply):
+                    vf_render += (
+                        f";[{t_obj['leak']}:v]scale={trans_w}:{trans_h}:force_original_aspect_ratio=decrease,"
+                        f"pad={trans_w}:{trans_h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuva420p,colorchannelmixer=aa=0.85[hs_leak_v_{i}]"
+                        f";[{_post_trans_pad}][hs_leak_v_{i}]overlay=enable='between(t,{t_obj['t']:.3f},{t_obj['t']+1.0:.3f})':x=0:y=0:eof_action=pass[hs_v_trans_{i}]"
+                    )
+                    _post_trans_pad = f"hs_v_trans_{i}"
+                
+                log.info(f"[WCE] Applied {len(_transitions_to_apply)} light leak transitions to WCE pass")
 
             # Determine base audio pad of the main clip before transition mixing/outro
             af_base = af if (af and af != "null") else "anull"
@@ -4457,31 +4468,31 @@ class ClipEditor:
                 af_base = f"{af_base},afade=t=out:st={fade_start:.3f}:d=0.05"
             
             _main_audio_pad = "0:a"
-            if _swoosh_input_idx is not None:
-                vf_render += (
-                    f";[0:a]{af_base},aresample=44100,aformat=channel_layouts=stereo[hs_main_a_base]"
-                    f";[{_swoosh_input_idx}:a]volume=1.5,aresample=44100,aformat=channel_layouts=stereo,adelay={_trans_delay_ms}|{_trans_delay_ms}[hs_swoosh_a]"
-                )
-                if _click_input_idx is not None:
-                    # Camera click
-                    vf_render += (
-                        f";[{_click_input_idx}:a]volume=2.5,aresample=44100,"
-                        f"aformat=channel_layouts=stereo,adelay={_trans_delay_ms}|{_trans_delay_ms}[hs_click_a]"
-                        f";[hs_main_a_base][hs_swoosh_a][hs_click_a]amix=inputs=3:duration=first:dropout_transition=0:normalize=0[hs_main_a_mixed]"
-                    )
-                else:
-                    vf_render += (
-                        f";[hs_main_a_base][hs_swoosh_a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[hs_main_a_mixed]"
-                    )
+            complex_audio_merged = False
+            
+            if _transitions_to_apply:
+                vf_render += f";[0:a]{af_base},aresample=44100,aformat=channel_layouts=stereo[hs_main_a_base]"
+                
+                mix_inputs = ["[hs_main_a_base]"]
+                for i, t_obj in enumerate(_transitions_to_apply):
+                    delay_ms = int(t_obj["t"] * 1000)
+                    vf_render += f";[{t_obj['swoosh']}:a]volume=1.5,aresample=44100,aformat=channel_layouts=stereo,adelay={delay_ms}|{delay_ms}[hs_swoosh_a_{i}]"
+                    mix_inputs.append(f"[hs_swoosh_a_{i}]")
+                    if t_obj["click"] is not None:
+                        vf_render += f";[{t_obj['click']}:a]volume=2.5,aresample=44100,aformat=channel_layouts=stereo,adelay={delay_ms}|{delay_ms}[hs_click_a_{i}]"
+                        mix_inputs.append(f"[hs_click_a_{i}]")
+                
+                n_inputs = len(mix_inputs)
+                mix_strs = "".join(mix_inputs)
+                vf_render += f";{mix_strs}amix=inputs={n_inputs}:duration=first:dropout_transition=0:normalize=0[hs_main_a_mixed]"
                 _main_audio_pad = "hs_main_a_mixed"
-                log.info(f"[WCE] Swoosh + Camera Click mixed at t={_trans_t:.2f}s")
-
-            complex_audio_merged = (_swoosh_input_idx is not None)
+                complex_audio_merged = True
+                log.info(f"[WCE] Swoosh + Camera Click mixed for {len(_transitions_to_apply)} transitions")
 
             # Apply outro concatenation if needed
             if _has_outro:
                 # We resample the main audio stream
-                if _swoosh_input_idx is not None:
+                if complex_audio_merged:
                     # Already mixed and resampled to hs_main_a_mixed
                     vf_render += f";[{_main_audio_pad}]anull[hs_main_a_r]"
                 else:
@@ -4499,9 +4510,8 @@ class ClipEditor:
                 log.info("[WCE] Outro merged into WCE pass (single encode)")
             else:
                 vf_render += f";[{_post_trans_pad}]null[hs_final_v]"
-                if _swoosh_input_idx is not None:
+                if complex_audio_merged:
                     vf_render += f";[{_main_audio_pad}]anull[hs_final_a]"
-                    complex_audio_merged = True
                 log.info("[WCE] Output pads set up (no outro)")
 
             # Formulate final input command
