@@ -4540,11 +4540,13 @@ class ClipEditor:
                 cmd.extend(["-i", os.path.abspath(cfg.branding_watermark_path)])
                 if branding_outro_merged:
                     cmd.extend(["-i", os.path.abspath(cfg.branding_outro_path)])
-            if enable_transitions and leak_path and swoosh_path:
-                cmd.extend(["-i", leak_path])
-                cmd.extend(["-i", swoosh_path])
-                if click_path and _click_input_idx is not None:
-                    cmd.extend(["-i", click_path])
+            if _transitions_to_apply:
+                leak_path, swoosh_path, click_path = _trans_assets
+                for t_obj in _transitions_to_apply:
+                    cmd.extend(["-i", leak_path])
+                    cmd.extend(["-i", swoosh_path])
+                    if t_obj["click"] is not None:
+                        cmd.extend(["-i", click_path])
             if _broll_paths:
                 # Local video clips — seek to a random offset inside each clip so the
                 # same clip doesn't always start from frame 0 when reused.
