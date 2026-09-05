@@ -1,4 +1,10 @@
-import google.generativeai as genai
+try:
+    from google import genai
+    from google.genai.errors import APIError
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
+
 import os
 import traceback
 
@@ -11,14 +17,24 @@ class BrutalCaptioner:
             self.api_key_valid = False
             return
             
-        genai.configure(api_key=api_key)
-        self.api_key_valid = True
+        if not HAS_GENAI:
+            print("[CAPTIONER] Warning: google-genai package not found. Please run 'pip install google-genai'.", flush=True)
+            self.api_key_valid = False
+            return
+            
+        try:
+            self.client = genai.Client(api_key=api_key)
+            self.api_key_valid = True
+        except Exception as e:
+            print(f"[CAPTIONER] Failed to initialize Gemini Client: {e}", flush=True)
+            self.api_key_valid = False
+            
         # Try Flash Lite first, then fallbacks
         self.model_names = [
             'gemini-2.0-flash-lite-preview-02-05',
-            'gemini-1.5-flash-8b',
-            'gemini-1.5-flash',
-            'gemini-1.5-flash-latest'
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',
+            'gemini-1.5-flash'
         ]
         
     def generate_viral_caption(self, clip_transcript: str, creator_name: str = "Daniel") -> str:
@@ -67,12 +83,17 @@ Transcript to base it on: "{clip_transcript}"
         print(f"🧠 [CAPTIONER] Brainstorming viral dopamine caption for {creator_name}...", flush=True)
         for model_name in self.model_names:
             try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(system_prompt)
-                clean_text = response.text.replace("**", "").replace("*", "")
-                return clean_text.strip()
+                response = self.client.models.generate_content(
+                    model=model_name,
+                    contents=system_prompt
+                )
+                if response and response.text:
+                    clean_text = response.text.replace("**", "").replace("*", "")
+                    return clean_text.strip()
+                else:
+                    print(f"[CAPTIONER] {model_name} returned empty response. Trying fallback.", flush=True)
             except Exception as e:
-                print(f"[CAPTIONER] {model_name} failed: {str(e)[:100]}... Trying fallback.", flush=True)
+                print(f"[CAPTIONER] {model_name} failed: {str(e)[:150]}... Trying fallback.", flush=True)
                 
         print("[CAPTIONER] All Gemini models failed. Using hardcoded fallback caption.", flush=True)
         return fallback_caption
