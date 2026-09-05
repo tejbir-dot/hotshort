@@ -3949,6 +3949,7 @@ class ClipEditor:
             if _broll_hs_enabled:
                 try:
                     from effects.smart_broll_matcher import find_broll_cuts
+                    cortex_kw = cortex_hints.get("b_roll_keywords", []) if cortex_hints else []
                     _broll_cuts = find_broll_cuts(
                         transcript_window=transcript_window,
                         source_start=source_start,
@@ -3956,6 +3957,7 @@ class ClipEditor:
                         max_cuts=3,
                         min_cut_gap_s=4.5,
                         cut_duration_s=2.5,
+                        cortex_keywords=cortex_kw,
                     )
                     if _broll_cuts:
                         _broll_paths     = [c[1] for c in _broll_cuts]
@@ -4428,8 +4430,9 @@ class ClipEditor:
 
             # Apply transition overlay to video
             _post_trans_pad = _pre_trans_pad
-            _trans_t = max(0.0, _broll_start_sec - 0.2) if _broll_active else 0.0
-            _trans_delay_ms = int(_trans_t * 1000)
+            # Light leak should always stay at the start of the clip (t=0.0)
+            _trans_t = 0.0
+            _trans_delay_ms = 0
             
             if enable_transitions and _leak_input_idx is not None:
                 trans_w = work_meta.get("width", 1920)
