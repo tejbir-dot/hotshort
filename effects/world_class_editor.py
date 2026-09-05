@@ -4554,7 +4554,8 @@ class ClipEditor:
                         f"crop={_tw}:{_th},"
                         f"fps=30,format=yuv420p,"
                         f"fade=t=in:st=0:d={_fd:.3f},"
-                        f"fade=t=out:st={_fade_out_start:.3f}:d={_fd:.3f}"
+                        f"fade=t=out:st={_fade_out_start:.3f}:d={_fd:.3f},"
+                        f"setpts=PTS+{_b_start:.3f}/TB"
                     )
                     _broll_filter_parts.append(f"[{_idx}:v]{_clip_filter}[broll_v_{i}]")
 
