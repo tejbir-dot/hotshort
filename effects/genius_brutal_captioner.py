@@ -31,7 +31,8 @@ Format your response EXACTLY like this (NO markdown asterisks):
 [Line 1: Extreme clickbait hook with an emoji]
 [Line 2-3: Insane curiosity based on the transcript]
 [Line 4: Hard CTA to click the link in bio]
-[Line 5: 3-5 TikTok specific hashtags like #fyp #hustletok]
+[Line 5: Must include @{creator_name} (tagging the creator)]
+[Line 6: Hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags]
 
 --------------------------------------------------
 
@@ -39,7 +40,8 @@ Format your response EXACTLY like this (NO markdown asterisks):
 [Line 1: High SEO-value title/hook]
 [Line 2: Brief summary creating loop-curiosity]
 [Line 3: CTA to pinned comment or related video]
-[Line 4: 5-7 YouTube specific SEO tags]
+[Line 4: Must include @{creator_name} in the description]
+[Line 5: Hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags]
 
 --------------------------------------------------
 
@@ -47,7 +49,8 @@ Format your response EXACTLY like this (NO markdown asterisks):
 [Line 1: Aesthetic/Value-driven hook with emoji]
 [Line 2-4: Micro-blog style value drop based on the transcript]
 [Line 5: CTA to DM a keyword or check the link in bio]
-[Line 6: 7-10 highly targeted IG hashtags]
+[Line 6: Must include @{creator_name} to tag the creator]
+[Line 7: Hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags]
 
 Transcript to base it on: "{clip_transcript}"
 """
