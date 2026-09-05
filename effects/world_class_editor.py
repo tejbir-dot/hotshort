@@ -1456,13 +1456,39 @@ class ClipEditor:
             smoothed_right_x = frame_width * 0.75
 
             # ── Scene-Cut Detector state ──────────────────────────────────────────
-            # Detects hard camera-angle changes via perceptual frame diff.
-            # On cut: trackers are wiped, EMA reset, fresh detection forced.
-            # SCENE_CUT_DIFF_THRESHOLD: mean absolute diff of 64x64 frames in [0,255].
-            # Typical same-shot diff: 2-8. Hard cut diff: 25-80.
-            SCENE_CUT_DIFF_THRESHOLD = float(os.environ.get("HS_SCENE_CUT_THRESHOLD", "22"))
-            _prev_frame_small = None  # 64x64 grayscale of previous decoded frame
+            # Detects hard camera-angle changes via gradient-magnitude frame diff.
+            # Using Sobel gradient instead of raw pixel diff makes detection
+            # RESISTANT to brightness flashes (light-leaks, exposure pops) that
+            # previously caused false wipes. A composition change (new room, new
+            # angle) changes edges; a mere brightness spike does not.
+            # Healing #2: Gradient-Magnitude Scene-Cut
+            # SCENE_CUT_DIFF_THRESHOLD: mean gradient diff of 64x64 maps.
+            # Typical same-shot gradient diff: 1-5. Hard cut: 12-40.
+            SCENE_CUT_DIFF_THRESHOLD = float(os.environ.get("HS_SCENE_CUT_THRESHOLD", "12.0"))
+            _prev_frame_small = None  # 64x64 Sobel gradient map of previous frame
             _is_scene_cut = False     # set True on the cut frame, consumed once
+
+            # ── Ghost Supplement Expiry state ─────────────────────────────────────
+            # Healing #1: Self-correcting podcast classification.
+            # If a synthesized ghost slot receives NO real corroborating detection
+            # within HS_GHOST_EXPIRY_FRAMES frames, it expires → pipeline downgrades
+            # to monologue, preventing a mis-classified side-profile from sustaining
+            # a phantom second speaker for the full clip duration.
+            _GHOST_EXPIRY_FRAMES  = int(os.environ.get("HS_GHOST_EXPIRY_FRAMES", "150"))
+            _ghost_left_frames    = 0    # frames since left ghost created w/o real corroboration
+            _ghost_right_frames   = 0
+            _ghost_left_active    = False
+            _ghost_right_active   = False
+
+            # ── Slot height (scale) EMA state ─────────────────────────────────────
+            # Healing #3: Zoom-spring damping.
+            # Smooths face bounding-box height across frames to prevent abrupt
+            # scale jumps when the active detector switches (InsightFace→MediaPipe
+            # have different box-padding conventions). Position is already spring-
+            # damped; now height gets the same treatment.
+            _SCALE_EMA_ALPHA  = float(os.environ.get("HS_SCALE_EMA_ALPHA", "0.12"))
+            smoothed_left_h   = None   # EMA of left slot face height (px)
+            smoothed_right_h  = None   # EMA of right slot face height (px)
             
             # Physics Engine state variables
             vel_left = 0.0
@@ -1626,21 +1652,27 @@ class ClipEditor:
                 need_debug  = (frame_idx % 25 == 0)
                 need_motion = (prev_gray is not None) and bool(last_raw_faces)
 
-                # ── Scene-Cut Detection ──────────────────────────────────────────
-                # Compare a tiny 64x64 thumbnail to the previous frame.
-                # Hard cuts cause large mean pixel diff → wipe trackers immediately.
+                # ── Scene-Cut Detection (Healing #2: Gradient-Magnitude) ─────────
+                # Uses Sobel gradient maps instead of raw pixel diff.
+                # Brightness flashes (exposure pops, light-leaks) change pixel
+                # values but NOT edge structure → gradient diff stays LOW.
+                # Genuine composition changes (new room, new angle) alter edges
+                # → gradient diff spikes. This prevents false tracker wipes.
                 _is_scene_cut = False
-                _frame_small = cv2.resize(
+                _frame_gray_small = cv2.resize(
                     cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 64),
                     interpolation=cv2.INTER_AREA
-                ).astype(np.float32)
+                )
+                _sobel_x = cv2.Sobel(_frame_gray_small, cv2.CV_32F, 1, 0, ksize=3)
+                _sobel_y = cv2.Sobel(_frame_gray_small, cv2.CV_32F, 0, 1, ksize=3)
+                _frame_small = np.sqrt(_sobel_x ** 2 + _sobel_y ** 2)  # gradient magnitude map
                 if _prev_frame_small is not None:
                     _diff_val = float(np.mean(np.abs(_frame_small - _prev_frame_small)))
                     if _diff_val > SCENE_CUT_DIFF_THRESHOLD:
                         _is_scene_cut = True
                         log.info(
-                            f"[SCENE_CUT] t={t:.2f}s diff={_diff_val:.1f} > {SCENE_CUT_DIFF_THRESHOLD} "
-                            f"→ HARD CUT detected — wiping trackers + resetting EMA"
+                            f"[SCENE_CUT] t={t:.2f}s grad_diff={_diff_val:.1f} > {SCENE_CUT_DIFF_THRESHOLD} "
+                            f"→ HARD CUT detected (gradient-magnitude) — wiping trackers + resetting EMA"
                         )
                         # ── Tracker Wipe ────────────────────────────────────────
                         left_tracker.initialized  = False
@@ -1882,8 +1914,20 @@ class ClipEditor:
                 right_slot: Optional[dict] = None
                 _is_podcast_fmt = (video_fmt is not None and video_fmt.format_type == "podcast")
                 for f in valid_faces:
+                    # ── UPGRADE 5: Use explicit _slot label from FaceCache ──────────
+                    # _fc_assign_slots stamps 'left'/'right' using format_classify positions.
+                    # Trust the label over the cx heuristic — speakers can stray across center.
+                    slot_label = f.get('_slot')
+                    if slot_label == 'left':
+                        if left_slot is None or f['h'] > left_slot['h']:
+                            left_slot = f
+                        continue
+                    if slot_label == 'right':
+                        if right_slot is None or f['h'] > right_slot['h']:
+                            right_slot = f
+                        continue
+                    # Fallback: positional heuristic for unlabeled faces (legacy cache)
                     cx = f['x'] + f['w'] / 2.0
-                    cx_ratio = cx / frame_width
                     if cx < frame_width / 2.0:
                         if left_slot is None or f['h'] > left_slot['h']:
                             left_slot = f
@@ -1958,15 +2002,16 @@ class ClipEditor:
                         f"(tracked={ENABLE_CONTINUOUS_TRACKING}, live_haar_hits={len(valid_faces)})"
                     )
 
-                # ── PODCAST GHOST SUPPLEMENT ─────────────────────────────────────────────
+                # ── PODCAST GHOST SUPPLEMENT (Healing #1: Ghost Expiry) ──────────
                 # When format_classify confirms 2 speakers but only 1 is live-detected,
                 # synthesize the missing slot from video_fmt.speaker_positions.
-                # Root cause this fixes:
-                #   CLUSTER_SCAN picks 1 representative frame per cluster → often only 1
-                #   clearly-frontal face → face_cache has 1 face per timestamp → director
-                #   loop never gets right_slot → SPLIT never triggers despite PODCAST fmt.
                 # Ghost slots: counted for face_gap_ratio (enables SPLIT), but SKIPPED
                 # for mouth-motion EMA and CSRT tracker init so no phantom talking occurs.
+                #
+                # EXPIRY LOGIC (Healing #1): Each ghost slot has a frame counter.
+                # If the ghost side receives NO real detection within _GHOST_EXPIRY_FRAMES,
+                # the ghost expires and the pipeline auto-downgrades to monologue.
+                # This self-corrects bad podcast classification (e.g. side-profile singles).
                 _pod_spk = video_fmt.speaker_positions if video_fmt else []
                 if (_is_podcast_fmt and len(_pod_spk) >= 2 and
                         (left_slot is None) != (right_slot is None)):  # exactly 1 real slot
@@ -1977,29 +2022,88 @@ class ClipEditor:
                     _left_ref_px  = _pod_spk[0] * frame_width
                     _right_ref_px = _pod_spk[1] * frame_width
                     if left_slot is not None and right_slot is None:
-                        right_slot = {
-                            'x': _right_ref_px - _ghost_w / 2.0, 'y': _ghost_y,
-                            'w': _ghost_w, 'h': _ghost_h,
-                            'nose_x': _right_ref_px, 'score': 0.3,
-                            '_synthetic': True,
-                        }
-                        if frame_idx % 50 == 0:
-                            log.info(
-                                f"[GHOST_SUPPLEMENT] t={t:.2f}s ghost_RIGHT at "
-                                f"x={_right_ref_px:.0f}px (from format_classify pos={_pod_spk[1]:.3f})"
-                            )
+                        # ── Ghost Right Expiry check ────────────────────────────
+                        if _ghost_right_active:
+                            _ghost_right_frames += 1
+                            if _GHOST_EXPIRY_FRAMES > 0 and _ghost_right_frames > _GHOST_EXPIRY_FRAMES:
+                                # Ghost expired — no real right face ever confirmed.
+                                # Suppress ghost entirely; loop will see right_slot=None → SOLO_LEFT.
+                                log.warning(
+                                    f"[GHOST_EXPIRY] t={t:.2f}s RIGHT ghost expired after "
+                                    f"{_ghost_right_frames} frames with no real detection "
+                                    f"→ auto-downgrading to SOLO_LEFT"
+                                )
+                                _ghost_right_active = False
+                                _ghost_right_frames = 0
+                                # Don't synthesize — leave right_slot=None
+                            else:
+                                right_slot = {
+                                    'x': _right_ref_px - _ghost_w / 2.0, 'y': _ghost_y,
+                                    'w': _ghost_w, 'h': _ghost_h,
+                                    'nose_x': _right_ref_px, 'score': 0.3,
+                                    '_synthetic': True,
+                                }
+                        else:
+                            # First frame of ghost — start expiry clock
+                            _ghost_right_active = True
+                            _ghost_right_frames = 1
+                            right_slot = {
+                                'x': _right_ref_px - _ghost_w / 2.0, 'y': _ghost_y,
+                                'w': _ghost_w, 'h': _ghost_h,
+                                'nose_x': _right_ref_px, 'score': 0.3,
+                                '_synthetic': True,
+                            }
+                            if frame_idx % 50 == 0:
+                                log.info(
+                                    f"[GHOST_SUPPLEMENT] t={t:.2f}s ghost_RIGHT started at "
+                                    f"x={_right_ref_px:.0f}px (expiry in {_GHOST_EXPIRY_FRAMES} frames)"
+                                )
                     elif right_slot is not None and left_slot is None:
-                        left_slot = {
-                            'x': _left_ref_px - _ghost_w / 2.0, 'y': _ghost_y,
-                            'w': _ghost_w, 'h': _ghost_h,
-                            'nose_x': _left_ref_px, 'score': 0.3,
-                            '_synthetic': True,
-                        }
-                        if frame_idx % 50 == 0:
-                            log.info(
-                                f"[GHOST_SUPPLEMENT] t={t:.2f}s ghost_LEFT at "
-                                f"x={_left_ref_px:.0f}px (from format_classify pos={_pod_spk[0]:.3f})"
-                            )
+                        # ── Ghost Left Expiry check ─────────────────────────────
+                        if _ghost_left_active:
+                            _ghost_left_frames += 1
+                            if _GHOST_EXPIRY_FRAMES > 0 and _ghost_left_frames > _GHOST_EXPIRY_FRAMES:
+                                log.warning(
+                                    f"[GHOST_EXPIRY] t={t:.2f}s LEFT ghost expired after "
+                                    f"{_ghost_left_frames} frames with no real detection "
+                                    f"→ auto-downgrading to SOLO_RIGHT"
+                                )
+                                _ghost_left_active = False
+                                _ghost_left_frames = 0
+                            else:
+                                left_slot = {
+                                    'x': _left_ref_px - _ghost_w / 2.0, 'y': _ghost_y,
+                                    'w': _ghost_w, 'h': _ghost_h,
+                                    'nose_x': _left_ref_px, 'score': 0.3,
+                                    '_synthetic': True,
+                                }
+                        else:
+                            _ghost_left_active = True
+                            _ghost_left_frames = 1
+                            left_slot = {
+                                'x': _left_ref_px - _ghost_w / 2.0, 'y': _ghost_y,
+                                'w': _ghost_w, 'h': _ghost_h,
+                                'nose_x': _left_ref_px, 'score': 0.3,
+                                '_synthetic': True,
+                            }
+                            if frame_idx % 50 == 0:
+                                log.info(
+                                    f"[GHOST_SUPPLEMENT] t={t:.2f}s ghost_LEFT started at "
+                                    f"x={_left_ref_px:.0f}px (expiry in {_GHOST_EXPIRY_FRAMES} frames)"
+                                )
+                else:
+                    # Both slots are real (or both missing) → reset ghost counters
+                    # This is the "corroborated" path: real detection found → clock stops
+                    if _ghost_right_active and right_slot is not None and not right_slot.get('_synthetic'):
+                        if _ghost_right_frames > 0:
+                            log.info(f"[GHOST_EXPIRY] t={t:.2f}s RIGHT ghost CORROBORATED by real detection at frame {frame_idx} — podcast confirmed")
+                        _ghost_right_active = False
+                        _ghost_right_frames = 0
+                    if _ghost_left_active and left_slot is not None and not left_slot.get('_synthetic'):
+                        if _ghost_left_frames > 0:
+                            log.info(f"[GHOST_EXPIRY] t={t:.2f}s LEFT ghost CORROBORATED by real detection at frame {frame_idx} — podcast confirmed")
+                        _ghost_left_active = False
+                        _ghost_left_frames = 0
 
                 # Compute horizontal gap between the two face centers (as fraction of frame width)
                 # This is the key gate for SPLIT mode — faces must be clearly separated
@@ -2160,22 +2264,46 @@ class ClipEditor:
                     sx = None
                 solo_slot = active_slot if mode in ("SOLO_LEFT", "SOLO_RIGHT") else None
 
-                # 6. Smooth position updates (per slot, independent) via Physics Engine
+                # 6. Smooth position + scale (Healing #3: Zoom Spring-Damping)
+                # Position: existing deadzone spring physics (x-axis)
+                # Scale (height): new EMA smoothing — prevents abrupt zoom-level jump
+                # when detector switches (InsightFace↔MediaPipe have different box padding).
+                # Ghost/synthetic slots are excluded from scale smoothing.
                 if left_slot is not None:
                     lx = left_slot.get('nose_x')
                     if lx is None:
                         lx = left_slot['x'] + left_slot['w'] / 2.0
                     smoothed_left_x, vel_left = apply_deadzone_physics(smoothed_left_x, vel_left, lx, frame_width, "LEFT", frame_idx)
+                    # Scale EMA (skip synthetic ghost — its h is borrowed, not measured)
+                    if not left_slot.get('_synthetic', False):
+                        raw_lh = left_slot['h']
+                        if smoothed_left_h is None:
+                            smoothed_left_h = raw_lh
+                        else:
+                            smoothed_left_h = smoothed_left_h * (1 - _SCALE_EMA_ALPHA) + raw_lh * _SCALE_EMA_ALPHA
+                        left_slot = {**left_slot, 'h': smoothed_left_h, 'w': max(1.0, smoothed_left_h * 0.85)}
                 else:
                     _, vel_left = apply_deadzone_physics(smoothed_left_x, vel_left, None, frame_width, "LEFT", frame_idx)
+                    # Decay slowly to prevent stale large value from locking zoom
+                    if smoothed_left_h is not None:
+                        smoothed_left_h *= 0.98
 
                 if right_slot is not None:
                     rx = right_slot.get('nose_x')
                     if rx is None:
                         rx = right_slot['x'] + right_slot['w'] / 2.0
                     smoothed_right_x, vel_right = apply_deadzone_physics(smoothed_right_x, vel_right, rx, frame_width, "RIGHT", frame_idx)
+                    if not right_slot.get('_synthetic', False):
+                        raw_rh = right_slot['h']
+                        if smoothed_right_h is None:
+                            smoothed_right_h = raw_rh
+                        else:
+                            smoothed_right_h = smoothed_right_h * (1 - _SCALE_EMA_ALPHA) + raw_rh * _SCALE_EMA_ALPHA
+                        right_slot = {**right_slot, 'h': smoothed_right_h, 'w': max(1.0, smoothed_right_h * 0.85)}
                 else:
                     _, vel_right = apply_deadzone_physics(smoothed_right_x, vel_right, None, frame_width, "RIGHT", frame_idx)
+                    if smoothed_right_h is not None:
+                        smoothed_right_h *= 0.98
 
                 # 7. solo_x: cluster-locked anchor with EMA transition
                 if sx is not None and cluster_id is not None:
@@ -2232,6 +2360,9 @@ class ClipEditor:
                     "left_x": smoothed_left_x,
                     "right_x": smoothed_right_x,
                     "solo_x": smoothed_solo_x,
+                    # Healing #5 prep: mouth EMA values for visual_energy export
+                    "ema_l": ema_mouth_left,
+                    "ema_r": ema_mouth_right,
                 })
 
                 # ── Debug visualizer: record annotated frame + JSON entry ──────
@@ -3677,71 +3808,41 @@ class ClipEditor:
                 passes_saved += 1
             metadata["hook_ramp"] = {"window_s": round(ramp_window, 3), "speed": round(cfg.hook_ramp_speed, 3)}
 
-            # ── B-ROLL INJECTION (Pollinations.ai) ─────────────────────────────────────────
-            _broll_path = None
-            _broll_start_sec = 0.0
-            _broll_duration = 0.0
-            if _cortex_active:
-                _content_genre = str(_cortex.get("content_genre", "")).upper()
-                _broll_prompt = _cortex.get("b_roll_prompt", "")
-                _broll_keywords = _cortex.get("b_roll_keywords", []) or []
-                _broll_timestamp = _cortex.get("b_roll_timestamp", 1.0)
-                
-                # Support legacy keywords if prompt isn't provided
-                if not _broll_prompt and _broll_keywords:
-                    try:
-                        from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
-                        if is_gemini_enabled() and os.environ.get("HS_GEMINI_BROLL", "1") == "1":
-                            _g_prompt = (
-                                f"Create a vivid 10-word Midjourney style prompt for a cinematic background video based on the keywords: {', '.join(_broll_keywords)}.\n"
-                                f"Context: This is for a '{_content_genre}' clip. Only describe visual elements. No text or logos.\n"
-                                "Return JSON: {\"broll_prompt\": \"Cinematic 4k ...\"}"
-                            )
-                            _raw = post_gemini_completions(prompt=_g_prompt, response_format_schema={"type": "json_object"})
-                            _parsed = parse_gemini_json_safely(_raw)
-                            _broll_prompt = _parsed.get("broll_prompt", "")
-                            if _broll_prompt:
-                                log.info(f"[WCE-BROLL] Gemini generated prompt: {_broll_prompt}")
-                    except Exception as e:
-                        log.warning(f"[WCE-BROLL] Gemini prompt generation failed: {e}")
-                        
-                if not _broll_prompt:
-                    _fallback_kw = " ".join(_broll_keywords[:2]) if _broll_keywords else "video clip"
-                    _broll_prompt = f"cinematic high quality {_fallback_kw}"
-                _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
-                _broll_enabled = bool(_broll_prompt) and _broll_hs_enabled
-                log.info(
-                    "[WCE-BROLL] decision: cortex_active=%s prompt='%s' genre=%s "
-                    "HS_BROLL_ENABLED=%s → enabled=%s",
-                    _cortex_active, _broll_prompt, _content_genre,
-                    _broll_hs_enabled, _broll_enabled
-                )
-                if _broll_enabled:
-                    try:
-                        broll_out_jpg = os.path.join(self.work_dir, f"broll_tmp_{uuid.uuid4().hex}.jpg")
-                        _fetched = fetch_broll_asset(_broll_prompt, broll_out_jpg, width=2160, height=3840)
-                        
-                        if _fetched and os.path.exists(_fetched):
-                            tmp_files.append(_fetched)
-                            
-                            try:
-                                _broll_start_sec = float(_broll_timestamp)
-                            except (ValueError, TypeError):
-                                _broll_start_sec = 1.0
-                                
-                            _broll_start_sec = max(0.5, min(_broll_start_sec, ramped_duration - 2.0))
-                            _broll_duration = min(3.0, max(2.0, ramped_duration * 0.12))  # ~12% of clip, 2-3s max
-                            _broll_path = _fetched
-                            
-                            log.info(
-                                "[WCE-BROLL] Injecting AI B-Roll '%s' prompt='%s' genre=%s "
-                                "overlay_dur=%.1fs seek=%.1fs",
-                                os.path.basename(_broll_path), _broll_prompt,
-                                _content_genre, _broll_duration, _broll_start_sec
-                            )
-                    except Exception as _be:
-                        log.error("[WCE-BROLL] Fetch/probe failed: %s", _be)
+            # ── B-ROLL INJECTION (Smart Local Asset Matcher) ───────────────────────────
+            # Replaces random Pollinations.ai images with semantically-matched local
+            # video clips, triggered at the EXACT timestamp the speaker says the keyword.
+            _broll_cuts = []   # List of (clip_rel_start_sec, asset_path, cut_dur_sec)
+            _broll_paths = []  # kept for FFmpeg input building (backwards compat)
+            _broll_start_sec = 0.0   # legacy — used by transition calc below
+            _broll_duration  = 0.0   # legacy — total B-Roll time
+            _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
+
+            if _broll_hs_enabled:
+                try:
+                    from effects.smart_broll_matcher import find_broll_cuts
+                    _broll_cuts = find_broll_cuts(
+                        transcript_window=transcript_window,
+                        source_start=source_start,
+                        clip_duration=ramped_duration,
+                        max_cuts=3,
+                        min_cut_gap_s=4.5,
+                        cut_duration_s=2.5,
+                    )
+                    if _broll_cuts:
+                        _broll_paths     = [c[1] for c in _broll_cuts]
+                        _broll_start_sec = _broll_cuts[0][0]
+                        _broll_duration  = sum(c[2] for c in _broll_cuts)
+                        log.info(
+                            "[WCE-BROLL] 🎬 Smart Local B-Roll: %d cuts | "
+                            "total_dur=%.1fs | first_cut=%.2fs",
+                            len(_broll_cuts), _broll_duration, _broll_start_sec
+                        )
+                    else:
+                        log.info("[WCE-BROLL] No keyword matches — B-Roll skipped for this clip.")
+                except Exception as _be:
+                    log.error("[WCE-BROLL] Smart matcher failed: %s", _be)
             # ── END B-ROLL INJECTION ──────────────────────────────────────────────
+
 
             hook_zoom_filter = _hook_zoom_filter_expr(cfg, ramped_duration)
             if hook_zoom_filter:
@@ -3811,80 +3912,38 @@ class ClipEditor:
                 focus_x = 0.5
             is_complex_graph, vf = self._build_reframe_filter(work_meta, target_wh, focus_x, cfg, boring_mode)
             
-            # ── B-ROLL INJECTION (Pollinations.ai) ─────────────────────────────────────────
-            _broll_path = None
-            _broll_start_sec = 0.0
-            _broll_duration = 0.0
-            if _cortex_active:
-                _content_genre = str(_cortex.get("content_genre", "")).upper()
-                _broll_prompt = _cortex.get("b_roll_prompt", "")
-                _broll_keywords = _cortex.get("b_roll_keywords", []) or []
-                _broll_timestamp = _cortex.get("b_roll_timestamp", 1.0)
-                
-                # Support legacy keywords if prompt isn't provided
-                if not _broll_prompt and _broll_keywords:
-                    try:
-                        from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
-                        if is_gemini_enabled() and os.environ.get("HS_GEMINI_BROLL", "1") == "1":
-                            _g_prompt = (
-                                f"Create a vivid 10-word Midjourney style prompt for a cinematic background video based on the keywords: {', '.join(_broll_keywords)}.\n"
-                                f"Context: This is for a '{_content_genre}' clip. Only describe visual elements. No text or logos.\n"
-                                "Return JSON: {\"broll_prompt\": \"Cinematic 4k ...\"}"
-                            )
-                            _raw = post_gemini_completions(prompt=_g_prompt, response_format_schema={"type": "json_object"})
-                            _parsed = parse_gemini_json_safely(_raw)
-                            _broll_prompt = _parsed.get("broll_prompt", "")
-                            if _broll_prompt:
-                                log.info(f"[WCE-BROLL] Gemini generated prompt: {_broll_prompt}")
-                    except Exception as e:
-                        log.warning(f"[WCE-BROLL] Gemini prompt generation failed: {e}")
-                        
-                if not _broll_prompt:
-                    _fallback_kw = " ".join(_broll_keywords[:2]) if _broll_keywords else "video clip"
-                    _broll_prompt = f"cinematic high quality {_fallback_kw}"
-                
+            # ── B-ROLL INJECTION (Smart Local Asset Matcher — pass 2) ──────────────────
+            # _broll_cuts / _broll_paths / _broll_start_sec / _broll_duration are already
+            # populated in the pass-1 block above. This pass-2 block just ensures they
+            # are in scope for the FFmpeg graph builder below (no duplicate fetch).
+            # If pass-1 did not run (e.g. different code path), initialise here.
+            if "_broll_cuts" not in dir():
+                _broll_cuts = []
+            if not _broll_paths:
                 _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
-                _broll_enabled = bool(_broll_prompt) and _broll_hs_enabled
-                log.info(
-                    "[WCE-BROLL] decision: cortex_active=%s prompt='%s' genre=%s "
-                    "HS_BROLL_ENABLED=%s → enabled=%s",
-                    _cortex_active, _broll_prompt, _content_genre,
-                    _broll_hs_enabled, _broll_enabled
-                )
-                if _broll_enabled:
+                if _broll_hs_enabled and transcript_window:
                     try:
-                        from effects.broll_engine import fetch_broll_asset
-                        
-                        _broll_duration = min(3.0, max(2.0, ramped_duration * 0.12))  # ~12% of clip, 2-3s max
-                        
-                        # Save image in work_dir
-                        broll_out_jpg = os.path.join(self.work_dir, f"broll_tmp_{uuid.uuid4().hex}.jpg")
-                        _fetched = fetch_broll_asset(_broll_prompt, broll_out_jpg, width=2160, height=3840)
-                        
-                        if _fetched and os.path.exists(_fetched):
-                            tmp_files.append(_fetched)
-                            
-                            try:
-                                _broll_start_sec = float(_broll_timestamp)
-                            except (ValueError, TypeError):
-                                _broll_start_sec = 1.0
-                                
-                            _broll_start_sec = max(0.5, min(_broll_start_sec, ramped_duration - 2.0))
-                            _broll_path = _fetched
+                        from effects.smart_broll_matcher import find_broll_cuts
+                        _broll_cuts = find_broll_cuts(
+                            transcript_window=transcript_window,
+                            source_start=source_start,
+                            clip_duration=ramped_duration,
+                            max_cuts=3,
+                            min_cut_gap_s=4.5,
+                            cut_duration_s=2.5,
+                        )
+                        if _broll_cuts:
+                            _broll_paths     = [c[1] for c in _broll_cuts]
+                            _broll_start_sec = _broll_cuts[0][0]
+                            _broll_duration  = sum(c[2] for c in _broll_cuts)
                             log.info(
-                                "\n\n"
-                                "========================================================\n"
-                                "🎬 [B-ROLL PIPELINE TRIGGERED] 🎬\n"
-                                f"► Clip Duration: {ramped_duration:.1f}s\n"
-                                f"► Trigger Prompt: {_broll_prompt}\n"
-                                f"► Image Path: {os.path.basename(_broll_path)}\n"
-                                f"► Display Duration: {_broll_duration:.1f}s (12% dynamic scale)\n"
-                                f"► Start Time: {_broll_start_sec:.1f}s\n"
-                                "========================================================"
+                                "[WCE-BROLL] 🎬 Smart Local B-Roll (pass-2): %d cuts",
+                                len(_broll_cuts)
                             )
                     except Exception as _be:
-                        log.error("[WCE-BROLL] Fetch failed: %s", _be)
-            # ── END B-ROLL INJECTION ───────────────────────────────────────────────────────
+                        log.error("[WCE-BROLL] Smart matcher pass-2 failed: %s", _be)
+            # ── END B-ROLL INJECTION ──────────────────────────────────────────────
+
 
             t_reframe += time.perf_counter() - t0
             af = self._build_audio_filter(cfg)
@@ -4076,10 +4135,11 @@ class ClipEditor:
                     next_idx += 1
             
             # B-Roll input (after all other inputs so index is known)
-            _broll_input_idx = None
-            if _broll_path:
-                _broll_input_idx = next_idx
-                next_idx += 1
+            _broll_input_indices = []
+            if _broll_paths:
+                for _ in _broll_paths:
+                    _broll_input_indices.append(next_idx)
+                    next_idx += 1
 
             # Build branding chain
             if branding_merged:
@@ -4118,7 +4178,9 @@ class ClipEditor:
 
             # If any time-based overlays are active (B-Roll or Transitions), we must normalize PTS to 0.
             # Otherwise exact_seek offsets will break overlay between() timings.
-            _broll_active = bool(_broll_path and _broll_input_idx is not None)
+            # If any time-based overlays are active (B-Roll or Transitions), we must normalize PTS to 0.
+            # Otherwise exact_seek offsets will break overlay between() timings.
+            _broll_active = bool(_broll_paths and _broll_input_indices)
             _needs_time_norm = _broll_active or (enable_transitions and _leak_input_idx is not None)
             
             if _needs_time_norm and not is_complex_graph:
@@ -4129,29 +4191,112 @@ class ClipEditor:
                 is_complex_graph = True
 
             if _broll_active:
-                from effects.broll_engine import get_ken_burns_filter
-                _broll_end = _broll_duration
-                _kb_filter = get_ken_burns_filter(start_time=_broll_start_sec, duration=_broll_end, width=target_wh[0], height=target_wh[1])
-                
-                _broll_filter = (
-                    f"[{_broll_input_idx}:v]{_kb_filter}[broll_v];"
-                    f"[out_v][broll_v]overlay=enable='between(t,{_broll_start_sec:.3f},{_broll_start_sec+_broll_end:.3f})':x=0:y=0:eof_action=pass[out_v_broll]"
-                )
-                
+                # ── SMART LOCAL B-ROLL: video clips with burn-on fade effect ─────────────
+                # Uses per-cut timestamps from _broll_cuts (clip_rel_start, asset, dur).
+                # Each cut: trim clip → scale to target → burn-on (fade in+out) → overlay.
+                _broll_filter_parts = []
+                _broll_overlay_src = "out_v"
+                _fade_dur = 0.15   # burn-on/off fade duration (seconds)
+                _tw, _th = target_wh[0], target_wh[1]
+
+                for i, _idx in enumerate(_broll_input_indices):
+                    if i < len(_broll_cuts):
+                        _b_start, _b_asset, _b_dur = _broll_cuts[i]
+                    else:
+                        # Fallback if _broll_cuts shorter than indices (shouldn't happen)
+                        _b_start = _broll_start_sec + i * 2.5
+                        _b_dur   = 2.5
+
+                    _b_end = _b_start + _b_dur
+                    # Clamp fade so it never exceeds half the cut duration
+                    _fd = min(_fade_dur, _b_dur * 0.25)
+                    _fade_out_start = _b_dur - _fd
+
+                    # Video clip pipeline:
+                    #   setpts=PTS-STARTPTS  → reset pts after seek
+                    #   scale+crop           → fit to target resolution (portrait 9:16)
+                    #   fade in + fade out   → cinematic burn-on effect
+                    _clip_filter = (
+                        f"setpts=PTS-STARTPTS,"
+                        f"scale={_tw}:{_th}:force_original_aspect_ratio=increase,"
+                        f"crop={_tw}:{_th},"
+                        f"fps=30,format=yuv420p,"
+                        f"fade=t=in:st=0:d={_fd:.3f},"
+                        f"fade=t=out:st={_fade_out_start:.3f}:d={_fd:.3f}"
+                    )
+                    _broll_filter_parts.append(f"[{_idx}:v]{_clip_filter}[broll_v_{i}]")
+
+                    _out_pad = "out_v_broll" if i == len(_broll_input_indices) - 1 else f"out_v_broll_tmp_{i}"
+                    _broll_filter_parts.append(
+                        f"[{_broll_overlay_src}][broll_v_{i}]overlay="
+                        f"enable='between(t,{_b_start:.3f},{_b_end:.3f})'"
+                        f":x=0:y=0:eof_action=pass[{_out_pad}]"
+                    )
+                    _broll_overlay_src = _out_pad
+
+                _broll_filter = ";".join(_broll_filter_parts)
                 vf_render = f"{vf_render};{_broll_filter}"
                 vf_render = vf_render.replace("[out_v]null[hs_final_v]", "[out_v_broll]null[hs_final_v]")
                 vf_render = vf_render.replace("[out_v]split=2", "[out_v_broll]split=2")
+
                 log.info(
                     "\n\n"
-                    "🔧 [B-ROLL FILTER GRAPH INJECTED]\n"
-                    f"► Overlay Timeline: T={_broll_start_sec:.1f}s to T={_broll_start_sec+_broll_end:.3f}s\n"
-                    f"► Ken Burns Zoom: Enabled (Scale 1.0 -> 1.15)\n"
-                    "--------------------------------------------------------"
+                    "🎬 [SMART BROLL FILTER GRAPH INJECTED]\n"
+                    f"► {len(_broll_input_indices)} keyword-synced cuts (local video assets)\n"
+                    f"► Burn-on fade: {_fade_dur*1000:.0f}ms in/out on each cut\n"
+                    + "\n".join(
+                        f"  Cut {i+1}: t={_broll_cuts[i][0]:.2f}s dur={_broll_cuts[i][2]:.1f}s → {os.path.basename(_broll_cuts[i][1])}"
+                        for i in range(len(_broll_cuts))
+                    )
+                    + "\n--------------------------------------------------------"
                 )
 
             # Determine base video pad of the main clip before transition/outro
             _pre_trans_pad = "hs_main_v" if branding_merged else ("out_v_broll" if _broll_active else ("out_v" if (is_watermarked or is_complex_graph) else "0:v:0"))
-            
+
+            # ── DOPAMINE ENDING INJECTION ───────────────────────────────────────────────
+            # Last 10s of clip: fast cuts from Dopamine_assets + phonk music fade-in.
+            _dopamine_extra_inputs = []
+            _dopamine_filter_ext   = ""
+            _dopamine_has_music    = False
+            _dopamine_music_idx    = None
+            _dopamine_enabled = os.getenv("HS_DOPAMINE", "1") != "0"
+            if _dopamine_enabled:
+                try:
+                    from effects.dopamine_ending import build_dopamine_ending
+                    _dp_result = build_dopamine_ending(
+                        clip_duration=ramped_duration,
+                        next_input_idx=next_idx,
+                        current_video_pad=_pre_trans_pad,
+                        target_w=target_wh[0],
+                        target_h=target_wh[1],
+                        dopamine_window_s=10.0,
+                        cut_dur_s=1.2,
+                        music_volume=0.65,
+                        fade_in_s=3.0,
+                    )
+                    if len(_dp_result) == 4:
+                        _dopamine_extra_inputs, _dopamine_filter_ext, _dp_new_pad, _dopamine_has_music = _dp_result
+                        if _dopamine_filter_ext:
+                            # Update pad tracking
+                            _pre_trans_pad = _dp_new_pad
+                            # Count how many inputs we added
+                            _dp_n_video = sum(1 for arg in _dopamine_extra_inputs if not arg.startswith('-') and (arg.endswith('.mp4') or arg.endswith('.MP4') or arg.endswith('.mov')))
+                            _dp_n_audio = 1 if _dopamine_has_music else 0
+                            _dp_total    = _dp_n_video + _dp_n_audio
+                            # Track music idx (last input before vf)
+                            if _dopamine_has_music:
+                                _dopamine_music_idx = next_idx + _dp_n_video
+                            next_idx += _dp_total
+                            is_complex_graph = True
+                            # Append to vf_render
+                            vf_render += _dopamine_filter_ext
+                            log.info("[DOPAMINE] ✅ Ending injected: %d video inputs + music=%s",
+                                     _dp_n_video, _dopamine_has_music)
+                except Exception as _dpe:
+                    log.error("[DOPAMINE] Injection failed: %s", _dpe)
+            # ── END DOPAMINE ENDING ─────────────────────────────────────────────────────
+
             # Apply transition overlay to video
             _post_trans_pad = _pre_trans_pad
             _trans_t = max(0.0, _broll_start_sec - 0.2) if _broll_active else 0.0
@@ -4258,15 +4403,35 @@ class ClipEditor:
                 cmd.extend(["-i", swoosh_path])
                 if click_path and _click_input_idx is not None:
                     cmd.extend(["-i", click_path])
-            if _broll_path:
-                # Images for B-roll need loop 1. We limit duration to avoid infinite loops.
-                cmd.extend(["-loop", "1", "-t", f"{_broll_duration+1.0:.3f}", "-i", _broll_path])
+            if _broll_paths:
+                # Local video clips — seek to a random offset inside each clip so the
+                # same clip doesn't always start from frame 0 when reused.
+                import random as _rnd
+                for _ci, (_b_start_t, _b_asset, _b_dur) in enumerate(_broll_cuts):
+                    # Seek 0.0–1.5 s into the clip for visual variety
+                    _seek_offset = _rnd.uniform(0.0, 1.5)
+                    cmd.extend(["-ss", f"{_seek_offset:.3f}", "-t", f"{_b_dur + 0.5:.3f}", "-i", _b_asset])
+            if _dopamine_extra_inputs:
+                cmd.extend(_dopamine_extra_inputs)
 
             # Determine final output pad and audio handling
-            _use_complex_audio = branding_outro_merged or complex_audio_merged
-            _out_video_pad = "hs_final_v" if (branding_merged or _has_outro or enable_transitions) else ("out_v_broll" if _broll_active else ("out_v" if (is_watermarked or is_complex_graph) else None))
-            _use_filter_complex = is_watermarked or is_complex_graph or branding_merged or _broll_active or _use_complex_audio or enable_transitions
-            
+            _use_complex_audio = branding_outro_merged or complex_audio_merged or _dopamine_has_music
+            _out_video_pad = "hs_final_v" if (branding_merged or _has_outro or enable_transitions) else ("dp_final_v" if (_dopamine_filter_ext and not _broll_active) else ("out_v_broll" if _broll_active else ("out_v" if (is_watermarked or is_complex_graph) else None)))
+            _use_filter_complex = is_watermarked or is_complex_graph or branding_merged or _broll_active or _use_complex_audio or enable_transitions or bool(_dopamine_filter_ext)
+
+            # Dopamine music mixing into the main audio output
+            if _dopamine_has_music and _dopamine_music_idx is not None and not branding_outro_merged:
+                _dp_af_base = af_base if (af_base and af_base != "anull") else "anull"
+                # Mix: original speech audio + phonk music (at dopamine_music volume)
+                vf_render += (
+                    f";[0:a]{_dp_af_base},aresample=44100,aformat=channel_layouts=stereo[dp_main_a]"
+                    f";[dp_music_a]aresample=44100,aformat=channel_layouts=stereo[dp_phonk_a]"
+                    f";[dp_main_a][dp_phonk_a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[hs_final_a]"
+                )
+                _use_complex_audio = True
+                complex_audio_merged = True
+                log.info("[DOPAMINE] 🎵 Phonk music mixed into final audio output")
+
             cmd.extend([
                 "-filter_complex" if _use_filter_complex else "-vf",
                 vf_render,
@@ -4289,6 +4454,7 @@ class ClipEditor:
                 cmd += ["-af", af_render, "-c:a", "aac", "-b:a", _get_export_audio_bitrate()]
             else:
                 cmd += ["-an"]
+
             
             cmd.append(output_path)
             ffmpeg_passes += 1
