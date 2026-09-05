@@ -3658,6 +3658,7 @@ class ClipEditor:
         hashtags_line: Optional[str],
         subtitle_style: str = "classic",
         speaker_side: str = "center",  # "left", "right", or "center"
+        is_podcast: bool = False,
     ) -> None:
         style_val = str(subtitle_style or "classic").lower().strip()
         
@@ -3702,6 +3703,12 @@ class ClipEditor:
         # Alignment codes in ASS: 1=bottom-left, 2=bottom-center, 3=bottom-right
         caption_alignment = 2
         margin_l, margin_r, margin_v = 40, 40, 450
+        
+        if is_podcast:
+            caption_alignment = 5  # Middle-center
+            margin_v = 0
+            log.info("[WCE-CAPTION] Podcast mode detected: centering captions vertically.")
+            
         log.info("[WCE-CAPTION] per-event speaker-side \\an alignment: ACTIVE")
 
         header = [
@@ -3753,7 +3760,10 @@ class ClipEditor:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
                             
                     line_text = " ".join(parts)
-                    an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
+                    if is_podcast:
+                        an_tag = "{\\an5\\blur1.5}"
+                    else:
+                        an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                     events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
             elif len(words) > 1:
                 word_dur = (seg.end - seg.start) / len(words)
@@ -3770,12 +3780,18 @@ class ClipEditor:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
                             
                     line_text = " ".join(parts)
-                    an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
+                    if is_podcast:
+                        an_tag = "{\\an5\\blur1.5}"
+                    else:
+                        an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                     events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
             else:
                 # Single-word segment — just highlight it
                 highlighted_text = self._highlight_text(escaped_text)
-                an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
+                if is_podcast:
+                    an_tag = "{\\an5\\blur1.5}"
+                else:
+                    an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                 events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{an_tag}{highlighted_text}")
 
         if hook_line:
@@ -4317,6 +4333,7 @@ class ClipEditor:
                         hashtags_line=hashtags_line,
                         subtitle_style=subtitle_style,
                         speaker_side=speaker_side,
+                        is_podcast=(video_fmt is not None and video_fmt.format_type == "podcast"),
                     )
                 fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
                 ass_esc = _ffmpeg_filter_path(ass_path)
