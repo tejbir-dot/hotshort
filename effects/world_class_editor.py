@@ -1574,17 +1574,80 @@ class ClipEditor:
             # Produces per-frame voice-activity gate: {frame_idx: bool}
             # If VAD says silence → mouth_motion is zeroed → EMA can't accumulate
             # jacket/wall ghost noise. Kills ghost-talking at the source.
+            # Healing #4: Also capture per-frame audio RMS envelope alongside binary gate.
+            # The RMS signal feeds ActiveSpeakerCorrelator for cross-correlation with
+            # mouth-motion to identify the active speaker in podcast format.
             _vad_gate: dict = {}
+            _vad_rms_gate: dict = {}  # {frame_idx: float} normalized audio RMS [0,1]
             try:
-                from effects.vad_speaker import compute_vad_gate
+                from effects.vad_speaker import compute_vad_gate_with_rms
                 _total_frames_est = int(fps * (cap.get(cv2.CAP_PROP_FRAME_COUNT) / max(fps, 1)))
-                _vad_gate = compute_vad_gate(
+                _vad_gate, _vad_rms_gate = compute_vad_gate_with_rms(
                     clip_path=clip_path,
                     video_fps=fps,
                     total_frames=max(_total_frames_est, 1),
                 )
+                log.info(f"[VAD_RMS] rms_gate populated: {len(_vad_rms_gate)} frames")
             except Exception as _vad_err:
                 log.warning(f"[VAD] Pre-compute failed (continuing without): {_vad_err}")
+                # Fallback: try legacy binary-only gate
+                try:
+                    from effects.vad_speaker import compute_vad_gate
+                    _total_frames_est = int(fps * (cap.get(cv2.CAP_PROP_FRAME_COUNT) / max(fps, 1)))
+                    _vad_gate = compute_vad_gate(
+                        clip_path=clip_path,
+                        video_fps=fps,
+                        total_frames=max(_total_frames_est, 1),
+                    )
+                except Exception:
+                    pass
+
+            # ── Healing #4: Active Speaker Correlator ───────────────────────
+            # Cross-correlates per-slot mouth-motion signal with audio RMS envelope
+            # to identify the active speaker in podcast mode WITHOUT diarization.
+            # Theory: speech produces ~3-6 Hz lip movement. Audio envelope of speech
+            # has the same frequency band. Cross-correlation (lag=0) of the two
+            # normalized time-series identifies the slot whose mouth movement
+            # best tracks the audio energy.
+            class _ActiveSpeakerCorrelator:
+                """Rolling 30-frame cross-correlator: mouth-motion vs audio RMS."""
+                WINDOW = 30
+
+                def __init__(self):
+                    from collections import deque
+                    self._audio  = deque(maxlen=self.WINDOW)
+                    self._left   = deque(maxlen=self.WINDOW)
+                    self._right  = deque(maxlen=self.WINDOW)
+
+                def push(self, audio_rms: float, mouth_l: float, mouth_r: float):
+                    self._audio.append(float(audio_rms))
+                    self._left.append(float(mouth_l))
+                    self._right.append(float(mouth_r))
+
+                def active_speaker(self):
+                    """Returns 'left', 'right', or None (insufficient data / tie)."""
+                    if len(self._audio) < self.WINDOW:
+                        return None
+                    a  = list(self._audio)
+                    ml = list(self._left)
+                    mr = list(self._right)
+                    # Compute means
+                    ma  = sum(a)  / self.WINDOW
+                    mml = sum(ml) / self.WINDOW
+                    mmr = sum(mr) / self.WINDOW
+                    # Dot product of zero-mean signals (manual numpy to avoid import)
+                    sa = sum((x - ma) ** 2 for x in a) ** 0.5 or 1.0
+                    sl = sum((x - mml) ** 2 for x in ml) ** 0.5 or 1.0
+                    sr = sum((x - mmr) ** 2 for x in mr) ** 0.5 or 1.0
+                    corr_l = sum((a[i]-ma)*(ml[i]-mml) for i in range(self.WINDOW)) / (sa * sl * self.WINDOW)
+                    corr_r = sum((a[i]-ma)*(mr[i]-mmr) for i in range(self.WINDOW)) / (sa * sr * self.WINDOW)
+                    _CORR_MIN_DELTA = float(os.environ.get("HS_CORR_MIN_DELTA", "0.08"))
+                    if abs(corr_l - corr_r) < _CORR_MIN_DELTA:
+                        return None   # tie / ambiguous → fall back to EMA
+                    return "left" if corr_l > corr_r else "right"
+
+            _correlator = _ActiveSpeakerCorrelator()
+            _ENABLE_CORRELATOR = len(_vad_rms_gate) > 0  # only when RMS is available
 
             # ── Debug visualizer session (no-op when HS_DEBUG_FRAMES not set) ────
             _clip_id = os.path.splitext(os.path.basename(clip_path or "clip"))[0]
@@ -2195,6 +2258,26 @@ class ClipEditor:
                 ema_mouth_right = max(EMA_FLOOR, ema_mouth_right * (1 - EMA_ALPHA) + mouth_motion_right * EMA_ALPHA)
                 left_talking  = ema_mouth_left  > TALKING_THRESHOLD
                 right_talking = ema_mouth_right > TALKING_THRESHOLD
+
+                # ── Healing #4: Active Speaker Correlator ─────────────────────────────
+                # Push current frame into the 30-frame rolling window.
+                # For podcast clips: if correlator gives a high-confidence
+                # override, trust it over the raw EMA result.
+                # Only runs in PODCAST mode (when BOTH slots are present).
+                if _ENABLE_CORRELATOR and _is_podcast_fmt and left_slot is not None and right_slot is not None:
+                    _audio_rms = float(_vad_rms_gate.get(frame_idx, 0.0))
+                    _correlator.push(_audio_rms, mouth_motion_left, mouth_motion_right)
+                    _corr_speaker = _correlator.active_speaker()
+                    if _corr_speaker == "left" and right_talking and not left_talking:
+                        left_talking  = True
+                        right_talking = False
+                        if frame_idx % 50 == 0:
+                            log.debug(f"[CORR_OVERRIDE] t={t:.2f}s correlator→LEFT overrides EMA (ema_l={ema_mouth_left:.1f} ema_r={ema_mouth_right:.1f})")
+                    elif _corr_speaker == "right" and left_talking and not right_talking:
+                        right_talking = True
+                        left_talking  = False
+                        if frame_idx % 50 == 0:
+                            log.debug(f"[CORR_OVERRIDE] t={t:.2f}s correlator→RIGHT overrides EMA (ema_l={ema_mouth_left:.1f} ema_r={ema_mouth_right:.1f})")
 
                 if frame_idx % 150 == 0:
                     log.info(

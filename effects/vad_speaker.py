@@ -59,6 +59,9 @@ def compute_vad_gate(
 
     Returns {frame_idx: bool} where True = voice detected in that frame's window.
     On any failure, returns {} (empty = VAD disabled, caller skips gating).
+
+    NOTE: Internally calls compute_vad_gate_with_rms and discards the RMS.
+    Use compute_vad_gate_with_rms() directly when you need both gate + RMS envelope.
     """
     if not VAD_ENABLED:
         return {}
@@ -173,6 +176,141 @@ def compute_vad_gate(
         f"({speech_frames/max(total_frames,1)*100:.1f}%)"
     )
     return gate
+
+
+def compute_vad_gate_with_rms(
+    clip_path: str,
+    video_fps: float,
+    total_frames: int,
+    aggressiveness: int = VAD_AGGRESSIVENESS,
+) -> tuple:
+    """
+    Extended version of compute_vad_gate that also returns a per-frame
+    audio RMS envelope alongside the binary VAD gate.
+
+    Healing #4 (VAD-Mouth Cross-Correlation): The RMS envelope is used by
+    ActiveSpeakerCorrelator to cross-correlate audio energy with per-slot
+    mouth-motion signal, identifying the active speaker in podcast format
+    without expensive speaker diarization.
+
+    Returns:
+        gate     : {frame_idx: bool}   — binary VAD gate (same as compute_vad_gate)
+        rms_gate : {frame_idx: float}  — per-frame audio RMS in [0, 1] (normalized)
+
+    On failure, returns ({}, {}).
+    """
+    if not VAD_ENABLED:
+        return {}, {}
+
+    try:
+        import webrtcvad
+        import struct
+        import math
+    except ImportError:
+        log.warning("[VAD] webrtcvad not installed — skipping (pip install webrtcvad)")
+        return {}, {}
+
+    _tmp_fd, _tmp_path = tempfile.mkstemp(suffix=".pcm")
+    os.close(_tmp_fd)
+
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-i", clip_path,
+        "-f", "s16le",
+        "-ac", "1",
+        "-ar", str(VAD_SAMPLE_RATE),
+        "-y", _tmp_path,
+    ]
+
+    raw_pcm = b""
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            log.warning(f"[VAD] ffmpeg audio extract failed: {result.stderr[:200]}")
+            return {}, {}
+        with open(_tmp_path, "rb") as _f:
+            raw_pcm = _f.read()
+    except subprocess.TimeoutExpired:
+        log.warning("[VAD] ffmpeg timed out extracting audio")
+        return {}, {}
+    except Exception as e:
+        log.warning(f"[VAD] ffmpeg error: {e}")
+        return {}, {}
+    finally:
+        try:
+            os.unlink(_tmp_path)
+        except Exception:
+            pass
+
+    if not raw_pcm:
+        return {}, {}
+
+    vad        = webrtcvad.Vad(aggressiveness)
+    frame_bytes = int(VAD_SAMPLE_RATE * (VAD_FRAME_MS / 1000.0) * 2)
+    n_samples   = frame_bytes // 2
+    dt_audio    = VAD_FRAME_MS / 1000.0
+
+    audio_segments = []   # (t_start_s, is_speech, rms_normalized)
+    pos     = 0
+    audio_t = 0.0
+    _max_int16 = 32768.0
+
+    # First pass: compute raw RMS values to find global max for normalization
+    _raw_rms_list = []
+    _tmp_pos = 0
+    while _tmp_pos + frame_bytes <= len(raw_pcm):
+        chunk = raw_pcm[_tmp_pos: _tmp_pos + frame_bytes]
+        samples = struct.unpack(f'<{n_samples}h', chunk)
+        rms = math.sqrt(sum(s * s for s in samples) / max(1, n_samples)) / _max_int16
+        _raw_rms_list.append(rms)
+        _tmp_pos += frame_bytes
+    _rms_max = max(_raw_rms_list, default=1.0) or 1.0
+
+    # Second pass: VAD + normalized RMS
+    while pos + frame_bytes <= len(raw_pcm):
+        chunk = raw_pcm[pos: pos + frame_bytes]
+        try:
+            is_speech = vad.is_speech(chunk, VAD_SAMPLE_RATE)
+        except Exception:
+            is_speech = True
+        samples = struct.unpack(f'<{n_samples}h', chunk)
+        rms_norm = (math.sqrt(sum(s * s for s in samples) / max(1, n_samples)) / _max_int16) / _rms_max
+        audio_segments.append((audio_t, is_speech, rms_norm))
+        pos     += frame_bytes
+        audio_t += dt_audio
+
+    if not audio_segments:
+        return {}, {}
+
+    speech_count = sum(1 for _, s, _ in audio_segments if s)
+    log.info(
+        f"[VAD_RMS] clip={os.path.basename(clip_path)} "
+        f"audio_frames={len(audio_segments)} "
+        f"speech_pct={speech_count/len(audio_segments)*100:.1f}% "
+        f"rms_max={_rms_max:.4f}"
+    )
+
+    dt_video = 1.0 / max(video_fps, 1.0)
+    gate: Dict[int, bool]  = {}
+    rms_gate: Dict[int, float] = {}
+
+    for frame_idx in range(total_frames):
+        t_frame_start = frame_idx * dt_video
+        t_frame_end   = t_frame_start + dt_video
+        is_speech = False
+        frame_rms = 0.0
+        for seg_t, seg_s, seg_rms in audio_segments:
+            if seg_t + dt_audio < t_frame_start:
+                continue
+            if seg_t > t_frame_end:
+                break
+            frame_rms = max(frame_rms, seg_rms)   # take peak RMS in window
+            if seg_s:
+                is_speech = True
+        gate[frame_idx]     = is_speech
+        rms_gate[frame_idx] = frame_rms
+
+    return gate, rms_gate
 
 
 def apply_vad_gate(
