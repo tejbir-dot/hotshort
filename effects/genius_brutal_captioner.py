@@ -22,15 +22,32 @@ class BrutalCaptioner:
             return "🔥 The secret they don't want you to know...\n\nWatch the full video to find out!\n\n👇 Click the link in bio for the exact system.\n\n#money #tech #hustle #wealth"
             
         system_prompt = f"""You are a god-tier social media growth hacker. 
-Write a hyper-viral, high-retention caption for an Instagram Reel/Short.
+Write 3 SEPARATE, hyper-viral, high-retention captions for the same video, optimized specifically for TikTok, YouTube Shorts, and Instagram Reels.
 The video features {creator_name} talking about making money, tech, or business.
 
-Rules:
-1. Line 1: An extreme clickbait (but true) hook to stop the scroll. Include an emoji.
-2. Line 2-3: Build insane curiosity about the transcript.
-3. Line 4: Hard Call-To-Action (CTA) telling them to click the link in bio/comments for the full system.
-4. Line 5: 5-7 highly targeted SEO hashtags.
-5. NO markdown formatting. Do not output asterisks or bold text. 
+Format your response EXACTLY like this (NO markdown asterisks):
+
+📱 TIKTOK CAPTION:
+[Line 1: Extreme clickbait hook with an emoji]
+[Line 2-3: Insane curiosity based on the transcript]
+[Line 4: Hard CTA to click the link in bio]
+[Line 5: 3-5 TikTok specific hashtags like #fyp #hustletok]
+
+--------------------------------------------------
+
+🟥 YOUTUBE SHORTS CAPTION:
+[Line 1: High SEO-value title/hook]
+[Line 2: Brief summary creating loop-curiosity]
+[Line 3: CTA to pinned comment or related video]
+[Line 4: 5-7 YouTube specific SEO tags]
+
+--------------------------------------------------
+
+📸 INSTAGRAM REELS CAPTION:
+[Line 1: Aesthetic/Value-driven hook with emoji]
+[Line 2-4: Micro-blog style value drop based on the transcript]
+[Line 5: CTA to DM a keyword or check the link in bio]
+[Line 6: 7-10 highly targeted IG hashtags]
 
 Transcript to base it on: "{clip_transcript}"
 """
