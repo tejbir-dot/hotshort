@@ -8,18 +8,27 @@ class BrutalCaptioner:
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             print("[CAPTIONER] Warning: GEMINI_API_KEY not found. Captions will not be generated.", flush=True)
-            self.model = None
+            self.api_key_valid = False
             return
             
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.api_key_valid = True
+        # Try Flash Lite first, then fallbacks
+        self.model_names = [
+            'gemini-2.0-flash-lite-preview-02-05',
+            'gemini-1.5-flash-8b',
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-latest'
+        ]
         
     def generate_viral_caption(self, clip_transcript: str, creator_name: str = "Daniel") -> str:
-        if not self.model:
-            return ""
+        fallback_caption = "🔥 The secret they don't want you to know...\n\nWatch the full video to find out!\n\n👇 Click the link in bio for the exact system.\n\n#money #tech #hustle #wealth"
+
+        if not getattr(self, 'api_key_valid', False):
+            return fallback_caption
             
         if not clip_transcript or not clip_transcript.strip():
-            return "🔥 The secret they don't want you to know...\n\nWatch the full video to find out!\n\n👇 Click the link in bio for the exact system.\n\n#money #tech #hustle #wealth"
+            return fallback_caption
             
         system_prompt = f"""You are a god-tier social media growth hacker. 
 Write 3 SEPARATE, hyper-viral, high-retention captions for the same video, optimized specifically for TikTok, YouTube Shorts, and Instagram Reels.
@@ -55,12 +64,15 @@ Format your response EXACTLY like this (NO markdown asterisks):
 Transcript to base it on: "{clip_transcript}"
 """
         
-        try:
-            print(f"🧠 [CAPTIONER] Brainstorming viral dopamine caption for {creator_name}...", flush=True)
-            response = self.model.generate_content(system_prompt)
-            # Remove any markdown asterisks if the model ignores the prompt
-            clean_text = response.text.replace("**", "").replace("*", "")
-            return clean_text.strip()
-        except Exception as e:
-            print(f"[CAPTIONER] Failed to generate caption: {e}\n{traceback.format_exc()}", flush=True)
-            return ""
+        print(f"🧠 [CAPTIONER] Brainstorming viral dopamine caption for {creator_name}...", flush=True)
+        for model_name in self.model_names:
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(system_prompt)
+                clean_text = response.text.replace("**", "").replace("*", "")
+                return clean_text.strip()
+            except Exception as e:
+                print(f"[CAPTIONER] {model_name} failed: {str(e)[:100]}... Trying fallback.", flush=True)
+                
+        print("[CAPTIONER] All Gemini models failed. Using hardcoded fallback caption.", flush=True)
+        return fallback_caption
