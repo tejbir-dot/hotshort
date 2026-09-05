@@ -1904,6 +1904,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 clip_queue.put(None) # Signal done
 
         def run_editor():
+            from effects.genius_brutal_captioner import BrutalCaptioner
+            captioner = BrutalCaptioner()
             while True:
                 item = clip_queue.get()
                 if item is None:
@@ -2086,6 +2088,27 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     if _LOCAL_MODE:
                         saved = _local_save_clip(final_path, i, start, end)
                         url = f"local://{saved}"
+                        
+                        # ── GENIUS BRUTAL CAPTIONER ──
+                        try:
+                            # Extract raw text from transcript dictionaries if necessary
+                            _clip_transcript = clip.get("transcript") or clip.get("captions") or []
+                            if isinstance(_clip_transcript, list):
+                                _clip_text = " ".join([w.get("word", "") for w in _clip_transcript])
+                            else:
+                                _clip_text = str(_clip_transcript)
+                            
+                            # Extract creator name from job details if available
+                            _creator = job.get("creator_name", "Daniel")
+                            
+                            _cap_text = captioner.generate_viral_caption(_clip_text, creator_name=_creator)
+                            if _cap_text:
+                                _cap_path = saved.replace(".mp4", "_caption.txt")
+                                with open(_cap_path, "w", encoding="utf-8") as _cf:
+                                    _cf.write(_cap_text)
+                                print(f"[LOCAL_SAVE] caption -> {_cap_path}", flush=True)
+                        except Exception as _ce:
+                            print(f"[CAPTIONER] Failed: {_ce}", flush=True)
                     else:
                         if cloudinary_ok:
                             url = _upload_clip_to_cloudinary(final_path)
