@@ -1414,8 +1414,14 @@ class ClipEditor:
                     return "SOLO_LEFT" if ema_mouth_left >= ema_mouth_right else "SOLO_RIGHT"
 
                 # Both well-separated -> VISUAL PODCAST FORMAT DETECTED
-                # Since they are visually separated by a large margin, keep SPLIT mode active 
-                # continuously. This captures both the active speaker and the listener's reactions.
+                # Normally keep SPLIT mode active to show both. 
+                # HOWEVER: For dramatic emphasis, if one speaker is energetically talking 
+                # while the other is quiet, punch-in to SOLO!
+                if left_talking and ema_mouth_left > ema_mouth_right * 5 and ema_mouth_left > 50:
+                    return "SOLO_LEFT"
+                if right_talking and ema_mouth_right > ema_mouth_left * 5 and ema_mouth_right > 50:
+                    return "SOLO_RIGHT"
+                    
                 return "SPLIT"
 
             def get_mouth_roi(face):
@@ -2353,12 +2359,10 @@ class ClipEditor:
                 if raw_mode == "HOLD":
                     mode = last_mode
                 else:
-                    # ── Mode Switch Gating ──────────────────────────────────────
-                    # Require the new SOLO mode to be sustained for MIN_SWITCH_FRAMES
-                    # before committing. This prevents one-frame FP detections from
-                    # flipping the camera to the wrong speaker.
                     _MIN_SWITCH_FRAMES = int(float(os.environ.get("HS_MIN_SWITCH_FRAMES", "12")))
-                    if raw_mode != last_mode and raw_mode in ("SOLO_LEFT", "SOLO_RIGHT"):
+                    
+                    # Universal Mode Switch Gating (applies to ALL modes, including SPLIT)
+                    if raw_mode != last_mode:
                         _pending_mode = getattr(_decide_mode_state, "pending_mode", None)
                         _pending_count = getattr(_decide_mode_state, "pending_count", 0)
                         if _pending_mode == raw_mode:
@@ -2368,6 +2372,12 @@ class ClipEditor:
                             _pending_count = 1
                         _decide_mode_state.pending_mode = _pending_mode
                         _decide_mode_state.pending_count = _pending_count
+                        
+                        if frame_idx % 5 == 0:
+                            log.debug(f"[MODE_DEBUG] frame={frame_idx} raw_mode={raw_mode} "
+                                      f"gap_used={face_gap_ratio:.3f} "
+                                      f"solo_candidate_counter={_pending_count} required={_MIN_SWITCH_FRAMES}")
+
                         if _pending_count >= _MIN_SWITCH_FRAMES:
                             mode = raw_mode
                             last_mode = mode
