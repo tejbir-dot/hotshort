@@ -2357,7 +2357,7 @@ class ClipEditor:
                     # Require the new SOLO mode to be sustained for MIN_SWITCH_FRAMES
                     # before committing. This prevents one-frame FP detections from
                     # flipping the camera to the wrong speaker.
-                    _MIN_SWITCH_FRAMES = int(os.environ.get("HS_MIN_SWITCH_FRAMES", "12"))
+                    _MIN_SWITCH_FRAMES = int(float(os.environ.get("HS_MIN_SWITCH_FRAMES", "12")))
                     if raw_mode != last_mode and raw_mode in ("SOLO_LEFT", "SOLO_RIGHT"):
                         _pending_mode = getattr(_decide_mode_state, "pending_mode", None)
                         _pending_count = getattr(_decide_mode_state, "pending_count", 0)
