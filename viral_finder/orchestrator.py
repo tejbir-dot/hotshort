@@ -5840,6 +5840,58 @@ def orchestrate(path: str,
         log.warning("[INTEL_VERIFIER] Audit failed (non-fatal): %s", _iv_exc)
     # -----------------------------------------
 
+    # \u2500\u2500 Healing #5: Multi-Modal Viral Score Fusion \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # Fuse text-based viral score with visual energy signal from the Director Loop.
+    # The Director Loop (world_class_editor.py) exports visual_energy per clip
+    # via local_worker.py. If a clip has banter_score attached, we compute a
+    # weighted fused score and re-sort. Clips without visual data are unaffected
+    # (their fused_viral_score = their existing text score).
+    #
+    # Weights: text 75% + visual 25% (env-tunable: HS_VISUAL_FUSION_WEIGHT)
+    # This is deliberately conservative — text remains primary signal. Visual
+    # energy is an additive boost for clips with genuine dual-speaker chemistry.
+    _VISUAL_FUSION_WEIGHT = float(os.environ.get("HS_VISUAL_FUSION_WEIGHT", "0.25"))
+    _TEXT_WEIGHT = 1.0 - _VISUAL_FUSION_WEIGHT
+    _fusion_applied = 0
+    for _c in final_candidates:
+        _text_score = float(
+            _c.get("viral_score") or _c.get("final_score") or _c.get("score") or 0.5
+        )
+        _banter = float(_c.get("banter_score", 0.0))
+        _fused  = round(_text_score * _TEXT_WEIGHT + _banter * _VISUAL_FUSION_WEIGHT, 4)
+        _c["fused_viral_score"] = _fused
+        _c["_score_breakdown"]  = {
+            "text_score":    round(_text_score, 4),
+            "banter_score":  round(_banter, 4),
+            "text_weight":   _TEXT_WEIGHT,
+            "visual_weight": _VISUAL_FUSION_WEIGHT,
+            "fused":         _fused,
+        }
+        if _banter > 0.0:
+            _fusion_applied += 1
+
+    if _fusion_applied > 0:
+        final_candidates.sort(key=lambda c: c.get("fused_viral_score", 0.0), reverse=True)
+        log.info(
+            "[FUSION] Multi-modal score fusion applied to %d/%d clips "
+            "(visual_weight=%.2f text_weight=%.2f). Re-sorted by fused_viral_score.",
+            _fusion_applied, len(final_candidates), _VISUAL_FUSION_WEIGHT, _TEXT_WEIGHT,
+        )
+        for _ri, _rc in enumerate(final_candidates[:5]):
+            _bd = _rc.get("_score_breakdown", {})
+            log.info(
+                "[FUSION] rank=%d fused=%.4f text=%.4f visual=%.4f t=%.1f-%.1fs",
+                _ri + 1,
+                _bd.get("fused", 0),
+                _bd.get("text_score", 0),
+                _bd.get("banter_score", 0),
+                float(_rc.get("start", 0)),
+                float(_rc.get("end", 0)),
+            )
+    else:
+        log.info("[FUSION] No clips have visual_energy attached yet (pre-edit). Skipping re-rank.")
+    # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
     return final_candidates
 # -------------------------
 # CLI helper

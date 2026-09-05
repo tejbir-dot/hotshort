@@ -2626,6 +2626,52 @@ class ClipEditor:
                     elif dur >= 8.0:
                         s.apply_zoom = True
 
+            # ── Healing #5: Visual Energy Export ────────────────────────────────────
+            # Compute a multi-modal visual energy signal from the frame-level stats
+            # collected during the director loop. This summary is stored on self
+            # so local_worker.py can attach it to clip_res for orchestrator re-ranking.
+            _total_f = max(1, len(frame_stats))
+            _split_f = sum(1 for f in frame_stats if f["mode"] == "SPLIT")
+            # Mode-switch rate: actual semantic switches per second (excluding HOLD)
+            _mode_switches = sum(
+                1 for i in range(1, len(frame_stats))
+                if frame_stats[i]["mode"] != frame_stats[i-1]["mode"]
+                and frame_stats[i]["mode"] not in ("HOLD",)
+                and frame_stats[i-1]["mode"] not in ("HOLD",)
+            )
+            _clip_fps = fps if fps > 0 else 25.0
+            _switch_rate = _mode_switches / max(1.0, _total_f / _clip_fps)   # switches/sec
+            _ema_l_peaks = [f["ema_l"] for f in frame_stats if "ema_l" in f]
+            _ema_r_peaks = [f["ema_r"] for f in frame_stats if "ema_r" in f]
+            _ema_peak    = max(
+                max(_ema_l_peaks, default=0.0),
+                max(_ema_r_peaks, default=0.0)
+            )
+            # banter_score: normalised composite [0, 1]
+            #   split_ratio        → how much of clip has dual-speaker frame (0–1)
+            #   mode_switch_rate   → rapid L↔R = engaging banter (capped at 3 sw/s)
+            #   ema_peak           → peak mouth excitement (capped at 1000 raw units)
+            _banter = round(
+                0.50 * (_split_f / _total_f)
+                + 0.30 * min(1.0, _switch_rate / 3.0)
+                + 0.20 * min(1.0, _ema_peak / 1000.0),
+                4,
+            )
+            _visual_energy = {
+                "split_ratio":       round(_split_f / _total_f, 4),
+                "mode_switch_rate":  round(_switch_rate, 4),
+                "ema_peak":          round(_ema_peak, 2),
+                "dual_speaker":      any(s.mode == "SPLIT" for s in stable_segments),
+                "banter_score":      _banter,
+            }
+            self._last_visual_energy = _visual_energy
+            log.info(
+                "[VISUAL_ENERGY] split_ratio=%.3f mode_switches/s=%.2f "
+                "ema_peak=%.1f dual_speaker=%s banter_score=%.4f",
+                _visual_energy["split_ratio"], _visual_energy["mode_switch_rate"],
+                _visual_energy["ema_peak"], _visual_energy["dual_speaker"],
+                _visual_energy["banter_score"],
+            )
             return stable_segments
 
         return _clamp(

@@ -51,7 +51,7 @@ from dotenv import load_dotenv
 try:
     from effects.insightface_detector import detect_faces_insightface, is_insightface_available
     _INSIGHTFACE_ENABLED = is_insightface_available()
-except Exception:
+except ImportError:
     _INSIGHTFACE_ENABLED = False
     detect_faces_insightface = None
 
@@ -113,11 +113,13 @@ _HEADERS = {
 
 
 def _local_save_clip(src_path: str, clip_index: int, start: float, end: float) -> str:
-    """Copy finished clip to scratch/hotshort_out/ and return saved path."""
+    """Copy finished clip to target directory and return saved path."""
     import shutil
-    os.makedirs(_LOCAL_OUT_DIR, exist_ok=True)
+    # Dynamically check HS_CLIPS_DIR, fallback to _LOCAL_OUT_DIR if not set
+    out_dir = os.environ.get("HS_CLIPS_DIR") or _LOCAL_OUT_DIR
+    os.makedirs(out_dir, exist_ok=True)
     name = f"clip_{clip_index}_{int(start)}_{int(end)}.mp4"
-    dst  = os.path.join(_LOCAL_OUT_DIR, name)
+    dst  = os.path.join(out_dir, name)
     shutil.copy2(src_path, dst)
     sz = os.path.getsize(dst) / 1e6
     print(f"[LOCAL_SAVE] clip_{clip_index} -> {dst}  ({sz:.1f} MB)", flush=True)
@@ -950,17 +952,129 @@ CLUSTER_HASH_THRESHOLD = max(0, int(os.getenv("HS_CLUSTER_HASH_THRESHOLD", "18")
 MIN_CLUSTER_REDETECT_ATTEMPTS = max(0, int(os.getenv("HS_MIN_CLUSTER_REDETECT_ATTEMPTS", "2") or 2))
 MIN_VALID_FACE_HEIGHT_RATIO = min(1.0, max(0.0, float(os.getenv("HS_MIN_FACE_HEIGHT_RATIO", "0.05") or 0.05)))
 
+# ── Format-adaptive stride: podcast needs dense sampling, monologue doesn't ──
+_STRIDE_BY_FORMAT = {
+    'podcast':        3,   # dense — need to catch both speakers switching
+    'monologue':      8,   # sparse — 1 static face, position barely changes
+    'motion_graphic': 12,  # very sparse — no faces
+    'fast_cuts':      4,   # medium — rapid cuts need more keyframes
+}
+
+
+def _fc_detect_in_speaker_rois(frame, speaker_positions, frame_w, frame_h, conf=0.30):
+    """Run face detection inside ±28% crops around each known speaker position.
+    Detecting in a narrow ROI (560px wide vs 1920px) is ~3x faster AND has
+    higher recall because the face is a larger fraction of the smaller crop.
+    Returns faces with x translated back to full-frame coordinates.
+    """
+    found = []
+    roi_half = int(frame_w * 0.28)
+    for pos_x in speaker_positions:
+        cx = int(pos_x * frame_w)
+        x1 = max(0, cx - roi_half)
+        x2 = min(frame_w, cx + roi_half)
+        roi = frame[:, x1:x2]
+        faces = _detect_faces_best(roi, conf_threshold=conf)
+        for f in faces:
+            found.append({
+                'x': float(f[0]) + x1,
+                'y': float(f[1]),
+                'w': float(f[2]),
+                'h': float(f[3]),
+                'score': getattr(f, 'score', 0.80),
+                'nose_x': float(getattr(f, 'nose_x', None) or (f[0] + f[2] / 2.0)) + x1,
+            })
+    return found
+
+
+def _fc_synthesize_missing_speaker(existing_faces, clip_fmt, frame_h, frame_w):
+    """When multi-rep + ROI detection still can't find the 2nd podcast speaker,
+    synthesize a ghost face at the format_classify confirmed position.
+    Tagged _synthetic=True so the director skips mouth EMA + CSRT init for it.
+    This is the absolute last resort — real detection is always preferred.
+    """
+    if not clip_fmt or len(clip_fmt.speaker_positions or []) < 2:
+        return existing_faces
+
+    left_pos_x, right_pos_x = clip_fmt.speaker_positions[0], clip_fmt.speaker_positions[1]
+    result = list(existing_faces)
+
+    existing_cx_ratios = [
+        (f.get('nose_x') or (f['x'] + f['w'] / 2.0)) / frame_w
+        for f in existing_faces
+    ]
+
+    # Estimate face dimensions: use existing face or reasonable defaults
+    ref_h = existing_faces[0]['h'] if existing_faces else frame_h * 0.30
+    ref_w = existing_faces[0]['w'] if existing_faces else ref_h * 0.85
+    ref_y = existing_faces[0]['y'] if existing_faces else frame_h * 0.15
+
+    has_left  = any(cx < 0.48 for cx in existing_cx_ratios)
+    has_right = any(cx > 0.52 for cx in existing_cx_ratios)
+
+    if not has_left:
+        ghost_cx = left_pos_x * frame_w
+        result.insert(0, {
+            'x': max(0.0, ghost_cx - ref_w / 2.0), 'y': ref_y,
+            'w': ref_w, 'h': ref_h,
+            'nose_x': ghost_cx, 'score': 0.25,
+            '_synthetic': True, '_slot': 'left',
+        })
+        print(
+            f"[FC_SYNTHESIS] ghost LEFT at x_ratio={left_pos_x:.3f} "
+            f"(px={ghost_cx:.0f}) — no live left face found",
+            flush=True,
+        )
+    if not has_right:
+        ghost_cx = right_pos_x * frame_w
+        result.append({
+            'x': max(0.0, ghost_cx - ref_w / 2.0), 'y': ref_y,
+            'w': ref_w, 'h': ref_h,
+            'nose_x': ghost_cx, 'score': 0.25,
+            '_synthetic': True, '_slot': 'right',
+        })
+        print(
+            f"[FC_SYNTHESIS] ghost RIGHT at x_ratio={right_pos_x:.3f} "
+            f"(px={ghost_cx:.0f}) — no live right face found",
+            flush=True,
+        )
+    return result
+
+
+def _fc_assign_slots(faces, frame_w):
+    """Stamp explicit _slot='left'/'right' onto faces that don't already have one.
+    Uses cx < frame_width/2 heuristic. Director loop uses _slot directly,
+    avoiding false assignments when speakers stray across the center line.
+    """
+    for f in faces:
+        if '_slot' not in f:
+            cx = f.get('nose_x') or (f['x'] + f['w'] / 2.0)
+            f['_slot'] = 'left' if cx < frame_w / 2.0 else 'right'
+    return faces
+
+
 class FaceCache:
-    def __init__(self, video_path: str, clips: list):
+    def __init__(self, video_path: str, clips: list, format_map: dict = None):
+        """Args:
+            video_path: path to source video.
+            clips: list of clip dicts with 'start'/'end' keys.
+            format_map: dict mapping id(clip) -> VideoFormat, built by format_classify.
+                        Enables format-aware stride + multi-rep podcast sampling.
+        """
         self.video_path = video_path
         self.cache = {}
         self.clip_caches = {}
         self.clips = clips
         self._done = False
+        self._format_map = format_map or {}  # clip object id → VideoFormat
         if clips:
             self._precompute_clips_only(clips)
         else:
             self._done = True
+
+    def _get_clip_fmt(self, clip):
+        """Return VideoFormat for this clip, or None if unavailable."""
+        return self._format_map.get(id(clip))
         
     def _detect(self, frame):
         raw_mean = float(frame.mean())
@@ -1021,6 +1135,30 @@ class FaceCache:
             for x, y, w, h in faces
         ]
 
+    def _detect_with_conf(self, frame, conf_threshold: float = 0.45):
+        """Like _detect but with a configurable confidence threshold.
+        Used by the podcast multi-rep confidence ladder to progressively
+        lower the bar until 2 valid faces are found.
+        """
+        if _INSIGHTFACE_ENABLED or _MEDIAPIPE_ENABLED:
+            faces = _detect_faces_best(frame, conf_threshold=conf_threshold, min_size=(40, 40))
+            return [
+                {
+                    "x": float(f[0]), "y": float(f[1]),
+                    "w": float(f[2]), "h": float(f[3]),
+                    "score": getattr(f, 'score', 1.0),
+                    "nose_x": float(getattr(f, 'nose_x', None) or (f[0] + f[2] / 2.0)),
+                }
+                for f in faces
+            ]
+        # Haar fallback: loosen minNeighbors at low confidence levels
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        min_neighbors = 3 if conf_threshold >= 0.45 else (2 if conf_threshold >= 0.35 else 1)
+        faces = detect_faces_multi_haar(gray, cv2, scale_factor=1.1, min_neighbors=min_neighbors, min_size=(40, 40))
+        return [
+            {"x": float(x), "y": float(y), "w": float(w), "h": float(h), "score": 0.8}
+            for x, y, w, h in faces
+        ]
 
     @staticmethod
     def _valid_face_count(faces, frame_height, sampled_frame=None):
@@ -1082,7 +1220,8 @@ class FaceCache:
         total_scan = sum(c.get('end', 0) - c.get('start', 0) for c in clips)
         print(f"[FACE_CACHE] Scanning {len(clips)} clips = {total_scan:.0f}s total (not full video)", flush=True)
 
-        stride = max(1, int(os.getenv("HS_FACE_CACHE_FRAME_STRIDE", "8") or 8))  # reduced 15→8: denser sampling for better accuracy
+        global_stride = max(1, int(os.getenv("HS_FACE_CACHE_FRAME_STRIDE", "0") or 0))
+        # 0 = auto (format-adaptive). Non-zero overrides all clips with fixed stride.
         workers = max(1, int(os.getenv("HS_FACE_CACHE_WORKERS", "4") or 4))
 
         def scan_one_clip(clip_idx, clip):
@@ -1098,6 +1237,19 @@ class FaceCache:
             _clip_start = time.time()
             start = float(clip.get("start", 0.0) or 0.0)
             end = float(clip.get("end", start) or start)
+
+            # ── Format-aware stride selection ─────────────────────────────────
+            clip_fmt = self._get_clip_fmt(clip)
+            fmt_type = (clip_fmt.format_type if clip_fmt else None) or clip.get("_fmt_type", "monologue")
+            if global_stride > 0:
+                stride = global_stride  # env override
+            else:
+                stride = _STRIDE_BY_FORMAT.get(fmt_type, 8)
+            print(
+                f"[FACE_CACHE] clip={start:.0f}-{end:.0f} format={fmt_type} "
+                f"stride={stride} speakers={getattr(clip_fmt, 'speaker_positions', [])}",
+                flush=True,
+            )
 
             t0 = time.perf_counter()
             cap = cv2.VideoCapture(self.video_path)
@@ -1133,7 +1285,7 @@ class FaceCache:
                 print(
                     f"[SEEK_VERIFY] clip={start:.2f}-{end:.2f} "
                     f"requested={start:.2f}s landed={actual_landed_t:.2f}s "
-                    f"delta={seek_delta_frames:.0f}frames ✓",
+                    f"delta={seek_delta_frames:.0f}frames [OK]",
                     flush=True,
                 )
 
@@ -1183,71 +1335,149 @@ class FaceCache:
                     [frame for _, frame in sampled], CLUSTER_HASH_THRESHOLD
                 )
                 t_scene += time.perf_counter() - t0
+                # ── Shared sharpness scorer (160x90 downsample, fast) ─────────────
+                _SHARP_W, _SHARP_H = 160, 90
+
+                def _sharpness(idx: int) -> float:
+                    f = sampled[idx][1]
+                    small = cv2.resize(f, (_SHARP_W, _SHARP_H), interpolation=cv2.INTER_AREA)
+                    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if small.ndim == 3 else small
+                    return cv2.Laplacian(gray, cv2.CV_32F).var()
+
+                _is_podcast_clip = (fmt_type == "podcast")
+
                 for cluster_id, cluster in enumerate(clusters):
                     t0 = time.perf_counter()
-                    # [PERF FIX] Downsample to 160x90 before Laplacian — sharpness is
-                    # a RELATIVE comparison between frames in the same cluster, so
-                    # full-resolution is wasteful. This cuts ~5s → <0.1s per clip.
-                    _SHARP_W, _SHARP_H = 160, 90
-                    def _sharpness(idx: int) -> float:
-                        f = sampled[idx][1]
-                        small = cv2.resize(f, (_SHARP_W, _SHARP_H), interpolation=cv2.INTER_AREA)
-                        gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if small.ndim == 3 else small
-                        return cv2.Laplacian(gray, cv2.CV_32F).var()
 
-                    representative = max(cluster, key=_sharpness)
+                    # ── Representative frame selection ────────────────────────────
+                    # Podcast: Top-K sharpest frames to maximize chance of finding 2 faces.
+                    # Monologue/other: single sharpest frame (original behavior).
+                    TOP_K_PODCAST = max(2, int(os.getenv("HS_PODCAST_TOP_K_REPS", "5")))
+                    if _is_podcast_clip:
+                        top_k_reps = sorted(cluster, key=_sharpness, reverse=True)[:TOP_K_PODCAST]
+                    else:
+                        top_k_reps = [max(cluster, key=_sharpness)]
+
+                    representative = top_k_reps[0]  # sharpest (used for frame_h/frame_w ref)
                     t_rep += time.perf_counter() - t0
-                    
+
+                    # ── Face detection with progressive confidence ladder ──────────
+                    # Podcast: try multiple confidence levels across top-K reps until
+                    # we find >= 2 valid faces. Falls back to ROI search + synthesis.
+                    # Monologue: original single-pass at 0.45.
                     t0 = time.perf_counter()
-                    raw_faces = self._detect(sampled[representative][1])
-                    t_face += time.perf_counter() - t0
-                    haar_calls += 1
-                    valid_count = self._valid_face_count(
-                        raw_faces, sampled[representative][1].shape[0],
-                        sampled_frame=sampled[representative][1],  # pass frame for Laplacian guard
-                    )
+                    ref_frame   = sampled[representative][1]
+                    ref_frame_h = ref_frame.shape[0]
+                    ref_frame_w = ref_frame.shape[1]
 
-                    # A missed/invalid representative must not mark a whole scene
-                    # as faceless, AND we must actively search for multiple speakers.
-                    # If we found less than 2 faces, search up to 3 more frames in the cluster
-                    # to see if a better frame yields 2 faces (podcast format).
-                    best_raw_faces = raw_faces
-                    best_valid_count = valid_count
+                    best_raw_faces  = []
+                    best_valid_count = 0
+                    used_synthesis  = False
 
-                    if best_valid_count < 2:
-                        retries = [idx for idx in cluster if idx != representative]
-                        retries.sort(key=lambda idx: abs(idx - representative))
-                        
-                        if len(retries) > 0 and best_valid_count == 0:
-                            print(
-                                f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} cluster={cluster_id} "
-                                f"redetect_triggered=True reason=representative_valid_count_0 "
-                                f"raw_count={len(raw_faces)} valid_count={valid_count} "
-                                f"min_face_height_ratio={MIN_VALID_FACE_HEIGHT_RATIO:.2f} "
-                                f"attempts={min(len(retries), MIN_CLUSTER_REDETECT_ATTEMPTS)}",
-                                flush=True,
-                            )
-                            
-                        for retry_idx in retries[:MIN_CLUSTER_REDETECT_ATTEMPTS]:
-                            t0 = time.perf_counter()
-                            r_faces = self._detect(sampled[retry_idx][1])
-                            t_face += time.perf_counter() - t0
-                            haar_calls += 1
-                            r_valid = self._valid_face_count(
-                                r_faces, sampled[retry_idx][1].shape[0],
-                                sampled_frame=sampled[retry_idx][1]
-                            )
-                            if r_valid > best_valid_count:
-                                best_valid_count = r_valid
-                                best_raw_faces = r_faces
-                                if best_valid_count >= 2:
+                    if _is_podcast_clip:
+                        CONF_LADDER = [0.45, 0.35, 0.25]
+                        target_faces = 2
+
+                        # Pass 1: Multi-rep × confidence ladder
+                        found_target = False
+                        for conf in CONF_LADDER:
+                            for rep_idx in top_k_reps:
+                                r_frame = sampled[rep_idx][1]
+                                r_faces = self._detect_with_conf(r_frame, conf)
+                                haar_calls += 1
+                                r_valid = self._valid_face_count(
+                                    r_faces, r_frame.shape[0], sampled_frame=r_frame
+                                )
+                                if r_valid > best_valid_count:
+                                    best_valid_count = r_valid
+                                    best_raw_faces   = r_faces
+                                if best_valid_count >= target_faces:
+                                    print(
+                                        f"[PODCAST_CLUSTER] clip={start:.1f}-{end:.1f} "
+                                        f"cluster={cluster_id} found={best_valid_count} faces "
+                                        f"at conf={conf:.2f} rep={rep_idx}",
+                                        flush=True,
+                                    )
+                                    found_target = True
                                     break
-                    
-                    raw_faces = best_raw_faces
-                    valid_count = best_valid_count
+                            if found_target:
+                                break
 
+                        # Pass 2: ROI-targeted detection at known speaker positions
+                        if not found_target and clip_fmt and len(clip_fmt.speaker_positions or []) >= 2:
+                            roi_faces = _fc_detect_in_speaker_rois(
+                                ref_frame, clip_fmt.speaker_positions,
+                                ref_frame_w, ref_frame_h, conf=0.25,
+                            )
+                            roi_valid = self._valid_face_count(roi_faces, ref_frame_h)
+                            if roi_valid > best_valid_count:
+                                best_valid_count = roi_valid
+                                best_raw_faces   = roi_faces
+                                print(
+                                    f"[PODCAST_CLUSTER] clip={start:.1f}-{end:.1f} "
+                                    f"cluster={cluster_id} ROI_detect found={roi_valid} faces",
+                                    flush=True,
+                                )
+
+                        # Pass 3: Synthesize missing speaker from format_classify position
+                        if best_valid_count < target_faces and clip_fmt:
+                            best_raw_faces = _fc_synthesize_missing_speaker(
+                                best_raw_faces, clip_fmt, ref_frame_h, ref_frame_w
+                            )
+                            used_synthesis = len(best_raw_faces) > best_valid_count
+
+                        print(
+                            f"[PODCAST_CLUSTER] clip={start:.1f}-{end:.1f} "
+                            f"cluster={cluster_id} final_faces={len(best_raw_faces)} "
+                            f"real_valid={best_valid_count} synthesized={used_synthesis} "
+                            f"top_k={len(top_k_reps)} reps_tried={len(top_k_reps) * len(CONF_LADDER)}",
+                            flush=True,
+                        )
+
+                    else:
+                        # ── Original single-rep logic for non-podcast clips ────────
+                        raw_faces = self._detect(ref_frame)
+                        haar_calls += 1
+                        valid_count = self._valid_face_count(
+                            raw_faces, ref_frame_h, sampled_frame=ref_frame
+                        )
+                        best_raw_faces  = raw_faces
+                        best_valid_count = valid_count
+
+                        # Retry on nearby frames if 0 valid faces found
+                        if best_valid_count == 0:
+                            retries = sorted(
+                                [idx for idx in cluster if idx != representative],
+                                key=lambda idx: abs(idx - representative)
+                            )
+                            if retries:
+                                print(
+                                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} "
+                                    f"cluster={cluster_id} redetect valid_count=0 "
+                                    f"attempts={min(len(retries), MIN_CLUSTER_REDETECT_ATTEMPTS)}",
+                                    flush=True,
+                                )
+                            for retry_idx in retries[:MIN_CLUSTER_REDETECT_ATTEMPTS]:
+                                t0b = time.perf_counter()
+                                r_faces = self._detect(sampled[retry_idx][1])
+                                t_face += time.perf_counter() - t0b
+                                haar_calls += 1
+                                r_valid = self._valid_face_count(
+                                    r_faces, sampled[retry_idx][1].shape[0],
+                                    sampled_frame=sampled[retry_idx][1]
+                                )
+                                if r_valid > best_valid_count:
+                                    best_valid_count = r_valid
+                                    best_raw_faces   = r_faces
+                                if best_valid_count >= 1:
+                                    break
+
+                    t_face += time.perf_counter() - t0
+
+                    # ── Stamp _slot labels + broadcast to all frames in cluster ──
                     t0 = time.perf_counter()
-                    # Copy each result so callers cannot mutate a shared cluster bbox.
+                    labeled_faces = _fc_assign_slots(best_raw_faces, ref_frame_w)
+
                     for sample_idx in cluster:
                         fn, _ = sampled[sample_idx]
                         t_abs = round(fn / local_fps, 2)
@@ -1255,19 +1485,20 @@ class FaceCache:
                         assigned_faces = [
                             {
                                 **face,
-                                "_cluster_id": cluster_id,
+                                "_cluster_id":    cluster_id,
                                 "_cluster_start": cluster[0],
-                                "_cluster_end": cluster[-1],
+                                "_cluster_end":   cluster[-1],
                             }
-                            for face in raw_faces
+                            for face in labeled_faces
                         ]
                         abs_results[t_abs] = assigned_faces
                         rel_results[t_rel] = assigned_faces
                     t_anchor += time.perf_counter() - t0
+
                 print(
-                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} clusters={len(clusters)} "
-                    f"haar_calls={haar_calls} frames_covered={len(sampled)} "
-                    f"wall_s={time.time() - _clip_start:.2f}",
+                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} format={fmt_type} "
+                    f"clusters={len(clusters)} haar_calls={haar_calls} "
+                    f"frames_covered={len(sampled)} wall_s={time.time() - _clip_start:.2f}",
                     flush=True,
                 )
             else:
@@ -1311,11 +1542,112 @@ class FaceCache:
 
         self._done = True
         _face_cache_elapsed = time.time() - _face_cache_start
-        print(
-            f"[FACE_CACHE] Done - {len(self.cache)} frames cached "
-            f"| wall_time={_face_cache_elapsed:.2f}s",
-            flush=True,
+
+        # ── DIAGNOSTIC REPORT: Terminal banner + JSON file ─────────────────────
+        # Gives complete visibility into what the cache actually stored.
+        total_frames   = len(self.cache)
+        face_counts    = [len(v) for v in self.cache.values()]
+        frames_0_faces = sum(1 for c in face_counts if c == 0)
+        frames_1_face  = sum(1 for c in face_counts if c == 1)
+        frames_2_faces = sum(1 for c in face_counts if c == 2)
+        frames_3p_face = sum(1 for c in face_counts if c >= 3)
+        avg_faces      = (sum(face_counts) / max(1, total_frames))
+        synth_count    = sum(
+            1 for faces in self.cache.values()
+            for f in faces if f.get('_synthetic')
         )
+        real_count     = sum(
+            1 for faces in self.cache.values()
+            for f in faces if not f.get('_synthetic')
+        )
+
+        # Per-clip breakdown
+        clip_report = []
+        for (s, e), rel_cache in self.clip_caches.items():
+            c_counts   = [len(v) for v in rel_cache.values()]
+            c_2f       = sum(1 for c in c_counts if c >= 2)
+            c_synth    = sum(1 for v in rel_cache.values() for f in v if f.get('_synthetic'))
+            clip_fmt_n = "unknown"
+            for clip in self.clips:
+                if abs(float(clip.get('start', -1)) - s) < 0.1:
+                    clip_fmt_n = clip.get('_fmt_type', 'unknown')
+                    break
+            clip_report.append({
+                "clip": f"{s:.1f}-{e:.1f}s",
+                "format": clip_fmt_n,
+                "frames_cached": len(c_counts),
+                "frames_with_2plus_faces": c_2f,
+                "pct_dual": f"{100*c_2f/max(1,len(c_counts)):.0f}%",
+                "synthetic_face_slots": c_synth,
+            })
+
+        # ── Terminal banner ───────────────────────────────────────────────────
+        sep = "─" * 66
+        print(f"\n{'═'*66}", flush=True)
+        print(f"  FACECACHE COMPLETE  |  wall={_face_cache_elapsed:.2f}s  |  frames={total_frames}", flush=True)
+        print(sep, flush=True)
+        print(f"  Faces per frame breakdown:", flush=True)
+        print(f"    0 faces  : {frames_0_faces:4d} frames  ({100*frames_0_faces/max(1,total_frames):.0f}%)", flush=True)
+        print(f"    1 face   : {frames_1_face:4d} frames  ({100*frames_1_face/max(1,total_frames):.0f}%)", flush=True)
+        print(f"    2 faces  : {frames_2_faces:4d} frames  ({100*frames_2_faces/max(1,total_frames):.0f}%)  ← SPLIT eligible", flush=True)
+        print(f"    3+ faces : {frames_3p_face:4d} frames  ({100*frames_3p_face/max(1,total_frames):.0f}%)", flush=True)
+        print(f"  avg_faces_per_frame : {avg_faces:.2f}", flush=True)
+        print(f"  real face slots     : {real_count}  |  synthetic slots: {synth_count}", flush=True)
+        print(sep, flush=True)
+        print(f"  {'CLIP':<18} {'FMT':<14} {'FRAMES':>7} {'2-FACE%':>8} {'SYNTH':>6}", flush=True)
+        print(f"  {'-'*18} {'-'*14} {'-'*7} {'-'*8} {'-'*6}", flush=True)
+        for cr in clip_report:
+            synth_flag = " ← ghost" if cr["synthetic_face_slots"] > 0 else ""
+            print(
+                f"  {cr['clip']:<18} {cr['format']:<14} "
+                f"{cr['frames_cached']:>7} {cr['pct_dual']:>8} "
+                f"{cr['synthetic_face_slots']:>6}{synth_flag}",
+                flush=True,
+            )
+        print(f"{'═'*66}\n", flush=True)
+
+        # ── JSON report to debug_out ─────────────────────────────────────────
+        _debug_dir = os.getenv("HS_DEBUG_FRAMES", "./debug_out").strip()
+        if _debug_dir and _debug_dir not in ("0", "", "false", "no", "off"):
+            try:
+                os.makedirs(_debug_dir, exist_ok=True)
+                _report = {
+                    "wall_time_s": round(_face_cache_elapsed, 3),
+                    "total_frames_cached": total_frames,
+                    "avg_faces_per_frame": round(avg_faces, 3),
+                    "real_face_slots": real_count,
+                    "synthetic_face_slots": synth_count,
+                    "frames_with_0_faces": frames_0_faces,
+                    "frames_with_1_face": frames_1_face,
+                    "frames_with_2plus_faces": frames_2_faces + frames_3p_face,
+                    "clips": clip_report,
+                    # Raw sample: first 50 cache entries for inspection
+                    "cache_sample": [
+                        {
+                            "t": t,
+                            "faces": [
+                                {
+                                    "slot": f.get('_slot', '?'),
+                                    "x": round(f.get('x', 0)),
+                                    "y": round(f.get('y', 0)),
+                                    "w": round(f.get('w', 0)),
+                                    "h": round(f.get('h', 0)),
+                                    "score": round(f.get('score', 0), 3),
+                                    "synthetic": f.get('_synthetic', False),
+                                }
+                                for f in faces
+                            ],
+                        }
+                        for t, faces in sorted(self.cache.items())[:50]
+                    ],
+                }
+                _report_path = os.path.join(_debug_dir, "face_cache_report.json")
+                with open(_report_path, "w", encoding="utf-8") as _fp:
+                    json.dump(_report, _fp, indent=2)
+                print(f"[FACE_CACHE] Report written → {_report_path}", flush=True)
+            except Exception as _re:
+                print(f"[FACE_CACHE] Report write failed: {_re}", flush=True)
+
 
 def _process_job(job: dict, cloudinary_ok: bool):
     job_id      = job["job_id"]
@@ -1338,16 +1670,20 @@ def _process_job(job: dict, cloudinary_ok: bool):
     with tempfile.TemporaryDirectory() as tmp:
         video_path = os.path.join(tmp, "video.mp4")
 
-        # "?"? Step 1: Download via RapidAPI or fallback to yt-dlp "?"?
-        print(f"[LOCAL_WORKER] Downloading video...", flush=True)
-        try:
-            _download_via_api(youtube_url, video_path)
-        except Exception as e:
-            print(f"[LOCAL_WORKER] RapidAPI failed ({e}), falling back to yt-dlp...", flush=True)
-            _download_via_ytdlp(youtube_url, video_path)
+        # "?"? Step 1: Handle Local Files vs Download "?"?
+        if not str(youtube_url).startswith("http"):
+            print(f"[LOCAL_WORKER] Local file detected, skipping download: {youtube_url}", flush=True)
+            video_path = youtube_url
+        else:
+            print(f"[LOCAL_WORKER] Downloading video...", flush=True)
+            try:
+                _download_via_api(youtube_url, video_path)
+            except Exception as e:
+                print(f"[LOCAL_WORKER] RapidAPI failed ({e}), falling back to yt-dlp...", flush=True)
+                _download_via_ytdlp(youtube_url, video_path)
 
         if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
-            raise RuntimeError("Downloaded file is missing or too small")
+            raise RuntimeError(f"Video file is missing or too small: {video_path}")
 
         print(f"[LOCAL_WORKER] Download complete: {os.path.getsize(video_path) // (1024*1024)}MB", flush=True)
 
@@ -1444,6 +1780,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 # ── PARALLEL format_classify ──────────────────────────────────────
                 _bench.begin("3_format_classify")
                 haar_clips = []
+                _fc_fmt_map = {}
 
                 if video_format in ("blur_background", "original_with_black_bars"):
                     print(f"[FORMAT] {video_format} selected — skipping FaceCache entirely, no crop tracking needed", flush=True)
@@ -1489,6 +1826,10 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 flush=True,
                             )
                             haar_clips.append(_clip)
+                            # ── UPGRADE 1: Preserve VideoFormat for FaceCache ──
+                            if _fmt is not None:
+                                _fc_fmt_map[id(_clip)] = _fmt
+                                _clip["_fmt_type"] = _fmt.format_type
 
                 _bench.finish("3_format_classify")
 
@@ -1496,7 +1837,12 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 nonlocal face_cache
                 _bench.begin("4_haar_scan")
                 if haar_clips and video_format == "center_crop":
-                    face_cache = FaceCache(video_path, haar_clips)
+                    print(
+                        f"[FACE_CACHE] format_map populated for "
+                        f"{len(_fc_fmt_map)}/{len(haar_clips)} clips",
+                        flush=True,
+                    )
+                    face_cache = FaceCache(video_path, haar_clips, format_map=_fc_fmt_map)
                 else:
                     face_cache = None
                 _bench.finish("4_haar_scan")
@@ -1648,6 +1994,22 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 print(f"[SILENCE_KILLER] Post-processing failed: {e}", flush=True)
                                 
                             clip_res["edit_metadata"] = getattr(edit_result, "metadata", {}) or {}
+
+                        # \u2500\u2500 Healing #5: Attach visual_energy from Director Loop \u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                        # WCE stores the per-clip visual_energy summary on self after
+                        # each enhance_pretrimmed_clip() call. Pull it here and attach
+                        # to clip_res so the orchestrator can fuse it with text score.
+                        _ve = getattr(editor_instance, '_last_visual_energy', None)
+                        if _ve:
+                            clip_res['visual_energy'] = _ve
+                            clip_res['banter_score']  = float(_ve.get('banter_score', 0.0))
+                            _ve_msg = (
+                                    "[VISUAL_ENERGY] clip=" + str(i)
+                                    + " banter=" + f"{clip_res['banter_score']:.4f}"
+                                    + " split_ratio=" + f"{_ve.get('split_ratio', 0):.3f}"
+                                    + " mode_switch_rate=" + f"{_ve.get('mode_switch_rate', 0):.3f}"
+                                )
+                            print(_ve_msg, flush=True)
 
                         # ── Director Autopsy: post-render analysis ──────────────
                         if _autopsy_obj is not None:
