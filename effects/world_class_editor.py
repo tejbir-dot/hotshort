@@ -1090,7 +1090,7 @@ class ClipEditor:
             speaker_positions=[median_x], face_switch_rate=0.0, samples=samples,
         )
 
-    def _get_crop_expression(self, video_fmt, transcript_window, config, clip_path=None, face_cache=None):
+    def _get_crop_expression(self, video_fmt, transcript_window, config, clip_path=None, face_cache=None, debug_clip_id=None):
         """VideoFormat -> FFmpeg crop_x expression.
         monologue: EMA lerp (smooth, stable).
         podcast active: hard jump at transcript boundaries (true active speaker).
@@ -1550,7 +1550,11 @@ class ClipEditor:
             box_stability_map = {}
             smoothed_face_h = None  # Temporal face-size EMA (pixels). Seeded on first valid detection.
             
-            ENABLE_CONTINUOUS_TRACKING = True
+            # Keep podcast framing driven by fresh face-cache / detector slots.
+            # Tracker state can keep SOLO_RIGHT/SOLO_LEFT cropped to the previous speaker.
+            ENABLE_CONTINUOUS_TRACKING = False
+            ENABLE_SOLO_TRACKING = True
+            ENABLE_SOLO_CLUSTER_LOCK = False
 
             # ── Mode switch gating state ──────────────────────────────────────────
             # Tracks how many consecutive frames a pending mode switch has been requested.
@@ -1568,6 +1572,13 @@ class ClipEditor:
             # Default stride=3 → ~3x speedup on director loop, ~40s saved per 70s clip.
             _DIRECTOR_STRIDE = max(1, int(os.environ.get("HS_DIRECTOR_FRAME_STRIDE", "3") or "3"))
             log.info("[WCE_PERF] director_frame_stride=%d (1=every frame, 3=every 3rd)", _DIRECTOR_STRIDE)
+            _LIVE_DETECT_INTERVAL = max(1, int(os.environ.get("HS_LIVE_DETECT_INTERVAL_FRAMES", str(max(5, round(fps / 3.0)))) or max(5, round(fps / 3.0))))
+            log.info(
+                "[WCE-LIVE] live_detection=ON interval=%d frames (~%.2fs at %.1ffps)",
+                _LIVE_DETECT_INTERVAL,
+                _LIVE_DETECT_INTERVAL / max(1.0, float(fps)),
+                fps,
+            )
 
             # ── WebRTC VAD Pre-compute ──────────────────────────────────
             # Runs ONCE before the frame loop (∼0.2s per clip).
@@ -1650,7 +1661,7 @@ class ClipEditor:
             _ENABLE_CORRELATOR = len(_vad_rms_gate) > 0  # only when RMS is available
 
             # ── Debug visualizer session (no-op when HS_DEBUG_FRAMES not set) ────
-            _clip_id = os.path.splitext(os.path.basename(clip_path or "clip"))[0]
+            _clip_id = debug_clip_id or os.path.splitext(os.path.basename(clip_path or "clip"))[0]
             _dbg = debug_visualizer.make_session(
                 clip_id=_clip_id,
                 clip_start=0.0,
@@ -1662,6 +1673,7 @@ class ClipEditor:
             left_tracker_smooth = SmoothedPosition(alpha=0.3)
             right_tracker_smooth = SmoothedPosition(alpha=0.3)
             solo_tracker_smooth = SmoothedPosition(alpha=0.3)
+            solo_face_tracker = FaceTracker("solo", confidence_floor=15)
             tracking_time = 0.0
             tracking_frames = 0
             haar_redetects = 0
@@ -1769,15 +1781,42 @@ class ClipEditor:
                     tracking_time += (time.perf_counter() - t_start)
                     tracking_frames += 1
 
-                # 1. Fetch from face_cache (to get cluster IDs)
+                # 1. Live detection is the source of truth. FaceCache is only a
+                # fallback between live samples so stale cache cannot lock framing.
                 raw_faces = []
-                if face_cache is not None:
+                if frame_idx % _LIVE_DETECT_INTERVAL == 0:
+                    _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
+                    _faces_raw = []
+                    if _INSIGHTFACE_ENABLED or _MEDIAPIPE_ENABLED:
+                        _faces_raw = _detect_faces_best(
+                            frame,
+                            conf_threshold=0.45,
+                            min_size=(_min_face_px, _min_face_px),
+                        )
+                        if frame_idx == 0:
+                            detector_name = "InsightFace" if _INSIGHTFACE_ENABLED else "MediaPipe"
+                            log.info(f"[FACE_DETECT] frame0 detector={detector_name} faces={len(_faces_raw)}")
+
+                    for _fb in _faces_raw:
+                        _x, _y, _fw, _fh = _fb
+                        raw_faces.append({
+                            'x': float(_x), 'y': float(_y), 'w': float(_fw), 'h': float(_fh),
+                            'nose_x': getattr(_fb, 'nose_x', None),
+                            'nose_y': getattr(_fb, 'nose_y', None),
+                            'score': getattr(_fb, 'score', 1.0)
+                        })
+                    if raw_faces:
+                        last_raw_faces = raw_faces
+                        if frame_idx % 150 == 0:
+                            log.info("[WCE-LIVE] t=%.2fs live_faces=%d", t, len(raw_faces))
+
+                if not raw_faces and face_cache is not None:
                     # O(log n) binary-search via pre-sorted key list
                     nearest = _nearest_cache_t(t)
                     raw_faces = face_cache.get(nearest, [])
                     last_raw_faces = raw_faces
                 
-                # If cache was empty or we process every 5 frames without cache, run MediaPipe
+                # If cache was empty or unavailable, run an extra detector fallback.
                 if not raw_faces and frame_idx % 5 == 0:
                     _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
 
@@ -2334,7 +2373,40 @@ class ClipEditor:
                 else:  # SPLIT — highlight whichever has more mouth motion
                     active_slot = "left" if ema_mouth_left >= ema_mouth_right else "right"
 
-                # 6. Compute sx (face center from cache) and solo_slot BEFORE tracking
+                # Solo-only tracker: smooth the active face without letting tracker
+                # state decide speaker side or split mode.
+                if ENABLE_SOLO_TRACKING and mode in ("SOLO_LEFT", "SOLO_RIGHT"):
+                    active_face = left_slot if active_slot == "left" else right_slot
+                    if active_slot != last_solo_slot:
+                        solo_face_tracker.initialized = False
+                        solo_face_tracker.consecutive_low_confidence = 999
+                        solo_face_tracker.last_bbox = None
+                        solo_face_tracker.last_center_x = None
+                    if active_face is not None and not active_face.get("_synthetic", False):
+                        if solo_face_tracker.is_lost():
+                            solo_face_tracker.init(
+                                frame,
+                                (active_face["x"], active_face["y"], active_face["w"], active_face["h"]),
+                            )
+                        ok_track, tracked_cx, tracked_bbox = solo_face_tracker.update(frame)
+                        if ok_track and tracked_bbox:
+                            tx, ty, tw, th = tracked_bbox
+                            tracked_face = {
+                                **active_face,
+                                "x": float(tx),
+                                "y": float(ty),
+                                "w": float(tw),
+                                "h": float(th),
+                                "nose_x": float(tracked_cx) if tracked_cx is not None else float(tx + tw / 2.0),
+                            }
+                            if active_slot == "left":
+                                left_slot = tracked_face
+                            else:
+                                right_slot = tracked_face
+                    else:
+                        solo_face_tracker.consecutive_low_confidence += 1
+
+                # 6. Compute sx (face center) after optional solo-only tracking
                 if mode == "SOLO_LEFT" and left_slot is not None:
                     sx = left_slot.get('nose_x')
                     if sx is None:
@@ -2388,8 +2460,8 @@ class ClipEditor:
                     if smoothed_right_h is not None:
                         smoothed_right_h *= 0.98
 
-                # 7. solo_x: cluster-locked anchor with EMA transition
-                if sx is not None and cluster_id is not None:
+                # 7. solo_x: use the active speaker slot directly.
+                if ENABLE_SOLO_CLUSTER_LOCK and sx is not None and cluster_id is not None:
                     cluster_lock_changed = (
                         cluster_id != locked_cluster_id
                         or solo_slot != locked_cluster_slot
@@ -3180,6 +3252,59 @@ class ClipEditor:
         except Exception:
             pass
         return text
+
+    def _podcast_format_from_face_cache(
+        self,
+        face_cache: Optional[Dict[float, List[Dict[str, float]]]],
+        frame_width: int,
+        split_min_gap: float,
+    ) -> Optional[VideoFormat]:
+        if not face_cache:
+            return None
+        left_xs: List[float] = []
+        right_xs: List[float] = []
+        samples: List[Tuple[float, List[float]]] = []
+        dual_frames = 0
+        total_frames = 0
+        for t_rel, faces in sorted(face_cache.items()):
+            if not faces:
+                continue
+            total_frames += 1
+            real_faces = [f for f in faces if not f.get("_synthetic", False)]
+            if len(real_faces) < 2:
+                continue
+            real_faces = sorted(real_faces, key=lambda f: f.get("x", 0.0) + f.get("w", 0.0) / 2.0)
+            left = real_faces[0]
+            right = real_faces[-1]
+            lcx = float(left.get("nose_x") or (left.get("x", 0.0) + left.get("w", 0.0) / 2.0))
+            rcx = float(right.get("nose_x") or (right.get("x", 0.0) + right.get("w", 0.0) / 2.0))
+            gap = (rcx - lcx) / max(1.0, float(frame_width))
+            if gap < split_min_gap:
+                continue
+            dual_frames += 1
+            lx = _clamp(lcx / max(1.0, float(frame_width)), 0.05, 0.95)
+            rx = _clamp(rcx / max(1.0, float(frame_width)), 0.05, 0.95)
+            left_xs.append(lx)
+            right_xs.append(rx)
+            samples.append((float(t_rel), [lx, rx]))
+
+        dual_rate = dual_frames / max(1, total_frames)
+        if dual_rate < 0.45 or not left_xs or not right_xs:
+            return None
+        left_med = float(statistics.median(left_xs))
+        right_med = float(statistics.median(right_xs))
+        log.warning(
+            "[WCE-FORMAT-OVERRIDE] FaceCache forced podcast: dual_rate=%.2f "
+            "frames=%d/%d speakers=[%.3f, %.3f]",
+            dual_rate, dual_frames, total_frames, left_med, right_med,
+        )
+        return VideoFormat(
+            format_type="podcast",
+            face_count_avg=1.0 + dual_rate,
+            speaker_positions=[left_med, right_med],
+            face_switch_rate=0.0,
+            samples=samples,
+        )
 
     def _caption_segments(
         self,
@@ -4004,6 +4129,19 @@ class ClipEditor:
                     "[WCE-FORMAT] format=%s avg_faces=%.2f speakers=%s",
                     video_fmt.format_type, video_fmt.face_count_avg, video_fmt.speaker_positions,
                 )
+                cache_fmt = self._podcast_format_from_face_cache(
+                    precomputed_face_cache,
+                    int(work_meta.get("width", 1920)),
+                    cfg.split_min_gap_ratio,
+                )
+                if cache_fmt is not None and video_fmt.format_type != "podcast":
+                    log.warning(
+                        "[WCE-FORMAT-ROUTE] analyzer=%s -> podcast live-director via dual-face hint",
+                        video_fmt.format_type,
+                    )
+                    video_fmt = cache_fmt
+                    metadata["video_format"] = video_fmt.format_type
+                    metadata["speaker_positions"] = video_fmt.speaker_positions
             elif cfg.enable_active_speaker:
                 # Legacy: no format detection, use monologue mode only
                 t0 = time.perf_counter()
@@ -4360,7 +4498,7 @@ class ClipEditor:
                     #   scale+crop           → fit to target resolution (portrait 9:16)
                     #   fade in + fade out   → cinematic burn-on effect
                     _clip_filter = (
-                        f"setpts=PTS-STARTPTS,"
+                        f"setpts=PTS-STARTPTS+{_b_start:.3f}/TB,"
                         f"scale={_tw}:{_th}:force_original_aspect_ratio=increase,"
                         f"crop={_tw}:{_th},"
                         f"fps=30,format=yuv420p,"
