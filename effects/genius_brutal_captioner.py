@@ -1,3 +1,15 @@
+"""
+genius_brutal_captioner.py
+Viral caption generator with dual backend:
+  PRIMARY  : Gemini (via google-genai SDK) — if GEMINI_API_KEY is set
+  FALLBACK : OpenRouter (via requests, OpenAI-compatible) — uses GPT_API + HS_GROQ_API_BASE
+"""
+
+import os
+import requests
+import traceback
+
+# ── Gemini SDK (optional) ────────────────────────────────────────────────────
 try:
     from google import genai
     from google.genai.errors import APIError
@@ -5,48 +17,54 @@ try:
 except ImportError:
     HAS_GENAI = False
 
-import os
-import traceback
+# ── Current working Gemini model names (as of Sep 2026) ──────────────────────
+_GEMINI_MODELS = [
+    "gemini-2.0-flash-lite",          # Fastest free
+    "gemini-2.0-flash-001",           # Stable alias
+    "gemini-2.5-flash-preview-05-20", # Latest preview
+    "gemini-1.5-flash-8b",            # Fallback
+]
+
+# ── OpenRouter caption model chain (tries in order) ──────────────────────────
+# These are the ACTUALLY available free models on OpenRouter (verified Sep 2026)
+_OPENROUTER_CAPTION_MODELS = [
+    os.environ.get("HS_CAPTION_MODEL", ""),            # User override from .env
+    "nvidia/nemotron-3-ultra-550b-a55b:free",          # NVIDIA 550B — highest quality
+    "nvidia/nemotron-3-super-120b-a12b:free",          # NVIDIA 120B — fast & smart
+    "nex-agi/nex-n2.5-pro:free",                       # Nex Pro — good reasoning
+    "google/gemma-4-31b-it:free",                      # Google Gemma 31B
+    "inclusionai/ling-3.0-flash-vl:free",              # InclusionAI — last resort
+]
+_OPENROUTER_CAPTION_MODELS = [m for m in _OPENROUTER_CAPTION_MODELS if m]  # remove empties
+
 
 class BrutalCaptioner:
     def __init__(self):
-        # We assume the user has set GEMINI_API_KEY in their environment
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            print("[CAPTIONER] Warning: GEMINI_API_KEY not found. Captions will not be generated.", flush=True)
-            self.api_key_valid = False
-            return
-            
-        if not HAS_GENAI:
-            print("[CAPTIONER] Warning: google-genai package not found. Please run 'pip install google-genai'.", flush=True)
-            self.api_key_valid = False
-            return
-            
-        try:
-            self.client = genai.Client(api_key=api_key)
-            self.api_key_valid = True
-        except Exception as e:
-            print(f"[CAPTIONER] Failed to initialize Gemini Client: {e}", flush=True)
-            self.api_key_valid = False
-            
-        # Try Flash Lite first, then fallbacks
-        self.model_names = [
-            'gemini-2.0-flash-lite-preview-02-05',
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',
-            'gemini-1.5-flash'
-        ]
-        
-    def generate_viral_caption(self, clip_transcript: str, creator_name: str = "Daniel") -> str:
-        fallback_caption = "🔥 The secret they don't want you to know...\n\nWatch the full video to find out!\n\n👇 Click the link in bio for the exact system.\n\n#money #tech #hustle #wealth"
+        self.gemini_client = None
+        self.openrouter_key = None
 
-        if not getattr(self, 'api_key_valid', False):
-            return fallback_caption
-            
-        if not clip_transcript or not clip_transcript.strip():
-            return fallback_caption
-            
-        system_prompt = f"""You are a god-tier social media growth hacker. 
+        # ── Try Gemini first ──────────────────────────────────────────────────
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if api_key and HAS_GENAI:
+            try:
+                self.gemini_client = genai.Client(api_key=api_key)
+                print("[CAPTIONER] Gemini client initialized.", flush=True)
+            except Exception as e:
+                print(f"[CAPTIONER] Gemini init failed: {e}", flush=True)
+        elif not api_key:
+            print("[CAPTIONER] GEMINI_API_KEY not set -- will use OpenRouter fallback.", flush=True)
+
+        # ── OpenRouter fallback ───────────────────────────────────────────────
+        or_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("GPT_API", "")
+        or_base = os.environ.get("HS_GROQ_API_BASE", "https://openrouter.ai/api/v1").rstrip("/")
+        if or_key and "openrouter" in or_base:
+            self.openrouter_key = or_key
+            self.openrouter_base = or_base
+            print(f"[CAPTIONER] OpenRouter fallback ready ({_OPENROUTER_CAPTION_MODELS[0]}, +{len(_OPENROUTER_CAPTION_MODELS)-1} fallbacks).", flush=True)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    def _build_prompt(self, clip_transcript: str, creator_name: str) -> str:
+        return f"""You are a god-tier social media growth hacker.
 Write 3 SEPARATE, hyper-viral, high-retention captions for the same video, optimized specifically for TikTok, YouTube Shorts, and Instagram Reels.
 The video features {creator_name} talking about making money, tech, or business.
 
@@ -79,21 +97,92 @@ Format your response EXACTLY like this (NO markdown asterisks):
 
 Transcript to base it on: "{clip_transcript}"
 """
-        
-        print(f"🧠 [CAPTIONER] Brainstorming viral dopamine caption for {creator_name}...", flush=True)
-        for model_name in self.model_names:
+
+    # ─────────────────────────────────────────────────────────────────────────
+    def _try_gemini(self, prompt: str) -> str | None:
+        """Try all Gemini models in order. Returns text or None."""
+        if not self.gemini_client:
+            return None
+        for model_name in _GEMINI_MODELS:
             try:
-                response = self.client.models.generate_content(
+                response = self.gemini_client.models.generate_content(
                     model=model_name,
-                    contents=system_prompt
+                    contents=prompt
                 )
                 if response and response.text:
-                    clean_text = response.text.replace("**", "").replace("*", "")
-                    return clean_text.strip()
+                    print(f"[CAPTIONER] Gemini [{model_name}] success.", flush=True)
+                    return response.text.replace("**", "").replace("*", "").strip()
                 else:
-                    print(f"[CAPTIONER] {model_name} returned empty response. Trying fallback.", flush=True)
+                    print(f"[CAPTIONER] {model_name} empty response. Trying next.", flush=True)
             except Exception as e:
-                print(f"[CAPTIONER] {model_name} failed: {str(e)[:150]}... Trying fallback.", flush=True)
-                
-        print("[CAPTIONER] All Gemini models failed. Using hardcoded fallback caption.", flush=True)
+                err = str(e)[:120]
+                print(f"[CAPTIONER] {model_name} failed: {err}. Trying next.", flush=True)
+        return None
+
+    # ─────────────────────────────────────────────────────────────────────────
+    def _try_openrouter(self, prompt: str) -> str | None:
+        """OpenRouter fallback — tries each model in _OPENROUTER_CAPTION_MODELS."""
+        if not self.openrouter_key:
+            return None
+        headers = {
+            "Authorization": f"Bearer {self.openrouter_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://hotshort.app",
+            "X-Title": "HotShort Captioner",
+        }
+        for model in _OPENROUTER_CAPTION_MODELS:
+            payload = {
+                "model": model,
+                "max_tokens": 800,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            try:
+                r = requests.post(
+                    f"{self.openrouter_base}/chat/completions",
+                    headers=headers, json=payload, timeout=30
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    content = (
+                        data["choices"][0]["message"].get("content")
+                        or data["choices"][0]["message"].get("reasoning", "")
+                    )
+                    if content:
+                        print(f"[CAPTIONER] OpenRouter [{model}] success.", flush=True)
+                        return content.replace("**", "").replace("*", "").strip()
+                    print(f"[CAPTIONER] {model} empty. Trying next.", flush=True)
+                else:
+                    print(f"[CAPTIONER] {model} -> {r.status_code}. Trying next.", flush=True)
+            except Exception as e:
+                print(f"[CAPTIONER] {model} error: {str(e)[:80]}. Trying next.", flush=True)
+        return None
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+    def generate_viral_caption(self, clip_transcript: str, creator_name: str = "Daniel") -> str:
+        fallback_caption = (
+            "🔥 The secret they don't want you to know...\n\n"
+            "Watch the full video to find out!\n\n"
+            "👇 Click the link in bio for the exact system.\n\n"
+            "#money #tech #hustle #wealth"
+        )
+
+        if not clip_transcript or not clip_transcript.strip():
+            return fallback_caption
+
+        print(f"[CAPTIONER] Brainstorming viral caption for {creator_name}...", flush=True)
+        prompt = self._build_prompt(clip_transcript, creator_name)
+
+        # 1. Try Gemini
+        result = self._try_gemini(prompt)
+        if result:
+            return result
+
+        # 2. Fallback to OpenRouter
+        result = self._try_openrouter(prompt)
+        if result:
+            return result
+
+        # 3. Hardcoded fallback
+        print("[CAPTIONER] All backends failed. Using hardcoded fallback caption.", flush=True)
         return fallback_caption

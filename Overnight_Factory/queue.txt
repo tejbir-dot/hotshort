@@ -1,0 +1,17 @@
+# Overnight Batch — Format: video_url | campaign_name | creator_intent (optional)
+# creator_intent → Groq Cortex ka "Director's Lens" — campaign ke viral patterns inject hote hain
+
+https://youtu.be/RCu9Hlpmoi0 | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/EDSZE2RQzrU | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/QVyKqfSUiCQ | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/9IFpbkoYqqo | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/MEZuuEgz7pU | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/KBFBcVmNu_M | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/Td9z9Y5oyIU  | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/DHKMVLdjH2E  | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/o_i3MscQJ70  | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/oLoc3RYU3xk  | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/vgq14_IqdYM  | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/_5JqtSb8Dzo  | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/vfokLxawAcU  | Daniel_Rewards | daniel bitton rewards psychology emotional selling
+https://youtu.be/ZXc3TMkd3-A  | Daniel_Rewards | daniel bitton rewards psychology emotional selling

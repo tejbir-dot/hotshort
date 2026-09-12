@@ -12,7 +12,7 @@ log = logging.getLogger("groq_cortex")
 class GroqKeyPool:
     """
     Multi-Key Round-Robin & Instant 429 Failover Pool for Free-Tier Groq APIs.
-    Supports comma-separated keys in GROQ_API_KEY / GROQ_API_KEYS and numbered keys GROQ_API_KEY_1..20.
+    Supports comma-separated keys in GPT_API / GPT_APIS and numbered keys GPT_API_1..20.
     """
     _lock = threading.Lock()
     _keys: List[str] = []
@@ -22,26 +22,26 @@ class GroqKeyPool:
     @classmethod
     def refresh_keys(cls) -> List[str]:
         keys = []
-        # 1. Comma/semicolon separated in GROQ_API_KEY
-        raw = os.environ.get("GROQ_API_KEY", "")
+        # 1. Comma/semicolon separated in GPT_API
+        raw = os.environ.get("GPT_API", "")
         for k in raw.replace(";", ",").split(","):
             k = k.strip()
             if k and k not in keys and k != "MISSING":
                 keys.append(k)
-        # 2. Comma/semicolon separated in GROQ_API_KEYS
-        raw_multi = os.environ.get("GROQ_API_KEYS", "")
+        # 2. Comma/semicolon separated in GPT_APIS
+        raw_multi = os.environ.get("GPT_APIS", "")
         for k in raw_multi.replace(";", ",").split(","):
             k = k.strip()
             if k and k not in keys and k != "MISSING":
                 keys.append(k)
-        # 3. Numbered variables GROQ_API_KEY_1 up to 20
+        # 3. Numbered variables GPT_API_1 up to 20
         for i in range(1, 21):
-            k = os.environ.get(f"GROQ_API_KEY_{i}", "").strip()
+            k = os.environ.get(f"GPT_API_{i}", "").strip()
             if k and k not in keys and k != "MISSING":
                 keys.append(k)
         cls._keys = keys
-        if keys and not os.environ.get("GROQ_API_KEY", "").strip():
-            os.environ["GROQ_API_KEY"] = keys[0]
+        if keys and not os.environ.get("GPT_API", "").strip():
+            os.environ["GPT_API"] = keys[0]
         if len(keys) > 1 and len(keys) != cls._last_logged_count:
             cls._last_logged_count = len(keys)
             msg = f"\n⚡ [GROQ_POOL] Active Multi-Key Pool loaded with {len(keys)} API keys for instant 429 failover!\n"
@@ -170,7 +170,7 @@ def post_groq_completions(payload: dict, timeout: int = None, max_retries: int =
     
     keys_pool = GroqKeyPool.get_all_keys()
     if not keys_pool:
-        raise ValueError("No GROQ_API_KEY configured in environment")
+        raise ValueError("No GPT_API configured in environment")
     
     # Scale retries dynamically so we can do at least 2 full laps of the entire pool
     actual_retries = max(max_retries, len(keys_pool) * 2 + 1)
@@ -178,13 +178,21 @@ def post_groq_completions(payload: dict, timeout: int = None, max_retries: int =
     response = None
     for attempt in range(actual_retries):
         current_key = GroqKeyPool.get_next_key()
+        # Base URL: env se lo — OpenRouter ya koi bhi OpenAI-compatible endpoint
+        _api_base = os.environ.get("HS_GROQ_API_BASE", "https://api.experientiallabs.ai/v1").rstrip("/")
+        _completions_url = f"{_api_base}/chat/completions"
+
         headers = {
             "Authorization": f"Bearer {current_key}",
             "Content-Type": "application/json"
         }
+        # OpenRouter specific headers (required by their docs)
+        if "openrouter" in _api_base:
+            headers["HTTP-Referer"] = "https://hotshort.app"
+            headers["X-Title"] = "HotShort"
         try:
             response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
+                _completions_url,
                 headers=headers,
                 json=payload,
                 timeout=timeout
@@ -242,7 +250,7 @@ def post_groq_completions(payload: dict, timeout: int = None, max_retries: int =
     return response
 
 def _get_groq_model() -> str:
-    return os.environ.get("HS_GROQ_MODEL", "llama-3.1-8b-instant").strip()
+    return os.environ.get("HS_GROQ_MODEL", "gpt-5.6-luna").strip()
 
 def _get_timeout() -> int:
     try:
@@ -741,24 +749,16 @@ Return JSON ONLY in this exact format:
         }
         gemini_prompt = system_prompt + "\n\nHere is the input data:\n" + json.dumps(groq_input, indent=2)
 
-        # --- Batch retry: Try Gemini first, then fallback to Groq ---
+        # --- Batch retry: Try GPT API first, then fallback to Gemini ---
         _SURGEON_RETRY_DELAYS = [2, 4, 8]  # seconds between each retry attempt
         _batch_success = False
 
         for _retry_attempt in range(len(_SURGEON_RETRY_DELAYS) + 1):  # 1 initial + 3 retries
             try:
                 start_t = time.time()
-                # ── PRIMARY: Gemini Surgeon ────────────────────────────────────────────
-                from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
-                if is_gemini_enabled():
-                    log.info(f"[GROQ_SURGEON] Batch {batch_idx+1}: Routing to Gemini (primary).")
-                    raw_text = post_gemini_completions(prompt=gemini_prompt, response_format_schema={"type": "json_object"})
-                    latency = time.time() - start_t
-                    audit_data["total_latency_ms"] += (latency * 1000)
-                    parsed = parse_gemini_json_safely(raw_text)
-                else:
-                    # ── FALLBACK: Groq Surgeon ─────────────────────────────────────────
-                    log.info(f"[GROQ_SURGEON] Batch {batch_idx+1}: Gemini not available, using Groq.")
+                try:
+                    # ── PRIMARY: GPT API Surgeon ───────────────────────────────────────
+                    log.info(f"[GPT_API_SURGEON] 🚀 Batch {batch_idx+1}: Routing to GPT API (primary). JAB BHI YEH LOG AAYE SAMAJH LENA GPT API USE HO RAHI HAI!")
                     response = post_groq_completions(payload=groq_payload, timeout=60, max_retries=4)
                     latency = time.time() - start_t
                     audit_data["total_latency_ms"] += (latency * 1000)
@@ -769,6 +769,18 @@ Return JSON ONLY in this exact format:
                     usage = data.get("usage", {})
                     audit_data["input_tokens"] += usage.get("prompt_tokens", 0)
                     audit_data["output_tokens"] += usage.get("completion_tokens", 0)
+                except Exception as e_gpt:
+                    # ── FALLBACK: Gemini Surgeon ─────────────────────────────────────────
+                    log.warning(f"[GPT_API_SURGEON] ⚠️ Batch {batch_idx+1}: GPT API failed: {e_gpt}. FALLING BACK TO GEMINI!")
+                    from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
+                    if is_gemini_enabled():
+                        log.info(f"[GEMINI_SURGEON] Batch {batch_idx+1}: Routing to Gemini (fallback).")
+                        raw_text = post_gemini_completions(prompt=gemini_prompt, response_format_schema={"type": "json_object"})
+                        latency = time.time() - start_t
+                        audit_data["total_latency_ms"] += (latency * 1000)
+                        parsed = parse_gemini_json_safely(raw_text)
+                    else:
+                        raise e_gpt
 
                 pt_per_cand = 0  # Gemini doesn't expose token count the same way
 
