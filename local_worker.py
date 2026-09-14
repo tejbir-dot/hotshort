@@ -122,7 +122,9 @@ def _local_save_clip(src_path: str, clip_index: int, start: float, end: float) -
     dst  = os.path.join(out_dir, name)
     shutil.copy2(src_path, dst)
     sz = os.path.getsize(dst) / 1e6
-    print(f"[LOCAL_SAVE] clip_{clip_index} -> {dst}  ({sz:.1f} MB)", flush=True)
+    print(f"\n✅ [SUCCESS] Clip Saved Successfully!", flush=True)
+    print(f"👉 [FOLDER PATH]: {os.path.abspath(out_dir)}", flush=True)
+    print(f"👉 [FILE NAME]: {name}  ({sz:.1f} MB)\n", flush=True)
     return dst
 
 
@@ -2227,12 +2229,13 @@ def main():
             print("[LOCAL_WORKER] No URL provided. Exiting.", flush=True)
             sys.exit(1)
 
+        actual_out_dir = os.environ.get("HS_CLIPS_DIR") or _LOCAL_OUT_DIR
         print(f"\n[LOCAL_WORKER] URL      : {youtube_url}", flush=True)
         if creator_intent:
             print(f"[LOCAL_WORKER] Intent   : {creator_intent}", flush=True)
         print(f"[LOCAL_WORKER] Format    : {video_format}", flush=True)
         print(f"[LOCAL_WORKER] Clips     : {args.clips}", flush=True)
-        print(f"[LOCAL_WORKER] Output    : {_LOCAL_OUT_DIR}", flush=True)
+        print(f"[LOCAL_WORKER] Output    : {actual_out_dir}", flush=True)
 
         _job_id = f"local_{int(time.time())}"
         job = {
@@ -2250,10 +2253,11 @@ def main():
             print(f"\n[LOCAL_WORKER] FAILED: {e}\n{traceback.format_exc()}", flush=True)
             sys.exit(1)
 
+        actual_out_dir = os.environ.get("HS_CLIPS_DIR") or _LOCAL_OUT_DIR
         total_s = time.perf_counter() - t0
         print("\n" + "=" * 55, flush=True)
         print(f"  DONE - {len(clips)} clips in {total_s:.0f}s ({total_s/60:.1f} min)", flush=True)
-        print(f"  Output: {_LOCAL_OUT_DIR}", flush=True)
+        print(f"  📂 FINAL OUTPUT FOLDER: {os.path.abspath(actual_out_dir)}", flush=True)
         print("=" * 55, flush=True)
         for i, c in enumerate(clips):
             title = (c.get("opening_caption") or c.get("title") or "")[:60]
@@ -2263,7 +2267,7 @@ def main():
                 print(f"        -> {os.path.basename(saved)}", flush=True)
 
         try:
-            subprocess.Popen(["explorer", _LOCAL_OUT_DIR])
+            subprocess.Popen(["explorer", actual_out_dir])
         except Exception:
             pass
         return

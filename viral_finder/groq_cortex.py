@@ -277,6 +277,14 @@ def _is_log_reasoning() -> bool:
     return os.environ.get("HS_GROQ_LOG_REASONING", "1").strip() == "1"
 
 def parse_groq_json_safely(response_text: str) -> dict:
+    if not response_text:
+        return {}
+    if not isinstance(response_text, str):
+        try:
+            response_text = str(response_text)
+        except Exception:
+            return {}
+            
     try:
         # First attempt direct parse
         return json.loads(response_text)
@@ -741,6 +749,7 @@ Return JSON ONLY in this exact format:
         groq_payload = {
             "model": _get_groq_model(),
             "temperature": 0.1,
+            "max_tokens": 4096,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -1509,6 +1518,7 @@ Now review these transcript segments:
                 payload={
                     "model": _get_groq_model(),
                     "temperature": 0.2,
+                    "max_tokens": 4096,
                     "response_format": {"type": "json_object"},
                     "messages": [
                         {
@@ -1739,6 +1749,7 @@ Transcript:
         payload = {
             "model": _get_groq_model(),
             "temperature": 0.1,
+            "max_tokens": 4096,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "user", "content": system_prompt}
@@ -1862,6 +1873,7 @@ Return a JSON array of objects, one per clip, with:
         payload = {
             "model": _get_groq_model(),
             "temperature": 0.1,
+            "max_tokens": 4096,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},

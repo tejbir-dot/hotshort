@@ -13,8 +13,8 @@ def run_tournament(candidates: list):
     EXPERIMENTAL: Runs a listwise comparative tournament on the candidates.
     Does NOT modify the candidates. Just logs the results for manual comparison.
     """
-    if not candidates:
-        return
+    # User requested to set tournament to 0 (disabled)
+    return
 
     api_key = _get_groq_api_key()
     if not api_key:
@@ -89,6 +89,7 @@ Return ONLY a JSON object in this exact format:
             payload={
                 "model": _get_groq_model(),
                 "temperature": 0.1,
+                "max_tokens": 4096,
                 "response_format": {"type": "json_object"},
                 "messages": [
                     {

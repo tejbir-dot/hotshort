@@ -649,7 +649,7 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
         dur = seg.get("end", 0) - seg.get("start", 0)
         current_chunk.append(seg)
         current_duration += dur
-        if current_duration > 240: # 4 mins
+        if current_duration > 120: # 2 mins (reduced from 4 to lower chunk size)
             chunks.append(current_chunk)
             current_chunk = []
             current_duration = 0
@@ -670,6 +670,8 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
                 log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 8 seconds before chunk {chunk_idx+1}/{len(chunks)} to respect TPM limits...")
                 _time.sleep(8.0)
             else:
+                log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 3 seconds before chunk {chunk_idx+1}/{len(chunks)} for rate limits...")
+                _time.sleep(3.0)
                 log.info(f"[TRIGGER_FORENSIC_LLM] Preparing chunk {chunk_idx+1}/{len(chunks)} for Gemini...")
 
         transcript_text = ""
@@ -793,15 +795,14 @@ Transcript:
 
         for attempt in range(1, MAX_CHUNK_RETRIES + 1):
             try:
-                if gemini_enabled:
-                    raw_resp_text = post_gemini_completions(prompt=prompt, response_format_schema={"type": "json_object"})
-                    data = parse_gemini_json_safely(raw_resp_text)
-                else:
+                try:
+                    log.info(f"[TRIGGER_FORENSIC_LLM] 🚀 Attempting request with GPT API (primary). JAB BHI YEH LOG AAYE SAMAJH LENA GPT API USE HO RAHI HAI!")
                     resp = post_groq_completions(
                         payload={
                             "model": _get_groq_model(),
                             "messages": [{"role": "user", "content": prompt}],
                             "temperature": 0.1,
+                            "max_tokens": 4096,
                             "response_format": {"type": "json_object"}
                         },
                         timeout=_get_timeout(),
@@ -810,6 +811,14 @@ Transcript:
                     if not resp.ok:
                         raise requests.exceptions.HTTPError(f"{resp.status_code} Client Error: {resp.text}")
                     data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
+                except Exception as e_gpt:
+                    log.warning(f"[TRIGGER_FORENSIC_LLM] ⚠️ GPT API failed: {e_gpt}. FALLING BACK TO GEMINI!")
+                    if gemini_enabled:
+                        log.info(f"[TRIGGER_FORENSIC_LLM] Attempting request with model: gemini (fallback)")
+                        raw_resp_text = post_gemini_completions(prompt=prompt, response_format_schema={"type": "json_object"})
+                        data = parse_gemini_json_safely(raw_resp_text)
+                    else:
+                        raise e_gpt
                     
                 raw_triggers = data.get("triggers", [])
                 found_in_chunk = 0

@@ -175,17 +175,27 @@ def _pick_clip_for_category(category: str, matched_word: str) -> Optional[str]:
             if os.path.exists(path):
                 return path
 
-    # 2) Fallback: any existing clip in the folder (random)
+    # 2) Fallback: Semantic filename match (NO RANDOM CLIPS)
+    # If the word matches part of the filename, use it! Extremely precise.
     try:
-        candidates = [
-            os.path.join(folder, f)
-            for f in os.listdir(folder)
-            if f.lower().endswith((".mp4", ".mov", ".avi"))
-        ]
-        if candidates:
-            return random.choice(candidates)
-    except Exception:
-        pass
+        if os.path.exists(folder):
+            candidates = [
+                f for f in os.listdir(folder)
+                if f.lower().endswith((".mp4", ".mov", ".avi", ".webm"))
+            ]
+            
+            for f in candidates:
+                name_no_ext = os.path.splitext(f)[0].lower()
+                # Remove common separators for better matching (e.g. "trading_chart" -> "trading chart")
+                clean_name = name_no_ext.replace("_", " ").replace("-", " ")
+                if word_lower in clean_name or clean_name in word_lower:
+                    path = os.path.join(folder, f)
+                    return path
+                    
+    except Exception as e:
+        log.error(f"[SMART_BROLL] Error reading folder {folder}: {e}")
+        
+    log.info(f"[SMART_BROLL] No precise B-Roll found for word '{word_lower}' in {category}. Skipping to avoid irrelevant b-roll.")
     return None
 
 
@@ -333,21 +343,9 @@ def find_broll_cuts(
                         candidate["category"], candidate["word"])
             continue
 
-        # Anti-repeat: if this exact file was used already, try to find another
-        if asset in used_assets:
-            folder = os.path.join(_BASE, candidate["category"])
-            try:
-                alternates = [
-                    os.path.join(folder, f)
-                    for f in os.listdir(folder)
-                    if f.lower().endswith((".mp4", ".mov", ".avi"))
-                    and os.path.join(folder, f) not in used_assets
-                ]
-                if alternates:
-                    asset = random.choice(alternates)
-                # else: all clips in this category used, allow repeat as last resort
-            except Exception:
-                pass
+        # Anti-repeat removed: We prefer to repeat a 100% precise asset 
+        # (e.g. showing the same trading chart if they say 'strategy' twice) 
+        # rather than randomly injecting an irrelevant video.
 
         selected.append((t, asset, cut_duration_s))
         used_times.append(t)

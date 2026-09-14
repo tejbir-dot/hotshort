@@ -29,8 +29,8 @@ _local_env = os.path.join(BASE_DIR, ".env.local")
 if os.path.exists(_local_env):
     load_dotenv(dotenv_path=_local_env, override=True)
 
-groq_present = "GROQ_API_KEY" in os.environ and bool(os.environ["GROQ_API_KEY"].strip())
-print(f"GROQ_API_KEY present={str(groq_present).lower()}", flush=True)
+gpt_present = "GPT_API" in os.environ and bool(os.environ["GPT_API"].strip())
+print(f"GPT_API present={str(gpt_present).lower()}", flush=True)
 
 import flask
 from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app
