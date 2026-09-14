@@ -27,6 +27,10 @@ _BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ─────────────────────────────────────────────────────────────────────────────
 # KEYWORD → CATEGORY MAPPING  (add more as you add folders / clips)
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KEYWORD → CATEGORY MAPPING
+# ─────────────────────────────────────────────────────────────────────────────
 KEYWORD_MAP = {
     # ── MONEY / FINANCE ──────────────────────────────────────────────────────
     "money_assets": [
@@ -34,74 +38,128 @@ KEYWORD_MAP = {
         "income", "revenue", "profit", "rich", "wealth", "wealthy",
         "paid", "salary", "cash", "payment", "payout", "bank",
         "invest", "investment", "fund", "funding", "return", "roi",
-        "financial", "finance", "affordable", "expensive", "price",
-        "cost", "cheap", "economy", "economic", "tax", "taxes",
-        "broke", "savings", "save", "spend", "spending", "budget",
+        "financial", "finance", "expensive", "price", "cost",
+        "economy", "economic", "tax", "taxes", "broke", "savings",
+        "save", "spend", "spending", "budget", "passive",
         "crypto", "bitcoin", "stock", "stocks", "trading", "trade",
-        "passive", "income stream", "six figures", "seven figures",
-        "charge", "fee", "subscription", "monthly", "annual",
-        "paycheck", "payroll", "commission", "bonus",
+        "six figures", "seven figures", "paycheck", "payroll",
+        "commission", "bonus", "equity", "asset", "assets",
+        # Psychology / mindset (mapped to money_assets visuals)
+        "mindset", "mind", "brain", "focus", "deep work", "obsession",
+        "discipline", "sacrifice", "hustle", "grind", "king", "power",
+        "boss", "ceo", "empire", "control", "system", "secret", "roadmap",
+        "strategy", "hack", "exposed", "truth", "real game", "1%",
+        "elite", "top 1", "algorithm", "data", "ai", "automation",
+        "tech", "processor", "neurons", "awakening", "peace", "freedom",
+        "opportunity", "chance", "golden", "rare",
     ],
 
     # ── LUXURY / LIFESTYLE ───────────────────────────────────────────────────
     "luxury": [
-        "luxury", "lamborghini", "ferrari", "bugatti", "supercar",
+        "luxury", "lamborghini", "ferrari", "bugatti", "bmw", "supercar",
         "car", "cars", "vehicle", "jet", "private jet", "yacht",
         "watch", "rolex", "mansion", "penthouse", "villa", "resort",
         "travel", "trip", "vacation", "holiday", "lifestyle",
-        "expensive", "high-end", "premium", "exclusive", "vip",
-        "success", "successful", "boss", "ceo", "entrepreneur",
+        "high-end", "premium", "exclusive", "vip",
+        "successful", "entrepreneur",
         "fast", "speed", "race", "drive", "flying", "luxury apartment",
-        "club", "party", "celebration", "freedom", "dream",
-        "status", "flex", "flexing", "drip",
+        "club", "party", "celebration", "dream",
+        "status", "flex", "flexing", "drip", "chaotic", "energy",
     ],
 
     # ── CONTENT / CLIPPING / DIGITAL ─────────────────────────────────────────
     "content_assets": [
         "content", "viral", "clip", "clips", "clipping", "short",
-        "shorts", "video", "videos", "views", "viewers", "watch",
+        "shorts", "video", "videos", "views", "viewers",
         "growth", "growing", "grow", "audience", "followers", "subscriber",
         "subscribers", "channel", "platform", "youtube", "tiktok",
-        "instagram", "reel", "reels", "algorithm", "creator",
+        "instagram", "reel", "reels", "creator",
         "editing", "editor", "edit", "thumbnail", "hook",
         "network", "networking", "social media", "digital",
-        "online", "internet", "automation", "automate",
-        "scale", "scaling", "system", "process", "workflow",
+        "online", "internet", "scale", "scaling", "workflow",
         "agency", "business", "brand", "branding", "niche",
         "podcast", "podcasting", "stream", "streaming",
         "monetize", "monetization", "adsense", "sponsorship",
-        "graph", "analytics", "metric", "data", "impression",
-        "reach", "engagement", "click", "conversion",
+        "graph", "analytics", "metric", "impression",
+        "reach", "engagement", "click", "conversion", "tone",
+        "million clips", "youtube button",
     ],
 }
 
-# Within each category, map specific clips to more precise sub-keywords
+# ─────────────────────────────────────────────────────────────────────────────
+# CLIP PREFERENCE — maps exact filenames to precise sub-keywords
+# ALL filenames verified against actual files on disk (Sep 2026)
+# ─────────────────────────────────────────────────────────────────────────────
 CLIP_PREFERENCE = {
     "money_assets": {
-        "money.mp4":  ["money", "cash", "dollar", "earn", "rich", "wealth", "broke", "savings"],
-        "payout.mp4": ["payout", "payment", "paid", "income", "revenue", "profit", "salary", "commission"],
+        # Core money visuals
+        "money.mp4":                    ["money", "cash", "dollar", "earn", "rich", "wealth"],
+        "payout.mp4":                   ["payout", "payment", "paid", "income", "revenue", "profit", "salary", "commission"],
+        "bank balance growing.mp4":     ["bank", "savings", "save", "passive", "growing", "balance"],
+        "tones of money.mp4":           ["wealth", "dollar", "financial", "rich", "abundance"],
+        "money_succes.mp4":             ["success", "wealthy", "millionaire", "achieve", "financial freedom"],
+        "bussiness.mp4":                ["business", "entrepreneur", "brand", "boss", "ceo"],
+        "win.mp4":                      ["win", "winning", "success", "goal", "reward"],
+        # Psychology / elite mindset
+        "king.mp4":                     ["king", "power", "boss", "empire", "authority", "elite", "1%", "top 1"],
+        "golden chance.mp4":            ["opportunity", "chance", "golden", "unlock", "rare", "discover"],
+        "secret roadmap.mp4":           ["secret", "roadmap", "strategy", "hack", "exposed", "plan", "system"],
+        "the real game.mp4":            ["real", "truth", "game", "mindset", "exposed", "actual", "real game"],
+        "1% people.mp4":                ["elite", "top 1", "1%", "exclusive", "rare", "best", "six figures", "seven figures"],
+        "deep work.mp4":                ["focus", "deep work", "productive", "grind", "build", "discipline", "work"],
+        "creative focus work.mp4":      ["creative", "idea", "build", "create", "creative work"],
+        "obsession.mp4":                ["obsession", "driven", "hustle", "grind", "dedicated"],
+        "sacrifice ,never give up.mp4": ["sacrifice", "never give up", "discipline", "consistent", "commit"],
+        "mind awakening.mp4":           ["mind", "mindset", "awakening", "realize", "conscious", "brain"],
+        "brain rot ,controlled.mp4":    ["attention", "control", "discipline", "focus", "brain"],
+        "war inner beast.mp4":          ["war", "beast", "inner", "fight", "conquer", "fearless", "courage"],
+        "neurons pathways.mp4":         ["neurons", "learn", "understand", "think", "pathway", "brain"],
+        # Tech / AI
+        "human and ai.mp4":             ["ai", "human and ai", "automation", "tech", "future", "robot"],
+        "algorithm.mp4":                ["algorithm", "system", "data", "code"],
+        "data centers.mp4":             ["data", "tech", "scale", "server", "digital", "processor"],
+        "processor ,tech.mp4":          ["processor", "tech", "speed", "compute", "chip"],
+        "DNA.mp4":                      ["genetics", "dna", "deep", "fundamental", "science"],
+        # Lifestyle / peace
+        "peace.mp4":                    ["peace", "freedom", "lifestyle", "balance", "calm", "rest"],
+        "luxury view.mp4":              ["luxury", "view", "premium", "lifestyle", "penthouse"],
+        # Content / network
+        "content networking.mp4":       ["network", "content", "social", "connection", "community"],
+        "controlled by.mp4":            ["control", "system", "matrix", "controlled", "power"],
+        "writing.mp4":                  ["write", "writing", "journal", "note", "document", "script"],
+        # Cinematic / emotional
+        "Flock_of_birds_flying_upward_20260911153702.mp4": ["growth", "upward", "rise", "momentum", "ascend", "climb"],
+        "Black_panther_roaring_in_flames_20260911153855.mp4": ["power", "beast", "fearless", "bold", "fierce", "strong"],
     },
+
     "luxury": {
-        "buggatti_jet.mp4":          ["jet", "private jet", "flying", "travel"],
-        "luxury.1.mp4":              ["luxury", "mansion", "penthouse", "villa", "lifestyle", "exclusive"],
-        "luxury_view_building.mp4":  ["building", "penthouse", "apartment", "office", "city"],
-        "luxury_watch_view.mp4":     ["watch", "rolex", "premium", "status", "flex"],
-        "spead_car.mp4":             ["car", "supercar", "ferrari", "lamborghini", "speed", "race", "drive", "fast"],
-        "WhatsApp Video 2026-09-04 at 7.17.13 PM.mp4": ["success", "freedom", "dream", "celebration"],
+        "buggatti_jet.mp4":                                     ["jet", "private jet", "flying", "travel", "bugatti"],
+        "bmw.mp4":                                              ["bmw", "car", "drive", "speed", "vehicle"],
+        "spead_car.mp4":                                        ["car", "supercar", "ferrari", "lamborghini", "speed", "race", "fast"],
+        "luxury.1.mp4":                                         ["luxury", "mansion", "penthouse", "villa", "lifestyle", "exclusive"],
+        "luxury_view_building.mp4":                             ["building", "penthouse", "apartment", "office", "city"],
+        "luxury_watch_view.mp4":                                ["watch", "rolex", "premium", "status", "flex"],
+        "Adding_running_chaotic_motion_20260911155141.mp4":      ["energy", "fast", "dynamic", "action", "chaotic", "running"],
+        "Animate_picture_in_slow_motion_20260911155031.mp4":     ["slow", "cinematic", "premium", "smooth", "aesthetic"],
+        "Tech_video_sequence_generation_p._20260911152335.mp4":  ["tech", "ai", "future", "digital", "innovation"],
     },
+
     "content_assets": {
-        "content_growth.mp4":        ["growth", "growing", "grow", "audience", "followers"],
-        "content_viral_graph.mp4":   ["viral", "views", "analytics", "data", "impression", "reach"],
-        "create_thousands_clipd.mp4":["clip", "clips", "clipping", "shorts", "automate"],
-        "digital_monoply.mp4":       ["digital", "online", "internet", "platform", "monopoly"],
-        "editing.mp4":               ["editing", "editor", "edit", "thumbnail"],
-        "higher_graph.mp4":          ["graph", "growth", "metric", "engagement", "scale"],
-        "huge_clipping.mp4":         ["clipping", "short", "viral", "scale"],
-        "networks.mp4":              ["network", "networking", "social media", "connection"],
-        "networks_from_clipping.mp4":["agency", "business", "brand", "niche", "system"],
-        "quant_wealth.mp4":          ["monetize", "monetization", "revenue", "income stream", "passive"],
+        "viral_graph.mp4":              ["viral", "views", "analytics", "reach", "data", "impression", "graph"],
+        "million of clips.mp4":         ["clips", "clipping", "shorts", "automate", "scale", "million clips", "bulk"],
+        "tone of clip.mp4":             ["tone", "voice", "style", "content", "vibe"],
+        "content_growth.mp4":           ["growth", "growing", "grow", "audience", "followers", "subscriber"],
+        "higher_graph.mp4":             ["graph", "growth", "metric", "engagement", "scale", "higher"],
+        "digital_monoply.mp4":          ["digital", "online", "internet", "platform", "monopoly"],
+        "editing.mp4":                  ["editing", "editor", "edit", "thumbnail", "cut"],
+        "networks.mp4":                 ["network", "networking", "social media", "connection"],
+        "networks_from_clipping.mp4":   ["agency", "business", "brand", "niche", "system", "workflow"],
+        "quant_wealth.mp4":             ["monetize", "monetization", "revenue", "income stream", "passive", "sponsorship"],
+        "Youtube_button.mP4":           ["youtube", "channel", "subscribe", "youtube button"],
     },
 }
+
+
 
 
 def _pick_clip_for_category(category: str, matched_word: str) -> Optional[str]:

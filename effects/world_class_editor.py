@@ -3484,21 +3484,96 @@ class ClipEditor:
         if not words:
             return text
 
-                # Semantic color routing - priority: Danger > Success > HookWord > Highlight
+                # Semantic color routing — priority: Danger > Success > HookWord > Highlight
+        # ── RED: danger / loss / failure ──────────────────────────────────────────
         _danger_keywords = {
-            "wrong", "mistake", "fail", "failing", "failed", "failure", "lose", "losing", "loss",
-            "bad", "never", "stop", "quit", "risk", "trap", "scam", "fake", "lie", "lies",
-            "warning", "danger", "worst", "broke", "debt", "crash", "kill", "dead", "dying",
+            "wrong", "mistake", "fail", "failing", "failed", "failure", "failing",
+            "lose", "losing", "loss", "losses", "lost", "bad", "never", "stop",
+            "quit", "risk", "trap", "scam", "fake", "lie", "lies", "lied", "lying",
+            "warning", "danger", "dangerous", "worst", "worse", "broke", "broken",
+            "debt", "debts", "crash", "crashed", "crashing", "kill", "dead", "dying",
+            "die", "death", "problem", "problems", "hard", "fear", "scared",
+            "terrified", "bankrupt", "bankruptcy", "poverty", "poor", "struggle",
+            "struggling", "failed", "disaster", "collapse", "crisis",
+            "mistake", "error", "blunder", "regret", "wrong", "terrible", "awful",
+            "horrible", "devastating", "damage", "damaged", "hurt", "pain", "suffer",
+            # Trading/Finance danger words
+            "unprofitable", "negative", "bleed", "bleeding", "wipeout", "wiped",
+            "liquidated", "liquidation", "overtrade", "overtraded", "overtrading",
+            "emotional", "revenge", "hopping", "hopscotch", "gamble", "gambling",
+            "margin", "margin call", "drawdown", "underwater", "trapped", "stuck",
+            "red", "dump", "dumping", "selloff", "correction", "bear", "bearish",
         }
+        # ── GREEN: money / success / growth ──────────────────────────────────────
         _success_keywords = {
-            "win", "winning", "winner", "grow", "growth", "profit", "revenue", "sale", "sales",
-            "free", "best", "top", "success", "succeed", "rich", "wealth", "power", "strong",
-            "fast", "quick", "instant", "instantly", "viral", "launch", "unlock", "proven",
+            # Core wins
+            "win", "winning", "winner", "won", "grow", "growth", "growing",
+            "profit", "profits", "profitable", "revenue", "revenues", "sale", "sales",
+            "best", "top", "success", "successful", "succeed", "succeeded", "succeeding",
+            "rich", "wealth", "wealthy", "power", "powerful", "strong", "strength",
+            "fast", "quick", "instant", "instantly", "viral", "launch", "launched",
+            "unlock", "unlocked", "proven", "proof", "results", "result",
+            # Money / finance
+            "money", "income", "earn", "earning", "earnings", "earned",
+            "passive", "invest", "investing", "investment", "returns", "return",
+            "salary", "million", "millions", "billion", "billions", "dollar", "dollars",
+            "cashflow", "financial", "free", "freedom", "independent", "independence",
+            "abundance", "thrive", "thriving", "flourish", "capitalize", "leverage",
+            "compound", "compounding", "roi", "dividend", "dividends", "portfolio",
+            "crypto", "bitcoin", "bull", "bullish", "rally", "breakout", "pump",
+            "gains", "gain", "profitable", "payout", "paid", "cash", "bank",
+            "six", "seven", "figures",
+            # Business / creator
+            "scale", "scaling", "build", "building", "empire", "achieve", "achievement",
+            "goal", "goals", "dream", "dreams", "value", "opportunity", "opportunities",
+            "reward", "rewards", "bonus", "equity", "asset", "assets", "productive",
+            "monetized", "monetize", "brand", "collab", "collaboration", "deal",
+            "subscribers", "followers", "views", "viral", "trending",
+            "promote", "promotion", "sponsor", "sponsored", "partnership",
+            "hire", "hired", "team", "expand", "expanding", "automate", "automated",
+            "system", "leverage", "outsource", "delegate", "consistent", "consistency",
+            # Life success
+            "king", "boss", "ceo", "elite", "champion", "greatest", "unstoppable",
+            "discipline", "disciplined", "hustle", "grind", "dedicated", "commitment",
+            "focused", "obsessed", "driven", "motivated", "unstoppable", "relentless",
+            "conquered", "conquer", "dominate", "dominating", "domination",
+            "level", "levelup", "upgraded", "upgrade", "transformed", "transformation",
+            "mastered", "master", "mastery", "skill", "skilled", "expert", "expertise",
+            "confidence", "confident", "clarity", "clear", "smart", "intelligent",
         }
+        # ── PURPLE: curiosity / hook / pattern interrupt ─────────────────────────────
         _hook_keywords = {
-            "interesting", "look", "attention", "listen", "wait", "secret", "truth", 
-            "nobody", "why", "how", "money", "ai", "tool", "automation", "always", "real", 
-            "hack", "exposed", "hidden",
+            # Classic hooks
+            "interesting", "look", "attention", "listen", "wait", "secret", "secrets",
+            "truth", "nobody", "why", "how", "ai", "tool", "tools", "automation",
+            "always", "real", "really", "hack", "exposed", "hidden", "shocking",
+            "insane", "crazy", "unbelievable", "incredible", "discovered", "discover",
+            "fact", "facts", "actually", "literally", "honest", "honestly", "know",
+            "unknown", "untold", "reveal", "revealed", "revealing", "mystery",
+            "mysterious", "surprising", "surprised", "unexpected", "rare", "unique",
+            "genius", "mind", "mindset", "never", "everyone", "anyone", "nobody",
+            "imagine", "believe", "believed", "thought", "think", "realize",
+            "realized", "suddenly", "game", "gamechanger", "breakthrough", "forever",
+            # Pattern interrupts & viral triggers
+            "notice", "noticed", "watch", "wrong", "mistake", "plot", "twist",
+            "plottwist", "hear", "admit", "admitted", "confession", "confess",
+            "warning", "alert", "stop", "pause", "question", "answer", "proof",
+            "works", "working", "tested", "experiment", "experiment", "studied",
+            "study", "research", "data", "science", "proven", "evidence",
+            "changed", "changes", "changing", "different", "difference",
+            "everything", "nothing", "something", "anything", "someone", "nobody",
+            # Curiosity / FOMO
+            "banned", "deleted", "censored", "forbidden", "illegal", "underground",
+            "classified", "private", "exclusive", "limited", "inside", "access",
+            "behind", "scenes", "leaked", "leak", "real", "reality", "actually",
+            "viral", "trending", "everyone", "talking", "blew", "blowing",
+            # Question words that drive engagement
+            "what", "when", "where", "which", "who", "whose", "whom",
+            "this", "that", "these", "here", "notice", "spot", "see",
+            # Psychology / persuasion
+            "if", "because", "since", "unless", "until", "whenever", "wherever",
+            "exactly", "precisely", "specific", "specifically", "certain",
+            "guarantee", "guaranteed", "promise", "promised", "swear",
         }
         _highlight_keywords = {
             "must", "important", "crucial", "key", "remember", "focus",
@@ -3702,7 +3777,7 @@ class ClipEditor:
         highlight_color = "&H0000D4FF"   # Brighter Gold/Yellow
         border_size = "5"                # Increased for 3D Pop
         shadow_size = "8"                # Increased for deep 3D shadow
-        bold_val = "-1"
+        bold_val = "0"              # Non-bold for caption body (Impact is already heavy)
         italic_val = "0"
         
         if style_val == "neon":
@@ -3754,20 +3829,124 @@ class ClipEditor:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            f"Style: Caption,Montserrat Black,95,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Hook,Outfit,65,{hook_color},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,20,20,80,1",
-            f"Style: Highlight,Montserrat Black,95,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: HookWord,Montserrat Black,95,&H00FFAAFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Danger,Montserrat Black,95,&H006666FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Success,Montserrat Black,95,&H00AAFF88,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: CTA,Montserrat Black,50,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
-            # KaraokeWord: slightly smaller, used for the inactive (ghost) state of karaoke
-            f"Style: KaraokeGhost,Montserrat Black,95,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            # ── MASTERPIECE CAPTIONS ───────────────────────────────────────────────
+            # Font  : Impact — condensed, punchy, viral
+            # Ghost words: &H55FFFFFF (55 alpha ≈ 67% opacity) so active word pops
+            # Color routing: RED=danger/loss | GREEN=money/success | PURPLE=curiosity
+            f"Style: Caption,Impact,95,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Hook,Rockwell,65,{hook_color},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,20,20,80,1",
+            f"Style: Highlight,Impact,95,{highlight_color},&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            # PURPLE — curiosity / hook / secret words
+            f"Style: HookWord,Impact,95,&H00FF22CC,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            # RED — danger / loss / failure words
+            f"Style: Danger,Impact,95,&H000000FF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            # GREEN — money / success / growth words
+            f"Style: Success,Impact,95,&H0044FF00,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: CTA,Rockwell,50,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
+            # KaraokeGhost: 55% alpha so inactive words recede behind the active word
+            f"Style: KaraokeGhost,Impact,95,&H55FFFFFF,&H000000FF,&H00000000,&HAA000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
         ]
-        log.info("[WCE-VISUAL] caption_safe_zone=speaker_aware")
+        # ── Per-word semantic style resolver ─────────────────────────────────────
+        # Returns the ASS style name for the ACTIVE word in the karaoke highlight.
+        # Priority: Danger (RED) > Success (GREEN) > HookWord (PURPLE) > Highlight (gold)
+        _KW_DANGER = {
+            "wrong", "mistake", "fail", "failing", "failed", "failure",
+            "lose", "losing", "loss", "losses", "lost", "bad", "stop",
+            "quit", "risk", "trap", "scam", "fake", "lie", "lies", "lied",
+            "warning", "danger", "dangerous", "worst", "worse", "broke",
+            "broken", "debt", "debts", "crash", "crashed", "crashing",
+            "kill", "dead", "dying", "die", "death", "problem", "problems",
+            "fear", "scared", "bankrupt", "bankruptcy", "poverty", "poor",
+            "struggle", "struggling", "disaster", "collapse", "crisis",
+            "error", "regret", "terrible", "awful", "horrible", "devastating",
+            "damage", "hurt", "pain", "suffer",
+            # Trading/Finance danger words
+            "unprofitable", "negative", "bleed", "bleeding", "wipeout", "wiped",
+            "liquidated", "liquidation", "overtrade", "overtraded", "overtrading",
+            "emotional", "revenge", "hopping", "hopscotch", "gamble", "gambling",
+            "margin", "drawdown", "underwater", "trapped", "red",
+            "dump", "dumping", "selloff", "correction", "bearish",
+        }
+        _KW_SUCCESS = {
+            # Core wins
+            "win", "winning", "winner", "won", "grow", "growth", "growing",
+            "profit", "profits", "profitable", "revenue", "revenues",
+            "sale", "sales", "best", "top", "success", "successful",
+            "succeed", "succeeded", "succeeding", "rich", "wealth", "wealthy",
+            "power", "powerful", "strong", "strength", "fast", "quick",
+            "instant", "instantly", "viral", "launch", "launched",
+            "unlock", "unlocked", "proven", "proof", "results", "result",
+            # Money / finance
+            "money", "income", "earn", "earning", "earnings", "earned",
+            "passive", "invest", "investing", "investment", "returns", "return",
+            "salary", "million", "millions", "billion", "billions",
+            "dollar", "dollars", "cashflow", "financial", "free", "freedom",
+            "independent", "independence", "abundance", "thrive", "thriving",
+            "compound", "compounding", "roi", "dividend", "dividends",
+            "portfolio", "crypto", "bitcoin", "bull", "bullish", "rally",
+            "breakout", "gains", "gain", "payout", "paid", "cash", "bank",
+            # Business / creator economy
+            "scale", "scaling", "build", "building", "empire", "achieve",
+            "achievement", "goal", "goals", "dream", "dreams", "value",
+            "opportunity", "opportunities", "reward", "rewards", "bonus",
+            "equity", "asset", "assets", "productive", "monetized", "monetize",
+            "brand", "collab", "collaboration", "deal", "subscribers",
+            "followers", "trending", "promote", "sponsor", "sponsored",
+            "partnership", "hired", "team", "expand", "automate", "automated",
+            "outsource", "consistent", "consistency", "leverage",
+            # Life wins
+            "king", "boss", "ceo", "elite", "champion", "unstoppable",
+            "discipline", "disciplined", "hustle", "grind", "dedicated",
+            "commitment", "focused", "obsessed", "driven", "relentless",
+            "conquer", "dominate", "dominating", "domination",
+            "levelup", "upgrade", "upgraded", "transformed", "transformation",
+            "mastered", "master", "mastery", "skill", "skilled", "expert",
+            "confidence", "confident", "clarity", "smart", "intelligent",
+        }
+        _KW_HOOK = {
+            # Classic hooks
+            "secret", "secrets", "truth", "nobody", "why", "how", "ai",
+            "tool", "tools", "automation", "always", "real", "really",
+            "hack", "exposed", "hidden", "shocking", "insane", "crazy",
+            "unbelievable", "incredible", "discovered", "discover",
+            "fact", "facts", "actually", "literally", "honest", "honestly",
+            "unknown", "untold", "reveal", "revealed", "revealing",
+            "mystery", "mysterious", "surprising", "unexpected", "rare",
+            "unique", "genius", "mind", "mindset", "everyone", "anyone",
+            "believe", "realized", "suddenly", "gamechanger", "breakthrough",
+            # Pattern interrupts & viral triggers
+            "notice", "noticed", "watch", "plot", "twist",
+            "hear", "admit", "admitted", "confession", "confess",
+            "alert", "question", "answer", "works", "working",
+            "tested", "studied", "study", "research", "evidence",
+            "changed", "changes", "changing", "different", "difference",
+            "everything", "nothing", "something", "someone",
+            # Curiosity / FOMO
+            "banned", "deleted", "censored", "forbidden", "underground",
+            "classified", "private", "exclusive", "inside", "access",
+            "behind", "scenes", "leaked", "leak", "reality",
+            "trending", "talking", "blew", "blowing",
+            # Psychology triggers
+            "exactly", "precisely", "specific", "specifically",
+            "guarantee", "guaranteed", "promise", "promised",
+            "imagine", "what", "never",
+        }
+
+        def _word_style(raw_word: str) -> str:
+            """Return the ASS style tag for this word (drives RED/GREEN/PURPLE)."""
+            clean = re.sub(r"[^\w]", "", raw_word).lower()
+            if clean in _KW_DANGER:
+                return "Danger"
+            if clean in _KW_SUCCESS:
+                return "Success"
+            if clean in _KW_HOOK:
+                return "HookWord"
+            return "Highlight"
+
+        log.info("[WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE")
         events = []
         for seg in captions:
             if seg.end <= seg.start:
@@ -3785,14 +3964,21 @@ class ClipEditor:
                     w_start = w_dict["start"]
                     w_end = w_dict["end"]
                     
+                    # Resolve semantic color for this active word
+                    active_style = _word_style(word_text)
+
                     parts = []
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            parts.append("{\\rHighlight\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}" + w_esc + "{\\r}")
+                            # Active word: semantic color (RED/GREEN/PURPLE/gold) + pop animation
+                            parts.append(
+                                "{\\r" + active_style + "\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}"
+                                + w_esc + "{\\r}"
+                            )
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
-                            
+
                     line_text = " ".join(parts)
                     if is_podcast:
                         an_tag = "{\\an5\\blur1.5}"
@@ -3804,15 +3990,21 @@ class ClipEditor:
                 for wi, word in enumerate(words):
                     w_start = seg.start + wi * word_dur
                     w_end   = seg.start + (wi + 1) * word_dur
-                    # Build line: ghost words + {\rHighlight}active_word{\r} + ghost words
+                    # Resolve semantic color for this active word
+                    active_style = _word_style(word)
+
+                    # Build line: ghost words + semantic-colored active word + ghost words
                     parts = []
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            parts.append("{\\rHighlight\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}" + w_esc + "{\\r}")
+                            parts.append(
+                                "{\\r" + active_style + "\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}"
+                                + w_esc + "{\\r}"
+                            )
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
-                            
+
                     line_text = " ".join(parts)
                     if is_podcast:
                         an_tag = "{\\an5\\blur1.5}"
