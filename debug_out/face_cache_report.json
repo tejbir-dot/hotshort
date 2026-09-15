@@ -1,47 +1,23 @@
 {
-  "wall_time_s": 90.463,
-  "total_frames_cached": 340,
-  "avg_faces_per_frame": 1.162,
-  "real_face_slots": 395,
+  "wall_time_s": 119.783,
+  "total_frames_cached": 537,
+  "avg_faces_per_frame": 1.827,
+  "real_face_slots": 981,
   "synthetic_face_slots": 0,
   "frames_with_0_faces": 0,
-  "frames_with_1_face": 285,
-  "frames_with_2plus_faces": 55,
+  "frames_with_1_face": 148,
+  "frames_with_2plus_faces": 389,
   "clips": [
     {
-      "clip": "0.0-68.4s",
-      "format": "monologue",
+      "clip": "0.0-68.3s",
+      "format": "podcast",
       "frames_cached": 55,
       "frames_with_2plus_faces": 55,
       "pct_dual": "100%",
       "synthetic_face_slots": 0
     },
     {
-      "clip": "248.9-319.3s",
-      "format": "monologue",
-      "frames_cached": 57,
-      "frames_with_2plus_faces": 0,
-      "pct_dual": "0%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "184.1-243.3s",
-      "format": "monologue",
-      "frames_cached": 48,
-      "frames_with_2plus_faces": 0,
-      "pct_dual": "0%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "54.9-104.6s",
-      "format": "monologue",
-      "frames_cached": 40,
-      "frames_with_2plus_faces": 0,
-      "pct_dual": "0%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "348.7-418.8s",
+      "clip": "3240.2-3310.3s",
       "format": "monologue",
       "frames_cached": 56,
       "frames_with_2plus_faces": 0,
@@ -49,11 +25,67 @@
       "synthetic_face_slots": 0
     },
     {
-      "clip": "467.7-572.8s",
+      "clip": "1442.0-1509.8s",
       "format": "monologue",
-      "frames_cached": 84,
+      "frames_cached": 55,
+      "frames_with_2plus_faces": 55,
+      "pct_dual": "100%",
+      "synthetic_face_slots": 0
+    },
+    {
+      "clip": "428.7-496.9s",
+      "format": "podcast",
+      "frames_cached": 55,
+      "frames_with_2plus_faces": 55,
+      "pct_dual": "100%",
+      "synthetic_face_slots": 0
+    },
+    {
+      "clip": "1486.3-1555.3s",
+      "format": "podcast",
+      "frames_cached": 56,
+      "frames_with_2plus_faces": 56,
+      "pct_dual": "100%",
+      "synthetic_face_slots": 0
+    },
+    {
+      "clip": "300.4-369.8s",
+      "format": "podcast",
+      "frames_cached": 56,
+      "frames_with_2plus_faces": 56,
+      "pct_dual": "100%",
+      "synthetic_face_slots": 0
+    },
+    {
+      "clip": "471.2-540.1s",
+      "format": "podcast",
+      "frames_cached": 56,
+      "frames_with_2plus_faces": 56,
+      "pct_dual": "100%",
+      "synthetic_face_slots": 0
+    },
+    {
+      "clip": "3321.2-3390.0s",
+      "format": "monologue",
+      "frames_cached": 55,
       "frames_with_2plus_faces": 0,
       "pct_dual": "0%",
+      "synthetic_face_slots": 0
+    },
+    {
+      "clip": "82.6-128.2s",
+      "format": "monologue",
+      "frames_cached": 37,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "synthetic_face_slots": 0
+    },
+    {
+      "clip": "1196.9-1265.9s",
+      "format": "podcast",
+      "frames_cached": 56,
+      "frames_with_2plus_faces": 56,
+      "pct_dual": "100%",
       "synthetic_face_slots": 0
     }
   ],
@@ -63,19 +95,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -86,19 +127,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -109,19 +159,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -132,19 +191,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -155,19 +223,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -178,19 +255,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -201,19 +287,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -224,19 +319,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -247,19 +351,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -270,19 +383,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -293,19 +415,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -316,19 +447,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -339,19 +479,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -362,19 +511,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -385,19 +543,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -408,19 +575,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -431,19 +607,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -454,19 +639,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -477,19 +671,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -500,19 +703,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -523,19 +735,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -546,19 +767,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -569,19 +799,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -592,19 +831,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -615,19 +863,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -638,19 +895,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -661,19 +927,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -684,19 +959,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -707,19 +991,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -730,19 +1023,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -753,19 +1055,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -776,19 +1087,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -799,19 +1119,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -822,19 +1151,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -845,19 +1183,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -868,19 +1215,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -891,19 +1247,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -914,19 +1279,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -937,19 +1311,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -960,19 +1343,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -983,19 +1375,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -1006,19 +1407,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -1029,19 +1439,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -1052,33 +1471,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
           "score": 1.0,
           "synthetic": false
-        }
-      ]
-    },
-    {
-      "t": 54.89,
-      "faces": [
+        },
         {
-          "slot": "left",
-          "x": 886,
-          "y": 273,
-          "w": 140,
-          "h": 180,
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -1089,33 +1503,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
           "score": 1.0,
           "synthetic": false
-        }
-      ]
-    },
-    {
-      "t": 56.14,
-      "faces": [
+        },
         {
-          "slot": "left",
-          "x": 886,
-          "y": 273,
-          "w": 140,
-          "h": 180,
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -1126,33 +1535,28 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
           "score": 1.0,
           "synthetic": false
-        }
-      ]
-    },
-    {
-      "t": 57.39,
-      "faces": [
+        },
         {
-          "slot": "left",
-          "x": 886,
-          "y": 273,
-          "w": 140,
-          "h": 180,
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }
@@ -1163,19 +1567,124 @@
       "faces": [
         {
           "slot": "right",
-          "x": 908,
-          "y": 268,
-          "w": 134,
-          "h": 175,
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
           "score": 1.0,
           "synthetic": false
         },
         {
           "slot": "left",
-          "x": 744,
-          "y": 667,
-          "w": 82,
-          "h": 115,
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
+          "score": 1.0,
+          "synthetic": false
+        }
+      ]
+    },
+    {
+      "t": 58.81,
+      "faces": [
+        {
+          "slot": "right",
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "left",
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
+          "score": 1.0,
+          "synthetic": false
+        }
+      ]
+    },
+    {
+      "t": 60.06,
+      "faces": [
+        {
+          "slot": "right",
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "left",
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
+          "score": 1.0,
+          "synthetic": false
+        }
+      ]
+    },
+    {
+      "t": 61.31,
+      "faces": [
+        {
+          "slot": "right",
+          "x": 1299,
+          "y": 205,
+          "w": 71,
+          "h": 82,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "left",
+          "x": 672,
+          "y": 82,
+          "w": 262,
+          "h": 363,
+          "score": 1.0,
+          "synthetic": false
+        },
+        {
+          "slot": "right",
+          "x": 1643,
+          "y": 186,
+          "w": 75,
+          "h": 88,
           "score": 1.0,
           "synthetic": false
         }

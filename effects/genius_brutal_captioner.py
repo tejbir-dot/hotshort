@@ -19,10 +19,10 @@ except ImportError:
 
 # ── Current working Gemini model names (as of Sep 2026) ──────────────────────
 _GEMINI_MODELS = [
-    "gemini-2.0-flash-lite",          # Fastest free
-    "gemini-2.0-flash-001",           # Stable alias
-    "gemini-2.5-flash-preview-05-20", # Latest preview
-    "gemini-1.5-flash-8b",            # Fallback
+    "gemini-3.8-flash",               # Newest — released Sep 2026
+    "gemini-3.5-flash",               # Stable 3.5
+    "gemini-3.1-flash",               # Reliable fallback
+    "gemini-3.5-flash-lite",          # Lite — cost-sensitive fallback
 ]
 
 # ── OpenRouter caption model chain (tries in order) ──────────────────────────

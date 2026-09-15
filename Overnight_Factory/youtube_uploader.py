@@ -13,12 +13,32 @@ async def run_youtube_uploader(video_path, caption):
         # 1. 🍪 Injecting Golden Ticket (Cookies)
         print("🍪 Injecting YouTube Cookies...")
         try:
-            with open('youtube_cookie.json', 'r') as f:
-                cookies = json.load(f)
-                await context.add_cookies(cookies)
-            print("✅ Cookies Injected! System Hacked In.")
+            import os
+            cookie_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'youtube_cookie.json')
+            with open(cookie_path, 'r') as f:
+                raw_cookies = json.load(f)
+                
+                clean_cookies = []
+                for cookie in raw_cookies:
+                    # 🧹 CTO AUTO-CLEANER: Fix sameSite values
+                    if 'sameSite' in cookie:
+                        if cookie['sameSite'] not in ['Strict', 'Lax', 'None']:
+                            if cookie['sameSite'] == 'no_restriction':
+                                cookie['sameSite'] = 'None'
+                            else:
+                                del cookie['sameSite'] # Delete if null or invalid
+                    
+                    # Remove extra keys that Playwright hates
+                    for bad_key in ['hostOnly', 'session', 'storeId', 'id']:
+                        if bad_key in cookie:
+                            del cookie[bad_key]
+                            
+                    clean_cookies.append(cookie)
+
+                await context.add_cookies(clean_cookies)
+            print("✅ Cookies Cleaned & Injected! System Hacked In.")
         except Exception as e:
-            print("❌ Cookie file nahi mili. Pehle cookie save kar le bhai!")
+            print(f"❌ Cookie error: {e}")
             return
 
         page = await context.new_page()
@@ -28,10 +48,20 @@ async def run_youtube_uploader(video_path, caption):
             print("🛡️ Navigating to YouTube Studio...")
             await page.goto("https://studio.youtube.com/", timeout=60000)
             await asyncio.sleep(5.0)
+            
+            # 🛠️ THE NEW CTO BYPASS: Waking up the Upload Box
+            print("🖱️ Clicking 'Upload' icon to wake up the system...")
+            try:
+                # Top right upload arrow icon ko click karega
+                await page.locator('#upload-icon').click(timeout=5000)
+            except:
+                # Agar naya channel hai toh beech wale 'Upload videos' button ko click karega
+                await page.locator('#upload-button').click()
+                
+            await asyncio.sleep(3.0) # Upload box khulne ka wait karega
 
-            # 3. 📂 THE CTO BYPASS: Direct File Injection
+            # 3. 📂 Direct File Injection
             print(f"📂 Uploading Video directly to server: {video_path}")
-            # PC ka upload dabba kholne ki jagah, seedha code se file dalenge (Yeh kabhi fail nahi hota)
             await page.set_input_files("input[type='file']", video_path)
             
             print("⏳ Waiting for upload page to load (10 seconds)...")

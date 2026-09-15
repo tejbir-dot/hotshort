@@ -11,10 +11,10 @@ def is_gemini_enabled() -> bool:
 
 def _get_gemini_fallback_chain() -> List[str]:
     return [
-        "gemini-3.6-flash",
-        "gemini-flash-latest",
-        "gemini-3.1-flash-lite",
-        "gemini-3.7-flash"
+        "gemini-3.8-flash",       # Newest — Sep 2026
+        "gemini-3.5-flash",       # Stable
+        "gemini-3.1-flash",       # Reliable
+        "gemini-3.5-flash-lite",  # Lite fallback
     ]
 
 def post_gemini_completions(prompt: str, response_format_schema: Dict = None) -> str:

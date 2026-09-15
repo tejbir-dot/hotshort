@@ -1,0 +1,59 @@
+We need to produce three separate captions, each with specified lines.
+
+We must follow exact format: no markdown asterisks, just plain text with headings and separators.
+
+Structure:
+
+📱 TIKTOK CAPTION:
+[Line 1: Extreme clickbait hook with an emoji]
+[Line 2-3: Insane curiosity based on the transcript]
+[Line 4: Hard CTA to click the link in bio]
+[Line 5: Must include @Daniel (tagging the creator)]
+[Line 6: Hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags]
+
+Then a separator line: "--------------------------------------------------"
+
+Then 🟥 YOUTUBE SHORTS CAPTION:
+[Line 1: High SEO-value title/hook]
+[Line 2: Brief summary creating loop-curiosity]
+[Line 3: CTA to pinned comment or related video]
+[Line 4: Must include @Daniel in the description]
+[Line 5: Hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags]
+
+Then separator line.
+
+Then 📸 INSTAGRAM REELS CAPTION:
+[Line 1: Aesthetic/Value-driven hook with emoji]
+[Line 2-4: Micro-blog style value drop based on the transcript]
+[Line 5: CTA to DM a keyword or check the link in bio]
+[Line 6: Must include @Daniel to tag the creator]
+[Line 7: Hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags]
+
+Then end.
+
+We must not include markdown asterisks, no extra formatting like bold/italics. Just plain text.
+
+We need to base on transcript; ensure captions reflect details: Daniel making $1M/month, software Crayo making $600k/mo, course making multiple six figures, YouTube shorts RPM, etc.
+
+Let's craft each.
+
+TikTok caption: Need extreme clickbait hook with emoji line 1. Then line 2-3 insane curiosity. Then line 4 hard CTA to click link in bio. Then line 5 tag @Daniel. Then line 6 hashtags.
+
+We'll produce maybe:
+
+Line1: 💰 "From $500K to $1M/month in 12 months – here’s how!"
+Line2: He went from Snapchat ad revenue to building Crayo.ai – an AI tool that pumps out viral shorts on autopilot.
+Line3: Now his software pulls in $600K/month while his course prints six‑figures – all before he turned 18.
+Line4: 👉 Tap the link in bio to get the free Crayo shortcut guide!
+Line5: @Daniel
+Line6: #clipculture #thegeniusclipper #shortform #AItools #makemoneyonline #sidehustle
+
+That's 6 lines.
+
+YouTube Shorts caption:
+
+Line1: High SEO-value title/hook: maybe "How a 17‑Year‑Old Built a $600K/Month AI SaaS (Proof Inside)"
+Line2: Brief summary creating loop-curiosity: "He turned Snapchat fame into a YouTube Shorts empire, then launched Crayo.ai to automate video creation – watch the exact numbers."
+Line3: CTA to pinned comment or related video: "Comment ‘CRAYO’ for the full breakdown or watch the pinned video for his step‑by‑step blueprint."
+Line4: Must include @Daniel in the description: "@Daniel"
+Line5: Hashtags: #clipculture
