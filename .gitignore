@@ -44,3 +44,8 @@ tests/.claude/
 bin/ffmpeg.exe
 bin/ffplay.exe
 bin/ffprobe.exe
+
+bin/
+.git-rewrite/
+debug_out/
+scratch/hotshort_out/
