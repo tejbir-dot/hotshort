@@ -39,3 +39,8 @@ Thumbs.db
 .env.worker
 
 tests/.claude/
+
+# Large binaries
+bin/ffmpeg.exe
+bin/ffplay.exe
+bin/ffprobe.exe
