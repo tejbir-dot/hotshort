@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-07-27T09:58:26Z",
+  "pipeline_total_s": 8.68,
+  "stages_s": {
+    "OpenCV Read": 8.68
+  },
+  "counters": {
+    "video_open": 1,
+    "ffmpeg_encode": 0,
+    "frames_decoded": 120,
+    "frames_consumed": 0,
+    "duplicate_decodes": 0
+  }
+}

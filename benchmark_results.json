@@ -1,0 +1,18 @@
+{
+  "total_wall_s": 0.0,
+  "stages": [
+    {
+      "name": "1. yt-dlp Download",
+      "wall_s": 0.0,
+      "cpu_avg": 0.0,
+      "cpu_max": 0.0,
+      "ram_avg_gb": 0.0,
+      "gpu_avg": 0.0,
+      "gpu_max": 0.0,
+      "vram_avg_gb": 0.0,
+      "gpu_temp_max_c": 0.0,
+      "disk_read_mb": 0.0,
+      "disk_write_mb": 0.0
+    }
+  ]
+}

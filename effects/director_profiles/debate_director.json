@@ -1,0 +1,12 @@
+{
+  "name": "debate",
+  "parent": "base",
+  "camera": {
+    "current_speaker": true,
+    "reaction_cut": true,
+    "interruption_priority": true,
+    "active_speaker": true,
+    "switch_delay_ms": 100,
+    "crop": "dynamic_9_16"
+  }
+}

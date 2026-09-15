@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-07-27T09:59:57Z",
+  "pipeline_total_s": 0.12,
+  "stages_s": {
+    "VideoContext (Cached Open)": 0.12
+  },
+  "counters": {
+    "video_open": 1,
+    "ffmpeg_encode": 0,
+    "frames_decoded": 10,
+    "frames_consumed": 0,
+    "duplicate_decodes": 0
+  }
+}

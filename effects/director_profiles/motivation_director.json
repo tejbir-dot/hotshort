@@ -1,0 +1,11 @@
+{
+  "name": "motivation",
+  "parent": "base",
+  "camera": {
+    "slow_push_in": true,
+    "climax_zoom": true,
+    "cinematic_padding": true,
+    "crop": "dynamic_9_16",
+    "stabilization": true
+  }
+}

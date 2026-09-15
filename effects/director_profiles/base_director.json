@@ -1,0 +1,17 @@
+{
+  "name": "base",
+  "camera": {
+    "active_speaker": true,
+    "switch_delay_ms": 500,
+    "reaction_time_ms": 200,
+    "crop": "dynamic_9_16",
+    "zoom": "smooth",
+    "stabilization": true,
+    "slow_push_in": false,
+    "climax_zoom": false,
+    "reaction_cut": false
+  },
+  "transitions": {
+    "type": "hard_cut"
+  }
+}

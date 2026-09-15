@@ -1,0 +1,8 @@
+id,scenario,legacy_score,new_score
+1,Scream -> instant dead silence,0.225,0.912
+2,Monotone narration,0.2,0.1
+3,Visual-only spike,0.118,0.904
+4,Loud music/noise spike,0.244,0.1
+5,Sarcasm (tonal shift only),0.072,0.502
+6,Non-English clip,0.0,0.96
+7,All-zero audio track,0.0,0.0

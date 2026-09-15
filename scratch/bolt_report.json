@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-07-27T09:57:57Z",
+  "pipeline_total_s": 0.24,
+  "stages_s": {
+    "Decode": 0.12,
+    "Face Tracking": 0.05,
+    "Encoding": 0.07
+  },
+  "counters": {
+    "video_open": 4,
+    "ffmpeg_encode": 2,
+    "frames_decoded": 0,
+    "frames_consumed": 0,
+    "duplicate_decodes": 0
+  }
+}

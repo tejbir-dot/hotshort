@@ -1,0 +1,12 @@
+{
+  "channel_id": "mock_channel",
+  "runs": 1,
+  "params": {
+    "HS_MIN_SWITCH_FRAMES": 12,
+    "HS_SPLIT_MIN_GAP": 0.36575,
+    "HS_TALKING_THRESHOLD": 83.0,
+    "HS_SCENE_CUT_THRESHOLD": 22.0,
+    "HS_EMA_FLOOR": 0.5
+  },
+  "last_updated": "2026-08-30T15:50:21.361973"
+}

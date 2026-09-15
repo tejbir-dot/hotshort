@@ -1,0 +1,26 @@
+{
+  "channel_id": "test_podcast_ch_v2",
+  "runs": 3,
+  "params": {
+    "HS_MIN_SWITCH_FRAMES": 39.75,
+    "HS_SPLIT_MIN_GAP": 0.352034375,
+    "HS_TALKING_THRESHOLD": 83.0,
+    "HS_SCENE_CUT_THRESHOLD": 22.0,
+    "HS_EMA_FLOOR": 0.5
+  },
+  "score_history": [
+    43.5,
+    48.5,
+    100.0
+  ],
+  "avg_score": 64.0,
+  "best_score": 100.0,
+  "ghost_history": [
+    {
+      "slot": "left",
+      "pct": 1.0,
+      "ts": "2026-08-31T04:59:28.112985"
+    }
+  ],
+  "last_updated": "2026-08-31T04:59:28.145086"
+}

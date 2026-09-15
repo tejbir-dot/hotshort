@@ -1,0 +1,7 @@
+video_id,start_s,end_s,legacy_score,legacy_selected,new_score,new_selected,transcript_excerpt
+test123,17.28,21.84,0.43500000000000005,True,0.5986288502176493,True,"or you're trying to write awesome scripts to do a bunch of different things, then Pythons for you."
+test_warning_fallback_segment,0.0,4.0,0.33575,True,1.0,True,"Alright, so here we are, one of the elephants."
+test_warning_full_fallback,0.0,4.0,0.33575,True,1.0,True,"Alright, so here we are, one of the elephants."
+test_warning_ing_0,0.0,4.0,0.33575,True,1.0,True,"Alright, so here we are, one of the elephants."
+test_warning_ing_1,0.0,4.0,0.33575,True,1.0,True,"Alright, so here we are, one of the elephants."
+test_warning_ing_2,0.0,4.0,0.33575,True,1.0,True,"Alright, so here we are, one of the elephants."

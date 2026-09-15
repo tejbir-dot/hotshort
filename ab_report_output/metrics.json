@@ -1,0 +1,21 @@
+{
+  "total_candidate_windows": 6,
+  "legacy_selected_count": 6,
+  "new_selected_count": 6,
+  "both_selected_count": 6,
+  "agreement_rate": 1.0,
+  "legacy_only_count": 0,
+  "new_only_count": 0,
+  "legacy_score_stats": {
+    "min": 0.3357,
+    "max": 0.435,
+    "mean": 0.3523
+  },
+  "new_score_stats": {
+    "min": 0.5986,
+    "max": 1.0,
+    "mean": 0.9331
+  },
+  "legacy_only_examples": [],
+  "new_only_examples": []
+}

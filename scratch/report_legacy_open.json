@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-07-27T09:59:57Z",
+  "pipeline_total_s": 0.0,
+  "stages_s": {
+    "Legacy (2x Open)": 0.0
+  },
+  "counters": {
+    "video_open": 2,
+    "ffmpeg_encode": 0,
+    "frames_decoded": 0,
+    "frames_consumed": 0,
+    "duplicate_decodes": 0
+  }
+}

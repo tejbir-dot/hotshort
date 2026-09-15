@@ -1,0 +1,66 @@
+{
+  "input_path": "test_slice.mp4",
+  "output_path": "scratch/test_mode_a_out.mp4",
+  "source_start": 0.0,
+  "source_end": 5.0,
+  "target_ratio": "9:16",
+  "features": {
+    "captions": true,
+    "active_speaker": true,
+    "visual_enhance": true,
+    "audio_polish": true,
+    "hook_speed_ramp": true
+  },
+  "boring_monologue_detected": false,
+  "trim": {
+    "in": 0.0,
+    "out": 2.0
+  },
+  "hook_ramp": {
+    "window_s": 0.0,
+    "speed": 1.06
+  },
+  "video_format": "monologue",
+  "speaker_positions": [
+    0.5
+  ],
+  "engagement_score": 63.82,
+  "captions_count": 1,
+  "visual_effect_graph": {
+    "single_encode_path": true,
+    "ffmpeg_passes": 2,
+    "intermediate_files_created": 1,
+    "decode_encode_passes_saved": 0,
+    "trim_compiled_into_final_graph": false,
+    "hook_zoom_compiled_into_final_graph": false,
+    "branding_outro_external_pass": true,
+    "branding_merged_into_wce": false
+  },
+  "focus_x": 0.5,
+  "platform_variants": [
+    {
+      "variant_id": "A",
+      "focus": "Hook-heavy opener",
+      "first_3s": "Bold hook text + 1.08x speed ramp",
+      "caption_style": "Large bottom captions",
+      "target_platform": "TikTok/Reels",
+      "predicted_uplift_pct": 4.0
+    },
+    {
+      "variant_id": "B",
+      "focus": "Authority clarity",
+      "first_3s": "Cleaner intro, no emoji captions",
+      "caption_style": "Semi-minimal subtitles + CTA",
+      "target_platform": "YouTube Shorts",
+      "predicted_uplift_pct": 3.0
+    },
+    {
+      "variant_id": "RATIO",
+      "focus": "Format test 9:16",
+      "first_3s": "same hook, ratio-only test",
+      "caption_style": "same",
+      "target_platform": "Cross-platform",
+      "predicted_uplift_pct": 3.5
+    }
+  ]
+}

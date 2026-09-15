@@ -1,0 +1,130 @@
+
+========================================================================================================================
+  HOTSHORT PIPELINE BENCHMARK
+  Job      : local_1788416997
+  URL      : https://youtu.be/kheI1eqAX9o
+  Started  : 2026-09-03 12:01:15
+  Total    : 4392.7s  (73.2 min)
+========================================================================================================================
+  Stage                               Time   %Total   CPU avg/max   RAM GB   GPU avg/max  VRAM GB   Temp   Disk R   Disk W
+------------------------------------------------------------------------------------------------------------------------
+  1_download                          0.0s     0.0%    0.0/  0.0%  14.73 GB    3.0/  3.0%   1.52 GB    39C      0 MB      0 MB
+  2_orchestration                   421.7s     9.6%   25.7/ 99.6%  14.63 GB    4.7/ 48.0%   1.62 GB    41C   3682 MB    876 MB
+  3_format_classify                 202.9s     4.6%   99.2/100.0%  15.40 GB    5.2/ 36.0%   1.84 GB    41C   1305 MB    508 MB
+  4_haar_scan                       301.8s     6.9%   98.9/100.0%  15.97 GB    4.6/ 29.0%   1.69 GB    40C    898 MB    356 MB
+  5_caption_pregen                    0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip0                   11.1s     0.3%   91.0/100.0%  14.00 GB    6.5/ 17.0%   1.68 GB    39C     34 MB     52 MB
+  6b_wce_clip0                       72.3s     1.6%   61.5/ 94.4%  14.40 GB   19.5/ 43.0%   1.79 GB    41C     92 MB     87 MB
+  6c_upload_clip0                     0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip1                    9.6s     0.2%   97.7/100.0%  14.10 GB    4.3/  9.0%   1.70 GB    39C      6 MB     22 MB
+  6b_wce_clip1                       71.7s     1.6%   68.3/100.0%  14.64 GB   14.5/ 37.0%   1.79 GB    43C     26 MB    124 MB
+  6c_upload_clip1                     0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip2                   13.3s     0.3%   98.2/100.0%  14.37 GB    8.6/ 19.0%   1.72 GB    41C      5 MB     25 MB
+  6b_wce_clip2                       86.5s     2.0%   63.7/ 93.8%  14.52 GB   20.2/ 44.0%   1.82 GB    43C     57 MB    104 MB
+  6c_upload_clip2                     0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip3                   11.4s     0.3%   98.7/100.0%  14.42 GB   24.1/ 37.0%   1.79 GB    41C      4 MB     25 MB
+  6b_wce_clip3                       76.2s     1.7%   70.9/ 98.5%  14.52 GB   15.2/ 38.0%   1.98 GB    42C     95 MB    179 MB
+  6c_upload_clip3                     0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip4                   15.3s     0.3%   99.1/100.0%  14.43 GB   16.1/ 35.0%   2.00 GB    42C      7 MB     39 MB
+  6b_wce_clip4                       89.2s     2.0%   67.3/100.0%  14.86 GB   18.8/ 43.0%   2.18 GB    43C    247 MB    464 MB
+  6c_upload_clip4                     0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip5                    7.7s     0.2%   90.1/100.0%  13.82 GB    2.4/  6.0%   2.02 GB    41C     58 MB     17 MB
+  6b_wce_clip5                       50.9s     1.2%   59.6/ 91.2%  13.92 GB   17.3/ 34.0%   2.12 GB    42C     43 MB     73 MB
+  6c_upload_clip5                     0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip6                    8.5s     0.2%   98.1/100.0%  13.70 GB   12.0/ 15.0%   1.99 GB    40C      3 MB     15 MB
+  6b_wce_clip6                       49.2s     1.1%   62.2/ 91.5%  14.06 GB   16.6/ 34.0%   2.07 GB    42C      4 MB     72 MB
+  6c_upload_clip6                     0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip7                    9.9s     0.2%   97.6/100.0%  13.73 GB    8.9/ 20.0%   2.04 GB    40C      4 MB     18 MB
+  6a_extract_clip8                   17.1s     0.4%   99.0/100.0%  14.07 GB   10.9/ 32.0%   2.03 GB    42C     39 MB     47 MB
+  6b_wce_clip8                       91.1s     2.1%   67.4/ 99.2%  14.35 GB   18.6/ 41.0%   1.99 GB    42C    810 MB    166 MB
+  6c_upload_clip8                     0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip9                   10.4s     0.2%   94.3/100.0%  13.23 GB    6.4/ 31.0%   2.15 GB    40C      4 MB     23 MB
+  6a_extract_clip10                  14.0s     0.3%   98.2/100.0%  13.16 GB    5.7/ 24.0%   2.15 GB    40C      5 MB     46 MB
+  6b_wce_clip10                      98.5s     2.2%   61.4/ 90.7%  13.34 GB   20.4/ 38.0%   2.26 GB    42C     55 MB    163 MB
+  6c_upload_clip10                    0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip11                  16.9s     0.4%   99.2/100.0%  13.12 GB   15.2/ 43.0%   2.20 GB    39C      8 MB     50 MB
+  6a_extract_clip12                  14.6s     0.3%   98.2/100.0%  13.14 GB   19.1/ 33.0%   2.18 GB    40C      5 MB     46 MB
+  6b_wce_clip12                     101.8s     2.3%   70.7/100.0%  13.32 GB   13.2/ 37.0%   2.33 GB    42C    142 MB    170 MB
+  6c_upload_clip12                    0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip13                  12.9s     0.3%   98.4/100.0%  13.26 GB    3.1/ 14.0%   2.29 GB    42C      6 MB     31 MB
+  6b_wce_clip13                      90.1s     2.1%   62.3/ 92.2%  13.46 GB   22.4/ 34.0%   2.37 GB    42C     60 MB    287 MB
+  6c_upload_clip13                    0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip14                  14.9s     0.3%   98.1/100.0%  12.92 GB    4.7/ 15.0%   2.35 GB    41C    209 MB    222 MB
+  6b_wce_clip14                      74.1s     1.7%   62.3/100.0%  13.07 GB   18.2/ 37.0%   2.42 GB    42C     48 MB    200 MB
+  6c_upload_clip14                    0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip15                   9.7s     0.2%   97.6/100.0%  12.64 GB    9.9/ 24.0%   2.35 GB    40C      4 MB     19 MB
+  6b_wce_clip15                      68.5s     1.6%   64.2/ 95.5%  12.96 GB   21.7/ 37.0%   2.46 GB    41C      4 MB     89 MB
+  6c_upload_clip15                    0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip16                   9.6s     0.2%   98.3/100.0%  12.95 GB    5.0/  8.0%   2.37 GB    40C      9 MB     18 MB
+  6b_wce_clip16                      68.1s     1.6%   64.7/ 97.3%  13.16 GB   20.9/ 44.0%   2.45 GB    42C     29 MB    165 MB
+  6c_upload_clip16                    0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6a_extract_clip17                  13.3s     0.3%   99.8/100.0%  13.23 GB   29.4/ 39.0%   2.33 GB    42C     21 MB     35 MB
+  6b_wce_clip17                      79.1s     1.8%   86.1/100.0%  13.60 GB   21.5/ 45.0%   2.43 GB    43C    138 MB    111 MB
+  6c_upload_clip17                    0.0s     0.0%    0.0/  0.0%   0.00 GB    0.0/  0.0%   0.00 GB     0C      0 MB      0 MB
+  6b_wce_clip7                     2000.1s    45.5%   72.0/100.0%  13.65 GB   12.4/ 51.0%   2.29 GB    43C   2915 MB   3830 MB
+  6b_wce_clip9                     1727.1s    39.3%   72.3/100.0%  13.54 GB   12.9/ 51.0%   2.32 GB    43C   1937 MB   3502 MB
+  6b_wce_clip11                    1433.5s    32.6%   73.7/100.0%  13.55 GB   13.6/ 51.0%   2.35 GB    43C   1857 MB   3139 MB
+------------------------------------------------------------------------------------------------------------------------
+  TOTAL                            4392.7s  100.0%
+========================================================================================================================
+
+  TIMELINE (proportional)
+
+  1_download                                                                                     0.0s  (0.0%)
+  2_orchestration               █████                                                          421.7s  (9.6%)
+  3_format_classify             ██                                                             202.9s  (4.6%)
+  4_haar_scan                   ████                                                           301.8s  (6.9%)
+  5_caption_pregen                                                                               0.0s  (0.0%)
+  6a_extract_clip0                                                                              11.1s  (0.3%)
+  6b_wce_clip0                                                                                  72.3s  (1.6%)
+  6c_upload_clip0                                                                                0.0s  (0.0%)
+  6a_extract_clip1                                                                               9.6s  (0.2%)
+  6b_wce_clip1                                                                                  71.7s  (1.6%)
+  6c_upload_clip1                                                                                0.0s  (0.0%)
+  6a_extract_clip2                                                                              13.3s  (0.3%)
+  6b_wce_clip2                  █                                                               86.5s  (2.0%)
+  6c_upload_clip2                                                                                0.0s  (0.0%)
+  6a_extract_clip3                                                                              11.4s  (0.3%)
+  6b_wce_clip3                  █                                                               76.2s  (1.7%)
+  6c_upload_clip3                                                                                0.0s  (0.0%)
+  6a_extract_clip4                                                                              15.3s  (0.3%)
+  6b_wce_clip4                  █                                                               89.2s  (2.0%)
+  6c_upload_clip4                                                                                0.0s  (0.0%)
+  6a_extract_clip5                                                                               7.7s  (0.2%)
+  6b_wce_clip5                                                                                  50.9s  (1.2%)
+  6c_upload_clip5                                                                                0.0s  (0.0%)
+  6a_extract_clip6                                                                               8.5s  (0.2%)
+  6b_wce_clip6                                                                                  49.2s  (1.1%)
+  6c_upload_clip6                                                                                0.0s  (0.0%)
+  6a_extract_clip7                                                                               9.9s  (0.2%)
+  6a_extract_clip8                                                                              17.1s  (0.4%)
+  6b_wce_clip8                  █                                                               91.1s  (2.1%)
+  6c_upload_clip8                                                                                0.0s  (0.0%)
+  6a_extract_clip9                                                                              10.4s  (0.2%)
+  6a_extract_clip10                                                                             14.0s  (0.3%)
+  6b_wce_clip10                 █                                                               98.5s  (2.2%)
+  6c_upload_clip10                                                                               0.0s  (0.0%)
+  6a_extract_clip11                                                                             16.9s  (0.4%)
+  6a_extract_clip12                                                                             14.6s  (0.3%)
+  6b_wce_clip12                 █                                                              101.8s  (2.3%)
+  6c_upload_clip12                                                                               0.0s  (0.0%)
+  6a_extract_clip13                                                                             12.9s  (0.3%)
+  6b_wce_clip13                 █                                                               90.1s  (2.1%)
+  6c_upload_clip13                                                                               0.0s  (0.0%)
+  6a_extract_clip14                                                                             14.9s  (0.3%)
+  6b_wce_clip14                 █                                                               74.1s  (1.7%)
+  6c_upload_clip14                                                                               0.0s  (0.0%)
+  6a_extract_clip15                                                                              9.7s  (0.2%)
+  6b_wce_clip15                                                                                 68.5s  (1.6%)
+  6c_upload_clip15                                                                               0.0s  (0.0%)
+  6a_extract_clip16                                                                              9.6s  (0.2%)
+  6b_wce_clip16                                                                                 68.1s  (1.6%)
+  6c_upload_clip16                                                                               0.0s  (0.0%)
+  6a_extract_clip17                                                                             13.3s  (0.3%)
+  6b_wce_clip17                 █                                                               79.1s  (1.8%)
+  6c_upload_clip17                                                                               0.0s  (0.0%)
+  6b_wce_clip7                  ███████████████████████████                                   2000.1s  (45.5%)
+  6b_wce_clip9                  ███████████████████████                                       1727.1s  (39.3%)
+  6b_wce_clip11                 ███████████████████                                           1433.5s  (32.6%)
+
+========================================================================================================================

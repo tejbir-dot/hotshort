@@ -1,0 +1,54 @@
+We need to produce three separate captions for each platform, following exact format, no markdown asterisks, but they gave format with headings lines like:
+
+📱 TIKTOK CAPTION:
+[Line 1: Extreme clickbait hook with an emoji]
+[Line 2-3: Insane curiosity based on the transcript]
+[Line 4: Hard CTA to click the link in bio]
+[Line 5: Must include @Daniel (tagging the creator)]
+[Line 6: Hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags]
+
+Then a line of dashes as separator.
+
+Similarly for YouTube Shorts and Instagram Reels.
+
+We must not use markdown asterisks (like bold). Just plain text.
+
+We must fill the lines accordingly.
+
+We need to base on transcript: Daniel speaking about top five psychological tips for trading.
+
+We need to generate catchy hooks.
+
+TikTok caption: line1: extreme clickbait hook with an emoji (maybe "💰 Stop losing money!"). Use emoji.
+
+Line2-3: insane curiosity based on transcript. Perhaps two lines.
+
+Line4: Hard CTA to click the link in bio (maybe "Tap the link in bio to unlock the free cheat sheet!").
+
+Line5: Must include @Daniel (tagging the creator). So "@Daniel".
+
+Line6: Hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags (like #tradingtips, #psychology, #makemoney, #stocktok, #daytrading). Ensure total.
+
+Similarly for YouTube Shorts: line1: high SEO-value title/hook. line2: brief summary creating loop-curiosity. line3: CTA to pinned comment or related video. line4: Must include @Daniel. line5: Hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags (like #trading, #stockmarket, #financialfreedom, #investing, #daytrading, #psychology, #wealth).
+
+Instagram Reels: line1: aesthetic/value-driven hook with emoji. line2-4: micro-blog style value drop based on transcript. line5: CTA to DM a keyword or check the link in bio. line6: Must include @Daniel. line7: Hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags (like #tradingpsychology, #moneymindset, #financialliteracy, #investingtips, #wealthbuilding, #mindsetshift, #stocktrader, #cryptotips maybe not, but okay). Must not use markdown.
+
+We need to ensure each block is separated by the line of dashes exactly: "--------------------------------------------------". Provide exactly as shown.
+
+Also ensure no extra asterisks or markdown formatting.
+
+Let's craft.
+
+TikTok:
+
+Line1: 🚨 "This ONE mindset shift made me millions!" (include emoji)
+
+Line2-3: "Learn why sticking to ONE strategy beats hopping around, and how losses actually fuel long‑term profit." maybe two lines.
+
+Line4: "👉 Click the link in bio for the FREE 5‑step trading psychology checklist!"
+
+Line5: "@Daniel"
+
+Line6: Hashtags: #clipculture #thegeniusclipper #tradingtips #stocktok #daytrading #psychology #makemoney
+
+That's 7 hashtags total (including the two required). Need 3-5 TikTok specific tags besides the two required; we have 5 extra: #tradingtips #

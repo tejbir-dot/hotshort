@@ -1,0 +1,303 @@
+﻿======================================================================
+RUNNING NARRATIVE OBSERVATORY ON REAL TRANSCRIPT
+======================================================================
+[ORCH] ORCHESTRATOR STARTED
+PIPELINE STAGE: start staged pipeline
+STAGE OK: transcription
+STAGE OK: av_features
+STAGE OK: curiosity
+STAGE OK: narrative triggers
+STAGE OK: narrative intelligence
+STAGE OK: idea graph
+STAGE ENTER: candidate generation
+DEBUG select_candidate_clips = <function select_candidate_clips at 0x000001CE178AB740>
+STAGE OK: candidate generation
+STAGE OK: global hook hunter
+STAGE ENTER: semantic scoring
+STAGE OK: semantic scoring
+STAGE ENTER: enrichment
+STAGE OK: enrichment
+STAGE OK: insight detector
+STAGE ENTER: validation
+[INFO] Traffic-light gates bypassed! Using soft gates (threshold=0.35).
+STAGE OK: validation
+STAGE ENTER: ranking
+STAGE OK: ranking
+[ARC] hook_idx=201 payoff_idx=None duration=36.7s
+[ARC] hook_idx=211 payoff_idx=None duration=37.6s
+[ARC] hook_idx=124 payoff_idx=None duration=40.0s
+[ARC] hook_idx=131 payoff_idx=None duration=40.0s
+[ARC] hook_idx=10 payoff_idx=None duration=40.0s
+[ARC] hook_idx=267 payoff_idx=270 duration=29.8s
+[ARC] hook_idx=308 payoff_idx=None duration=40.0s
+[ARC] hook_idx=56 payoff_idx=None duration=40.0s
+[ARC] hook_idx=201 payoff_idx=None duration=89.5s
+[ARC] hook_idx=211 payoff_idx=None duration=90.0s
+[ARC] hook_idx=124 payoff_idx=152 duration=90.0s
+[ARC] hook_idx=131 payoff_idx=152 duration=90.0s
+[ARC] hook_idx=10 payoff_idx=None duration=90.0s
+[ARC] hook_idx=267 payoff_idx=270 duration=90.0s
+[ARC] hook_idx=308 payoff_idx=None duration=90.0s
+[ARC] hook_idx=56 payoff_idx=None duration=90.0s
+STAGE OK: arc assembler
+[PATTERN] clip=0 patterns=['analogy_explanation']
+[PATTERN] clip=1 patterns=[]
+[PATTERN] clip=2 patterns=[]
+[PATTERN] clip=3 patterns=[]
+[PATTERN] clip=4 patterns=[]
+[PATTERN] clip=5 patterns=[]
+[PATTERN] clip=6 patterns=['analogy_explanation']
+[PATTERN] clip=7 patterns=[]
+STAGE OK: editor refiner
+============================================================
+                 HOTSHORT PIPELINE X-RAY
+============================================================
+
+[STAGE AUTOPSIES]
+
+? STRICT_PASS
+   input=447 | output=12 | time=0.001s
+   Rejected:
+     semantic<0.35 = 240
+     punch<0.25 = 422
+
+? CANDIDATE_GENERATION
+   input=459 | output=8 | time=0.004s
+
+? HOOK_HUNTER
+   input=8 | output=24 | time=0.756s
+
+? BACKFILL
+   input=24 | output=24 | time=0.000s
+
+? GROQ_TRANSCRIPT_FIRST
+   input=0 | output=0 | time=0.000s
+
+? VALIDATION
+   input=24 | output=24 | time=0.000s
+
+? ARC_ASSEMBLER
+   input=8 | output=8 | time=0.756s
+
+? EDITOR_REFINER
+   input=8 | output=8 | time=0.178s
+
+? IDEA_GRAPH
+   input=459 | output=459 | time=0.000s
+
+? PRE_FILTER
+   input=459 | output=447 | time=0.000s
+   Rejected:
+     low_semantic = 12
+     low_punch = 12
+     low_curiosity = 12
+
+============================================================
+                CLIP LIFECYCLE TRACE
+============================================================
+
+? c_0001 | 533.9s - 593.2s | Status: final_clip_output
+   Text: "meaning stop it. That's why you have to batch your meetings of similar things or take..."
+   Scores: score=0.47, curiosity=0.00, punch=0.65, semantic=0.47, arc_score=0.23
+   History:
+     ? Created by candidate_generation at 521.0s-525.2s
+     ? Finalized as output: passed_validation
+     ? Modified by arc_assembler (changes: {'start': 503.7, 'end': 540.4, 'scores': {'arc_score': 0.2385}})
+     ? Modified by arc_assembler (changes: {'start': 503.7, 'end': 593.21, 'scores': {'arc_score': 0.2333}})
+     ? Modified by editor_refiner (changes: {'start': 533.92})
+     ? Finalized as output: final_clip_output
+
+? c_0002 | 539.2s - 635.8s | Status: final_clip_output
+   Text: "So the effective executive will teach you how to remove things from your calendar...."
+   Scores: score=0.46, curiosity=0.00, punch=0.65, semantic=0.43, arc_score=0.13
+   History:
+     ? Created by candidate_generation at 554.2s-558.4s
+     ? Finalized as output: passed_validation
+     ? Modified by arc_assembler (changes: {'start': 545.78, 'end': 583.41, 'scores': {'arc_score': 0.167}})
+     ? Modified by arc_assembler (changes: {'start': 545.78, 'end': 635.78, 'scores': {'arc_score': 0.1279}})
+     ? Modified by editor_refiner (changes: {'start': 539.2})
+     ? Finalized as output: final_clip_output
+
+? c_0003 | 324.5s - 390.5s | Status: final_clip_output
+   Text: "That's why you need to have some support in your life...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41, arc_score=0.29
+   History:
+     ? Created by candidate_generation at 306.1s-308.2s
+     ? Finalized as output: passed_validation
+     ? Modified by arc_assembler (changes: {'start': 300.49, 'end': 340.49, 'scores': {'arc_score': 0.1556}})
+     ? Modified by arc_assembler (changes: {'start': 300.49, 'end': 390.49, 'scores': {'arc_score': 0.2897}})
+     ? Modified by editor_refiner (changes: {'start': 324.49})
+     ? Finalized as output: final_clip_output
+
+? c_0004 | 324.5s - 404.6s | Status: final_clip_output
+   Text: "And most people just don't know what to give that person...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41, arc_score=0.49
+   History:
+     ? Created by candidate_generation at 309.8s-312.4s
+     ? Finalized as output: passed_validation
+     ? Modified by arc_assembler (changes: {'start': 314.59, 'end': 354.59, 'scores': {'arc_score': 0.256}})
+     ? Modified by arc_assembler (changes: {'start': 314.59, 'end': 404.59, 'scores': {'arc_score': 0.4868}})
+     ? Modified by editor_refiner (changes: {'start': 324.49})
+     ? Finalized as output: final_clip_output
+
+? c_0005 | 30.1s - 122.5s | Status: final_clip_output
+   Text: "No, he's like, I've got to make some new space material...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.38, arc_score=0.22
+   History:
+     ? Created by candidate_generation at 34.0s-37.0s
+     ? Finalized as output: passed_validation
+     ? Modified by arc_assembler (changes: {'start': 32.55, 'end': 72.55, 'scores': {'arc_score': 0.2776}})
+     ? Modified by arc_assembler (changes: {'start': 32.55, 'end': 122.55, 'scores': {'arc_score': 0.2222}})
+     ? Modified by editor_refiner (changes: {'start': 30.15})
+     ? Finalized as output: final_clip_output
+
+? c_0006 | 171.2s - 254.3s | Status: final_clip_output
+   Text: "of your business and that's what you should be focusing on...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37, arc_score=0.28
+   History:
+     ? Created by candidate_generation at 156.3s-158.8s
+     ? Finalized as output: passed_validation
+     ? Modified by arc_assembler (changes: {'start': 164.27, 'end': 204.27, 'scores': {'arc_score': 0.2362}})
+     ? Modified by arc_assembler (changes: {'start': 164.27, 'end': 254.27, 'scores': {'arc_score': 0.279}})
+     ? Modified by editor_refiner (changes: {'start': 171.25})
+     ? Finalized as output: final_clip_output
+
+? c_0007 | 699.3s - 787.2s | Status: final_clip_output
+   Text: "And that's like, that's like you're lying to yourself...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37, arc_score=0.27
+   History:
+     ? Created by candidate_generation at 710.9s-714.8s
+     ? Finalized as output: passed_validation
+     ? Modified by arc_assembler (changes: {'start': 697.19, 'end': 727.0, 'scores': {'arc_score': 0.2297}})
+     ? Modified by arc_assembler (changes: {'start': 697.19, 'end': 787.19, 'scores': {'arc_score': 0.2728}})
+     ? Modified by editor_refiner (changes: {'start': 699.33})
+     ? Finalized as output: final_clip_output
+
+? c_0008 | 821.6s - 891.1s | Status: final_clip_output
+   Text: "will feel so familiar because I've been there a thousand times...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37, arc_score=0.15
+   History:
+     ? Created by candidate_generation at 799.4s-802.6s
+     ? Finalized as output: passed_validation
+     ? Modified by arc_assembler (changes: {'start': 801.14, 'end': 841.14, 'scores': {'arc_score': 0.1749}})
+     ? Modified by arc_assembler (changes: {'start': 801.14, 'end': 891.14, 'scores': {'arc_score': 0.1532}})
+     ? Modified by editor_refiner (changes: {'start': 821.64})
+     ? Finalized as output: final_clip_output
+
+? c_0009 | 662.2s - 663.7s | Status: passed_validation
+   Text: "where you had to wear a bunch of spandex...."
+   Scores: score=0.64, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 662.2s-663.7s
+     ? Finalized as output: passed_validation
+
+? c_0010 | 176.0s - 178.3s | Status: passed_validation
+   Text: "but the whole philosophy is that we have to figure..."
+   Scores: score=0.61, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 176.0s-178.3s
+     ? Finalized as output: passed_validation
+
+? c_0011 | 172.4s - 174.0s | Status: passed_validation
+   Text: "how he builds businesses...."
+   Scores: score=0.59, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 172.4s-174.0s
+     ? Finalized as output: passed_validation
+
+? c_0012 | 822.8s - 824.2s | Status: passed_validation
+   Text: "You can decide to be rich right now...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 822.8s-824.2s
+     ? Finalized as output: passed_validation
+
+? c_0013 | 449.7s - 452.5s | Status: passed_validation
+   Text: "Most people think, no, I worked on this all week, I worked on this all week...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 449.7s-452.5s
+     ? Finalized as output: passed_validation
+
+? c_0014 | 938.5s - 940.5s | Status: passed_validation
+   Text: "why things aren't going their way...."
+   Scores: score=0.55, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 938.5s-940.5s
+     ? Finalized as output: passed_validation
+
+? c_0015 | 899.8s - 900.9s | Status: passed_validation
+   Text: "I got an idea...."
+   Scores: score=0.54, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 899.8s-900.9s
+     ? Finalized as output: passed_validation
+
+? c_0016 | 414.5s - 415.7s | Status: passed_validation
+   Text: "the team knows about it...."
+   Scores: score=0.53, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 414.5s-415.7s
+     ? Finalized as output: passed_validation
+
+? c_0017 | 897.4s - 898.6s | Status: passed_validation
+   Text: "with a little bit more confidence...."
+   Scores: score=0.52, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 897.4s-898.6s
+     ? Finalized as output: passed_validation
+
+? c_0018 | 197.3s - 199.8s | Status: passed_validation
+   Text: "this month to next month, what breaks?..."
+   Scores: score=0.51, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 197.3s-199.8s
+     ? Finalized as output: passed_validation
+
+? c_0019 | 887.5s - 890.6s | Status: passed_validation
+   Text: "imagine being there and how would you live in that energy?..."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 887.5s-890.6s
+     ? Finalized as output: passed_validation
+
+? c_0020 | 551.2s - 554.2s | Status: passed_validation
+   Text: "That's the 5% that'll get you 95% of results...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 551.2s-554.2s
+     ? Finalized as output: passed_validation
+
+? c_0021 | 754.3s - 756.1s | Status: passed_validation
+   Text: "Everything is a byproduct of how we feel...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 754.3s-756.1s
+     ? Finalized as output: passed_validation
+
+? c_0022 | 1039.7s - 1042.5s | Status: passed_validation
+   Text: "when you perform and how you do it...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 1039.7s-1042.5s
+     ? Finalized as output: passed_validation
+
+? c_0023 | 303.8s - 306.1s | Status: passed_validation
+   Text: "Dan, my to do list is overflowing...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 303.8s-306.1s
+     ? Finalized as output: passed_validation
+
+? c_0024 | 322.8s - 325.7s | Status: passed_validation
+   Text: "All right, so once you find your bottleneck, awesome...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     ? Created by hook_hunter at 322.8s-325.7s
+     ? Finalized as output: passed_validation
+
+============================================================
+TOTAL PROCESS TIME: 2.768789052963257
+======================================================================
+PIPELINE COMPLETED. FOUND 8 FINAL CLIPS.
+======================================================================

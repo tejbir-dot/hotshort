@@ -1,0 +1,2837 @@
+[START] Running pipeline...
+[ENV] HS_EXPERIMENT_MODE=1
+[OPTIMIZED-PASSES] Optimized dual pass system loaded
+[EXEC] Calling orchestrate...
+[ORCH] pipeline_mode=staged
+[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST=0
+[ORCH] Startup Env: HS_GROQ_CORTEX_ENABLED=1
+[ORCH] Startup Env: HS_FORCE_30S_PADDING=None
+[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST_FORCE=0
+[ORCH][INPUT_MEDIA] path=dummy.mp4
+[ORCH][L1_TRANSCRIPTION] transcript_segments=490 source=cache engine=unknown reuse_cache=1 wall_s=0.0
+[ORCH][TARGETS] duration_s=1219.76 top_k=8 target_min=6
+[ORCH][L2_AUDIO_VISUAL_FEATURES] audio_points=490 visual_points=490 wall_s=0.004
+[BRAIN] idea_graph lazy=1 enabled=1 reason=loaded
+Loading FFmpeg6
+Failed to load FFmpeg6 extension.
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 116, in _find_ffmpeg_extension
+    ext = _find_versionsed_ffmpeg_extension(ffmpeg_ver)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 108, in _find_versionsed_ffmpeg_extension
+    _load_lib(lib)
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 94, in _load_lib
+    torch.ops.load_library(path)
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torch\_ops.py", line 1350, in load_library
+    ctypes.CDLL(path)
+  File "C:\Program Files\Python311\Lib\ctypes\__init__.py", line 376, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: Could not find module 'C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\lib\libtorio_ffmpeg6.pyd' (or one of its dependencies). Try using the full path with constructor syntax.
+Loading FFmpeg5
+Failed to load FFmpeg5 extension.
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 116, in _find_ffmpeg_extension
+    ext = _find_versionsed_ffmpeg_extension(ffmpeg_ver)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 108, in _find_versionsed_ffmpeg_extension
+    _load_lib(lib)
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 94, in _load_lib
+    torch.ops.load_library(path)
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torch\_ops.py", line 1350, in load_library
+    ctypes.CDLL(path)
+  File "C:\Program Files\Python311\Lib\ctypes\__init__.py", line 376, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: Could not find module 'C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\lib\libtorio_ffmpeg5.pyd' (or one of its dependencies). Try using the full path with constructor syntax.
+Loading FFmpeg4
+Failed to load FFmpeg4 extension.
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 116, in _find_ffmpeg_extension
+    ext = _find_versionsed_ffmpeg_extension(ffmpeg_ver)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 108, in _find_versionsed_ffmpeg_extension
+    _load_lib(lib)
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 94, in _load_lib
+    torch.ops.load_library(path)
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torch\_ops.py", line 1350, in load_library
+    ctypes.CDLL(path)
+  File "C:\Program Files\Python311\Lib\ctypes\__init__.py", line 376, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: Could not find module 'C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\lib\libtorio_ffmpeg4.pyd' (or one of its dependencies). Try using the full path with constructor syntax.
+Loading FFmpeg
+Failed to load FFmpeg extension.
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 116, in _find_ffmpeg_extension
+    ext = _find_versionsed_ffmpeg_extension(ffmpeg_ver)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\torio\_extension\utils.py", line 106, in _find_versionsed_ffmpeg_extension
+    raise RuntimeError(f"FFmpeg{version} extension is not available.")
+RuntimeError: FFmpeg extension is not available.
+matplotlib data path: C:\Users\n\Documents\hotshort\.venv\Lib\site-packages\matplotlib\mpl-data
+CONFIGDIR=C:\Users\n\.matplotlib
+interactive is False
+platform is win32
+CACHEDIR=C:\Users\n\.matplotlib
+Using fontManager instance from C:\Users\n\.matplotlib\fontlist-v390.json
+[CURIOSITY_FORENSIC] analyze_segments_for_ignition returned 5 ignitions. Proceeding to candidate expansion...
+
+[CURIOSITY_FORENSIC]
+ignitions_found=5
+rejected_retention=0
+rejected_score=0
+rejected_payoff=0
+survived=1
+
+[ORCH][L3_CURIOSITY_ENGINE] candidates=1 curve_points=490 wall_s=0.902
+[TRIGGER_FORENSIC] MATCH! Phrase: 'most people think' (Type: belief_reversal) | Conf: 0.70 | Text: 'most people think, no, i worked on this ...'
+[TRIGGER_FORENSIC] Found 1 triggers.
+[ORCH][L4_NARRATIVE_TRIGGER_ENGINE] triggers=1 belief_reversal=1 secret_revelation=0 mistake_explanation=0 strong_claim=0 wall_s=0.002
+[NARRATIVE_FORENSIC] --- Sampling 10 segments to verify Groq execution ---
+[NARRATIVE_FORENSIC] Seg 003 | Legacy: BUILD  | Groq: BUILD    | Text: Now before we get into the first book, w...
+[NARRATIVE_FORENSIC] Seg 011 | Legacy: BUILD  | Groq: BUILD    | Text: Start reading just in time to educate yo...
+[NARRATIVE_FORENSIC] Seg 020 | Legacy: BUILD  | Groq: BUILD    | Text: to understand where the bottleneck is in...
+[NARRATIVE_FORENSIC] Seg 149 | Legacy: BUILD  | Groq: BUILD    | Text: that produce outstanding results also kn...
+[NARRATIVE_FORENSIC] Seg 196 | Legacy: BUILD  | Groq: BUILD    | Text: is somebody that I don't know that a fri...
+[NARRATIVE_FORENSIC] Seg 209 | Legacy: BUILD  | Groq: BUILD    | Text: One bottle neck, one thing....
+[NARRATIVE_FORENSIC] Seg 280 | Legacy: BUILD  | Groq: BUILD    | Text: If you think you deserve it, you will as...
+[NARRATIVE_FORENSIC] Seg 339 | Legacy: BUILD  | Groq: BUILD    | Text: those days....
+[NARRATIVE_FORENSIC] Seg 366 | Legacy: BUILD  | Groq: BUILD    | Text: But I genuinely believe this next book...
+[NARRATIVE_FORENSIC] Seg 474 | Legacy: BUILD  | Groq: BUILD    | Text: I'm in the process of writing a leadersh...
+[NARRATIVE_FORENSIC] ---------------------------------------------------
+[NARRATIVE_COMPARE] Groq roles map was empty. Fallback to legacy occurred for 100% of segments.
+[ORCH][L4_NARRATIVE_INTELLIGENCE] role_tags=490 role_paths=57 payoff_strength=0.0041 groq_payoff_strength=0.0041 agreement_rate=1.0 wall_s=0.006
+[COALESCE-CONFIG] time_tol=0.25 sem_thr=0.40 max_node_secs=15.00
+[COALESCE-CONFIG] base_time_tol=0.25 adaptive_time_tol=0.18 sem_thr=0.40 dense_ratio=0.98 max_node_secs=15.00
+[COALESCE-CONFIG] base_time_tol=0.25 adaptive_time_tol=0.18 sem_thr=0.40 dense_ratio=0.97 max_node_secs=15.00
+[IDEA] segments=490 arcs=473 nodes=459 avg_seg_dur=2.48s
+[ORCH][L5_IDEA_GRAPH] nodes=459 wall_s=0.079
+[OPTIMIZED-PASSES] Using optimized dual pass system
+[OPTIMIZED-PASSES] quality_gate=0.0 (env=HS_OPTIMIZED_QUALITY_GATE)
+[OPTIMIZED-PASSES] completed: 8 final clips, 0.00s total, speedup=1.00x
+[ORCH][L5_CANDIDATE_GENERATION] produced=8 strict=8 relaxed=0 origins={'strict': 8} wall_s=0.004
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=0.0s, hook='If you want to make real money, these ar...')
+[NEW_HOOK_ALLOWED] seg=0 text='If you want to make real money, these are the four'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=3.8s, hook='I've read over 1900 books about money, b...')
+[NEW_HOOK_ALLOWED] seg=1 text='I've read over 1900 books about money, business, m'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=17.4s, hook='it's just a waste of your fucking time. ...')
+[NEW_HOOK_ALLOWED] seg=4 text='it's just a waste of your fucking time. I call it '
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=39.6s, hook='Stop reading just in case to entertain y...')
+[NEW_HOOK_ALLOWED] seg=10 text='Stop reading just in case to entertain yourself.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=118.8s, hook='to actually move the throughput forward....')
+[NEW_HOOK_ALLOWED] seg=33 text='to actually move the throughput forward.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=0.0s, hook='If you want to make real money, these ar...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=3.8s, hook='I've read over 1900 books about money, b...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=17.4s, hook='it's just a waste of your fucking time. ...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=147.1s, hook='Do you see how that works?...')
+[NEW_HOOK_ALLOWED] seg=46 text='Do you see how that works?'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=39.6s, hook='Stop reading just in case to entertain y...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=163.5s, hook='Theave constraints tells you how to find...')
+[NEW_HOOK_ALLOWED] seg=53 text='Theave constraints tells you how to find it.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=174.0s, hook='Now it's one step within there,...')
+[NEW_HOOK_ALLOWED] seg=57 text='Now it's one step within there,'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=178.3s, hook='how to find where the limit is....')
+[NEW_HOOK_ALLOWED] seg=59 text='how to find where the limit is.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=186.9s, hook='Sometimes because a business is so small...')
+[NEW_HOOK_ALLOWED] seg=63 text='Sometimes because a business is so small'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=190.2s, hook='it's hard to find out where the real bot...')
+[NEW_HOOK_ALLOWED] seg=65 text='it's hard to find out where the real bottleneck is'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=194.8s, hook='If I tripled the amount of customers you...')
+[NEW_HOOK_ALLOWED] seg=68 text='If I tripled the amount of customers you have'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=197.3s, hook='this month to next month, what breaks?...')
+[NEW_HOOK_ALLOWED] seg=69 text='this month to next month, what breaks?'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=199.8s, hook='Everybody that you know about in busines...')
+[NEW_HOOK_ALLOWED] seg=70 text='Everybody that you know about in business uses'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=202.6s, hook='is Jeff Bezos makes this book...')
+[NEW_HOOK_ALLOWED] seg=71 text='is Jeff Bezos makes this book'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=204.3s, hook='required reading for all his executives....')
+[NEW_HOOK_ALLOWED] seg=72 text='required reading for all his executives.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=211.3s, hook='with they'll have in their whole operati...')
+[NEW_HOOK_ALLOWED] seg=76 text='with they'll have in their whole operations collap'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=228.9s, hook='to market the product, to talk to custom...')
+[NEW_HOOK_ALLOWED] seg=84 text='to market the product, to talk to customers,'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=118.8s, hook='to actually move the throughput forward....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=242.2s, hook='You may and you may not....')
+[NEW_HOOK_ALLOWED] seg=92 text='You may and you may not.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=257.9s, hook='If everybody on your team has all these ...')
+[NEW_HOOK_ALLOWED] seg=100 text='If everybody on your team has all these awesome id'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=147.1s, hook='Do you see how that works?...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=163.5s, hook='Theave constraints tells you how to find...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=285.1s, hook='and they move on, and guess what?...')
+[NEW_HOOK_ALLOWED] seg=113 text='and they move on, and guess what?'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=288.7s, hook='in your business all the time....')
+[NEW_HOOK_ALLOWED] seg=115 text='in your business all the time.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=174.0s, hook='Now it's one step within there,...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=178.3s, hook='how to find where the limit is....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=303.8s, hook='Dan, my to do list is overflowing....')
+[NEW_HOOK_ALLOWED] seg=123 text='Dan, my to do list is overflowing.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=306.1s, hook='That's why you need to have some support...')
+[NEW_HOOK_ALLOWED] seg=124 text='That's why you need to have some support in your l'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=186.9s, hook='Sometimes because a business is so small...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=308.2s, hook='You need to get an executive assistant....')
+[NEW_HOOK_ALLOWED] seg=125 text='You need to get an executive assistant.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=309.8s, hook='And most people just don't know what to ...')
+[NEW_HOOK_ALLOWED] seg=126 text='And most people just don't know what to give that '
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=190.2s, hook='it's hard to find out where the real bot...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=194.8s, hook='If I tripled the amount of customers you...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=197.3s, hook='this month to next month, what breaks?...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=199.8s, hook='Everybody that you know about in busines...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=321.4s, hook='and I'll send it right over to you....')
+[NEW_HOOK_ALLOWED] seg=131 text='and I'll send it right over to you.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=202.6s, hook='is Jeff Bezos makes this book...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=322.8s, hook='All right, so once you find your bottlen...')
+[NEW_HOOK_ALLOWED] seg=132 text='All right, so once you find your bottleneck, aweso'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=204.3s, hook='required reading for all his executives....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=325.7s, hook='You've got a target....')
+[NEW_HOOK_ALLOWED] seg=133 text='You've got a target.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=211.3s, hook='with they'll have in their whole operati...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=332.4s, hook='the second book, The Effective Executive...')
+[NEW_HOOK_ALLOWED] seg=137 text='the second book, The Effective Executive by Peter '
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=336.1s, hook='This book is one of my favorites....')
+[NEW_HOOK_ALLOWED] seg=138 text='This book is one of my favorites.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=228.9s, hook='to market the product, to talk to custom...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=356.1s, hook='His core habit that he argues about non-...')
+[NEW_HOOK_ALLOWED] seg=147 text='His core habit that he argues about non-stop in th'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=242.2s, hook='You may and you may not....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=257.9s, hook='If everybody on your team has all these ...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=285.1s, hook='and they move on, and guess what?...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=288.7s, hook='in your business all the time....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=410.9s, hook='Not the things you add, everybody's got ...')
+[NEW_HOOK_ALLOWED] seg=170 text='Not the things you add, everybody's got that.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=412.9s, hook='It's the business plan, they celebrate,...')
+[NEW_HOOK_ALLOWED] seg=171 text='It's the business plan, they celebrate,'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=414.5s, hook='the team knows about it....')
+[NEW_HOOK_ALLOWED] seg=172 text='the team knows about it.'
+[STORY_THREAD_CONTINUED] seg=173 'I'm curious what did you stop doing?' continues StoryThread(OPEN, start=309.8s, hook='And most people just don't know what to ...')
+[HOOK_SUPPRESSED_BY_MEMORY]
+segment_text: I'm curious what did you stop doing?
+continuity_score: 0.35
+thread_id: 1881203718096
+thread_start: 309.8
+[STORY_THREAD_CONTINUED] seg=174 'What did you say no to?' continues StoryThread(OPEN, start=309.8s, hook='And most people just don't know what to ...')
+[HOOK_SUPPRESSED_BY_MEMORY]
+segment_text: What did you say no to?
+continuity_score: 0.35
+thread_id: 1881203718096
+thread_start: 309.8
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=423.4s, hook='that just keep adding new ideas....')
+[NEW_HOOK_ALLOWED] seg=177 text='that just keep adding new ideas.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=303.8s, hook='Dan, my to do list is overflowing....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=306.1s, hook='That's why you need to have some support...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=308.2s, hook='You need to get an executive assistant....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=309.8s, hook='And most people just don't know what to ...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=321.4s, hook='and I'll send it right over to you....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=322.8s, hook='All right, so once you find your bottlen...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=443.1s, hook='So here's what Drucker teaches in the bo...')
+[NEW_HOOK_ALLOWED] seg=184 text='So here's what Drucker teaches in the book.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=445.4s, hook='Number one, we have to track our time....')
+[NEW_HOOK_ALLOWED] seg=185 text='Number one, we have to track our time.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=325.7s, hook='You've got a target....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=447.5s, hook='We got to figure out where are we spendi...')
+[NEW_HOOK_ALLOWED] seg=186 text='We got to figure out where are we spending our tim'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=449.7s, hook='Most people think, no, I worked on this ...')
+[NEW_HOOK_ALLOWED] seg=187 text='Most people think, no, I worked on this all week, '
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=332.4s, hook='the second book, The Effective Executive...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=336.1s, hook='This book is one of my favorites....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=457.0s, hook='wrote down what you did, you would forge...')
+[NEW_HOOK_ALLOWED] seg=189 text='wrote down what you did, you would forget that you'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=461.7s, hook='social media. Just saying, once you know...')
+[NEW_HOOK_ALLOWED] seg=190 text='social media. Just saying, once you know you can't'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=356.1s, hook='His core habit that he argues about non-...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=515.8s, hook='off your notifications. Don't let people...')
+[NEW_HOOK_ALLOWED] seg=201 text='off your notifications. Don't let people walk by a'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=521.0s, hook='meaning stop it. That's why you have to ...')
+[NEW_HOOK_ALLOWED] seg=202 text='meaning stop it. That's why you have to batch your'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=410.9s, hook='Not the things you add, everybody's got ...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=412.9s, hook='It's the business plan, they celebrate,...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=414.5s, hook='the team knows about it....')
+[STORY_THREAD_CONTINUED] seg=205 'one thing that you can do today that actually matt' continues StoryThread(OPEN, start=449.7s, hook='Most people think, no, I worked on this ...')
+[HOOK_SUPPRESSED_BY_MEMORY]
+segment_text: one thing that you can do today that actually matters? Now I know you're like, I got 14.
+continuity_score: 0.50
+thread_id: 1881203129296
+thread_start: 449.7
+[STORY_THREAD_CONTINUED] seg=206 'What's the one? But then I can't pick one. There's' continues StoryThread(OPEN, start=449.7s, hook='Most people think, no, I worked on this ...')
+[HOOK_SUPPRESSED_BY_MEMORY]
+segment_text: What's the one? But then I can't pick one. There's too many. I got three. I got four.
+continuity_score: 0.35
+thread_id: 1881203129296
+thread_start: 449.7
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=423.4s, hook='that just keep adding new ideas....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=551.2s, hook='That's the 5% that'll get you 95% of res...')
+[NEW_HOOK_ALLOWED] seg=211 text='That's the 5% that'll get you 95% of results.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=443.1s, hook='So here's what Drucker teaches in the bo...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=445.4s, hook='Number one, we have to track our time....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=447.5s, hook='We got to figure out where are we spendi...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=449.7s, hook='Most people think, no, I worked on this ...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=457.0s, hook='wrote down what you did, you would forge...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=461.7s, hook='social media. Just saying, once you know...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=597.5s, hook='Most people say all the things they don'...')
+[NEW_HOOK_ALLOWED] seg=228 text='Most people say all the things they don't want.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=620.1s, hook='Before you actually get any of it. I alw...')
+[NEW_HOOK_ALLOWED] seg=233 text='Before you actually get any of it. I always tell t'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=515.8s, hook='off your notifications. Don't let people...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=521.0s, hook='meaning stop it. That's why you have to ...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=658.2s, hook='I couldn't even swim....')
+[NEW_HOOK_ALLOWED] seg=249 text='I couldn't even swim.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=659.5s, hook='I never even went on one of them dinky b...')
+[NEW_HOOK_ALLOWED] seg=250 text='I never even went on one of them dinky bikes'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=662.2s, hook='where you had to wear a bunch of spandex...')
+[NEW_HOOK_ALLOWED] seg=251 text='where you had to wear a bunch of spandex.'
+[STORY_THREAD_CONTINUED] seg=252 'But I just thought, what is the peak expression of' continues StoryThread(OPEN, start=597.5s, hook='Most people say all the things they don'...')
+[HOOK_SUPPRESSED_BY_MEMORY]
+segment_text: But I just thought, what is the peak expression of health?
+continuity_score: 0.35
+thread_id: 1881203214416
+thread_start: 597.5
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=551.2s, hook='That's the 5% that'll get you 95% of res...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=597.5s, hook='Most people say all the things they don'...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=737.3s, hook='If you think you're resourceful, you wil...')
+[NEW_HOOK_ALLOWED] seg=279 text='If you think you're resourceful, you will be resou'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=620.1s, hook='Before you actually get any of it. I alw...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=754.3s, hook='Everything is a byproduct of how we feel...')
+[NEW_HOOK_ALLOWED] seg=284 text='Everything is a byproduct of how we feel.'
+[STORY_THREAD_CONTINUED] seg=285 'If I told you there's $10 million in your bank acc' continues StoryThread(OPEN, start=737.3s, hook='If you think you're resourceful, you wil...')
+[HOOK_SUPPRESSED_BY_MEMORY]
+segment_text: If I told you there's $10 million in your bank account, how are you going to feel?
+continuity_score: 0.35
+thread_id: 1881203302288
+thread_start: 737.3
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=765.5s, hook='The feeling comes first, the results com...')
+[NEW_HOOK_ALLOWED] seg=290 text='The feeling comes first, the results come second.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=768.6s, hook='Second part, sleep is your most powerful...')
+[NEW_HOOK_ALLOWED] seg=291 text='Second part, sleep is your most powerful tool.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=771.0s, hook='Now don't get me wrong, you lazy people ...')
+[NEW_HOOK_ALLOWED] seg=292 text='Now don't get me wrong, you lazy people out there.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=658.2s, hook='I couldn't even swim....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=659.5s, hook='I never even went on one of them dinky b...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=662.2s, hook='where you had to wear a bunch of spandex...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=814.5s, hook='No, this is what I'm doing....')
+[NEW_HOOK_ALLOWED] seg=310 text='No, this is what I'm doing.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=816.2s, hook='Settle, but it's a game changer....')
+[NEW_HOOK_ALLOWED] seg=311 text='Settle, but it's a game changer.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=819.3s, hook='Not I'm trying to be rich is I am rich....')
+[NEW_HOOK_ALLOWED] seg=313 text='Not I'm trying to be rich is I am rich.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=822.8s, hook='You can decide to be rich right now....')
+[NEW_HOOK_ALLOWED] seg=315 text='You can decide to be rich right now.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=737.3s, hook='If you think you're resourceful, you wil...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=754.3s, hook='Everything is a byproduct of how we feel...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=765.5s, hook='The feeling comes first, the results com...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=887.5s, hook='imagine being there and how would you li...')
+[NEW_HOOK_ALLOWED] seg=346 text='imagine being there and how would you live in that'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=768.6s, hook='Second part, sleep is your most powerful...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=890.6s, hook='If you actually believe you have a milli...')
+[NEW_HOOK_ALLOWED] seg=347 text='If you actually believe you have a million dollars'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=771.0s, hook='Now don't get me wrong, you lazy people ...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=897.4s, hook='with a little bit more confidence....')
+[NEW_HOOK_ALLOWED] seg=351 text='with a little bit more confidence.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=900.9s, hook='Why all of a sudden you feel so confiden...')
+[NEW_HOOK_ALLOWED] seg=354 text='Why all of a sudden you feel so confident about yo'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=909.6s, hook='when you start acting from that place....')
+[NEW_HOOK_ALLOWED] seg=358 text='when you start acting from that place.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=911.6s, hook='If you do those, it'll change everything...')
+[NEW_HOOK_ALLOWED] seg=359 text='If you do those, it'll change everything external,'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=921.5s, hook='they'll get rid of the distractions,...')
+[NEW_HOOK_ALLOWED] seg=364 text='they'll get rid of the distractions,'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=814.5s, hook='No, this is what I'm doing....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=816.2s, hook='Settle, but it's a game changer....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=938.5s, hook='why things aren't going their way....')
+[NEW_HOOK_ALLOWED] seg=371 text='why things aren't going their way.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=819.3s, hook='Not I'm trying to be rich is I am rich....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=822.8s, hook='You can decide to be rich right now....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1006.8s, hook='those are the byproduct of the inputs....')
+[NEW_HOOK_ALLOWED] seg=404 text='those are the byproduct of the inputs.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=887.5s, hook='imagine being there and how would you li...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1009.3s, hook='The private victories are what celebrate...')
+[NEW_HOOK_ALLOWED] seg=405 text='The private victories are what celebrated in publi'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=890.6s, hook='If you actually believe you have a milli...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1015.7s, hook='The fix isn't trying harder and holding ...')
+[NEW_HOOK_ALLOWED] seg=408 text='The fix isn't trying harder and holding on'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=897.4s, hook='with a little bit more confidence....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1019.4s, hook='it's actually letting go of what you can...')
+[NEW_HOOK_ALLOWED] seg=410 text='it's actually letting go of what you can't control'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=900.9s, hook='Why all of a sudden you feel so confiden...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=909.6s, hook='when you start acting from that place....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=911.6s, hook='If you do those, it'll change everything...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1034.1s, hook='what was true, what state did you get in...')
+[NEW_HOOK_ALLOWED] seg=416 text='what was true, what state did you get in?'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1039.7s, hook='when you perform and how you do it....')
+[NEW_HOOK_ALLOWED] seg=418 text='when you perform and how you do it.'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=921.5s, hook='they'll get rid of the distractions,...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=938.5s, hook='why things aren't going their way....')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1068.1s, hook='things are not even aware of, it runs yo...')
+[NEW_HOOK_ALLOWED] seg=432 text='things are not even aware of, it runs your perform'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1070.5s, hook='Like did you ask your heart to be right ...')
+[NEW_HOOK_ALLOWED] seg=433 text='Like did you ask your heart to be right now?'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1072.1s, hook='Or did it just magically be?...')
+[NEW_HOOK_ALLOWED] seg=434 text='Or did it just magically be?'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1105.8s, hook='to, it is what it is. I can't control ho...')
+[NEW_HOOK_ALLOWED] seg=444 text='to, it is what it is. I can't control how other pe'
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=1006.8s, hook='those are the byproduct of the inputs....')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=1009.3s, hook='The private victories are what celebrate...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=1015.7s, hook='The fix isn't trying harder and holding ...')
+[STORY_THREAD_EXPIRED] StoryThread(OPEN, start=1019.4s, hook='it's actually letting go of what you can...')
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1143.2s, hook='I need you to make a commitment....')
+[NEW_HOOK_ALLOWED] seg=458 text='I need you to make a commitment.'
+[STORY_THREAD_CREATED] StoryThread(OPEN, start=1153.1s, hook='Now, if you want to take it to another l...')
+[NEW_HOOK_ALLOWED] seg=462 text='Now, if you want to take it to another level, you '
+[HOOK-HUNTER] scanned=490 strong_hooks=20
+[ORCH][L6B_GLOBAL_HOOK_HUNTER] scanned=490 strong_hooks=20 injected=17 wall_s=0.825
+[GROQ_TRANSCRIPT_FIRST] enabled=False force=False
+[GROQ_TRANSCRIPT_FIRST] checkpoint reached before validation
+[ORCH][ULTRON] semantic_runtime=degraded reason=no_brain_runtime fallback=heuristic
+[ORCH][L6_SEMANTIC_SCORING] brain_loaded=0 wall_s=0.0
+[ORCH][ULTRON] semantic_batch candidates=24 avg(impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000)
+[ORCH][L7_SIGNAL_ENRICHMENT] produced=24 input_candidates=25 selected_candidates=24 selected_strict=8 selected_relaxed=0 selected_hooks=16 filtered_out=1 narrative_cache_hits=16 semantic_cache_hits=0 avg_alignment=0.0 signal_completeness_ratio=1.0 wall_s=0.018
+[INSIGHT-DETECTOR] found=0
+[ORCH][L8B_INSIGHT_DETECTOR] found=0 scanned=24 wall_s=0.002
+[ORCH][L8_VALIDATION_GATES] accepted=24 rejected=0 reject_reasons={} accepted_origins={'hook': 16, 'strict': 8} wall_s=0.001
+[HOOK-FLOOR] cid=c_0009 viral_score boosted to 0.2556 (hook_score=0.639)
+[HOOK-FLOOR] cid=c_0010 viral_score boosted to 0.2332 (hook_score=0.583)
+[HOOK-FLOOR] cid=c_0011 viral_score boosted to 0.2307 (hook_score=0.577)
+[HOOK-FLOOR] cid=c_0012 viral_score boosted to 0.2204 (hook_score=0.551)
+[HOOK-FLOOR] cid=c_0013 viral_score boosted to 0.2103 (hook_score=0.526)
+[HOOK-FLOOR] cid=c_0014 viral_score boosted to 0.2096 (hook_score=0.524)
+[HOOK-FLOOR] cid=c_0015 viral_score boosted to 0.2036 (hook_score=0.509)
+[HOOK-FLOOR] cid=c_0016 viral_score boosted to 0.2014 (hook_score=0.503)
+[HOOK-FLOOR] cid=c_0017 viral_score boosted to 0.2012 (hook_score=0.503)
+[HOOK-FLOOR] cid=c_0018 viral_score boosted to 0.2012 (hook_score=0.503)
+[HOOK-FLOOR] cid=c_0019 viral_score boosted to 0.2012 (hook_score=0.503)
+[HOOK-FLOOR] cid=c_0020 viral_score boosted to 0.1991 (hook_score=0.498)
+[HOOK-FLOOR] cid=c_0021 viral_score boosted to 0.1978 (hook_score=0.495)
+[HOOK-FLOOR] cid=c_0022 viral_score boosted to 0.1970 (hook_score=0.492)
+[HOOK-FLOOR] cid=c_0023 viral_score boosted to 0.1970 (hook_score=0.492)
+[HOOK-FLOOR] cid=c_0024 viral_score boosted to 0.1954 (hook_score=0.488)
+[CLIP] 662.21-663.73 psychology=0.000 narrative=0.395 semantic=0.000 engagement=0.017 alignment=0.000 viral_score=0.256
+[ORCH][ULTRON][CAND] 662.21-663.73 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 822.84-824.16 psychology=0.000 narrative=0.395 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.233
+[ORCH][ULTRON][CAND] 822.84-824.16 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 446.68-456.48 psychology=0.000 narrative=0.395 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.231
+[ORCH][ULTRON][CAND] 446.68-456.48 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 938.50-940.46 psychology=0.000 narrative=0.395 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.220
+[ORCH][ULTRON][CAND] 938.50-940.46 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 414.52-415.68 psychology=0.000 narrative=0.395 semantic=0.000 engagement=0.017 alignment=0.000 viral_score=0.210
+[ORCH][ULTRON][CAND] 414.52-415.68 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 897.39-898.57 psychology=0.000 narrative=0.395 semantic=0.000 engagement=0.017 alignment=0.000 viral_score=0.210
+[ORCH][ULTRON][CAND] 897.39-898.57 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 197.29-199.81 psychology=0.000 narrative=0.320 semantic=0.000 engagement=0.017 alignment=0.000 viral_score=0.204
+[ORCH][ULTRON][CAND] 197.29-199.81 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 887.45-890.65 psychology=0.000 narrative=0.395 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.201
+[ORCH][ULTRON][CAND] 887.45-890.65 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[ORCH][L9_CLIP_SELECTOR_RANKING] ranked=24 returned=8 final_pass_provenance={} final_origins={'hook': 8} avg_viral_score=0.2206 wall_s=0.004
+
+[DEDUP_TRACE]
+candidate_id=c_0016
+overlapped_with=c_0014
+score_comparison=0.1819 vs 0.2278
+drop_reason=Overlap ratio 0.87 > threshold 0.4
+
+[ORCH-ARC] assembled=7 complete=0 input=8
+[ORCH][L10_ARC_ASSEMBLER] input=8 arcs=7 complete=0 origins={'hook': 7} avg_arc_duration=39.873 wall_s=0.316
+[T1] idx=315 score=0.05 reasons=['terminal_punct'] text='You can decide to be rich right now.'
+[T1] idx=251 score=0.05 reasons=['terminal_punct'] text='where you had to wear a bunch of spandex.'
+[T1] idx=371 score=0.05 reasons=['terminal_punct'] text='why things aren't going their way.'
+[T1] idx=185 score=0.05 reasons=['terminal_punct'] text='Number one, we have to track our time.'
+[T1] idx=316 score=0.05 reasons=['terminal_punct'] text='But I don't have any money in my bank account.'
+[T1] idx=257 score=0.05 reasons=['terminal_punct'] text='that looked like a triathlon.'
+[T1] idx=172 score=0.05 reasons=['terminal_punct'] text='the team knows about it.'
+[T1] idx=372 score=0.05 reasons=['terminal_punct'] text='Murphy's a cool dude.'
+[T1] idx=186 score=0.05 reasons=['terminal_punct'] text='We got to figure out where are we spending our time.'
+[T1] idx=318 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='Rich is a feeling first.'
+[T1] idx=259 score=0.20 reasons=['topic_shift_after'] text='turned my whole life upside down'
+[T1] idx=177 score=0.05 reasons=['terminal_punct'] text='that just keep adding new ideas.'
+[T1] idx=351 score=0.05 reasons=['terminal_punct'] text='with a little bit more confidence.'
+[T1] idx=375 score=0.05 reasons=['terminal_punct'] text='and started to find the patterns.'
+[T1] idx=187 score=0.05 reasons=['terminal_punct'] text='Most people think, no, I worked on this all week, I worked o'
+[T1] idx=319 score=0.20 reasons=['topic_shift_after'] text='See how that works?'
+[T1] idx=260 score=0.20 reasons=['topic_shift_after'] text='and it started with a sprint triathlon'
+[T1] idx=180 score=0.05 reasons=['terminal_punct'] text='because these things are actually not doing anything.'
+[T1] idx=352 score=0.05 reasons=['terminal_punct'] text='You're gonna be in meetings.'
+[T1] idx=68 score=0.20 reasons=['topic_shift_after'] text='If I tripled the amount of customers you have'
+[T1] idx=380 score=0.05 reasons=['terminal_punct'] text='and actually won at the highest levels.'
+[T1] idx=349 score=0.05 reasons=['terminal_punct'] text='with a little pep to your step.'
+[T1] idx=192 score=0.45 reasons=['closure_vocab'] text='about which is that 5% of your activities are driving 95% of'
+[T1] idx=320 score=0.05 reasons=['terminal_punct'] text='Number four, your self concept is the real lever.'
+[T1] idx=261 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='to then an Olympic disin sprint, to an Olympic disin straffl'
+[T1] idx=182 score=0.20 reasons=['topic_shift_after'] text='continue to thrive if not actually be more profitable and gr'
+[T1] idx=353 score=0.05 reasons=['terminal_punct'] text='I got an idea.'
+[T1] idx=72 score=0.05 reasons=['terminal_punct'] text='required reading for all his executives.'
+[T1] idx=381 score=0.05 reasons=['terminal_punct'] text='The people that failed, they gripped too hard on their life.'
+[T1] idx=351 score=0.05 reasons=['terminal_punct'] text='with a little bit more confidence.'
+[T1] idx=194 score=0.05 reasons=['terminal_punct'] text='are like what are you saying? I got to say no to this person'
+[T1] idx=325 score=0.05 reasons=['terminal_punct'] text='of what you believe inside.'
+[T1] idx=263 score=0.50 reasons=['closure_vocab', 'terminal_punct'] text='to a full-iron man, now I've done seven-iron man.'
+[T1] idx=183 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='my life is highly rewarded.'
+[T1] idx=356 score=0.05 reasons=['terminal_punct'] text='so I don't need you to care about my idea.'
+[T1] idx=76 score=0.05 reasons=['terminal_punct'] text='with they'll have in their whole operations collapse.'
+[T1] idx=383 score=0.05 reasons=['terminal_punct'] text='it was about letting go.'
+[T1] idx=352 score=0.05 reasons=['terminal_punct'] text='You're gonna be in meetings.'
+[T1] idx=195 score=0.20 reasons=['topic_shift_after'] text='I got to say no to having a coffee meeting or somebody picki'
+[T1] idx=327 score=0.20 reasons=['topic_shift_after'] text='the highest form of leverage,'
+[T1] idx=265 score=0.05 reasons=['terminal_punct'] text='that I am an iron man.'
+[T1] idx=184 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='So here's what Drucker teaches in the book.'
+[T1] idx=358 score=0.05 reasons=['terminal_punct'] text='when you start acting from that place.'
+[T1] idx=77 score=0.20 reasons=['topic_shift_after'] text='With all that being said,'
+[T1] idx=394 score=0.05 reasons=['terminal_punct'] text='whatever you were worried about, came true.'
+[T1] idx=353 score=0.05 reasons=['terminal_punct'] text='I got an idea.'
+[T1] idx=196 score=0.20 reasons=['topic_shift_after'] text='is somebody that I don't know that a friend that I hardly kn'
+[T1] idx=328 score=0.20 reasons=['topic_shift_after'] text='change that inner image first'
+[T1] idx=269 score=0.05 reasons=['terminal_punct'] text='people will argue with me, well, that makes no sense.'
+[T1] idx=185 score=0.05 reasons=['terminal_punct'] text='Number one, we have to track our time.'
+[T1] idx=360 score=0.05 reasons=['terminal_punct'] text='but it starts internal.'
+[T1] idx=78 score=0.20 reasons=['topic_shift_after'] text='here's how you can find your bottleneck'
+[T1] idx=356 score=0.05 reasons=['terminal_punct'] text='so I don't need you to care about my idea.'
+[T1] idx=197 score=0.20 reasons=['topic_shift_after'] text='going to give up an hour of my calendar. Yes, you're going t'
+[T1] idx=329 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='and the outside world will follow.'
+[T1] idx=270 score=0.50 reasons=['closure_vocab', 'terminal_punct'] text='And that's like, that's like you're lying to yourself.'
+[T1] idx=186 score=0.05 reasons=['terminal_punct'] text='We got to figure out where are we spending our time.'
+[T1] idx=361 score=0.05 reasons=['terminal_punct'] text='Now, these three books, they're great.'
+[T1] idx=79 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='by using the theory of constraints.'
+[T1] idx=358 score=0.05 reasons=['terminal_punct'] text='when you start acting from that place.'
+[T1] idx=331 score=0.05 reasons=['terminal_punct'] text='and seeing the results is where most people quit.'
+
+[PAYOFF_RESOLVER] TIER1 SUCCESS
+  hook='where you had to wear a bunch of spandex.'
+  payoff='to a full-iron man, now I've done seven-iron man.'
+  t1_score=0.50
+[T1] idx=187 score=0.05 reasons=['terminal_punct'] text='Most people think, no, I worked on this all week, I worked o'
+[T1] idx=362 score=0.05 reasons=['terminal_punct'] text='This will get you going.'
+[T1] idx=80 score=0.05 reasons=['terminal_punct'] text='Number one, you gotta map the flow of money in your business'
+[T1] idx=360 score=0.05 reasons=['terminal_punct'] text='but it starts internal.'
+Use pytorch device_name: cuda:0
+[T1] idx=336 score=0.05 reasons=['terminal_punct'] text='oh my god, they're so lucky.'
+
+[PAYOFF_ENGINE] RESOLVER_FALLBACK tier=1 score=0.50 text='to a full-iron man, now I've done seven-iron man.'
+[T1] idx=363 score=0.20 reasons=['topic_shift_after'] text='They'll help you find the bottlenecks,'
+[T1] idx=81 score=0.05 reasons=['terminal_punct'] text='Left side ideas, right side cash in your bank account.'
+[T1] idx=361 score=0.05 reasons=['terminal_punct'] text='Now, these three books, they're great.'
+Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+Use pytorch device_name: cuda:0
+[T1] idx=337 score=0.05 reasons=['terminal_punct'] text='No, they won in the quiet battles.'
+
+=========================================================
+[T1] idx=364 score=0.20 reasons=['topic_shift_after'] text='they'll get rid of the distractions,'
+[T1] idx=83 score=0.45 reasons=['closure_vocab'] text='And that is everything from an idea to build a product,'
+[T1] idx=362 score=0.05 reasons=['terminal_punct'] text='This will get you going.'
+Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+[T1] idx=340 score=0.05 reasons=['terminal_punct'] text='Think of it this way.'
+GOVERNOR NARRATIVE REPORT
+[T1] idx=365 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='and now you start living from this like elevated identity.'
+[T1] idx=87 score=0.05 reasons=['terminal_punct'] text='to make sure they're happy, make sure they buy more stuff.'
+[T1] idx=363 score=0.20 reasons=['topic_shift_after'] text='They'll help you find the bottlenecks,'
+Use pytorch device_name: cuda:0
+=========================================================
+
+[T1] idx=366 score=0.20 reasons=['topic_shift_after'] text='But I genuinely believe this next book'
+[T1] idx=88 score=0.05 reasons=['terminal_punct'] text='And that means money in your bank account.'
+Starting new HTTPS connection (1): huggingface.co:443
+[T1] idx=364 score=0.20 reasons=['topic_shift_after'] text='they'll get rid of the distractions,'
+Starting new HTTPS connection (1): huggingface.co:443
+Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+HOOK:
+"where you had to wear a bunch of spandex."
+
+[T1] idx=367 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='might be the most important of them all.'
+[T1] idx=89 score=0.05 reasons=['terminal_punct'] text='So map out all the steps.'
+[T1] idx=365 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='and now you start living from this like elevated identity.'
+Use pytorch device_name: cuda:0
+CONTRACT:
+general_insight
+
+[T1] idx=368 score=0.05 reasons=['terminal_punct'] text='Number four, Inter-Excellent by Jim Murphy.'
+Starting new HTTPS connection (1): huggingface.co:443
+[T1] idx=91 score=0.05 reasons=['terminal_punct'] text='and say, well, I have a marketing problem.'
+[T1] idx=366 score=0.20 reasons=['topic_shift_after'] text='But I genuinely believe this next book'
+Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+FRAME:
+[263]
+
+RESOLUTION:
+"to a full-iron man, now I've done seven-iron man."
+
+[T1] idx=92 score=0.05 reasons=['terminal_punct'] text='You may and you may not.'
+[T1] idx=367 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='might be the most important of them all.'
+[T1] idx=369 score=0.05 reasons=['terminal_punct'] text='This is not just for business owners.'
+SCORES:
+contract_match=0.50
+development=0.00
+resolution=0.50
+
+[T1] idx=93 score=0.45 reasons=['closure_vocab'] text='You think that's the bottleneck,'
+Starting new HTTPS connection (1): huggingface.co:443
+[T1] idx=368 score=0.05 reasons=['terminal_punct'] text='Number four, Inter-Excellent by Jim Murphy.'
+[T1] idx=371 score=0.05 reasons=['terminal_punct'] text='why things aren't going their way.'
+FINAL=0.50
+
+[T1] idx=94 score=0.05 reasons=['terminal_punct'] text='but you might have a bigger problem.'
+[T1] idx=369 score=0.05 reasons=['terminal_punct'] text='This is not just for business owners.'
+THREAD STATE: CONTINUED
+[T1] idx=95 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='You might have an offer problem.'
+[T1] idx=372 score=0.05 reasons=['terminal_punct'] text='Murphy's a cool dude.'
+=========================================================
+
+[T1] idx=96 score=0.20 reasons=['topic_shift_after'] text='And you'll never figure this out'
+[T1] idx=375 score=0.05 reasons=['terminal_punct'] text='and started to find the patterns.'
+
+[PAYOFF_ENGINE] SUCCESS! cid=c_0009
+  Hook: I never even went on one of them dinky bikes
+  Winner: to a full-iron man, now I've done seven-iron man.
+  Engine Score: 0.500 (debt: 0.50)
+[T1] idx=97 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='if you don't follow that step.'
+Use pytorch device_name: cuda:0
+Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+Starting new HTTPS connection (1): huggingface.co:443
+Use pytorch device_name: cuda:0
+Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+Use pytorch device_name: cuda:0
+Starting new HTTPS connection (1): huggingface.co:443
+Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+Starting new HTTPS connection (1): huggingface.co:443
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config_sentence_transformers.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/README.md HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/README.md HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/README.md HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/README.md HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/README.md HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/README.md HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/README.md HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/README.md HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/README.md HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/README.md HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/README.md HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/README.md HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/README.md HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/README.md HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/modules.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/modules.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/sentence_bert_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/sentence_bert_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/sentence_bert_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/sentence_bert_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/sentence_bert_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/sentence_bert_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/sentence_bert_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/sentence_bert_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/sentence_bert_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/sentence_bert_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/sentence_bert_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/sentence_bert_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/sentence_bert_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/sentence_bert_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/adapter_config.json HTTP/1.1" 404 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/adapter_config.json HTTP/1.1" 404 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/adapter_config.json HTTP/1.1" 404 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/adapter_config.json HTTP/1.1" 404 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/adapter_config.json HTTP/1.1" 404 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/adapter_config.json HTTP/1.1" 404 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/adapter_config.json HTTP/1.1" 404 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/tokenizer_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/tokenizer_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/tokenizer_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/tokenizer_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/tokenizer_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main?recursive=True&expand=False HTTP/1.1" 200 None
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main?recursive=True&expand=False HTTP/1.1" 200 None
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/tokenizer_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/tokenizer_config.json HTTP/1.1" 200 0
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/1_Pooling/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/1_Pooling%2Fconfig.json HTTP/1.1" 200 0
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main?recursive=True&expand=False HTTP/1.1" 200 None
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/1_Pooling/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/1_Pooling%2Fconfig.json HTTP/1.1" 200 0
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main?recursive=True&expand=False HTTP/1.1" 200 None
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main?recursive=True&expand=False HTTP/1.1" 200 None
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main?recursive=True&expand=False HTTP/1.1" 200 None
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2 HTTP/1.1" 200 None
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2/tree/main?recursive=True&expand=False HTTP/1.1" 200 None
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2 HTTP/1.1" 200 None
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/1_Pooling/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/1_Pooling/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/1_Pooling%2Fconfig.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/1_Pooling%2Fconfig.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/1_Pooling/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/1_Pooling%2Fconfig.json HTTP/1.1" 200 0
+[T2] Embedding model loaded (MiniLM-L6-v2)
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/1_Pooling/config.json HTTP/1.1" 307 0
+[T2] Embedding model loaded (MiniLM-L6-v2)
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/1_Pooling%2Fconfig.json HTTP/1.1" 200 0
+https://huggingface.co:443 "HEAD /sentence-transformers/all-MiniLM-L6-v2/resolve/main/1_Pooling/config.json HTTP/1.1" 307 0
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2 HTTP/1.1" 200 None
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2 HTTP/1.1" 200 None
+https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-MiniLM-L6-v2/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/1_Pooling%2Fconfig.json HTTP/1.1" 200 0
+[T2] Could not load embedding model: Cannot copy out of meta tensor; no data! Please use torch.nn.Module.to_empty() instead of torch.nn.Module.to() when moving module from meta to a different device. — Tier 2 disabled
+[T2] Embedding model loaded (MiniLM-L6-v2)
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2 HTTP/1.1" 200 None
+[T2] Could not load embedding model: Cannot copy out of meta tensor; no data! Please use torch.nn.Module.to_empty() instead of torch.nn.Module.to() when moving module from meta to a different device. — Tier 2 disabled
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2 HTTP/1.1" 200 None
+[T2] Could not load embedding model: Cannot copy out of meta tensor; no data! Please use torch.nn.Module.to_empty() instead of torch.nn.Module.to() when moving module from meta to a different device. — Tier 2 disabled
+https://huggingface.co:443 "GET /api/models/sentence-transformers/all-MiniLM-L6-v2 HTTP/1.1" 200 None
+[T2] Could not load embedding model: Cannot copy out of meta tensor; no data! Please use torch.nn.Module.to_empty() instead of torch.nn.Module.to() when moving module from meta to a different device. — Tier 2 disabled
+[T2] sim=0.656 contrast=0.344 t1=0.00 score=0.172 text='I am rich.'
+[T2] sim=0.115 contrast=0.885 t1=0.00 score=0.442 text='If I tripled the amount of customers you have'
+[T2] sim=0.367 contrast=0.633 t1=0.00 score=0.316 text='Don't imagine getting there,'
+[T2] sim=0.231 contrast=0.769 t1=0.00 score=0.384 text='You're gonna be shaking people's hand'
+[T2] sim=0.332 contrast=0.668 t1=0.00 score=0.334 text='It's the business plan, they celebrate,'
+[T2] sim=0.169 contrast=0.831 t1=0.00 score=0.415 text='Number one, we have to track our time.'
+[T2] sim=0.087 contrast=0.913 t1=0.00 score=0.457 text='This is for everyone who is wondering'
+[PAYOFF_RESOLVER] TIER3 INLINE EXEC thread_id=9f580513-01a3-4d04-9bee-7562d249a83b hook='You can decide to be rich right now.'
+
+[PAYOFF_RESOLVER] TIER2 SUCCESS
+  hook='this month to next month, what breaks?'
+  payoff='If I tripled the amount of customers you have'
+  t2_score=0.44
+[PAYOFF_RESOLVER] TIER3 INLINE EXEC thread_id=ea5c5aec-a6b0-452d-b5d3-cb3acea24ba3 hook='imagine being there and how would you live in that energy?'
+
+[PAYOFF_RESOLVER] TIER2 SUCCESS
+  hook='with a little bit more confidence.'
+  payoff='You're gonna be shaking people's hand'
+  t2_score=0.38
+
+[PAYOFF_RESOLVER] TIER2 SUCCESS
+  hook='the team knows about it.'
+  payoff='It's the business plan, they celebrate,'
+  t2_score=0.33
+
+[PAYOFF_RESOLVER] TIER2 SUCCESS
+  hook='Most people think, no, I worked on this all week, I worked o'
+  payoff='Number one, we have to track our time.'
+  t2_score=0.42
+
+[PAYOFF_RESOLVER] TIER2 SUCCESS
+  hook='why things aren't going their way.'
+  payoff='This is for everyone who is wondering'
+  t2_score=0.46
+[T3] Groq batch call: 1 threads
+
+[PAYOFF_ENGINE] RESOLVER_FALLBACK tier=2 score=0.44 text='If I tripled the amount of customers you have'
+[T3] Groq batch call: 1 threads
+
+[PAYOFF_ENGINE] RESOLVER_FALLBACK tier=2 score=0.38 text='You're gonna be shaking people's hand'
+
+[PAYOFF_ENGINE] RESOLVER_FALLBACK tier=2 score=0.33 text='It's the business plan, they celebrate,'
+
+[PAYOFF_ENGINE] RESOLVER_FALLBACK tier=2 score=0.42 text='Number one, we have to track our time.'
+
+[PAYOFF_ENGINE] RESOLVER_FALLBACK tier=2 score=0.46 text='This is for everyone who is wondering'
+
+=========================================================
+
+=========================================================
+
+=========================================================
+Starting new HTTPS connection (1): api.groq.com:443
+Starting new HTTPS connection (1): api.groq.com:443
+
+=========================================================
+
+=========================================================
+GOVERNOR NARRATIVE REPORT
+GOVERNOR NARRATIVE REPORT
+GOVERNOR NARRATIVE REPORT
+GOVERNOR NARRATIVE REPORT
+GOVERNOR NARRATIVE REPORT
+=========================================================
+
+=========================================================
+
+=========================================================
+
+=========================================================
+
+=========================================================
+
+HOOK:
+"this month to next month, what breaks?"
+
+HOOK:
+"with a little bit more confidence."
+
+HOOK:
+"the team knows about it."
+
+HOOK:
+"Most people think, no, I worked on this all week, I worked on this all week."
+
+HOOK:
+"why things aren't going their way."
+
+CONTRACT:
+singular_leverage
+
+CONTRACT:
+general_insight
+
+CONTRACT:
+general_insight
+
+CONTRACT:
+general_insight
+
+CONTRACT:
+cause_revelation
+
+FRAME:
+[78, 79, 80]
+
+FRAME:
+[350]
+
+FRAME:
+[184, 185]
+
+FRAME:
+[185]
+
+FRAME:
+[370]
+
+RESOLUTION:
+"here's how you can find your bottleneck by using the theory of constraints. Number one, you gotta map the flow of money in your business."
+
+RESOLUTION:
+"You're gonna be shaking people's hand"
+
+RESOLUTION:
+"So here's what Drucker teaches in the book. Number one, we have to track our time."
+
+RESOLUTION:
+"Number one, we have to track our time."
+
+RESOLUTION:
+"This is for everyone who is wondering"
+
+SCORES:
+contract_match=0.74
+development=0.00
+resolution=0.35
+
+SCORES:
+contract_match=0.38
+development=0.00
+resolution=0.38
+
+SCORES:
+contract_match=0.43
+development=0.00
+resolution=0.80
+
+SCORES:
+contract_match=0.42
+development=0.00
+resolution=0.42
+
+FINAL=0.42
+
+FINAL=0.54
+
+THREAD STATE: SEARCH_FAILED
+=========================================================
+
+[T1] idx=68 score=0.20 reasons=['topic_shift_after'] text='If I tripled the amount of customers you have'
+[T1] idx=72 score=0.05 reasons=['terminal_punct'] text='required reading for all his executives.'
+FINAL=0.38
+
+FINAL=0.37
+
+SCORES:
+contract_match=0.46
+development=0.00
+resolution=0.46
+
+THREAD STATE: CONTINUED
+[T1] idx=76 score=0.05 reasons=['terminal_punct'] text='with they'll have in their whole operations collapse.'
+THREAD STATE: CONTINUED
+THREAD STATE: SEARCH_FAILED
+FINAL=0.46
+
+=========================================================
+
+[T1] idx=77 score=0.20 reasons=['topic_shift_after'] text='With all that being said,'
+=========================================================
+
+=========================================================
+
+THREAD STATE: CONTINUED
+
+[PAYOFF_ENGINE] SUCCESS! cid=c_0011
+  Hook: Number one, we have to track our time.
+  Winner: Number one, we have to track our time.
+  Engine Score: 0.415 (debt: 0.42)
+[T1] idx=78 score=0.20 reasons=['topic_shift_after'] text='here's how you can find your bottleneck'
+
+[PAYOFF_ENGINE] SUCCESS! cid=c_0014
+  Hook: You're gonna be shaking people's hand
+  Winner: You're gonna be shaking people's hand
+  Engine Score: 0.384 (debt: 0.38)
+[T1] idx=172 score=0.05 reasons=['terminal_punct'] text='the team knows about it.'
+=========================================================
+
+[T1] idx=79 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='by using the theory of constraints.'
+[T1] idx=177 score=0.05 reasons=['terminal_punct'] text='that just keep adding new ideas.'
+
+[PAYOFF_ENGINE] SUCCESS! cid=c_0012
+  Hook: This is for everyone who is wondering
+  Winner: This is for everyone who is wondering
+  Engine Score: 0.457 (debt: 0.46)
+[T1] idx=80 score=0.05 reasons=['terminal_punct'] text='Number one, you gotta map the flow of money in your business'
+[T1] idx=180 score=0.05 reasons=['terminal_punct'] text='because these things are actually not doing anything.'
+[T1] idx=81 score=0.05 reasons=['terminal_punct'] text='Left side ideas, right side cash in your bank account.'
+[T1] idx=182 score=0.20 reasons=['topic_shift_after'] text='continue to thrive if not actually be more profitable and gr'
+[T1] idx=83 score=0.45 reasons=['closure_vocab'] text='And that is everything from an idea to build a product,'
+[T1] idx=183 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='my life is highly rewarded.'
+[T1] idx=87 score=0.05 reasons=['terminal_punct'] text='to make sure they're happy, make sure they buy more stuff.'
+[T1] idx=184 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='So here's what Drucker teaches in the book.'
+[T1] idx=88 score=0.05 reasons=['terminal_punct'] text='And that means money in your bank account.'
+[T1] idx=185 score=0.05 reasons=['terminal_punct'] text='Number one, we have to track our time.'
+[T1] idx=89 score=0.05 reasons=['terminal_punct'] text='So map out all the steps.'
+[T1] idx=186 score=0.05 reasons=['terminal_punct'] text='We got to figure out where are we spending our time.'
+[T1] idx=91 score=0.05 reasons=['terminal_punct'] text='and say, well, I have a marketing problem.'
+[T1] idx=187 score=0.05 reasons=['terminal_punct'] text='Most people think, no, I worked on this all week, I worked o'
+[T1] idx=92 score=0.05 reasons=['terminal_punct'] text='You may and you may not.'
+[PAYOFF_RESOLVER] TIER3 INLINE EXEC thread_id=c_0013 hook='It's the business plan, they celebrate,'
+[T1] idx=93 score=0.45 reasons=['closure_vocab'] text='You think that's the bottleneck,'
+[T3] Groq batch call: 1 threads
+[T1] idx=94 score=0.05 reasons=['terminal_punct'] text='but you might have a bigger problem.'
+[T1] idx=95 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='You might have an offer problem.'
+[T1] idx=96 score=0.20 reasons=['topic_shift_after'] text='And you'll never figure this out'
+Starting new HTTPS connection (1): api.groq.com:443
+[T1] idx=97 score=0.25 reasons=['topic_shift_after', 'terminal_punct'] text='if you don't follow that step.'
+[PAYOFF_RESOLVER] TIER3 INLINE EXEC thread_id=c_0015 hook='If I tripled the amount of customers you have'
+[T3] Groq batch call: 1 threads
+Starting new HTTPS connection (1): api.groq.com:443
+https://api.groq.com:443 "POST /openai/v1/chat/completions HTTP/1.1" 200 None
+[T3] thread_id=9f580513-01a3-4d04-9bee-7562d249a83b score=0.92 quote='Number four, your self concept is the real lever.' title='Decide to Be Rich'
+
+[PAYOFF_RESOLVER] TIER3 SUCCESS thread_id=9f580513-01a3-4d04-9bee-7562d249a83b
+  quote='Number four, your self concept is the real lever.'
+
+
+[PAYOFF_ENGINE] RESOLVER_FALLBACK tier=3 score=0.92 text='Number four, your self concept is the real lever.'
+
+=========================================================
+GOVERNOR NARRATIVE REPORT
+=========================================================
+
+HOOK:
+"You can decide to be rich right now."
+
+CONTRACT:
+general_insight
+
+FRAME:
+[320]
+
+RESOLUTION:
+"Number four, your self concept is the real lever."
+
+SCORES:
+contract_match=0.92
+development=0.00
+resolution=0.92
+
+FINAL=0.92
+
+THREAD STATE: RESOLVED
+=========================================================
+
+
+[PAYOFF_ENGINE] SUCCESS! cid=c_0010
+  Hook: I am rich.
+  Winner: Number four, your self concept is the real lever.
+  Engine Score: 0.920 (debt: 0.92)
+https://api.groq.com:443 "POST /openai/v1/chat/completions HTTP/1.1" 200 None
+[T3] thread_id=c_0015 score=0.92 quote='You might have an offer problem.' title='Identify Your Business Bottleneck'
+
+[PAYOFF_RESOLVER] TIER3 SUCCESS thread_id=c_0015
+  quote='You might have an offer problem.'
+
+
+[PAYOFF_SOURCE]
+cid=c_0015
+source=TIER3
+  Hook: If I tripled the amount of customers you have
+  Payoff: You might have an offer problem.
+  Score: 0.92  arc_end: 248.1s
+https://api.groq.com:443 "POST /openai/v1/chat/completions HTTP/1.1" 200 None
+[T3] thread_id=ea5c5aec-a6b0-452d-b5d3-cb3acea24ba3 score=0.92 quote='See how you will have this quiet confidence when you start acting from that plac' title='Living in Elevated Energy'
+
+[PAYOFF_RESOLVER] TIER3 SUCCESS thread_id=ea5c5aec-a6b0-452d-b5d3-cb3acea24ba3
+  quote='See how you will have this quiet confidence when you start a'
+
+
+[PAYOFF_ENGINE] RESOLVER_FALLBACK tier=3 score=0.92 text='See how you will have this quiet confidence'
+
+=========================================================
+GOVERNOR NARRATIVE REPORT
+=========================================================
+
+HOOK:
+"imagine being there and how would you live in that energy?"
+
+CONTRACT:
+process_explanation
+
+FRAME:
+[357]
+
+RESOLUTION:
+"See how you will have this quiet confidence"
+
+SCORES:
+contract_match=0.92
+development=0.00
+resolution=0.92
+
+FINAL=0.92
+
+THREAD STATE: RESOLVED
+=========================================================
+
+
+[PAYOFF_ENGINE] SUCCESS! cid=c_0016
+  Hook: Don't imagine getting there,
+  Winner: See how you will have this quiet confidence
+  Engine Score: 0.920 (debt: 0.92)
+https://api.groq.com:443 "POST /openai/v1/chat/completions HTTP/1.1" 200 None
+[T3] thread_id=c_0013 score=0.92 quote='The person who can remove ways, subtract things from the business and have the b' title='The Power of Subtraction'
+
+[PAYOFF_RESOLVER] TIER3 SUCCESS thread_id=c_0013
+  quote='The person who can remove ways, subtract things from the bus'
+
+
+[PAYOFF_SOURCE]
+cid=c_0013
+source=TIER3
+  Hook: It's the business plan, they celebrate,
+  Payoff: The person who can remove ways, subtract things from the business and have the b
+  Score: 0.92  arc_end: 436.5s
+[ORCH-ARC] assembled=8 complete=4 input=8
+[ORCH][L10_ARC_ASSEMBLER] input=8 arcs=8 complete=4 origins={'hook': 8} avg_arc_duration=29.924 wall_s=5.795
+\n==================================================\n[EXPERIMENT_MODE_RESULTS]\n==================================================
+\n[EXPERIMENT_COMPARE] candidate_id=c_0015
+OLD_PAYOFF: "this month to next month, what breaks?..."
+NEW_PAYOFF: "this month to next month, what breaks?..."
+OLD_DURATION: 40.0s
+NEW_DURATION: 60.0s
+OLD_SCORE: 0.083
+NEW_SCORE: 0.853\n
+\n[EXPERIMENT_COMPARE] candidate_id=c_0014
+OLD_PAYOFF: "with a little bit more confidence...."
+NEW_PAYOFF: "with a little bit more confidence...."
+OLD_DURATION: 40.0s
+NEW_DURATION: 8.8s
+OLD_SCORE: 0.228
+NEW_SCORE: 0.257\n
+\n[EXPERIMENT_COMPARE] candidate_id=c_0013
+OLD_PAYOFF: "the team knows about it...."
+NEW_PAYOFF: "the team knows about it...."
+OLD_DURATION: 40.0s
+NEW_DURATION: 37.1s
+OLD_SCORE: 0.143
+NEW_SCORE: 0.578\n
+\n[EXPERIMENT_COMPARE] candidate_id=c_0010
+OLD_PAYOFF: "You can decide to be rich right now...."
+NEW_PAYOFF: "You can decide to be rich right now...."
+OLD_DURATION: 39.1s
+NEW_DURATION: 20.6s
+OLD_SCORE: 0.254
+NEW_SCORE: 0.612\n
+\n[EXPERIMENT_COMPARE] candidate_id=c_0012
+OLD_PAYOFF: "why things aren't going their way...."
+NEW_PAYOFF: "why things aren't going their way...."
+OLD_DURATION: 40.0s
+NEW_DURATION: 12.4s
+OLD_SCORE: 0.160
+NEW_SCORE: 0.259\n
+\n[EXPERIMENT_COMPARE] candidate_id=c_0011
+OLD_PAYOFF: "Most people think, no, I worked on this all week, I worked on this all week...."
+NEW_PAYOFF: "Most people think, no, I worked on this all week, I worked on this all week...."
+OLD_DURATION: 40.0s
+NEW_DURATION: 12.6s
+OLD_SCORE: 0.137
+NEW_SCORE: 0.306\n
+\n[EXPERIMENT_COMPARE] candidate_id=c_0009
+OLD_PAYOFF: "where you had to wear a bunch of spandex...."
+NEW_PAYOFF: "where you had to wear a bunch of spandex...."
+OLD_DURATION: 40.0s
+NEW_DURATION: 45.5s
+OLD_SCORE: 0.254
+NEW_SCORE: 0.456\n
+
+[CLIP 0]
+duration: 61.2s
+arc_score: 0.853
+final_score: 0.858
+HOOK_SCORE: 0.510
+OPEN_LOOP_SCORE: 0.700
+PAYOFF_SCORE: 0.920
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+If I tripled the amount of customers you have
+
+BUILD:
+this month to next month, what breaks? Everybody that you know about in business uses is Jeff Bezos makes this book required reading for all his executives. It's how they scaled Amazon Prime so that they could ship all these products for a subscription with they'll have in their whole operations collapse. With all that being said, here's how you can find your bottleneck by using the theory of constraints. Number one, you gotta map the flow of money in your business. Left side ideas, right side cash in your bank account. Think about that. And that is everything from an idea to build a product, to market the product, to talk to customers, to get them to give you money, to onboard the customers, to make sure they're happy, make sure they buy more stuff. And that means money in your bank account. So map out all the steps. Now I know most people watch this and say, well, I have a marketing problem. You may and you may not. You think that's the bottleneck, but you might have a bigger problem. You might have an offer problem.
+
+PAYOFF:
+You might have an offer problem.
+
+FULL MOMENT:
+this month to next month, what breaks?
+
+
+[CLIP 1]
+duration: 38.3s
+arc_score: 0.578
+final_score: 0.590
+HOOK_SCORE: 0.180
+OPEN_LOOP_SCORE: 0.000
+PAYOFF_SCORE: 0.920
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+It's the business plan, they celebrate,
+
+BUILD:
+the team knows about it. I'm curious what did you stop doing? What did you say no to? What did you cut? Because I'm never impressed with people that just keep adding new ideas. I'm impressed with the person who says, hey, I think we should get rid of this because these things are actually not doing anything. The person who can remove ways, subtract things from the business and have the business
+
+PAYOFF:
+The person who can remove ways, subtract things from the business and have the business
+
+FULL MOMENT:
+the team knows about it.
+
+
+[PAYOFF_LIFECYCLE]
+candidate_id=c_0011
+assembler_payoff_text="Number one, we have to track our time."
+final_payoff_text="We got to figure out where are we spending our time."
+changed=True
+
+
+[CLIP 2]
+duration: 13.8s
+arc_score: 0.306
+final_score: 0.298
+HOOK_SCORE: 0.000
+OPEN_LOOP_SCORE: 0.000
+PAYOFF_SCORE: 0.415
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+Number one, we have to track our time.
+
+BUILD:
+
+
+PAYOFF:
+Number one, we have to track our time.
+
+FULL MOMENT:
+Most people think, no, I worked on this all week, I worked on this all week.
+
+
+[PAYOFF_LIFECYCLE]
+candidate_id=c_0009
+assembler_payoff_text="to a full-iron man, now I've done seven-iron man."
+final_payoff_text="And it all started with the belief, the identity,"
+changed=True
+
+
+[CLIP 3]
+duration: 46.7s
+arc_score: 0.456
+final_score: 0.490
+HOOK_SCORE: 0.300
+OPEN_LOOP_SCORE: 0.000
+PAYOFF_SCORE: 0.500
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+I never even went on one of them dinky bikes
+
+BUILD:
+where you had to wear a bunch of spandex. But I just thought, what is the peak expression of health? Iron Man was that for me? I was trying to be the best version of myself, so I wrote down I am an Iron Man for years before I ever even attempted anything that looked like a triathlon. But then one day, one conversation with my friend Nick turned my whole life upside down and it started with a sprint triathlon to then an Olympic disin sprint, to an Olympic disin strafflon. And next thing you know, I'm doing a half-iron man, to a full-iron man, now I've done seven-iron man.
+
+PAYOFF:
+to a full-iron man, now I've done seven-iron man.
+
+FULL MOMENT:
+where you had to wear a bunch of spandex.
+
+
+[PAYOFF_LIFECYCLE]
+candidate_id=c_0010
+assembler_payoff_text="Number four, your self concept is the real lever."
+final_payoff_text="The outside world that you think is so important"
+changed=True
+
+
+[CLIP 4]
+duration: 21.8s
+arc_score: 0.612
+final_score: 0.635
+HOOK_SCORE: 0.230
+OPEN_LOOP_SCORE: 0.100
+PAYOFF_SCORE: 0.920
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+I am rich.
+
+BUILD:
+You can decide to be rich right now. But I don't have any money in my bank account. That's okay. Rich is a feeling first. See how that works? Number four, your self concept is the real lever.
+
+PAYOFF:
+Number four, your self concept is the real lever.
+
+FULL MOMENT:
+You can decide to be rich right now.
+
+
+[PAYOFF_LIFECYCLE]
+candidate_id=c_0016
+assembler_payoff_text="See how you will have this quiet confidence"
+final_payoff_text="If you do those, it'll change everything external,"
+changed=True
+
+
+[CLIP 5]
+duration: 43.5s
+arc_score: 0.678
+final_score: 0.702
+HOOK_SCORE: 0.230
+OPEN_LOOP_SCORE: 0.000
+PAYOFF_SCORE: 0.920
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+Don't imagine getting there,
+
+BUILD:
+imagine being there and how would you live in that energy? If you actually believe you have a million dollars in bank account, I guarantee you're gonna walk down the street with a little pep to your step. You're gonna be shaking people's hand with a little bit more confidence. You're gonna be in meetings. I got an idea. Why all of a sudden you feel so confident about your idea? I got 10 million dollars in my bank account, so I don't need you to care about my idea. See how you will have this quiet confidence
+
+PAYOFF:
+See how you will have this quiet confidence
+
+FULL MOMENT:
+imagine being there and how would you live in that energy?
+
+
+[PAYOFF_LIFECYCLE]
+candidate_id=c_0014
+assembler_payoff_text="You're gonna be shaking people's hand"
+final_payoff_text="You're gonna be in meetings."
+changed=True
+
+
+[CLIP 6]
+duration: 10.0s
+arc_score: 0.257
+final_score: 0.246
+HOOK_SCORE: 0.460
+OPEN_LOOP_SCORE: 0.700
+PAYOFF_SCORE: 0.384
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+You're gonna be shaking people's hand
+
+BUILD:
+
+
+PAYOFF:
+You're gonna be shaking people's hand
+
+FULL MOMENT:
+with a little bit more confidence.
+
+
+[PAYOFF_LIFECYCLE]
+candidate_id=c_0012
+assembler_payoff_text="This is for everyone who is wondering"
+final_payoff_text="Murphy's a cool dude."
+changed=True
+
+
+[CLIP 7]
+duration: 13.6s
+arc_score: 0.259
+final_score: 0.254
+HOOK_SCORE: 0.230
+OPEN_LOOP_SCORE: 0.100
+PAYOFF_SCORE: 0.457
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+This is for everyone who is wondering
+
+BUILD:
+
+
+PAYOFF:
+This is for everyone who is wondering
+
+FULL MOMENT:
+why things aren't going their way.
+
+[ORCH][L12_EDITOR_REFINER] input=8 output=8 rejected_final=0 rejected_reasons={} origins={'hook': 8} avg_duration=31.124 wall_s=0.025
+[ORCH] groq_pool built: pool=32 enriched=24 validated=24 ranked=8
+[CQS-CACHE] pipeline_end {'hits': 25, 'misses': 736, 'size': 736, 'hit_rate': 0.0329}
+[ORCH][SUMMARY] wall_s=8.05 final=8 rejected=0 cqs_cache={'hits': 25, 'misses': 736, 'size': 736, 'hit_rate': 0.0329}
+============================================================
+                 HOTSHORT PIPELINE X-RAY
+============================================================
+
+[STAGE AUTOPSIES]
+
+⚡ STRICT_PASS
+   input=447 | output=12 | time=0.000s
+   Rejected:
+     semantic<0.35 = 240
+     punch<0.25 = 422
+
+⚡ CANDIDATE_GENERATION
+   input=459 | output=8 | time=0.004s
+
+⚡ HOOK_HUNTER
+   input=8 | output=25 | time=0.825s
+
+⚡ BACKFILL
+   input=25 | output=25 | time=0.000s
+
+⚡ GROQ_TRANSCRIPT_FIRST
+   input=0 | output=0 | time=0.000s
+
+⚡ VALIDATION
+   input=24 | output=24 | time=0.000s
+
+⚡ ARC_ASSEMBLER
+   input=8 | output=8 | time=5.795s
+
+⚡ EDITOR_REFINER
+   input=8 | output=8 | time=0.025s
+
+⚡ IDEA_GRAPH
+   input=459 | output=459 | time=0.000s
+
+⚡ PRE_FILTER
+   input=459 | output=447 | time=0.000s
+   Rejected:
+     low_semantic = 12
+     low_punch = 12
+     low_curiosity = 12
+
+============================================================
+                CLIP LIFECYCLE TRACE
+============================================================
+
+📌 c_0001 | 521.0s - 525.2s | Status: passed_validation
+   Text: "meaning stop it. That's why you have to batch your meetings of similar things or take..."
+   Scores: score=0.47, curiosity=0.00, punch=0.65, semantic=0.47
+   History:
+     → Created by candidate_generation at 521.0s-525.2s
+     → Finalized as output: passed_validation
+
+📌 c_0002 | 554.2s - 558.4s | Status: passed_validation
+   Text: "So the effective executive will teach you how to remove things from your calendar...."
+   Scores: score=0.46, curiosity=0.00, punch=0.65, semantic=0.43
+   History:
+     → Created by candidate_generation at 554.2s-558.4s
+     → Finalized as output: passed_validation
+
+📌 c_0003 | 306.1s - 308.2s | Status: passed_validation
+   Text: "That's why you need to have some support in your life...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41
+   History:
+     → Created by candidate_generation at 306.1s-308.2s
+     → Finalized as output: passed_validation
+
+📌 c_0004 | 309.8s - 312.4s | Status: passed_validation
+   Text: "And most people just don't know what to give that person...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41
+   History:
+     → Created by candidate_generation at 309.8s-312.4s
+     → Finalized as output: passed_validation
+
+📌 c_0005 | 34.0s - 37.0s | Status: passed_validation
+   Text: "No, he's like, I've got to make some new space material...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.38
+   History:
+     → Created by candidate_generation at 34.0s-37.0s
+     → Finalized as output: passed_validation
+
+📌 c_0006 | 156.3s - 158.8s | Status: passed_validation
+   Text: "of your business and that's what you should be focusing on...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 156.3s-158.8s
+     → Finalized as output: passed_validation
+
+📌 c_0007 | 710.9s - 714.8s | Status: passed_validation
+   Text: "And that's like, that's like you're lying to yourself...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 710.9s-714.8s
+     → Finalized as output: passed_validation
+
+📌 c_0008 | 799.4s - 802.6s | Status: passed_validation
+   Text: "will feel so familiar because I've been there a thousand times...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 799.4s-802.6s
+     → Finalized as output: passed_validation
+
+📌 c_0009 | 653.8s - 697.3s | Status: final_clip_output
+   Text: "where you had to wear a bunch of spandex...."
+   Scores: score=0.64, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.46
+   History:
+     → Created by hook_hunter at 662.2s-663.7s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 651.99, 'end': 691.99, 'scores': {'arc_score': 0.2541}})
+     → Modified by arc_assembler (changes: {'start': 655.03, 'end': 700.53, 'scores': {'arc_score': 0.4555}})
+     → Modified by editor_refiner (changes: {'start': 653.83, 'end': 697.33})
+     → Finalized as output: final_clip_output
+
+📌 c_0010 | 815.2s - 834.8s | Status: final_clip_output
+   Text: "You can decide to be rich right now...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.61
+   History:
+     → Created by hook_hunter at 822.8s-824.2s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 817.78, 'end': 856.89, 'scores': {'arc_score': 0.2535}})
+     → Modified by arc_assembler (changes: {'start': 816.42, 'end': 837.04, 'scores': {'arc_score': 0.6119}})
+     → Modified by editor_refiner (changes: {'start': 815.22, 'end': 834.76})
+     → Finalized as output: final_clip_output
+
+📌 c_0011 | 438.7s - 449.5s | Status: final_clip_output
+   Text: "Most people think, no, I worked on this all week, I worked on this all week...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.31
+   History:
+     → Created by hook_hunter at 449.7s-452.5s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 441.62, 'end': 481.62, 'scores': {'arc_score': 0.1367}})
+     → Modified by arc_assembler (changes: {'start': 439.86, 'end': 452.48, 'scores': {'arc_score': 0.3057}})
+     → Modified by editor_refiner (changes: {'start': 438.66, 'end': 449.52})
+     → Finalized as output: final_clip_output
+
+📌 c_0012 | 928.0s - 940.5s | Status: final_clip_output
+   Text: "why things aren't going their way...."
+   Scores: score=0.55, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.26
+   History:
+     → Created by hook_hunter at 938.5s-940.5s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 932.76, 'end': 972.76, 'scores': {'arc_score': 0.1601}})
+     → Modified by arc_assembler (changes: {'start': 929.15, 'end': 941.58, 'scores': {'arc_score': 0.2591}})
+     → Modified by editor_refiner (changes: {'start': 927.95, 'end': 940.5})
+     → Finalized as output: final_clip_output
+
+📌 c_0013 | 404.8s - 443.1s | Status: final_clip_output
+   Text: "the team knows about it...."
+   Scores: score=0.53, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.58
+   History:
+     → Created by hook_hunter at 414.5s-415.7s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 402.26, 'end': 442.26, 'scores': {'arc_score': 0.143}})
+     → Modified by arc_assembler (changes: {'start': 406.02, 'end': 443.12, 'scores': {'arc_score': 0.5777}})
+     → Modified by editor_refiner (changes: {'start': 404.82})
+     → Finalized as output: final_clip_output
+
+📌 c_0014 | 889.8s - 899.4s | Status: final_clip_output
+   Text: "with a little bit more confidence...."
+   Scores: score=0.52, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.26
+   History:
+     → Created by hook_hunter at 897.4s-898.6s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 895.89, 'end': 935.89, 'scores': {'arc_score': 0.2278}})
+     → Modified by arc_assembler (changes: {'start': 890.95, 'end': 899.77, 'scores': {'arc_score': 0.257}})
+     → Modified by editor_refiner (changes: {'start': 889.75, 'end': 899.39})
+     → Finalized as output: final_clip_output
+
+📌 c_0015 | 189.8s - 251.0s | Status: final_clip_output
+   Text: "this month to next month, what breaks?..."
+   Scores: score=0.51, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.85
+   History:
+     → Created by hook_hunter at 197.3s-199.8s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 187.31, 'end': 227.31, 'scores': {'arc_score': 0.0831}})
+     → Modified by arc_assembler (changes: {'start': 191.03, 'end': 251.03, 'scores': {'arc_score': 0.8534}})
+     → Modified by editor_refiner (changes: {'start': 189.83})
+     → Finalized as output: final_clip_output
+
+📌 c_0016 | 877.3s - 911.6s | Status: final_clip_output
+   Text: "imagine being there and how would you live in that energy?..."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.68
+   History:
+     → Created by hook_hunter at 887.5s-890.6s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+     → Modified by arc_assembler (changes: {'start': 878.47, 'end': 920.77, 'scores': {'arc_score': 0.6785}})
+     → Modified by editor_refiner (changes: {'start': 877.27, 'end': 911.65})
+     → Finalized as output: final_clip_output
+
+📌 c_0017 | 551.2s - 554.2s | Status: passed_validation
+   Text: "That's the 5% that'll get you 95% of results...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 551.2s-554.2s
+     → Finalized as output: passed_validation
+
+📌 c_0018 | 754.3s - 756.1s | Status: passed_validation
+   Text: "Everything is a byproduct of how we feel...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 754.3s-756.1s
+     → Finalized as output: passed_validation
+
+📌 c_0019 | 1039.7s - 1042.5s | Status: passed_validation
+   Text: "when you perform and how you do it...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 1039.7s-1042.5s
+     → Finalized as output: passed_validation
+
+📌 c_0020 | 303.8s - 306.1s | Status: passed_validation
+   Text: "Dan, my to do list is overflowing...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 303.8s-306.1s
+     → Finalized as output: passed_validation
+
+📌 c_0021 | 322.8s - 325.7s | Status: passed_validation
+   Text: "All right, so once you find your bottleneck, awesome...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 322.8s-325.7s
+     → Finalized as output: passed_validation
+
+📌 c_0022 | 285.1s - 286.5s | Status: passed_validation
+   Text: "and they move on, and guess what?..."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 285.1s-286.5s
+     → Finalized as output: passed_validation
+
+📌 c_0023 | 410.9s - 412.9s | Status: passed_validation
+   Text: "Not the things you add, everybody's got that...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 410.9s-412.9s
+     → Finalized as output: passed_validation
+
+📌 c_0024 | 620.1s - 623.9s | Status: passed_validation
+   Text: "Before you actually get any of it. I always tell these kids..."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 620.1s-623.9s
+     → Finalized as output: passed_validation
+
+📌 c_0025 | 163.5s - 165.8s | Status: active
+   Text: "Theave constraints tells you how to find it...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 163.5s-165.8s
+
+============================================================
+[ORCH] staged returned 8 candidates (groq_pool=32, has_tf_moments=False).
+[ORCH] Orchestration complete (t=8.05s)
+[GROQ_POOL_FIX] experiment_mode=1 → using final_candidates (arc-assembled) for Surgeon input
+
+[GROQ_POOL_TEST]
+pool_before=8
+pool_after=8
+lowest_score_sent=0.2543
+highest_score_rejected=0.0
+
+[GROQ_CORTEX] groq_input_candidates_count=8 (ranked_output=8, enriched_pool=32)
+[SURGEON_ENTER]
+candidates=8
+[SURGEON_BATCH]
+batch=1
+count=4
+
+[FORENSIC_PAYLOAD_DIAGNOSTIC]
+candidate_id=c_cand_0
+hook_text=If I tripled the amount of customers you have
+build_text=real bottleneck is. You wanna find it? Ask yourself this question. If I tripled the amount of customers you have this month to next month, what breaks? Everybody that you know about in business uses is Jeff Bezos makes this book required reading for all his executives. It's how they scaled Amazon Prime so that they could ship all these products for a subscription with they'll have in their whole operations collapse. With all that being said, here's how you can find your bottleneck by using the theory of constraints. Number one, you gotta map the flow of money in your business. Left side ideas, right side cash in your bank account. Think about that. And that is everything from an idea to build a product, to market the product, to talk to customers, to get them to give you money, to onboard the customers, to make sure they're happy, make sure they buy more stuff. And that means money in your bank account. So map out all the steps. Now I know most people watch this and say, well, I have a marketing problem. You may and you may not. You think that's the bottleneck, but you might have a bigger problem. You might have an offer problem.
+payoff_text=And you'll never figure this out if you don't follow that step.
+full_clip_text_length=1268
+full_clip_text=and things move so slow, it's hard to find out where the real bottleneck is. You wanna find it? Ask yourself this question. If I tripled the amount of customers you have this month to next month, what breaks? Everybody that you know about in business uses is Jeff Bezos makes this book required reading for all his executives. It's how they scaled Amazon Prime so that they could ship all these products for a subscription with they'll have in their whole operations collapse. With all that being said, here's how you can find your bottleneck by using the theory of constraints. Number one, you gotta map the flow of money in your business. Left side ideas, right side cash in your bank account. Think about that. And that is everything from an idea to build a product, to market the product, to talk to customers, to get them to give you money, to onboard the customers, to make sure they're happy, make sure they buy more stuff. And that means money in your bank account. So map out all the steps. Now I know most people watch this and say, well, I have a marketing problem. You may and you may not. You think that's the bottleneck, but you might have a bigger problem. You might have an offer problem. And you'll never figure this out if you don't follow that step.
+window_text_length=2086
+window_text=[60] The way you do that is you increase the amount of volume
+[61] through the system to figure where the bottleneck is.
+[62] And then it'll make it obvious.
+[63] Sometimes because a business is so small
+[64] and things move so slow,
+[65] it's hard to find out where the real bottleneck is.
+[66] You wanna find it?
+[67] Ask yourself this question.
+[68] If I tripled the amount of customers you have
+[69] this month to next month, what breaks?
+[70] Everybody that you know about in business uses
+[71] is Jeff Bezos makes this book
+[72] required reading for all his executives.
+[73] It's how they scaled Amazon Prime
+[74] so that they could ship all these products
+[75] for a subscription
+[76] with they'll have in their whole operations collapse.
+[77] With all that being said,
+[78] here's how you can find your bottleneck
+[79] by using the theory of constraints.
+[80] Number one, you gotta map the flow of money in your business.
+[81] Left side ideas, right side cash in your bank account.
+[82] Think about that.
+[83] And that is everything from an idea to build a product,
+[84] to market the product, to talk to customers,
+[85] to get them to give you money,
+[86] to onboard the customers,
+[87] to make sure they're happy, make sure they buy more stuff.
+[88] And that means money in your bank account.
+[89] So map out all the steps.
+[90] Now I know most people watch this
+[91] and say, well, I have a marketing problem.
+[92] You may and you may not.
+[93] You think that's the bottleneck,
+[94] but you might have a bigger problem.
+[95] You might have an offer problem.
+[96] And you'll never figure this out
+[97] if you don't follow that step.
+[98] Step two, find the steps where things are piling up.
+[99] Like I said, ideas are a place where things pile up.
+[100] If everybody on your team has all these awesome ideas,
+[101] but nothing's getting executed,
+[102] then that might be where the bottleneck sits.
+[103] Dive in to each one of these steps
+[104] where you see things pile in up and ask yourself
+[105] do you have a people problem,
+[106] a process problem or a profit problem?
+
+
+[FORENSIC_PAYLOAD_DIAGNOSTIC]
+candidate_id=c_cand_1
+hook_text=It's the business plan, they celebrate,
+build_text=make a list of everything you remove this year. Not the things you add, everybody's got that. It's the business plan, they celebrate, the team knows about it. I'm curious what did you stop doing? What did you say no to? What did you cut? Because I'm never impressed with people that just keep adding new ideas. I'm impressed with the person who says, hey, I think we should get rid of this because these things are actually not doing anything. The person who can remove ways, subtract things from the business and have the business continue to thrive if not actually be more
+payoff_text=profitable and grow faster, that person in my life is highly rewarded.
+full_clip_text_length=716
+full_clip_text=Every founder I coach, I give them the exact same process. Essentially make a list of everything you remove this year. Not the things you add, everybody's got that. It's the business plan, they celebrate, the team knows about it. I'm curious what did you stop doing? What did you say no to? What did you cut? Because I'm never impressed with people that just keep adding new ideas. I'm impressed with the person who says, hey, I think we should get rid of this because these things are actually not doing anything. The person who can remove ways, subtract things from the business and have the business continue to thrive if not actually be more profitable and grow faster, that person in my life is highly rewarded.
+window_text_length=1704
+window_text=[164] what he knows is gonna be the big idea.
+[165] That's crazy and awesome.
+[166] So let's be inspired a little tiny bit
+[167] by some of those brave decisions.
+[168] Every founder I coach, I give them the exact same process.
+[169] Essentially make a list of everything you remove this year.
+[170] Not the things you add, everybody's got that.
+[171] It's the business plan, they celebrate,
+[172] the team knows about it.
+[173] I'm curious what did you stop doing?
+[174] What did you say no to?
+[175] What did you cut?
+[176] Because I'm never impressed with people
+[177] that just keep adding new ideas.
+[178] I'm impressed with the person who says,
+[179] hey, I think we should get rid of this
+[180] because these things are actually not doing anything.
+[181] The person who can remove ways, subtract things from the business and have the business
+[182] continue to thrive if not actually be more profitable and grow faster, that person in
+[183] my life is highly rewarded.
+[184] So here's what Drucker teaches in the book.
+[185] Number one, we have to track our time.
+[186] We got to figure out where are we spending our time.
+[187] Most people think, no, I worked on this all week, I worked on this all week.
+[188] And then it's like, no, if you actually had a timer go off every 15 minutes and you
+[189] wrote down what you did, you would forget that you spent seven hours mindlessly scrolling
+[190] social media. Just saying, once you know you can't hide from the fact of are you actually doing the
+[191] work. The second thing is you cut ruthlessly. The 955 rule argues the same thing the Druckertox
+[192] about which is that 5% of your activities are driving 95% of your result. Which means let's
+
+
+[FORENSIC_PAYLOAD_DIAGNOSTIC]
+candidate_id=c_cand_2
+hook_text=Number one, we have to track our time.
+build_text=that person in my life is highly rewarded. So here's what Drucker teaches in the book. Number one, we have to track our
+payoff_text=time. We got to figure out where are we spending our time.
+full_clip_text_length=249
+full_clip_text=continue to thrive if not actually be more profitable and grow faster, that person in my life is highly rewarded. So here's what Drucker teaches in the book. Number one, we have to track our time. We got to figure out where are we spending our time.
+window_text_length=1410
+window_text=[178] I'm impressed with the person who says,
+[179] hey, I think we should get rid of this
+[180] because these things are actually not doing anything.
+[181] The person who can remove ways, subtract things from the business and have the business
+[182] continue to thrive if not actually be more profitable and grow faster, that person in
+[183] my life is highly rewarded.
+[184] So here's what Drucker teaches in the book.
+[185] Number one, we have to track our time.
+[186] We got to figure out where are we spending our time.
+[187] Most people think, no, I worked on this all week, I worked on this all week.
+[188] And then it's like, no, if you actually had a timer go off every 15 minutes and you
+[189] wrote down what you did, you would forget that you spent seven hours mindlessly scrolling
+[190] social media. Just saying, once you know you can't hide from the fact of are you actually doing the
+[191] work. The second thing is you cut ruthlessly. The 955 rule argues the same thing the Druckertox
+[192] about which is that 5% of your activities are driving 95% of your result. Which means let's
+[193] find where are those 95% of the things that we just got to cut. And this is tough because people
+[194] are like what are you saying? I got to say no to this person. I got to say no to that opportunity.
+[195] I got to say no to having a coffee meeting or somebody picking my brain or a random introduction
+
+
+[FORENSIC_PAYLOAD_DIAGNOSTIC]
+candidate_id=c_cand_3
+hook_text=I never even went on one of them dinky bikes
+build_text=I had a new ran a marathon. I couldn't even swim. I never even went on one of them dinky bikes where you had to wear a bunch of spandex. But I just thought, what is the peak expression of health? Iron Man was that for me? I was trying to be the best version of myself, so I wrote down I am an Iron Man for years before I ever even attempted anything that looked like a triathlon. But then one day, one conversation with my friend Nick turned my whole life upside down and it started with a sprint triathlon to then an Olympic disin sprint, to an Olympic disin strafflon. And next thing you know, I'm doing a half-iron man, to a full-iron man, now I've
+payoff_text=done seven-iron man. And it all started with the belief, the identity,
+full_clip_text_length=783
+full_clip_text=You get to understand, when I was writing that 12 years ago, I had a new ran a marathon. I couldn't even swim. I never even went on one of them dinky bikes where you had to wear a bunch of spandex. But I just thought, what is the peak expression of health? Iron Man was that for me? I was trying to be the best version of myself, so I wrote down I am an Iron Man for years before I ever even attempted anything that looked like a triathlon. But then one day, one conversation with my friend Nick turned my whole life upside down and it started with a sprint triathlon to then an Olympic disin sprint, to an Olympic disin strafflon. And next thing you know, I'm doing a half-iron man, to a full-iron man, now I've done seven-iron man. And it all started with the belief, the identity,
+window_text_length=1483
+window_text=[243] Goddard calls this framework living in the end.
+[244] For years, I wrote down, I am an arm man.
+[245] I am an arm man.
+[246] I am an arm man.
+[247] You get to understand, when I was writing that 12 years ago,
+[248] I had a new ran a marathon.
+[249] I couldn't even swim.
+[250] I never even went on one of them dinky bikes
+[251] where you had to wear a bunch of spandex.
+[252] But I just thought, what is the peak expression of health?
+[253] Iron Man was that for me?
+[254] I was trying to be the best version of myself,
+[255] so I wrote down I am an Iron Man for years
+[256] before I ever even attempted anything
+[257] that looked like a triathlon.
+[258] But then one day, one conversation with my friend Nick
+[259] turned my whole life upside down
+[260] and it started with a sprint triathlon
+[261] to then an Olympic disin sprint, to an Olympic disin strafflon.
+[262] And next thing you know, I'm doing a half-iron man,
+[263] to a full-iron man, now I've done seven-iron man.
+[264] And it all started with the belief, the identity,
+[265] that I am an iron man.
+[266] Can you make a commitment to who you are
+[267] without any proof in the world that that is who you are?
+[268] Some people will not understand this,
+[269] people will argue with me, well, that makes no sense.
+[270] And that's like, that's like you're lying to yourself.
+[271] People lie to themselves all day, all day.
+[272] Notice that I didn't say I will be an Iron Man.
+[273] I wrote down I am an Iron Man.
+
+Starting new HTTPS connection (1): api.groq.com:443
+https://api.groq.com:443 "POST /openai/v1/chat/completions HTTP/1.1" 200 None
+
+[SURGEON_FORENSIC_CANDIDATE]
+candidate_id=c_cand_0
+duration=61.2
+hook_text=If I tripled the amount of customers you have
+payoff_text=And you'll never figure this out if you don't follow that step.
+arc_score=0.0
+final_score=0.8582
+context_tokens=388
+candidate_tokens=7
+prompt_tokens=657
+core_idea_source=UNKNOWN
+decision=KEEP
+rejection_reason=none
+rejection_type=NONE
+
+[SURGEON_FORENSIC_CANDIDATE]
+candidate_id=c_cand_1
+duration=38.3
+hook_text=It's the business plan, they celebrate,
+payoff_text=profitable and grow faster, that person in my life is highly rewarded.
+arc_score=0.0
+final_score=0.5902
+context_tokens=313
+candidate_tokens=5
+prompt_tokens=657
+core_idea_source=UNKNOWN
+decision=REJECT
+rejection_reason=The payoff candidate does not directly address the idea introduced by the hook
+rejection_type=HOOK_AND_PAYOFF_MISALIGNMENT
+
+[SURGEON_FORENSIC_CANDIDATE]
+candidate_id=c_cand_2
+duration=10.86
+hook_text=Number one, we have to track our time.
+payoff_text=time. We got to figure out where are we spending our time.
+arc_score=0.0
+final_score=0.2983
+context_tokens=267
+candidate_tokens=16
+prompt_tokens=657
+core_idea_source=UNKNOWN
+decision=KEEP
+rejection_reason=none
+rejection_type=NONE
+
+[SURGEON_FORENSIC_CANDIDATE]
+candidate_id=c_cand_3
+duration=43.5
+hook_text=I never even went on one of them dinky bikes
+payoff_text=done seven-iron man. And it all started with the belief, the identity,
+arc_score=0.0
+final_score=0.4904
+context_tokens=291
+candidate_tokens=9
+prompt_tokens=657
+core_idea_source=UNKNOWN
+decision=KEEP
+rejection_reason=none
+rejection_type=NONE
+[SURGEON_BATCH]
+batch=2
+count=4
+
+[FORENSIC_PAYLOAD_DIAGNOSTIC]
+candidate_id=c_cand_4
+hook_text=I am rich.
+build_text=Not I want to be rich. Not I'm trying to be rich is I am rich. I am rich. You can decide to be rich right now. But I don't have any money in my bank account. That's okay. Rich is a feeling first. See how that works? Number four, your self concept is
+payoff_text=the real lever. The outside world that you think is so important
+full_clip_text_length=375
+full_clip_text=No, this is what I'm doing. Settle, but it's a game changer. Not I want to be rich. Not I'm trying to be rich is I am rich. I am rich. You can decide to be rich right now. But I don't have any money in my bank account. That's okay. Rich is a feeling first. See how that works? Number four, your self concept is the real lever. The outside world that you think is so important
+window_text_length=1012
+window_text=[306] Number three is you gotta speak from the identity, not towards it.
+[307] Drop the I want and I'm trying and start using language that says I am.
+[308] We are, not we will.
+[309] It'd be nice.
+[310] No, this is what I'm doing.
+[311] Settle, but it's a game changer.
+[312] Not I want to be rich.
+[313] Not I'm trying to be rich is I am rich.
+[314] I am rich.
+[315] You can decide to be rich right now.
+[316] But I don't have any money in my bank account.
+[317] That's okay.
+[318] Rich is a feeling first.
+[319] See how that works?
+[320] Number four, your self concept is the real lever.
+[321] The outside world that you think is so important
+[322] and other people's opinion of you
+[323] and how you're living your life,
+[324] those things are just a reflection
+[325] of what you believe inside.
+[326] So if you wanna have the most power,
+[327] the highest form of leverage,
+[328] change that inner image first
+[329] and the outside world will follow.
+[330] Number five, the gap between assuming the identity
+
+
+[FORENSIC_PAYLOAD_DIAGNOSTIC]
+candidate_id=c_cand_5
+hook_text=Don't imagine getting there,
+build_text=just have to persist without evidence. And the last one, number six, is live in the wish fulfill. Don't imagine getting there, imagine being there and how would you live in that energy? If you actually believe you have a million dollars in bank account, I guarantee you're gonna walk down the street with a little pep to your step. You're gonna be shaking people's hand with a little bit more confidence. You're gonna be in meetings. I got an idea. Why all of a sudden you feel so confident about your idea? I got 10 million dollars in my bank account, so I don't need you to care about my idea. See how you will have this quiet confidence when you start
+payoff_text=acting from that place. If you do those, it'll change everything external,
+full_clip_text_length=797
+full_clip_text=Winners failed more than losers. They just tried one more time. You just have to persist without evidence. And the last one, number six, is live in the wish fulfill. Don't imagine getting there, imagine being there and how would you live in that energy? If you actually believe you have a million dollars in bank account, I guarantee you're gonna walk down the street with a little pep to your step. You're gonna be shaking people's hand with a little bit more confidence. You're gonna be in meetings. I got an idea. Why all of a sudden you feel so confident about your idea? I got 10 million dollars in my bank account, so I don't need you to care about my idea. See how you will have this quiet confidence when you start acting from that place. If you do those, it'll change everything external,
+window_text_length=1458
+window_text=[337] No, they won in the quiet battles.
+[338] When nobody else was around, they won those battles,
+[339] those days.
+[340] Think of it this way.
+[341] Winners failed more than losers.
+[342] They just tried one more time.
+[343] You just have to persist without evidence.
+[344] And the last one, number six, is live in the wish fulfill.
+[345] Don't imagine getting there,
+[346] imagine being there and how would you live in that energy?
+[347] If you actually believe you have a million dollars
+[348] in bank account, I guarantee you're gonna walk down the street
+[349] with a little pep to your step.
+[350] You're gonna be shaking people's hand
+[351] with a little bit more confidence.
+[352] You're gonna be in meetings.
+[353] I got an idea.
+[354] Why all of a sudden you feel so confident about your idea?
+[355] I got 10 million dollars in my bank account,
+[356] so I don't need you to care about my idea.
+[357] See how you will have this quiet confidence
+[358] when you start acting from that place.
+[359] If you do those, it'll change everything external,
+[360] but it starts internal.
+[361] Now, these three books, they're great.
+[362] This will get you going.
+[363] They'll help you find the bottlenecks,
+[364] they'll get rid of the distractions,
+[365] and now you start living from this like elevated identity.
+[366] But I genuinely believe this next book
+[367] might be the most important of them all.
+[368] Number four, Inter-Excellent by Jim Murphy.
+
+
+[FORENSIC_PAYLOAD_DIAGNOSTIC]
+candidate_id=c_cand_6
+hook_text=You're gonna be shaking people's hand
+build_text=you actually believe you have a million dollars in bank account, I guarantee you're gonna walk down the street with a little pep to your step. You're gonna be shaking people's
+payoff_text=hand with a little bit more confidence. You're gonna be in meetings.
+full_clip_text_length=306
+full_clip_text=imagine being there and how would you live in that energy? If you actually believe you have a million dollars in bank account, I guarantee you're gonna walk down the street with a little pep to your step. You're gonna be shaking people's hand with a little bit more confidence. You're gonna be in meetings.
+window_text_length=947
+window_text=[342] They just tried one more time.
+[343] You just have to persist without evidence.
+[344] And the last one, number six, is live in the wish fulfill.
+[345] Don't imagine getting there,
+[346] imagine being there and how would you live in that energy?
+[347] If you actually believe you have a million dollars
+[348] in bank account, I guarantee you're gonna walk down the street
+[349] with a little pep to your step.
+[350] You're gonna be shaking people's hand
+[351] with a little bit more confidence.
+[352] You're gonna be in meetings.
+[353] I got an idea.
+[354] Why all of a sudden you feel so confident about your idea?
+[355] I got 10 million dollars in my bank account,
+[356] so I don't need you to care about my idea.
+[357] See how you will have this quiet confidence
+[358] when you start acting from that place.
+[359] If you do those, it'll change everything external,
+[360] but it starts internal.
+[361] Now, these three books, they're great.
+
+
+[FORENSIC_PAYLOAD_DIAGNOSTIC]
+candidate_id=c_cand_7
+hook_text=This is for everyone who is wondering
+build_text=of them all. Number four, Inter-Excellent by Jim Murphy. This is not just for business owners. This is for everyone who
+payoff_text=is wondering why things aren't going their way. Murphy's a cool dude.
+full_clip_text_length=256
+full_clip_text=But I genuinely believe this next book might be the most important of them all. Number four, Inter-Excellent by Jim Murphy. This is not just for business owners. This is for everyone who is wondering why things aren't going their way. Murphy's a cool dude.
+window_text_length=948
+window_text=[362] This will get you going.
+[363] They'll help you find the bottlenecks,
+[364] they'll get rid of the distractions,
+[365] and now you start living from this like elevated identity.
+[366] But I genuinely believe this next book
+[367] might be the most important of them all.
+[368] Number four, Inter-Excellent by Jim Murphy.
+[369] This is not just for business owners.
+[370] This is for everyone who is wondering
+[371] why things aren't going their way.
+[372] Murphy's a cool dude.
+[373] He reminds me of myself where he like did the business stuff,
+[374] but then studied the elite performers
+[375] and started to find the patterns.
+[376] When he studied 20 years of the top performers
+[377] and he realized there's some people
+[378] that had all the skills, high achievers and didn't win,
+[379] then there's the people that had that
+[380] and actually won at the highest levels.
+[381] The people that failed, they gripped too hard on their life.
+
+Starting new HTTPS connection (1): api.groq.com:443
+https://api.groq.com:443 "POST /openai/v1/chat/completions HTTP/1.1" 200 None
+
+[SURGEON_FORENSIC_CANDIDATE]
+candidate_id=c_cand_4
+duration=19.54
+hook_text=I am rich.
+payoff_text=the real lever. The outside world that you think is so important
+arc_score=0.0
+final_score=0.6346
+context_tokens=193
+candidate_tokens=8
+prompt_tokens=496
+core_idea_source=UNKNOWN
+decision=KEEP
+rejection_reason=none
+rejection_type=NONE
+
+[SURGEON_FORENSIC_CANDIDATE]
+candidate_id=c_cand_5
+duration=34.38
+hook_text=Don't imagine getting there,
+payoff_text=acting from that place. If you do those, it'll change everything external,
+arc_score=0.0
+final_score=0.7017
+context_tokens=260
+candidate_tokens=11
+prompt_tokens=496
+core_idea_source=UNKNOWN
+decision=KEEP
+rejection_reason=none
+rejection_type=NONE
+
+[SURGEON_FORENSIC_CANDIDATE]
+candidate_id=c_cand_6
+duration=9.64
+hook_text=You're gonna be shaking people's hand
+payoff_text=hand with a little bit more confidence. You're gonna be in meetings.
+arc_score=0.0
+final_score=0.2457
+context_tokens=172
+candidate_tokens=6
+prompt_tokens=496
+core_idea_source=UNKNOWN
+decision=REJECT
+rejection_reason=The payoff candidate does not provide a meaningful progression from the hook
+rejection_type=NO_MEANINGFUL_PROGRESSION
+
+[SURGEON_FORENSIC_CANDIDATE]
+candidate_id=c_cand_7
+duration=12.55
+hook_text=This is for everyone who is wondering
+payoff_text=is wondering why things aren't going their way. Murphy's a cool dude.
+arc_score=0.0
+final_score=0.2543
+context_tokens=166
+candidate_tokens=6
+prompt_tokens=496
+core_idea_source=UNKNOWN
+decision=REJECT
+rejection_reason=The payoff candidate introduces a new topic, rather than resolving the hook's narrative promise
+rejection_type=NEW_TOPIC
+
+[GROQ_AUDIT]
+candidates_sent=8
+batches=2
+input_tokens=4614
+output_tokens=1127
+tokens_per_candidate=718
+cost_estimate=$0.00361
+avg_decision_latency=1674ms
+decision_distribution={"KEEP": 5, "MOVE_HOOK": 0, "COMPLETE_IDEA": 0, "REJECT": 3}
+
+
+[SURGEON_RESPONSE]
+keep=5
+move_hook=0
+extend_right=0
+reject=3
+  hook_and_payoff_misalignment=1
+  no_meaningful_progression=1
+  new_topic=1
+
+[EXTEND_RIGHT_AUDIT]
+total=0
+valid_quote=0
+invalid_quote=0
+accuracy=0%
+
+[GROQ_SURGEON] Phase 2: MOVE_HOOK execution active.
+
+[FINAL_CLIP_SOURCE_REPORT]
+candidate_generation=8
+groq_transcript_first=0
+
+[GROQ_USAGE_REPORT]
+narrative_enabled=0
+transcript_first_enabled=0
+cortex_enabled=0
+
+[PIPELINE_REPORT]
+raw_candidates=32
+final_candidates=8
+runtime_seconds=12.93
+
+
+[PIPELINE_ACCOUNTING]
+Hooks Created = 31
+Hooks Suppressed = 6
+Candidates Created = 25
+Arc Assembler Inputs = 24
+Surgeon Inputs = 24
+Final Clips = 8
+
+CLIP 1: source=candidate_generation hook_score=0.51 payoff_score=0.92 duration=61.2 final_score=0.8582
+  [HOOK_SELECTION_TRACE]
+    selected_hook_score=0.509
+    why_selected=trusted candidate onset (Hook Hunter)
+    selected_hook_text='If I tripled the amount of customers you have'
+
+CLIP 2: source=candidate_generation hook_score=0.18 payoff_score=0.92 duration=38.3 final_score=0.5902
+  [HOOK_SELECTION_TRACE]
+    selected_hook_score=0.5258
+    why_selected=trusted candidate onset (Hook Hunter)
+    selected_hook_text='It's the business plan, they celebrate,'
+
+CLIP 3: source=candidate_generation hook_score=0.0 payoff_score=0.4153 duration=13.82 final_score=0.2983
+  [HOOK_SELECTION_TRACE]
+    selected_hook_score=0.5768
+    why_selected=trusted candidate onset (Hook Hunter)
+    selected_hook_text='Number one, we have to track our time.'
+
+CLIP 4: source=candidate_generation hook_score=0.3 payoff_score=0.5 duration=46.7 final_score=0.4904
+  [HOOK_SELECTION_TRACE]
+    selected_hook_score=0.639
+    why_selected=trusted candidate onset (Hook Hunter)
+    selected_hook_text='I never even went on one of them dinky bikes'
+
+CLIP 5: source=candidate_generation hook_score=0.23 payoff_score=0.92 duration=21.82 final_score=0.6346
+  [HOOK_SELECTION_TRACE]
+    selected_hook_score=0.583
+    why_selected=trusted candidate onset (Hook Hunter)
+    selected_hook_text='I am rich.'
+
+CLIP 6: source=candidate_generation hook_score=0.23 payoff_score=0.92 duration=43.5 final_score=0.7017
+  [HOOK_SELECTION_TRACE]
+    selected_hook_score=0.5035
+    why_selected=trusted candidate onset (Hook Hunter)
+    selected_hook_text='Don't imagine getting there,'
+
+CLIP 7: source=candidate_generation hook_score=0.46 payoff_score=0.3844 duration=10.02 final_score=0.2457
+  [HOOK_SELECTION_TRACE]
+    selected_hook_score=0.524
+    why_selected=trusted candidate onset (Hook Hunter)
+    selected_hook_text='You're gonna be shaking people's hand'
+
+CLIP 8: source=candidate_generation hook_score=0.23 payoff_score=0.4566 duration=13.63 final_score=0.2543
+  [HOOK_SELECTION_TRACE]
+    selected_hook_score=0.551
+    why_selected=trusted candidate onset (Hook Hunter)
+    selected_hook_text='This is for everyone who is wondering'
+
+
+==================================================
+NARRATIVE OBSERVATORY: STORY TRACE REPORT
+==================================================
+
+STORY #1 [Trace ID: d277d5c7-619f-455c-909e-5d16ae525559]
+----------------------------------------
+WHO AM I?
+  Hook: 'this month to next month, what breaks?'
+  Start: 197.29s
+  End: 251.03s
+  State: FINALIZED
+  Birth Heuristics:
+    hook_score: 0.51
+    pattern_break: 0.39
+    open_loop: 0.7
+    curiosity_peak: 0.4802
+    hook_strength: 0.509
+----------------------------------------
+STATE HISTORY: OPEN -> EDITOR_REFINED -> SURGEON_VALIDATED -> FINALIZED
+----------------------------------------
+SUPPRESSED CHILDREN: None (0 absorbed)
+----------------------------------------
+PIPELINE EVENTS:
+  [HOOK_HUNTER] CREATED [MUTATED] (Impact: HIGH)
+     After:  {'hook': 'this month to next month, what breaks?', 'start': 197.29}
+  [EDITOR_REFINER] REFINED [MUTATED] (Impact: MEDIUM)
+     Before: {'start': 191.03, 'end': 251.03}
+     After:  {'start': 189.83, 'end': 251.03}
+  [GROQ_SURGEON] KEEP (Impact: LOW)
+----------------------------------------
+FINAL ANSWER
+  This clip exists because Hook Hunter created it, Groq Surgeon validated it without edits, Editor Refiner padded and korrected sentence alignment.
+==================================================
+
+STORY #2 [Trace ID: 19c98a09-212c-40ee-9885-89a697fa63b4]
+----------------------------------------
+WHO AM I?
+  Hook: 'the team knows about it.'
+  Start: 414.52s
+  End: 443.12s
+  State: FINALIZED
+  Birth Heuristics:
+    hook_score: 0.51
+    pattern_break: 0.77
+    open_loop: 0.55
+    curiosity_peak: 0.2979
+    hook_strength: 0.5258
+----------------------------------------
+STATE HISTORY: OPEN -> EDITOR_REFINED -> FINALIZED
+----------------------------------------
+SUPPRESSED CHILDREN: None (0 absorbed)
+----------------------------------------
+PIPELINE EVENTS:
+  [HOOK_HUNTER] CREATED [MUTATED] (Impact: HIGH)
+     After:  {'hook': 'the team knows about it.', 'start': 414.52}
+  [EDITOR_REFINER] REFINED [MUTATED] (Impact: MEDIUM)
+     Before: {'start': 406.02, 'end': 443.12}
+     After:  {'start': 404.82, 'end': 443.12}
+----------------------------------------
+FINAL ANSWER
+  This clip exists because Hook Hunter created it, Editor Refiner padded and korrected sentence alignment.
+==================================================
+
+STORY #3 [Trace ID: fb939af9-ef8b-4a5f-9cbc-e9ba1f86357f]
+----------------------------------------
+WHO AM I?
+  Hook: 'Most people think, no, I worked on this all week, I worked on this all week.'
+  Start: 449.68s
+  End: 449.52s
+  State: FINALIZED
+  Birth Heuristics:
+    hook_score: 0.6379
+    pattern_break: 0.66
+    open_loop: 0.5
+    curiosity_peak: 0.2555
+    hook_strength: 0.5768
+----------------------------------------
+STATE HISTORY: OPEN -> CONTINUED -> EDITOR_REFINED -> SURGEON_VALIDATED -> FINALIZED
+----------------------------------------
+SUPPRESSED CHILDREN (2 absorbed):
+  1. Start: 535.12s | Score: 0.6075 | Reason: continuity=0.50
+     Text: 'one thing that you can do today that actually matters? Now I know you're like, I got 14.'
+  2. Start: 540.4s | Score: 0.5585 | Reason: continuity=0.35
+     Text: 'What's the one? But then I can't pick one. There's too many. I got three. I got four.'
+----------------------------------------
+PIPELINE EVENTS:
+  [HOOK_HUNTER] CREATED [MUTATED] (Impact: HIGH)
+     After:  {'hook': 'Most people think, no, I worked on this all week, I worked on this all week.', 'start': 449.68}
+  [STORY_MEMORY] SUPPRESSED_CHILD [MUTATED] (Impact: CRITICAL)
+     Before: {'suppressed_children_count': 0}
+     After:  {'suppressed_children_count': 1, 'suppressed_text': "one thing that you can do today that actually matters? Now I know you're like, I got 14."}
+  [STORY_MEMORY] SUPPRESSED_CHILD [MUTATED] (Impact: CRITICAL)
+     Before: {'suppressed_children_count': 1}
+     After:  {'suppressed_children_count': 2, 'suppressed_text': "What's the one? But then I can't pick one. There's too many. I got three. I got four."}
+  [EDITOR_REFINER] REFINED [MUTATED] (Impact: MEDIUM)
+     Before: {'start': 439.86, 'end': 452.48}
+     After:  {'start': 438.66, 'end': 449.52}
+  [GROQ_SURGEON] KEEP (Impact: LOW)
+----------------------------------------
+FINAL ANSWER
+  This clip exists because Hook Hunter created it, Story memory absorbed 2 fragments, Groq Surgeon validated it without edits, Editor Refiner padded and korrected sentence alignment.
+==================================================
+
+STORY #4 [Trace ID: 67604fd8-9bf3-419e-bfa7-8533f9c89e71]
+----------------------------------------
+WHO AM I?
+  Hook: 'where you had to wear a bunch of spandex.'
+  Start: 662.21s
+  End: 697.33s
+  State: FINALIZED
+  Birth Heuristics:
+    hook_score: 0.69
+    pattern_break: 0.77
+    open_loop: 0.8
+    curiosity_peak: 0.0
+    hook_strength: 0.639
+----------------------------------------
+STATE HISTORY: OPEN -> EDITOR_REFINED -> SURGEON_VALIDATED -> FINALIZED
+----------------------------------------
+SUPPRESSED CHILDREN: None (0 absorbed)
+----------------------------------------
+PIPELINE EVENTS:
+  [HOOK_HUNTER] CREATED [MUTATED] (Impact: HIGH)
+     After:  {'hook': 'where you had to wear a bunch of spandex.', 'start': 662.21}
+  [EDITOR_REFINER] REFINED [MUTATED] (Impact: MEDIUM)
+     Before: {'start': 655.03, 'end': 700.53}
+     After:  {'start': 653.83, 'end': 697.33}
+  [GROQ_SURGEON] KEEP (Impact: LOW)
+----------------------------------------
+FINAL ANSWER
+  This clip exists because Hook Hunter created it, Groq Surgeon validated it without edits, Editor Refiner padded and korrected sentence alignment.
+==================================================
+
+STORY #5 [Trace ID: 9f580513-01a3-4d04-9bee-7562d249a83b]
+----------------------------------------
+WHO AM I?
+  Hook: 'You can decide to be rich right now.'
+  Start: 822.84s
+  End: 834.76s
+  State: FINALIZED
+  Birth Heuristics:
+    hook_score: 0.53
+    pattern_break: 0.77
+    open_loop: 0.8
+    curiosity_peak: 0.0
+    hook_strength: 0.583
+----------------------------------------
+STATE HISTORY: OPEN -> EDITOR_REFINED -> SURGEON_VALIDATED -> FINALIZED
+----------------------------------------
+SUPPRESSED CHILDREN: None (0 absorbed)
+----------------------------------------
+PIPELINE EVENTS:
+  [HOOK_HUNTER] CREATED [MUTATED] (Impact: HIGH)
+     After:  {'hook': 'You can decide to be rich right now.', 'start': 822.84}
+  [EDITOR_REFINER] REFINED [MUTATED] (Impact: MEDIUM)
+     Before: {'start': 816.42, 'end': 837.04}
+     After:  {'start': 815.22, 'end': 834.76}
+  [GROQ_SURGEON] KEEP (Impact: LOW)
+----------------------------------------
+FINAL ANSWER
+  This clip exists because Hook Hunter created it, Groq Surgeon validated it without edits, Editor Refiner padded and korrected sentence alignment.
+==================================================
+
+STORY #6 [Trace ID: ea5c5aec-a6b0-452d-b5d3-cb3acea24ba3]
+----------------------------------------
+WHO AM I?
+  Hook: 'imagine being there and how would you live in that energy?'
+  Start: 887.45s
+  End: 911.65s
+  State: FINALIZED
+  Birth Heuristics:
+    hook_score: 0.46
+    pattern_break: 0.63
+    open_loop: 0.7
+    curiosity_peak: 0.0
+    hook_strength: 0.5035
+----------------------------------------
+STATE HISTORY: OPEN -> EDITOR_REFINED -> SURGEON_VALIDATED -> FINALIZED
+----------------------------------------
+SUPPRESSED CHILDREN: None (0 absorbed)
+----------------------------------------
+PIPELINE EVENTS:
+  [HOOK_HUNTER] CREATED [MUTATED] (Impact: HIGH)
+     After:  {'hook': 'imagine being there and how would you live in that energy?', 'start': 887.45}
+  [EDITOR_REFINER] REFINED [MUTATED] (Impact: MEDIUM)
+     Before: {'start': 878.47, 'end': 920.77}
+     After:  {'start': 877.27, 'end': 911.65}
+  [GROQ_SURGEON] KEEP (Impact: LOW)
+----------------------------------------
+FINAL ANSWER
+  This clip exists because Hook Hunter created it, Groq Surgeon validated it without edits, Editor Refiner padded and korrected sentence alignment.
+==================================================
+
+STORY #7 [Trace ID: 63b59bf4-1fe9-4877-abf9-b84ea97cc1d1]
+----------------------------------------
+WHO AM I?
+  Hook: 'with a little bit more confidence.'
+  Start: 897.39s
+  End: 899.39s
+  State: FINALIZED
+  Birth Heuristics:
+    hook_score: 0.69
+    pattern_break: 0.39
+    open_loop: 0.7
+    curiosity_peak: 0.0
+    hook_strength: 0.524
+----------------------------------------
+STATE HISTORY: OPEN -> EDITOR_REFINED -> FINALIZED
+----------------------------------------
+SUPPRESSED CHILDREN: None (0 absorbed)
+----------------------------------------
+PIPELINE EVENTS:
+  [HOOK_HUNTER] CREATED [MUTATED] (Impact: HIGH)
+     After:  {'hook': 'with a little bit more confidence.', 'start': 897.39}
+  [EDITOR_REFINER] REFINED [MUTATED] (Impact: MEDIUM)
+     Before: {'start': 890.95, 'end': 899.77}
+     After:  {'start': 889.75, 'end': 899.39}
+----------------------------------------
+FINAL ANSWER
+  This clip exists because Hook Hunter created it, Editor Refiner padded and korrected sentence alignment.
+==================================================
+
+STORY #8 [Trace ID: 45c3f67a-0d16-42df-9154-6cc819b216ba]
+----------------------------------------
+WHO AM I?
+  Hook: 'why things aren't going their way.'
+  Start: 938.5s
+  End: 940.5s
+  State: FINALIZED
+  Birth Heuristics:
+    hook_score: 0.51
+    pattern_break: 0.67
+    open_loop: 0.8
+    curiosity_peak: 0.0
+    hook_strength: 0.551
+----------------------------------------
+STATE HISTORY: OPEN -> EDITOR_REFINED -> FINALIZED
+----------------------------------------
+SUPPRESSED CHILDREN: None (0 absorbed)
+----------------------------------------
+PIPELINE EVENTS:
+  [HOOK_HUNTER] CREATED [MUTATED] (Impact: HIGH)
+     After:  {'hook': "why things aren't going their way.", 'start': 938.5}
+  [EDITOR_REFINER] REFINED [MUTATED] (Impact: MEDIUM)
+     Before: {'start': 929.15, 'end': 941.58}
+     After:  {'start': 927.95, 'end': 940.5}
+----------------------------------------
+FINAL ANSWER
+  This clip exists because Hook Hunter created it, Editor Refiner padded and korrected sentence alignment.
+==================================================
+============================================================
+                 HOTSHORT PIPELINE X-RAY
+============================================================
+
+[STAGE AUTOPSIES]
+
+⚡ STRICT_PASS
+   input=447 | output=12 | time=0.000s
+   Rejected:
+     semantic<0.35 = 240
+     punch<0.25 = 422
+
+⚡ CANDIDATE_GENERATION
+   input=459 | output=8 | time=0.004s
+
+⚡ HOOK_HUNTER
+   input=8 | output=25 | time=0.825s
+
+⚡ BACKFILL
+   input=25 | output=25 | time=0.000s
+
+⚡ GROQ_TRANSCRIPT_FIRST
+   input=0 | output=0 | time=0.000s
+
+⚡ VALIDATION
+   input=24 | output=24 | time=0.000s
+
+⚡ ARC_ASSEMBLER
+   input=8 | output=8 | time=5.795s
+
+⚡ EDITOR_REFINER
+   input=8 | output=8 | time=0.025s
+
+⚡ IDEA_GRAPH
+   input=459 | output=459 | time=0.000s
+
+⚡ PRE_FILTER
+   input=459 | output=447 | time=0.000s
+   Rejected:
+     low_semantic = 12
+     low_punch = 12
+     low_curiosity = 12
+
+============================================================
+                CLIP LIFECYCLE TRACE
+============================================================
+
+📌 c_0001 | 521.0s - 525.2s | Status: passed_validation
+   Text: "meaning stop it. That's why you have to batch your meetings of similar things or take..."
+   Scores: score=0.47, curiosity=0.00, punch=0.65, semantic=0.47
+   History:
+     → Created by candidate_generation at 521.0s-525.2s
+     → Finalized as output: passed_validation
+
+📌 c_0002 | 554.2s - 558.4s | Status: passed_validation
+   Text: "So the effective executive will teach you how to remove things from your calendar...."
+   Scores: score=0.46, curiosity=0.00, punch=0.65, semantic=0.43
+   History:
+     → Created by candidate_generation at 554.2s-558.4s
+     → Finalized as output: passed_validation
+
+📌 c_0003 | 306.1s - 308.2s | Status: passed_validation
+   Text: "That's why you need to have some support in your life...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41
+   History:
+     → Created by candidate_generation at 306.1s-308.2s
+     → Finalized as output: passed_validation
+
+📌 c_0004 | 309.8s - 312.4s | Status: passed_validation
+   Text: "And most people just don't know what to give that person...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41
+   History:
+     → Created by candidate_generation at 309.8s-312.4s
+     → Finalized as output: passed_validation
+
+📌 c_0005 | 34.0s - 37.0s | Status: passed_validation
+   Text: "No, he's like, I've got to make some new space material...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.38
+   History:
+     → Created by candidate_generation at 34.0s-37.0s
+     → Finalized as output: passed_validation
+
+📌 c_0006 | 156.3s - 158.8s | Status: passed_validation
+   Text: "of your business and that's what you should be focusing on...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 156.3s-158.8s
+     → Finalized as output: passed_validation
+
+📌 c_0007 | 710.9s - 714.8s | Status: passed_validation
+   Text: "And that's like, that's like you're lying to yourself...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 710.9s-714.8s
+     → Finalized as output: passed_validation
+
+📌 c_0008 | 799.4s - 802.6s | Status: passed_validation
+   Text: "will feel so familiar because I've been there a thousand times...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 799.4s-802.6s
+     → Finalized as output: passed_validation
+
+📌 c_0009 | 653.8s - 697.3s | Status: final_clip_output
+   Text: "where you had to wear a bunch of spandex...."
+   Scores: score=0.64, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.46
+   History:
+     → Created by hook_hunter at 662.2s-663.7s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 651.99, 'end': 691.99, 'scores': {'arc_score': 0.2541}})
+     → Modified by arc_assembler (changes: {'start': 655.03, 'end': 700.53, 'scores': {'arc_score': 0.4555}})
+     → Modified by editor_refiner (changes: {'start': 653.83, 'end': 697.33})
+     → Finalized as output: final_clip_output
+
+📌 c_0010 | 815.2s - 834.8s | Status: final_clip_output
+   Text: "You can decide to be rich right now...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.61
+   History:
+     → Created by hook_hunter at 822.8s-824.2s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 817.78, 'end': 856.89, 'scores': {'arc_score': 0.2535}})
+     → Modified by arc_assembler (changes: {'start': 816.42, 'end': 837.04, 'scores': {'arc_score': 0.6119}})
+     → Modified by editor_refiner (changes: {'start': 815.22, 'end': 834.76})
+     → Finalized as output: final_clip_output
+
+📌 c_0011 | 438.7s - 449.5s | Status: final_clip_output
+   Text: "Most people think, no, I worked on this all week, I worked on this all week...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.31
+   History:
+     → Created by hook_hunter at 449.7s-452.5s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 441.62, 'end': 481.62, 'scores': {'arc_score': 0.1367}})
+     → Modified by arc_assembler (changes: {'start': 439.86, 'end': 452.48, 'scores': {'arc_score': 0.3057}})
+     → Modified by editor_refiner (changes: {'start': 438.66, 'end': 449.52})
+     → Finalized as output: final_clip_output
+
+📌 c_0012 | 928.0s - 940.5s | Status: final_clip_output
+   Text: "why things aren't going their way...."
+   Scores: score=0.55, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.26
+   History:
+     → Created by hook_hunter at 938.5s-940.5s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 932.76, 'end': 972.76, 'scores': {'arc_score': 0.1601}})
+     → Modified by arc_assembler (changes: {'start': 929.15, 'end': 941.58, 'scores': {'arc_score': 0.2591}})
+     → Modified by editor_refiner (changes: {'start': 927.95, 'end': 940.5})
+     → Finalized as output: final_clip_output
+
+📌 c_0013 | 404.8s - 443.1s | Status: final_clip_output
+   Text: "the team knows about it...."
+   Scores: score=0.53, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.58
+   History:
+     → Created by hook_hunter at 414.5s-415.7s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 402.26, 'end': 442.26, 'scores': {'arc_score': 0.143}})
+     → Modified by arc_assembler (changes: {'start': 406.02, 'end': 443.12, 'scores': {'arc_score': 0.5777}})
+     → Modified by editor_refiner (changes: {'start': 404.82})
+     → Finalized as output: final_clip_output
+
+📌 c_0014 | 889.8s - 899.4s | Status: final_clip_output
+   Text: "with a little bit more confidence...."
+   Scores: score=0.52, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.26
+   History:
+     → Created by hook_hunter at 897.4s-898.6s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 895.89, 'end': 935.89, 'scores': {'arc_score': 0.2278}})
+     → Modified by arc_assembler (changes: {'start': 890.95, 'end': 899.77, 'scores': {'arc_score': 0.257}})
+     → Modified by editor_refiner (changes: {'start': 889.75, 'end': 899.39})
+     → Finalized as output: final_clip_output
+
+📌 c_0015 | 189.8s - 251.0s | Status: final_clip_output
+   Text: "this month to next month, what breaks?..."
+   Scores: score=0.51, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.85
+   History:
+     → Created by hook_hunter at 197.3s-199.8s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 187.31, 'end': 227.31, 'scores': {'arc_score': 0.0831}})
+     → Modified by arc_assembler (changes: {'start': 191.03, 'end': 251.03, 'scores': {'arc_score': 0.8534}})
+     → Modified by editor_refiner (changes: {'start': 189.83})
+     → Finalized as output: final_clip_output
+
+📌 c_0016 | 877.3s - 911.6s | Status: final_clip_output
+   Text: "imagine being there and how would you live in that energy?..."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.68
+   History:
+     → Created by hook_hunter at 887.5s-890.6s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+     → Modified by arc_assembler (changes: {'start': 878.47, 'end': 920.77, 'scores': {'arc_score': 0.6785}})
+     → Modified by editor_refiner (changes: {'start': 877.27, 'end': 911.65})
+     → Finalized as output: final_clip_output
+
+📌 c_0017 | 551.2s - 554.2s | Status: passed_validation
+   Text: "That's the 5% that'll get you 95% of results...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 551.2s-554.2s
+     → Finalized as output: passed_validation
+
+📌 c_0018 | 754.3s - 756.1s | Status: passed_validation
+   Text: "Everything is a byproduct of how we feel...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 754.3s-756.1s
+     → Finalized as output: passed_validation
+
+📌 c_0019 | 1039.7s - 1042.5s | Status: passed_validation
+   Text: "when you perform and how you do it...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 1039.7s-1042.5s
+     → Finalized as output: passed_validation
+
+📌 c_0020 | 303.8s - 306.1s | Status: passed_validation
+   Text: "Dan, my to do list is overflowing...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 303.8s-306.1s
+     → Finalized as output: passed_validation
+
+📌 c_0021 | 322.8s - 325.7s | Status: passed_validation
+   Text: "All right, so once you find your bottleneck, awesome...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 322.8s-325.7s
+     → Finalized as output: passed_validation
+
+📌 c_0022 | 285.1s - 286.5s | Status: passed_validation
+   Text: "and they move on, and guess what?..."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 285.1s-286.5s
+     → Finalized as output: passed_validation
+
+📌 c_0023 | 410.9s - 412.9s | Status: passed_validation
+   Text: "Not the things you add, everybody's got that...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 410.9s-412.9s
+     → Finalized as output: passed_validation
+
+📌 c_0024 | 620.1s - 623.9s | Status: passed_validation
+   Text: "Before you actually get any of it. I always tell these kids..."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 620.1s-623.9s
+     → Finalized as output: passed_validation
+
+📌 c_0025 | 163.5s - 165.8s | Status: active
+   Text: "Theave constraints tells you how to find it...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 163.5s-165.8s
+
+============================================================
+
+============================================================
+GOVERNOR TELEMETRY: PROPOSAL HISTORY (PHASE 1)
+============================================================
+
+CLIP c_0015
+----------------------------------------
+ARC_ASSEMBLER PROPOSED
+  before: 197.29 -> 199.81
+  after:  191.03 -> 251.03
+  reason: payoff_found
+  confidence: 0.8534
+
+EDITOR_REFINER PROPOSED
+  before: 191.03 -> 251.03
+  after:  189.83 -> 251.03
+  reason: silence_trim_and_pad
+  confidence: 1.0
+
+FINAL OUTPUT
+  start=189.83
+  end=251.03
+----------------------------------------
+
+CLIP c_0013
+----------------------------------------
+ARC_ASSEMBLER PROPOSED
+  before: 414.52 -> 415.68
+  after:  406.02 -> 443.12
+  reason: payoff_found
+  confidence: 0.5777
+
+EDITOR_REFINER PROPOSED
+  before: 406.02 -> 443.12
+  after:  404.82 -> 443.12
+  reason: silence_trim_and_pad
+  confidence: 1.0
+
+FINAL OUTPUT
+  start=404.82
+  end=443.12
+----------------------------------------
+
+CLIP c_0011
+----------------------------------------
+ARC_ASSEMBLER PROPOSED
+  before: 446.68 -> 456.48
+  after:  439.86 -> 452.48
+  reason: payoff_found
+  confidence: 0.3057
+
+EDITOR_REFINER PROPOSED
+  before: 439.86 -> 452.48
+  after:  438.66 -> 449.52
+  reason: silence_trim_and_pad
+  confidence: 1.0
+
+FINAL OUTPUT
+  start=438.66
+  end=449.52
+----------------------------------------
+
+CLIP c_0009
+----------------------------------------
+ARC_ASSEMBLER PROPOSED
+  before: 662.21 -> 663.73
+  after:  655.03 -> 700.53
+  reason: payoff_found
+  confidence: 0.4555
+
+EDITOR_REFINER PROPOSED
+  before: 655.03 -> 700.53
+  after:  653.83 -> 697.33
+  reason: silence_trim_and_pad
+  confidence: 1.0
+
+FINAL OUTPUT
+  start=653.83
+  end=697.33
+----------------------------------------
+
+CLIP c_0010
+----------------------------------------
+ARC_ASSEMBLER PROPOSED
+  before: 822.84 -> 824.16
+  after:  816.42 -> 837.04
+  reason: payoff_found
+  confidence: 0.6119
+
+EDITOR_REFINER PROPOSED
+  before: 816.42 -> 837.04
+  after:  815.22 -> 834.76
+  reason: silence_trim_and_pad
+  confidence: 1.0
+
+FINAL OUTPUT
+  start=815.22
+  end=834.76
+----------------------------------------
+
+CLIP c_0016
+----------------------------------------
+ARC_ASSEMBLER PROPOSED
+  before: 887.45 -> 890.65
+  after:  878.47 -> 920.77
+  reason: payoff_found
+  confidence: 0.6785
+
+EDITOR_REFINER PROPOSED
+  before: 878.47 -> 920.77
+  after:  877.27 -> 911.65
+  reason: silence_trim_and_pad
+  confidence: 1.0
+
+FINAL OUTPUT
+  start=877.27
+  end=911.65
+----------------------------------------
+
+CLIP c_0014
+----------------------------------------
+ARC_ASSEMBLER PROPOSED
+  before: 897.39 -> 898.57
+  after:  890.95 -> 899.77
+  reason: payoff_found
+  confidence: 0.257
+
+EDITOR_REFINER PROPOSED
+  before: 890.95 -> 899.77
+  after:  889.75 -> 899.39
+  reason: silence_trim_and_pad
+  confidence: 1.0
+
+FINAL OUTPUT
+  start=889.75
+  end=899.39
+----------------------------------------
+
+CLIP c_0012
+----------------------------------------
+ARC_ASSEMBLER PROPOSED
+  before: 938.5 -> 940.46
+  after:  929.15 -> 941.58
+  reason: payoff_found
+  confidence: 0.2591
+
+EDITOR_REFINER PROPOSED
+  before: 929.15 -> 941.58
+  after:  927.95 -> 940.5
+  reason: silence_trim_and_pad
+  confidence: 1.0
+
+FINAL OUTPUT
+  start=927.95
+  end=940.5
+----------------------------------------
+============================================================
+
+[SUCCESS] Pipeline returned 8 clips
+
+[CLIP_0] id=c_0015 | arc_score=0.8534 | payoff_source=TIER3 | payoff_score=0.92 | duration=61.2s
+[CLIP_1] id=c_0013 | arc_score=0.5777 | payoff_source=TIER3 | payoff_score=0.92 | duration=38.3s
+[CLIP_2] id=c_0011 | arc_score=0.3057 | payoff_source=N/A | payoff_score=0.41529319455896074 | duration=10.9s
+[CLIP_3] id=c_0009 | arc_score=0.4555 | payoff_source=N/A | payoff_score=0.5 | duration=43.5s
+[CLIP_4] id=c_0010 | arc_score=0.6119 | payoff_source=N/A | payoff_score=0.92 | duration=19.5s
+[CLIP_5] id=c_0016 | arc_score=0.6785 | payoff_source=N/A | payoff_score=0.92 | duration=34.4s
+[CLIP_6] id=c_0014 | arc_score=0.257 | payoff_source=N/A | payoff_score=0.38439806709670027 | duration=9.6s
+[CLIP_7] id=c_0012 | arc_score=0.2591 | payoff_source=N/A | payoff_score=0.45663353743652624 | duration=12.5s
+
+[DONE] Output logged to scratch\observatory_before.log

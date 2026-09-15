@@ -1,0 +1,15 @@
+{
+  "name": "podcast",
+  "parent": "base",
+  "camera": {
+    "active_speaker": true,
+    "switch_delay_ms": 250,
+    "reaction_time_ms": 400,
+    "crop": "head_shoulders",
+    "zoom": "adaptive",
+    "stabilization": true,
+    "slow_push_in": false,
+    "climax_zoom": false,
+    "reaction_cut": false
+  }
+}

@@ -1,0 +1,221 @@
+    def _ema_smooth(self, points, alpha=0.25):
+        """EMA smoothing - cinema-grade easing. alpha=0.25 = conservative, no jitter."""
+        if not points:
+            return []
+        result = [(points[0][0], _clamp(points[0][1], 0.10, 0.90))]
+        for i in range(1, len(points)):
+            t, x = points[i]
+            new_x = _clamp(alpha * x + (1.0 - alpha) * result[-1][1], 0.10, 0.90)
+            result.append((t, new_x))
+        return result
+
+    def _analyze_video_format(self, clip_path):
+        """Single-pass video format classifier. 15 frame samples, one OpenCV scan.
+        Returns VideoFormat: monologue | podcast | motion_graphic | fast_cuts.
+        Speed: ~0.3s on a typical 30s clip.
+        """
+        _null = VideoFormat(
+            format_type="monologue", face_count_avg=1.0,
+            speaker_positions=[0.5], face_switch_rate=0.0, samples=[],
+        )
+        if cv2 is None:
+            return _null
+
+        cap = cv2.VideoCapture(clip_path)
+        if not cap.isOpened():
+            return _null
+
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1000.0
+        step = max(1, int(total_frames / 15))
+
+        face_detector = None
+        if mp is not None:
+            try:
+                face_detector = mp.solutions.face_detection.FaceDetection(
+                    model_selection=1, min_detection_confidence=0.45
+                )
+            except Exception:
+                face_detector = None
+
+        cascade = None
+        if face_detector is None:
+            try:
+                cascade = cv2.CascadeClassifier(
+                    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+                )
+            except Exception:
+                pass
+
+        samples = []
+        frame_i = 0
+
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                if frame_i % step != 0:
+                    frame_i += 1
+                    continue
+                h, w = frame.shape[:2]
+                if h <= 1 or w <= 1:
+                    frame_i += 1
+                    continue
+
+                face_xs = []
+                if face_detector is not None:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    res = face_detector.process(rgb)
+                    for det in (res.detections or []):
+                        bbox = det.location_data.relative_bounding_box
+                        cx = _clamp(bbox.xmin + bbox.width / 2.0, 0.0, 1.0)
+                        face_xs.append(cx)
+                elif cascade is not None:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    faces = cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
+                    for x, y, fw, fh in faces:
+                        face_xs.append(_clamp((x + fw / 2.0) / float(w), 0.0, 1.0))
+
+                samples.append((frame_i / fps, face_xs))
+                frame_i += 1
+                if len(samples) >= 15:
+                    break
+        finally:
+            cap.release()
+            if face_detector is not None:
+                try:
+                    face_detector.close()
+                except Exception:
+                    pass
+
+        if not samples:
+            return _null
+
+        face_counts = [len(s[1]) for s in samples]
+        avg_faces = sum(face_counts) / len(face_counts)
+        all_xs = [x for _, faces in samples for x in faces]
+
+        if avg_faces < 0.25 or not all_xs:
+            log.info("[WCE-FORMAT] classified=motion_graphic")
+            return VideoFormat(
+                format_type="motion_graphic", face_count_avg=avg_faces,
+                speaker_positions=[0.5], face_switch_rate=0.0, samples=samples,
+            )
+
+        left_xs  = [x for x in all_xs if x < 0.45]
+        right_xs = [x for x in all_xs if x > 0.55]
+        is_bimodal = len(left_xs) >= 2 and len(right_xs) >= 2
+
+        if is_bimodal or avg_faces >= 1.4:
+            lc = (sum(left_xs) / len(left_xs)) if left_xs else 0.25
+            rc = (sum(right_xs) / len(right_xs)) if right_xs else 0.75
+            spk_positions = [round(lc, 3), round(rc, 3)] if is_bimodal else [0.5]
+            single_sides = [
+                "L" if faces[0] < 0.5 else "R"
+                for _, faces in samples if len(faces) == 1
+            ]
+            switches = sum(1 for i in range(1, len(single_sides)) if single_sides[i] != single_sides[i - 1])
+            clip_dur = max(1.0, samples[-1][0] - samples[0][0])
+            log.info(
+                "[WCE-FORMAT] classified=podcast left=%.2f right=%.2f switches/s=%.2f"
+                % (lc, rc, switches / clip_dur)
+            )
+            return VideoFormat(
+                format_type="podcast", face_count_avg=avg_faces,
+                speaker_positions=spk_positions, face_switch_rate=switches / clip_dur, samples=samples,
+            )
+
+        single_xs = [faces[0] for _, faces in samples if len(faces) == 1]
+        if len(single_xs) < 3:
+            return _null
+
+        variance = statistics.variance(single_xs)
+        median_x = _clamp(float(statistics.median(single_xs)), 0.15, 0.85)
+        log.info("[WCE-FORMAT] single-face variance=%.4f median_x=%.3f" % (variance, median_x))
+
+        if variance > 0.07:
+            log.info("[WCE-FORMAT] classified=fast_cuts")
+            return VideoFormat(
+                format_type="fast_cuts", face_count_avg=avg_faces,
+                speaker_positions=[0.5], face_switch_rate=0.0, samples=samples,
+            )
+
+        log.info("[WCE-FORMAT] classified=monologue")
+        return VideoFormat(
+            format_type="monologue", face_count_avg=avg_faces,
+            speaker_positions=[median_x], face_switch_rate=0.0, samples=samples,
+        )
+
+    def _get_crop_expression(self, video_fmt, transcript_window, config):
+        """VideoFormat -> FFmpeg crop_x expression.
+        monologue: EMA lerp (smooth, stable).
+        podcast active: hard jump at transcript boundaries (instant speaker switch).
+        motion_graphic / fast_cuts: fixed 0.5.
+        """
+        fmt = video_fmt.format_type
+
+        if fmt in ("motion_graphic", "fast_cuts"):
+            return 0.5
+
+        if fmt == "monologue":
+            timed_pts = [(t, faces[0]) for t, faces in video_fmt.samples if len(faces) == 1]
+            if not timed_pts:
+                pos = video_fmt.speaker_positions[0] if video_fmt.speaker_positions else 0.5
+                return _clamp(pos, 0.15, 0.85)
+            smoothed = self._ema_smooth(timed_pts)
+            x_vals = [x for _, x in smoothed]
+            variance = statistics.variance(x_vals) if len(x_vals) >= 2 else 0.0
+            if variance < 0.006:
+                log.info("[WCE-VISUAL] mode=STATIC_LOCK")
+                return _clamp(float(statistics.median(x_vals)), 0.15, 0.85)
+            log.info("[WCE-VISUAL] mode=EMA_SMOOTH_DYNAMIC")
+            expr = str(round(smoothed[-1][1], 3))
+            for i in range(len(smoothed) - 2, -1, -1):
+                t1, x1 = smoothed[i]
+                t2, x2 = smoothed[i + 1]
+                dt = round(t2 - t1, 4)
+                if dt <= 0:
+                    continue
+                lerp_str = "lerp(%s,%s,(t-%s)/%s)" % (round(x1, 3), round(x2, 3), round(t1, 3), dt)
+                expr = "if(lt(t,%s),%s,%s)" % (round(t2, 3), lerp_str, expr)
+            return expr
+
+        if fmt == "podcast" and config.podcast_crop_mode == "active":
+            spk = video_fmt.speaker_positions
+            if len(spk) < 2:
+                return _clamp(spk[0] if spk else 0.5, 0.15, 0.85)
+            left_x, right_x = sorted(spk[:2])
+            assignments = []
+            for seg in transcript_window:
+                t_start = _safe_float(seg.get("start"), 0.0)
+                closest_faces = []
+                best_dt = float("inf")
+                for t_samp, faces in video_fmt.samples:
+                    dt = abs(t_samp - t_start)
+                    if dt < best_dt:
+                        best_dt = dt
+                        closest_faces = faces
+                if len(closest_faces) == 1:
+                    spk_x = left_x if closest_faces[0] < 0.5 else right_x
+                elif len(closest_faces) >= 2:
+                    prev = assignments[-1][1] if assignments else left_x
+                    spk_x = right_x if prev == left_x else left_x
+                else:
+                    spk_x = assignments[-1][1] if assignments else left_x
+                assignments.append((t_start, spk_x))
+            if not assignments:
+                return left_x
+            log.info("[WCE-FORMAT] podcast jump-cut assignments=%d" % len(assignments))
+            expr = str(round(assignments[-1][1], 3))
+            for i in range(len(assignments) - 2, -1, -1):
+                t_cut = round(assignments[i + 1][0], 3)
+                crop_x = round(assignments[i][1], 3)
+                expr = "if(lt(t,%s),%s,%s)" % (t_cut, crop_x, expr)
+            return expr
+
+        return _clamp(
+            float(statistics.median(video_fmt.speaker_positions)) if video_fmt.speaker_positions else 0.5,
+            0.15, 0.85,
+        )
+

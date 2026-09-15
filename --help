@@ -1,0 +1,5 @@
+[START] Running pipeline...
+[ENV] HS_EXPERIMENT_MODE=1
+[ORCH] Import fallback triggered for viral_finder.gemini_transcript_engine: Backend should be defined in the BACKENDS_MAPPING. Offending backend: tensorflow_text
+[ORCH] Import fallback triggered for viral_finder.transcript_engine: Backend should be defined in the BACKENDS_MAPPING. Offending backend: tensorflow_text
+[OPTIMIZED-PASSES] Optimized dual pass system loaded

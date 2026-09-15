@@ -1,0 +1,69 @@
+{
+  "job_id": "local_1788167754",
+  "youtube_url": "https://youtu.be/jr9ESVOtyMo?si=_WCUwXFVy5SDuVCU",
+  "started_at": "2026-08-31T14:49:30",
+  "total_wall_s": 1914.37,
+  "hw_available": {
+    "psutil": true,
+    "pynvml": false,
+    "nvidia_smi": true
+  },
+  "stages": [
+    {
+      "name": "1_download",
+      "wall_s": 0.0,
+      "pct_total": 0.0,
+      "cpu_avg": 0.0,
+      "cpu_max": 0.0,
+      "ram_avg_gb": 0.0,
+      "gpu_avg": 0.0,
+      "gpu_max": 0.0,
+      "vram_avg_gb": 0.0,
+      "gpu_temp_max_c": 0.0,
+      "disk_read_mb": 0.0,
+      "disk_write_mb": 0.0
+    },
+    {
+      "name": "2_orchestration",
+      "wall_s": 1387.23,
+      "pct_total": 72.5,
+      "cpu_avg": 18.2,
+      "cpu_max": 96.7,
+      "ram_avg_gb": 15.06,
+      "gpu_avg": 5.8,
+      "gpu_max": 46.0,
+      "vram_avg_gb": 1.9,
+      "gpu_temp_max_c": 44.0,
+      "disk_read_mb": 10273.5,
+      "disk_write_mb": 4532.3
+    },
+    {
+      "name": "3_format_classify",
+      "wall_s": 161.64,
+      "pct_total": 8.4,
+      "cpu_avg": 99.1,
+      "cpu_max": 100.0,
+      "ram_avg_gb": 15.7,
+      "gpu_avg": 3.4,
+      "gpu_max": 29.0,
+      "vram_avg_gb": 2.05,
+      "gpu_temp_max_c": 42.0,
+      "disk_read_mb": 377.4,
+      "disk_write_mb": 93.3
+    },
+    {
+      "name": "4_haar_scan",
+      "wall_s": 327.49,
+      "pct_total": 17.1,
+      "cpu_avg": 96.5,
+      "cpu_max": 100.0,
+      "ram_avg_gb": 16.75,
+      "gpu_avg": 8.7,
+      "gpu_max": 46.0,
+      "vram_avg_gb": 1.97,
+      "gpu_temp_max_c": 43.0,
+      "disk_read_mb": 2115.7,
+      "disk_write_mb": 2328.4
+    }
+  ]
+}

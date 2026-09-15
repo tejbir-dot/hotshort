@@ -1,0 +1,29 @@
+We need to produce exactly the format as requested, no markdown asterisks. Use plain text lines.
+
+We need three separate captions: TikTok, YouTube Shorts, Instagram Reels. Each must follow specified line counts.
+
+TikTok: line 1 extreme clickbait hook with emoji. line 2-3 insane curiosity based on transcript. line 4 hard CTA to click the link in bio. line 5 must include @Daniel. line 6 hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags.
+
+We must separate sections with a line: "--------------------------------------------------" (maybe with blank lines around). The format says exactly like that: after each block, a line of dashes.
+
+We must not use markdown asterisks (so no ). Also no extra formatting like code fences.
+
+We need to ensure line breaks exactly as described.
+
+We'll craft content based on transcript: trading psychology tips. Use clickbait like "💸 5 Trading Lies Keeping You Broke!" etc.
+
+TikTok: line1: "💸 STOP losing money – this ONE habit will change everything!" line2: "Daniel reveals why hopping strategies kills your account (and how pros actually win)." line3: "He breaks down the myth of the ‘holy grail’ strategy and what really gives you an edge." line4: "👉 Tap the link in bio for the full breakdown!" line5: "@Daniel" line6: "#clipculture #thegeniusclipper #tradingpsychology #daytrading #moneymindset"
+
+Make sure line count: 1-6 exactly.
+
+YouTube Shorts: line1: High SEO-value title/hook. Eg: "5 Trading Psychology Secrets Pros Use to Stay Profitable". line2: Brief summary creating loop-curiosity. Eg: "Learn why sticking to one strategy beats chasing the next big thing and how emotions sabotage your trades." line3: CTA to pinned comment or related video. Eg: "Comment ‘EDGE’ for a free checklist or watch the pinned video for deeper steps." line4: Must include @Daniel in the description. Eg: "@Daniel" line5: Hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags. Eg: "#trading #stockmarket #daytrading #financialfreedom #investingtips #mindset #wealth"
+
+Make sure line1-5.
+
+Instagram Reels: line1: Aesthetic/Value-driven hook with emoji. Eg: "🌟 Unlock the trader mindset that turns losses into long‑term gains". line2-4: Micro-blog style value drop based on transcript. Need 3 lines (line2, line3, line4) delivering value. line5: CTA to DM a keyword or check the link in bio. line6: Must include @Daniel to tag the creator. line7: Hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags.
+
+Let's craft.
+
+Line2: "Daniel’s #1 tip: pick ONE strategy, master it, and never jump ship after a single loss." line3: "He explains how a strategy only needs a >50% win rate + good risk‑to‑reward to be profitable over time." line4: "Learn to own your losses, detach emotions from trades, and treat your plan as a loss‑prevention shield."
+
+Line5: "💬 DM ‘EDGE’ for a free 1‑page cheat sheet or tap the link in bio for the full video." line6: "@Daniel" line7: "#clipculture #thegeniusclip

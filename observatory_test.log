@@ -1,0 +1,1079 @@
+[START] Running pipeline...
+[ENV] HS_EXPERIMENT_MODE=1
+[ORCH] Import fallback triggered for viral_finder.gemini_transcript_engine: cannot import name 'transcribe_file' from 'viral_finder.gemini_transcript_engine' (C:\Users\n\Documents\hotshort\viral_finder\gemini_transcript_engine.py)
+[OPTIMIZED-PASSES] Optimized dual pass system loaded
+[EXEC] Calling orchestrate...
+[ORCH] pipeline_mode=staged
+[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST=None
+[ORCH] Startup Env: HS_GROQ_CORTEX_ENABLED=1
+[ORCH] Startup Env: HS_FORCE_30S_PADDING=None
+[ORCH] Startup Env: HS_GROQ_TRANSCRIPT_FIRST_FORCE=None
+[ORCH][INPUT_MEDIA] path=dummy.mp4
+[ORCH][L1_TRANSCRIPTION] transcript_segments=490 source=cache engine=unknown reuse_cache=1 wall_s=0.0
+[ORCH][TARGETS] duration_s=1219.76 top_k=8 target_min=6
+[ORCH][L2_AUDIO_VISUAL_FEATURES] audio_points=490 visual_points=490 wall_s=0.002
+[BRAIN] idea_graph lazy=1 enabled=1 reason=loaded
+matplotlib data path: C:\Users\n\AppData\Roaming\Python\Python311\site-packages\matplotlib\mpl-data
+CONFIGDIR=C:\Users\n\.matplotlib
+interactive is False
+platform is win32
+CACHEDIR=C:\Users\n\.matplotlib
+Using fontManager instance from C:\Users\n\.matplotlib\fontlist-v390.json
+[CURIOSITY_FORENSIC] analyze_segments_for_ignition returned 5 ignitions. Proceeding to candidate expansion...
+
+[CURIOSITY_FORENSIC]
+ignitions_found=5
+rejected_retention=0
+rejected_score=0
+rejected_payoff=0
+survived=1
+
+[ORCH][L3_CURIOSITY_ENGINE] candidates=1 curve_points=490 wall_s=9.894
+[TRIGGER_FORENSIC] Using LLM Intelligence Dataset for trigger detection.
+Groq enabled but API key missing. Falling back to sliding window.
+[TRIGGER_FORENSIC_SLIDING] MATCH! Phrase: 'most people think' (Type: belief_reversal) | Conf: 0.70 | Text: 'number one, we have to track our time. we got to figure out ...'
+[NCE] UNRESOLVED HOOK: belief_reversal@445.4s debt=0.350 — no payoff found within 180.0s
+[NCE] Built 1 contracts: 0 resolved, 1 unresolved hooks
+[ORCH][L4_NARRATIVE_TRIGGER_ENGINE] triggers=1 belief_reversal=1 secret_revelation=0 mistake_explanation=0 strong_claim=0 contracts_resolved=0 contracts_total=1 wall_s=0.106
+[NARRATIVE_FORENSIC] --- Sampling 10 segments to verify Groq execution ---
+[NARRATIVE_FORENSIC] Seg 012 | Legacy: BUILD  | Groq: BUILD    | Text: I study books. I don't read them. I stud...
+[NARRATIVE_FORENSIC] Seg 083 | Legacy: BUILD  | Groq: BUILD    | Text: And that is everything from an idea to b...
+[NARRATIVE_FORENSIC] Seg 109 | Legacy: BUILD  | Groq: BUILD    | Text: Stay on the problem, don't move on the p...
+[NARRATIVE_FORENSIC] Seg 158 | Legacy: BUILD  | Groq: BUILD    | Text: The craziest example of this,...
+[NARRATIVE_FORENSIC] Seg 176 | Legacy: BUILD  | Groq: BUILD    | Text: Because I'm never impressed with people...
+[NARRATIVE_FORENSIC] Seg 304 | Legacy: BUILD  | Groq: BUILD    | Text: By the time that future and my reality c...
+[NARRATIVE_FORENSIC] Seg 400 | Legacy: BUILD  | Groq: BUILD    | Text: on having a conversation with a friend....
+[NARRATIVE_FORENSIC] Seg 404 | Legacy: BUILD  | Groq: BUILD    | Text: those are the byproduct of the inputs....
+[NARRATIVE_FORENSIC] Seg 439 | Legacy: BUILD  | Groq: BUILD    | Text: to the outcome....
+[NARRATIVE_FORENSIC] Seg 482 | Legacy: BUILD  | Groq: BUILD    | Text: this one is another level....
+[NARRATIVE_FORENSIC] ---------------------------------------------------
+[NARRATIVE_COMPARE] Groq roles map was empty. Fallback to legacy occurred for 100% of segments.
+[ORCH][L4_NARRATIVE_INTELLIGENCE] role_tags=490 role_paths=57 payoff_strength=0.0041 groq_payoff_strength=0.0041 agreement_rate=1.0 wall_s=0.003
+[COALESCE-CONFIG] time_tol=0.25 sem_thr=0.50 max_node_secs=15.00
+[COALESCE-CONFIG] base_time_tol=0.25 adaptive_time_tol=0.18 sem_thr=0.50 dense_ratio=0.98 max_node_secs=15.00
+[COALESCE-CONFIG] base_time_tol=0.25 adaptive_time_tol=0.18 sem_thr=0.50 dense_ratio=0.97 max_node_secs=15.00
+[IDEA] segments=490 arcs=473 nodes=459 avg_seg_dur=2.48s
+[ORCH][L5_IDEA_GRAPH] nodes=459 wall_s=0.112
+[OPTIMIZED-PASSES] Using optimized dual pass system
+[OPTIMIZED-PASSES] quality_gate=0.42 (env=HS_OPTIMIZED_QUALITY_GATE)
+[OPTIMIZED-PASSES] completed: 8 final clips, 0.03s total, speedup=1.00x
+[ORCH][L5_CANDIDATE_GENERATION] produced=8 strict=8 relaxed=0 origins={'strict': 8} wall_s=0.031
+[HOOK-HUNTER] scanned=490 discovered=85 injected=20 suppressed_story_dupes=0
+[ORCH][L6B_GLOBAL_HOOK_HUNTER] scanned=490 strong_hooks=85 injected=20 wall_s=0.702
+[TRIGGER_INJECT] All triggers already covered by existing candidates.
+[GROQ_TRANSCRIPT_FIRST] enabled=False force=False
+[GROQ_TRANSCRIPT_FIRST] checkpoint reached before validation
+[ORCH][ULTRON] semantic_runtime=degraded reason=no_brain_runtime fallback=heuristic
+[ORCH][L6_SEMANTIC_SCORING] brain_loaded=0 wall_s=0.0
+[CURIOSITY_FALLBACK] c_0003 306.05-308.21: curve_peak=0.307
+[CURIOSITY_FALLBACK] c_0004 309.81-312.41: curve_peak=0.204
+[CURIOSITY_FALLBACK] c_0005 34.05-36.97: curve_peak=0.247
+[CURIOSITY_FALLBACK] c_0006 156.29-158.85: curve_peak=0.204
+[CLIP_BOUNDARY] Trigger-aware: 443.12-467.20 (trigger_span=445.36-452.48)
+[CURIOSITY_FALLBACK] c_0012 443.12-467.20: curve_peak=0.567
+[CURIOSITY_FALLBACK] c_0014 415.68-418.08: curve_peak=0.316
+[CURIOSITY_FALLBACK] c_0016 414.52-415.68: curve_peak=0.298
+[CURIOSITY_FALLBACK] c_0019 197.29-199.81: curve_peak=0.480
+[CURIOSITY_FALLBACK] c_0024 303.77-306.05: curve_peak=0.368
+[ORCH][ULTRON] semantic_batch candidates=24 avg(impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000)
+[ORCH][L7_SIGNAL_ENRICHMENT] produced=24 input_candidates=28 selected_candidates=24 selected_strict=8 selected_relaxed=0 selected_hooks=16 filtered_out=4 narrative_cache_hits=16 semantic_cache_hits=0 avg_alignment=0.0 signal_completeness_ratio=1.0 wall_s=0.023
+[INSIGHT-DETECTOR] found=0
+[ORCH][L8B_INSIGHT_DETECTOR] found=0 scanned=24 wall_s=0.001
+[ORCH][L8_VALIDATION_GATES] accepted=24 rejected=0 reject_reasons={} accepted_origins={'hook': 16, 'strict': 8} wall_s=0.0
+[ORCH-ARC] using resolver-aware assembler v2
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0009 natural_duration=8.3 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0010 natural_duration=15.6 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0011 natural_duration=3.8 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0012 natural_duration=6.2 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0013 natural_duration=11.2 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0014 natural_duration=4.9 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0015 natural_duration=5.3 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0016 natural_duration=5.2 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0017 natural_duration=3.9 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0018 natural_duration=6.8 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0019 natural_duration=7.8 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0020 natural_duration=7.2 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0021 natural_duration=9.1 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0022 natural_duration=8.6 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0023 natural_duration=7.1 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0024 natural_duration=6.2 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0001 natural_duration=13.8 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0002 natural_duration=8.3 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0003 natural_duration=6.0 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0004 natural_duration=6.0 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0005 natural_duration=8.2 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0006 natural_duration=9.0 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0007 natural_duration=9.0 forced_extension=yes
+
+
+[CONSTRAINT_HIT] constraint=min_clip_15 candidate=c_0008 natural_duration=10.3 forced_extension=yes
+
+
+[DEDUP_TRACE]
+candidate_id=c_0016
+overlapped_with=c_0014
+score_comparison=0.34 vs 0.34
+drop_reason=Overlap ratio 0.95 > threshold 0.4
+
+
+[DEDUP_TRACE]
+candidate_id=c_0024
+overlapped_with=c_0003
+score_comparison=0.2619 vs 0.3643
+drop_reason=Overlap ratio 0.90 > threshold 0.4
+
+
+[DEDUP_TRACE]
+candidate_id=c_0021
+overlapped_with=c_0002
+score_comparison=0.2578 vs 0.3419
+drop_reason=Overlap ratio 0.95 > threshold 0.4
+
+
+[DEDUP_TRACE]
+candidate_id=c_0004
+overlapped_with=c_0003
+score_comparison=0.2263 vs 0.3643
+drop_reason=Overlap ratio 0.72 > threshold 0.4
+
+
+[DEDUP_TRACE]
+candidate_id=c_0010
+overlapped_with=c_0013
+score_comparison=0.1867 vs 0.3306
+drop_reason=Overlap ratio 0.79 > threshold 0.4
+
+
+[DEDUP_TRACE]
+candidate_id=c_0017
+overlapped_with=c_0020
+score_comparison=0.1719 vs 0.3109
+drop_reason=Overlap ratio 0.51 > threshold 0.4
+
+
+[DEDUP_TRACE]
+candidate_id=c_0009
+overlapped_with=c_0018
+score_comparison=0.167 vs 0.3009
+drop_reason=Overlap ratio 0.81 > threshold 0.4
+
+
+[CONSTRAINT_HIT] constraint=top_k_8 survived_candidates=17 kept=8 discarded=9
+
+[ORCH-ARC] assembled=8 complete=0 input=24 contracts_resolved_after_payoff=0/1
+[ORCH][L10_ARC_ASSEMBLER] input=24 arcs=8 complete=0 contracts_resolved_after_payoff=0 contracts_total=1 origins={'hook': 4, 'strict': 4} avg_arc_duration=31.258 wall_s=0.157
+[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.
+[SCORE_BREAKDOWN] cid=c_0005 31.4-64.3 path=heuristic llm=0.000 curiosity=0.161 semantic=0.000 contract=0.000 narrative=0.000 av=0.375 completeness=0.342 insight_boost=1.00 raw_uvs=0.1012 viral_score=0.0346
+[SCORE_BREAKDOWN] cid=c_0006 153.6-179.8 path=heuristic llm=0.000 curiosity=0.132 semantic=0.000 contract=0.000 narrative=0.000 av=0.010 completeness=0.342 insight_boost=1.00 raw_uvs=0.0475 viral_score=0.0163
+[SCORE_BREAKDOWN] cid=c_0019 194.8-228.0 path=heuristic llm=0.000 curiosity=0.312 semantic=0.000 contract=0.000 narrative=0.000 av=0.010 completeness=0.292 insight_boost=1.00 raw_uvs=0.1105 viral_score=0.0323
+[SCORE_BREAKDOWN] cid=c_0003 303.8-335.8 path=heuristic llm=0.000 curiosity=0.199 semantic=0.000 contract=0.000 narrative=0.000 av=0.375 completeness=0.460 insight_boost=1.00 raw_uvs=0.1148 viral_score=0.0528
+[SCORE_BREAKDOWN] cid=c_0014 414.5-447.4 path=heuristic llm=0.000 curiosity=0.206 semantic=0.000 contract=0.000 narrative=0.000 av=0.375 completeness=0.426 insight_boost=1.00 raw_uvs=0.1170 viral_score=0.0498
+[SCORE_BREAKDOWN] cid=c_0012 441.4-467.2 path=heuristic llm=0.000 curiosity=0.369 semantic=0.000 contract=0.000 narrative=0.707 av=0.375 completeness=0.268 insight_boost=1.00 raw_uvs=0.2094 viral_score=0.0561
+[SCORE_BREAKDOWN] cid=c_0001 515.8-551.3 path=heuristic llm=0.000 curiosity=0.000 semantic=0.000 contract=0.000 narrative=0.000 av=0.375 completeness=0.303 insight_boost=1.00 raw_uvs=0.0450 viral_score=0.0136
+[SCORE_BREAKDOWN] cid=c_0013 535.1-566.7 path=heuristic llm=0.000 curiosity=0.000 semantic=0.000 contract=0.000 narrative=0.000 av=0.375 completeness=0.383 insight_boost=1.00 raw_uvs=0.0450 viral_score=0.0172
+[HOOK-FLOOR] cid=c_0019 viral_score boosted to 0.2036 (hook_score=0.509)
+[HOOK-FLOOR] cid=c_0014 viral_score boosted to 0.2230 (hook_score=0.558)
+[HOOK-FLOOR] cid=c_0012 viral_score boosted to 0.2307 (hook_score=0.577)
+[HOOK-FLOOR] cid=c_0013 viral_score boosted to 0.2234 (hook_score=0.558)
+[CLIP] 441.36-467.20 psychology=0.567 narrative=0.395 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.231
+[CLIP_CHOOSER_REASONING] --- Clip 441.36-467.20 Selection ---
+  -> Triggers Evaluated: None (Selected via native heuristic signals)
+  -> Final Decision Math: base_viral_score=0.2094 * payoff_gate=0.268 = viral_score=0.2307
+--------------------------------------------------
+[ORCH][ULTRON][CAND] 441.36-467.20 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 535.12-566.68 psychology=0.000 narrative=0.437 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.223
+[CLIP_CHOOSER_REASONING] --- Clip 535.12-566.68 Selection ---
+  -> Triggers Evaluated: None (Selected via native heuristic signals)
+  -> Final Decision Math: base_viral_score=0.045 * payoff_gate=0.3828 = viral_score=0.2234
+--------------------------------------------------
+[ORCH][ULTRON][CAND] 535.12-566.68 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 414.52-447.36 psychology=0.316 narrative=0.534 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.223
+[CLIP_CHOOSER_REASONING] --- Clip 414.52-447.36 Selection ---
+  -> Triggers Evaluated: None (Selected via native heuristic signals)
+  -> Final Decision Math: base_viral_score=0.117 * payoff_gate=0.4256 = viral_score=0.223
+--------------------------------------------------
+[ORCH][ULTRON][CAND] 414.52-447.36 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 194.81-228.01 psychology=0.480 narrative=0.320 semantic=0.000 engagement=0.017 alignment=0.000 viral_score=0.204
+[CLIP_CHOOSER_REASONING] --- Clip 194.81-228.01 Selection ---
+  -> Triggers Evaluated: None (Selected via native heuristic signals)
+  -> Final Decision Math: base_viral_score=0.1105 * payoff_gate=0.292 = viral_score=0.2036
+--------------------------------------------------
+[ORCH][ULTRON][CAND] 194.81-228.01 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.000
+[CLIP] 303.77-335.81 psychology=0.307 narrative=0.569 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.053
+[CLIP_CHOOSER_REASONING] --- Clip 303.77-335.81 Selection ---
+  -> Triggers Evaluated: None (Selected via native heuristic signals)
+  -> Final Decision Math: base_viral_score=0.1148 * payoff_gate=0.4596 = viral_score=0.0528
+--------------------------------------------------
+[ORCH][ULTRON][CAND] 303.77-335.81 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.415
+[CLIP] 31.35-64.29 psychology=0.247 narrative=0.395 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.035
+[CLIP_CHOOSER_REASONING] --- Clip 31.35-64.29 Selection ---
+  -> Triggers Evaluated: None (Selected via native heuristic signals)
+  -> Final Decision Math: base_viral_score=0.1012 * payoff_gate=0.342 = viral_score=0.0346
+--------------------------------------------------
+[ORCH][ULTRON][CAND] 31.35-64.29 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.380
+[CLIP] 153.57-179.77 psychology=0.204 narrative=0.395 semantic=0.000 engagement=0.017 alignment=0.000 viral_score=0.016
+[CLIP_CHOOSER_REASONING] --- Clip 153.57-179.77 Selection ---
+  -> Triggers Evaluated: None (Selected via native heuristic signals)
+  -> Final Decision Math: base_viral_score=0.0475 * payoff_gate=0.342 = viral_score=0.0163
+--------------------------------------------------
+[ORCH][ULTRON][CAND] 153.57-179.77 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.370
+[CLIP] 515.84-551.28 psychology=0.000 narrative=0.357 semantic=0.000 engagement=0.317 alignment=0.000 viral_score=0.014
+[CLIP_CHOOSER_REASONING] --- Clip 515.84-551.28 Selection ---
+  -> Triggers Evaluated: None (Selected via native heuristic signals)
+  -> Final Decision Math: base_viral_score=0.045 * payoff_gate=0.3031 = viral_score=0.0136
+--------------------------------------------------
+[ORCH][ULTRON][CAND] 515.84-551.28 impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000 semantic_quality=0.465
+[ORCH][L9_CLIP_SELECTOR_RANKING] ranked=8 returned=8 final_pass_provenance={'strict': 4} final_origins={'hook': 4, 'strict': 4} avg_viral_score=0.1247 wall_s=0.023
+
+[CLIP 0]
+duration: 27.0s
+arc_score: 0.144
+editor_presentation_score: 0.205
+HOOK_SCORE: 0.000
+OPEN_LOOP_SCORE: 0.000
+PAYOFF_SCORE: 0.000
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+my life is highly rewarded.
+
+BUILD:
+
+
+PAYOFF:
+my life is highly rewarded.
+
+FULL MOMENT:
+Most people think, no, I worked on this all week, I worked on this all week.
+
+[EDITOR_REJECT] id=c_0012 reason=loop_no_payoff start=440.16 end=467.2 duration=27.04 origin=hook groq=None
+[EDITOR_REJECT] id=c_0012 reason=weak_unresolved_payoff start=440.16 end=467.2 duration=27.04 origin=hook groq=None
+[FINAL-REJECT] 440.16-467.20 reasons=['loop_no_payoff', 'weak_unresolved_payoff'] origin=hook final_score=0.231
+
+[CLIP 1]
+duration: 32.8s
+arc_score: 0.331
+editor_presentation_score: 0.371
+HOOK_SCORE: 0.860
+OPEN_LOOP_SCORE: 0.800
+PAYOFF_SCORE: 0.000
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+one thing that you can do today that actually matters? Now I know you're like, I got 14.
+
+BUILD:
+
+
+PAYOFF:
+one thing that you can do today that actually matters? Now I know you're like, I got 14.
+
+FULL MOMENT:
+What's the one? But then I can't pick one. There's too many. I got three. I got four.
+
+[EDITOR_REJECT] id=c_0013 reason=loop_no_payoff start=533.92 end=566.68 duration=32.76 origin=hook groq=None
+[EDITOR_REJECT] id=c_0013 reason=weak_unresolved_payoff start=533.92 end=566.68 duration=32.76 origin=hook groq=None
+[FINAL-REJECT] 533.92-566.68 reasons=['loop_no_payoff', 'weak_unresolved_payoff'] origin=hook final_score=0.223
+
+[CLIP 2]
+duration: 34.0s
+arc_score: 0.340
+editor_presentation_score: 0.384
+HOOK_SCORE: 0.510
+OPEN_LOOP_SCORE: 0.550
+PAYOFF_SCORE: 0.200
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+the team knows about it.
+
+BUILD:
+
+
+PAYOFF:
+the team knows about it.
+
+FULL MOMENT:
+I'm curious what did you stop doing?
+
+[EDITOR_REJECT] id=c_0014 reason=loop_no_payoff start=413.32 end=447.36 duration=34.04 origin=hook groq=None
+[EDITOR_REJECT] id=c_0014 reason=weak_unresolved_payoff start=413.32 end=447.36 duration=34.04 origin=hook groq=None
+[FINAL-REJECT] 413.32-447.36 reasons=['loop_no_payoff', 'weak_unresolved_payoff'] origin=hook final_score=0.223
+
+[CLIP 3]
+duration: 34.4s
+arc_score: 0.236
+editor_presentation_score: 0.268
+HOOK_SCORE: 0.510
+OPEN_LOOP_SCORE: 0.700
+PAYOFF_SCORE: 0.000
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+If I tripled the amount of customers you have
+
+BUILD:
+
+
+PAYOFF:
+If I tripled the amount of customers you have
+
+FULL MOMENT:
+this month to next month, what breaks?
+
+[EDITOR_REJECT] id=c_0019 reason=loop_no_payoff start=193.61 end=228.01 duration=34.4 origin=hook groq=None
+[EDITOR_REJECT] id=c_0019 reason=weak_unresolved_payoff start=193.61 end=228.01 duration=34.4 origin=hook groq=None
+[FINAL-REJECT] 193.61-228.01 reasons=['loop_no_payoff', 'weak_unresolved_payoff'] origin=hook final_score=0.204
+
+[CLIP 4]
+duration: 33.2s
+arc_score: 0.364
+editor_presentation_score: 0.328
+HOOK_SCORE: 0.510
+OPEN_LOOP_SCORE: 0.700
+PAYOFF_SCORE: 0.220
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+Dan, my to do list is overflowing.
+
+BUILD:
+
+
+PAYOFF:
+Dan, my to do list is overflowing.
+
+FULL MOMENT:
+That's why you need to have some support in your life.
+
+[EDITOR_REJECT] id=c_0003 reason=loop_no_payoff start=302.57 end=335.81 duration=33.24 origin=strict groq=None
+[EDITOR_REJECT] id=c_0003 reason=weak_unresolved_payoff start=302.57 end=335.81 duration=33.24 origin=strict groq=None
+[FINAL-REJECT] 302.57-335.81 reasons=['loop_no_payoff', 'weak_unresolved_payoff'] origin=strict final_score=0.053
+
+[CLIP 5]
+duration: 34.1s
+arc_score: 0.224
+editor_presentation_score: 0.195
+HOOK_SCORE: 0.460
+OPEN_LOOP_SCORE: 0.700
+PAYOFF_SCORE: 0.100
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+Do you think Elon Musk is sitting there just reading books for fun?
+
+BUILD:
+
+
+PAYOFF:
+Do you think Elon Musk is sitting there just reading books for fun?
+
+FULL MOMENT:
+No, he's like, I've got to make some new space material.
+
+[EDITOR_REJECT] id=c_0005 reason=loop_no_payoff start=30.15 end=64.29 duration=34.14 origin=strict groq=None
+[EDITOR_REJECT] id=c_0005 reason=weak_unresolved_payoff start=30.15 end=64.29 duration=34.14 origin=strict groq=None
+[FINAL-REJECT] 30.15-64.29 reasons=['loop_no_payoff', 'weak_unresolved_payoff'] origin=strict final_score=0.035
+
+[CLIP 6]
+duration: 27.4s
+arc_score: 0.226
+editor_presentation_score: 0.188
+HOOK_SCORE: 0.230
+OPEN_LOOP_SCORE: 0.000
+PAYOFF_SCORE: 0.100
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+that if you solve, it'll increase the throughput
+
+BUILD:
+
+
+PAYOFF:
+that if you solve, it'll increase the throughput
+
+FULL MOMENT:
+of your business and that's what you should be focusing on.
+
+[EDITOR_REJECT] id=c_0006 reason=loop_no_payoff start=152.37 end=179.77 duration=27.4 origin=strict groq=None
+[EDITOR_REJECT] id=c_0006 reason=zero_hook_signal start=152.37 end=179.77 duration=27.4 origin=strict groq=None
+[EDITOR_REJECT] id=c_0006 reason=weak_unresolved_payoff start=152.37 end=179.77 duration=27.4 origin=strict groq=None
+[EDITOR_REJECT] id=c_0006 reason=flat_incomplete_arc start=152.37 end=179.77 duration=27.4 origin=strict groq=None
+[FINAL-REJECT] 152.37-179.77 reasons=['loop_no_payoff', 'zero_hook_signal', 'weak_unresolved_payoff', 'flat_incomplete_arc'] origin=strict final_score=0.016
+
+[CLIP 7]
+duration: 36.6s
+arc_score: 0.300
+editor_presentation_score: 0.275
+HOOK_SCORE: 0.180
+OPEN_LOOP_SCORE: 0.700
+PAYOFF_SCORE: 0.320
+SEMANTIC: impact=0.000 meaning=0.000 novelty=0.000 clarity=0.000
+
+HOOK:
+off your notifications. Don't let people walk by and do what I call gas meetings. God, a second
+
+BUILD:
+
+
+PAYOFF:
+off your notifications. Don't let people walk by and do what I call gas meetings. God, a second
+
+FULL MOMENT:
+meaning stop it. That's why you have to batch your meetings of similar things or take
+
+[EDITOR_REJECT] id=c_0001 reason=loop_no_payoff start=514.64 end=551.28 duration=36.64 origin=strict groq=None
+[FINAL-REJECT] 514.64-551.28 reasons=['loop_no_payoff'] origin=strict final_score=0.014
+[ORCH-UNDERFLOW] final=0 target_min=6 raw=28 accepted=24 ranked=8
+[ORCH][L12_EDITOR_REFINER] input=8 output=0 rejected_final=8 rejected_reasons={'flat_incomplete_arc': 1, 'loop_no_payoff': 8, 'weak_unresolved_payoff': 7, 'zero_hook_signal': 1} origins={} avg_duration=0.0 wall_s=0.024
+[ORCH] groq_pool built: pool=24 enriched=24 validated=24 ranked=0
+[CQS-CACHE] pipeline_end {'hits': 0, 'misses': 598, 'size': 598, 'hit_rate': 0.0}
+[ORCH][SUMMARY] wall_s=11.083 final=0 rejected=0 cqs_cache={'hits': 0, 'misses': 598, 'size': 598, 'hit_rate': 0.0}
+============================================================
+                 HOTSHORT PIPELINE X-RAY
+============================================================
+
+[STAGE AUTOPSIES]
+
+⚡ STRICT_PASS
+   input=447 | output=12 | time=0.000s
+   Rejected:
+     semantic<0.35 = 240
+     punch<0.25 = 422
+
+⚡ CANDIDATE_GENERATION
+   input=459 | output=8 | time=0.031s
+
+⚡ HOOK_HUNTER
+   input=8 | output=28 | time=0.702s
+
+⚡ BACKFILL
+   input=28 | output=28 | time=0.000s
+
+⚡ GROQ_TRANSCRIPT_FIRST
+   input=0 | output=0 | time=0.000s
+
+⚡ VALIDATION
+   input=24 | output=24 | time=0.000s
+
+⚡ ARC_ASSEMBLER
+   input=24 | output=8 | time=0.156s
+
+⚡ EDITOR_REFINER
+   input=8 | output=0 | time=0.024s
+   Rejected:
+     loop_no_payoff = 8
+     weak_unresolved_payoff = 7
+     zero_hook_signal = 1
+     flat_incomplete_arc = 1
+
+⚡ IDEA_GRAPH
+   input=459 | output=459 | time=0.000s
+
+⚡ PRE_FILTER
+   input=459 | output=447 | time=0.000s
+   Rejected:
+     low_semantic = 12
+     low_punch = 12
+     low_curiosity = 12
+
+============================================================
+                CLIP LIFECYCLE TRACE
+============================================================
+
+📌 c_0001 | 515.8s - 551.3s | Status: rejected (filtered_or_deduplicated)
+   Text: "meaning stop it. That's why you have to batch your meetings of similar things or take..."
+   Scores: score=0.47, curiosity=0.00, punch=0.65, semantic=0.47, arc_score=0.30
+   History:
+     → Created by candidate_generation at 521.0s-525.2s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 515.84, 'end': 551.28, 'scores': {'arc_score': 0.3001}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0002 | 554.2s - 558.4s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "So the effective executive will teach you how to remove things from your calendar...."
+   Scores: score=0.46, curiosity=0.00, punch=0.65, semantic=0.43
+   History:
+     → Created by candidate_generation at 554.2s-558.4s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0003 | 303.8s - 335.8s | Status: rejected (filtered_or_deduplicated)
+   Text: "That's why you need to have some support in your life...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41, arc_score=0.36
+   History:
+     → Created by candidate_generation at 306.1s-308.2s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 303.77, 'end': 335.81, 'scores': {'arc_score': 0.3643}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0004 | 309.8s - 312.4s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "And most people just don't know what to give that person...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41
+   History:
+     → Created by candidate_generation at 309.8s-312.4s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0005 | 31.4s - 64.3s | Status: rejected (filtered_or_deduplicated)
+   Text: "No, he's like, I've got to make some new space material...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.38, arc_score=0.22
+   History:
+     → Created by candidate_generation at 34.0s-37.0s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 31.35, 'end': 64.29, 'scores': {'arc_score': 0.2244}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0006 | 153.6s - 179.8s | Status: rejected (filtered_or_deduplicated)
+   Text: "of your business and that's what you should be focusing on...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37, arc_score=0.23
+   History:
+     → Created by candidate_generation at 156.3s-158.8s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 153.57, 'end': 179.77, 'scores': {'arc_score': 0.226}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0007 | 710.9s - 714.8s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "And that's like, that's like you're lying to yourself...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 710.9s-714.8s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0008 | 799.4s - 802.6s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "will feel so familiar because I've been there a thousand times...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 799.4s-802.6s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0009 | 662.2s - 663.7s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "where you had to wear a bunch of spandex...."
+   Scores: score=0.64, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 662.2s-663.7s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0010 | 535.1s - 540.4s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "one thing that you can do today that actually matters? Now I know you're like, I got 14...."
+   Scores: score=0.61, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 535.1s-540.4s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0011 | 822.8s - 824.2s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "You can decide to be rich right now...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 822.8s-824.2s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0012 | 441.4s - 467.2s | Status: rejected (filtered_or_deduplicated)
+   Text: "Most people think, no, I worked on this all week, I worked on this all week...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.14
+   History:
+     → Created by hook_hunter at 449.7s-452.5s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 441.36, 'end': 467.2, 'scores': {'arc_score': 0.1444}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0013 | 535.1s - 566.7s | Status: rejected (filtered_or_deduplicated)
+   Text: "What's the one? But then I can't pick one. There's too many. I got three. I got four...."
+   Scores: score=0.56, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.33
+   History:
+     → Created by hook_hunter at 540.4s-545.3s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 535.12, 'end': 566.68, 'scores': {'arc_score': 0.3306}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0014 | 414.5s - 447.4s | Status: rejected (filtered_or_deduplicated)
+   Text: "I'm curious what did you stop doing?..."
+   Scores: score=0.56, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.34
+   History:
+     → Created by hook_hunter at 415.7s-418.1s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 414.52, 'end': 447.36, 'scores': {'arc_score': 0.34}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0015 | 938.5s - 940.5s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "why things aren't going their way...."
+   Scores: score=0.55, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 938.5s-940.5s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0016 | 414.5s - 415.7s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "the team knows about it...."
+   Scores: score=0.53, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 414.5s-415.7s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0017 | 897.4s - 898.6s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "with a little bit more confidence...."
+   Scores: score=0.52, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 897.4s-898.6s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0018 | 663.7s - 667.8s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "But I just thought, what is the peak expression of health?..."
+   Scores: score=0.52, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 663.7s-667.8s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0019 | 194.8s - 228.0s | Status: rejected (filtered_or_deduplicated)
+   Text: "this month to next month, what breaks?..."
+   Scores: score=0.51, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.24
+   History:
+     → Created by hook_hunter at 197.3s-199.8s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 194.81, 'end': 228.01, 'scores': {'arc_score': 0.2361}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0020 | 887.5s - 890.6s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "imagine being there and how would you live in that energy?..."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 887.5s-890.6s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0021 | 551.2s - 554.2s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "That's the 5% that'll get you 95% of results...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 551.2s-554.2s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0022 | 754.3s - 756.1s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "Everything is a byproduct of how we feel...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 754.3s-756.1s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0023 | 1039.7s - 1042.5s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "when you perform and how you do it...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 1039.7s-1042.5s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0024 | 303.8s - 306.1s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "Dan, my to do list is overflowing...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 303.8s-306.1s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0025 | 322.8s - 325.7s | Status: active
+   Text: "All right, so once you find your bottleneck, awesome...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 322.8s-325.7s
+
+📌 c_0026 | 285.1s - 286.5s | Status: active
+   Text: "and they move on, and guess what?..."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 285.1s-286.5s
+
+📌 c_0027 | 410.9s - 412.9s | Status: active
+   Text: "Not the things you add, everybody's got that...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 410.9s-412.9s
+
+📌 c_0028 | 620.1s - 623.9s | Status: active
+   Text: "Before you actually get any of it. I always tell these kids..."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 620.1s-623.9s
+
+============================================================
+[ORCH] staged returned 0 candidates (groq_pool=24, has_tf_moments=False).
+[ORCH] Ultron V33 Engine returned 0 candidates.
+[ORCH] Orchestration complete (t=15.86s)
+
+[FINAL_CLIP_SOURCE_REPORT]
+candidate_generation=0
+groq_transcript_first=0
+
+[GROQ_USAGE_REPORT]
+narrative_enabled=0
+transcript_first_enabled=0
+cortex_enabled=0
+
+[PIPELINE_REPORT]
+raw_candidates=24
+final_candidates=0
+runtime_seconds=15.86
+
+
+[PIPELINE_ACCOUNTING]
+Hooks Created = 28
+Hooks Suppressed = 0
+Candidates Created = 28
+Arc Assembler Inputs = 24
+Surgeon Inputs = 24
+Final Clips = 0
+
+
+==================================================
+NARRATIVE OBSERVATORY: STORY TRACE REPORT
+==================================================
+============================================================
+                 HOTSHORT PIPELINE X-RAY
+============================================================
+
+[STAGE AUTOPSIES]
+
+⚡ STRICT_PASS
+   input=447 | output=12 | time=0.000s
+   Rejected:
+     semantic<0.35 = 240
+     punch<0.25 = 422
+
+⚡ CANDIDATE_GENERATION
+   input=459 | output=8 | time=0.031s
+
+⚡ HOOK_HUNTER
+   input=8 | output=28 | time=0.702s
+
+⚡ BACKFILL
+   input=28 | output=28 | time=0.000s
+
+⚡ GROQ_TRANSCRIPT_FIRST
+   input=0 | output=0 | time=0.000s
+
+⚡ VALIDATION
+   input=24 | output=24 | time=0.000s
+
+⚡ ARC_ASSEMBLER
+   input=24 | output=8 | time=0.156s
+
+⚡ EDITOR_REFINER
+   input=8 | output=0 | time=0.024s
+   Rejected:
+     loop_no_payoff = 8
+     weak_unresolved_payoff = 7
+     zero_hook_signal = 1
+     flat_incomplete_arc = 1
+
+⚡ IDEA_GRAPH
+   input=459 | output=459 | time=0.000s
+
+⚡ PRE_FILTER
+   input=459 | output=447 | time=0.000s
+   Rejected:
+     low_semantic = 12
+     low_punch = 12
+     low_curiosity = 12
+
+============================================================
+                CLIP LIFECYCLE TRACE
+============================================================
+
+📌 c_0001 | 515.8s - 551.3s | Status: rejected (filtered_or_deduplicated)
+   Text: "meaning stop it. That's why you have to batch your meetings of similar things or take..."
+   Scores: score=0.47, curiosity=0.00, punch=0.65, semantic=0.47, arc_score=0.30
+   History:
+     → Created by candidate_generation at 521.0s-525.2s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 515.84, 'end': 551.28, 'scores': {'arc_score': 0.3001}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0002 | 554.2s - 558.4s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "So the effective executive will teach you how to remove things from your calendar...."
+   Scores: score=0.46, curiosity=0.00, punch=0.65, semantic=0.43
+   History:
+     → Created by candidate_generation at 554.2s-558.4s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0003 | 303.8s - 335.8s | Status: rejected (filtered_or_deduplicated)
+   Text: "That's why you need to have some support in your life...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41, arc_score=0.36
+   History:
+     → Created by candidate_generation at 306.1s-308.2s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 303.77, 'end': 335.81, 'scores': {'arc_score': 0.3643}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0004 | 309.8s - 312.4s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "And most people just don't know what to give that person...."
+   Scores: score=0.45, curiosity=0.00, punch=0.65, semantic=0.41
+   History:
+     → Created by candidate_generation at 309.8s-312.4s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0005 | 31.4s - 64.3s | Status: rejected (filtered_or_deduplicated)
+   Text: "No, he's like, I've got to make some new space material...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.38, arc_score=0.22
+   History:
+     → Created by candidate_generation at 34.0s-37.0s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 31.35, 'end': 64.29, 'scores': {'arc_score': 0.2244}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0006 | 153.6s - 179.8s | Status: rejected (filtered_or_deduplicated)
+   Text: "of your business and that's what you should be focusing on...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37, arc_score=0.23
+   History:
+     → Created by candidate_generation at 156.3s-158.8s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 153.57, 'end': 179.77, 'scores': {'arc_score': 0.226}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0007 | 710.9s - 714.8s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "And that's like, that's like you're lying to yourself...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 710.9s-714.8s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0008 | 799.4s - 802.6s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "will feel so familiar because I've been there a thousand times...."
+   Scores: score=0.41, curiosity=0.00, punch=0.65, semantic=0.37
+   History:
+     → Created by candidate_generation at 799.4s-802.6s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0009 | 662.2s - 663.7s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "where you had to wear a bunch of spandex...."
+   Scores: score=0.64, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 662.2s-663.7s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0010 | 535.1s - 540.4s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "one thing that you can do today that actually matters? Now I know you're like, I got 14...."
+   Scores: score=0.61, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 535.1s-540.4s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0011 | 822.8s - 824.2s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "You can decide to be rich right now...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 822.8s-824.2s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0012 | 441.4s - 467.2s | Status: rejected (filtered_or_deduplicated)
+   Text: "Most people think, no, I worked on this all week, I worked on this all week...."
+   Scores: score=0.58, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.14
+   History:
+     → Created by hook_hunter at 449.7s-452.5s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 441.36, 'end': 467.2, 'scores': {'arc_score': 0.1444}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0013 | 535.1s - 566.7s | Status: rejected (filtered_or_deduplicated)
+   Text: "What's the one? But then I can't pick one. There's too many. I got three. I got four...."
+   Scores: score=0.56, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.33
+   History:
+     → Created by hook_hunter at 540.4s-545.3s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 535.12, 'end': 566.68, 'scores': {'arc_score': 0.3306}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0014 | 414.5s - 447.4s | Status: rejected (filtered_or_deduplicated)
+   Text: "I'm curious what did you stop doing?..."
+   Scores: score=0.56, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.34
+   History:
+     → Created by hook_hunter at 415.7s-418.1s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 414.52, 'end': 447.36, 'scores': {'arc_score': 0.34}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0015 | 938.5s - 940.5s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "why things aren't going their way...."
+   Scores: score=0.55, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 938.5s-940.5s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0016 | 414.5s - 415.7s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "the team knows about it...."
+   Scores: score=0.53, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 414.5s-415.7s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0017 | 897.4s - 898.6s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "with a little bit more confidence...."
+   Scores: score=0.52, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 897.4s-898.6s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0018 | 663.7s - 667.8s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "But I just thought, what is the peak expression of health?..."
+   Scores: score=0.52, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 663.7s-667.8s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0019 | 194.8s - 228.0s | Status: rejected (filtered_or_deduplicated)
+   Text: "this month to next month, what breaks?..."
+   Scores: score=0.51, curiosity=0.00, punch=0.00, semantic=0.00, arc_score=0.24
+   History:
+     → Created by hook_hunter at 197.3s-199.8s
+     → Finalized as output: passed_validation
+     → Modified by arc_assembler (changes: {'start': 194.81, 'end': 228.01, 'scores': {'arc_score': 0.2361}})
+     → Rejected by editor_refiner: filtered_or_deduplicated
+
+📌 c_0020 | 887.5s - 890.6s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "imagine being there and how would you live in that energy?..."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 887.5s-890.6s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0021 | 551.2s - 554.2s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "That's the 5% that'll get you 95% of results...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 551.2s-554.2s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0022 | 754.3s - 756.1s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "Everything is a byproduct of how we feel...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 754.3s-756.1s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0023 | 1039.7s - 1042.5s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "when you perform and how you do it...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 1039.7s-1042.5s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0024 | 303.8s - 306.1s | Status: rejected (dropped_during_overlap_deduplication_or_top_k_limit)
+   Text: "Dan, my to do list is overflowing...."
+   Scores: score=0.50, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 303.8s-306.1s
+     → Finalized as output: passed_validation
+     → Rejected by arc_assembler: dropped_during_overlap_deduplication_or_top_k_limit
+
+📌 c_0025 | 322.8s - 325.7s | Status: active
+   Text: "All right, so once you find your bottleneck, awesome...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 322.8s-325.7s
+
+📌 c_0026 | 285.1s - 286.5s | Status: active
+   Text: "and they move on, and guess what?..."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 285.1s-286.5s
+
+📌 c_0027 | 410.9s - 412.9s | Status: active
+   Text: "Not the things you add, everybody's got that...."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 410.9s-412.9s
+
+📌 c_0028 | 620.1s - 623.9s | Status: active
+   Text: "Before you actually get any of it. I always tell these kids..."
+   Scores: score=0.49, curiosity=0.00, punch=0.00, semantic=0.00
+   History:
+     → Created by hook_hunter at 620.1s-623.9s
+
+============================================================
+
+============================================================
+GOVERNOR TELEMETRY: PROPOSAL HISTORY (PHASE 1)
+============================================================
+============================================================
+
+
+============================================================
+     INTELLIGENCE TRANSPORT VERIFIER — AUDIT REPORT
+============================================================
+  No Evidence packets found in any candidate.
+  (IntelligenceArtifact.evidence_stream was never populated.)
+============================================================
+[SUCCESS] Pipeline returned 0 clips
+
+
+[DONE] Output logged to observatory_test.log
