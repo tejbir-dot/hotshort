@@ -1443,17 +1443,31 @@ class ClipEditor:
             _seed_x = float(statistics.median(_spk)) if _spk else 0.5
 
             # Seed last_mode from format_analyzer dominant speaker side.
-            # If median speaker position is far left (<0.38) → SOLO_LEFT,
-            # far right (>0.62) → SOLO_RIGHT, otherwise ACTIVE_CENTER.
-            # ACTIVE_CENTER is safer: it keeps the full frame visible until
-            # the first real Haar detection fires (frame 0 or frame 5).
-            if _seed_x < 0.38:
+            # IMPORTANT: Only use SOLO_LEFT/SOLO_RIGHT seeding when FaceCache
+            # detected a SINGLE real speaker. If 2 speakers are in face_cache
+            # (podcast), the median falls between them — not a real face position.
+            # Seeding SOLO_RIGHT from that midpoint causes the director to start
+            # cropped to the wrong side when only one face is live at t=0.
+            # Fix: podcast with 2 speakers → always seed ACTIVE_CENTER and let
+            # the live director pick SOLO_LEFT/SOLO_RIGHT from frame-0 detection.
+            if len(_spk) >= 2:
+                # Two speaker slots from FaceCache — real ghost suppression needed.
+                # ACTIVE_CENTER is safe: first live Haar hit (frame 0 or 5) will
+                # immediately override to the correct SOLO_LEFT/SOLO_RIGHT.
+                last_mode = "ACTIVE_CENTER"
+                log.info(
+                    f"[INIT] last_mode seeded=ACTIVE_CENTER (podcast: {len(_spk)} speakers, "
+                    f"skipping median-bias seed to avoid ghost-slot SOLO_RIGHT lock)"
+                )
+            elif _seed_x < 0.38:
                 last_mode = "SOLO_LEFT"
+                log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
             elif _seed_x > 0.62:
                 last_mode = "SOLO_RIGHT"
+                log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
             else:
                 last_mode = "ACTIVE_CENTER"  # safe fallback — no face bias at start
-            log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
+                log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
 
 
             ema_mouth_left = 0.0
