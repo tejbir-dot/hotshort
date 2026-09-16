@@ -1066,6 +1066,7 @@ class FaceCache:
         self.video_path = video_path
         self.cache = {}
         self.clip_caches = {}
+        self.clip_timelines = {}  # (start, end) -> [{start,end,mode,n_faces},...] from real detection
         self.clips = clips
         self._done = False
         self._format_map = format_map or {}  # clip object id → VideoFormat
@@ -1504,7 +1505,7 @@ class FaceCache:
                     flush=True,
                 )
             else:
-                # Safety-net: preserve the prior per-sampled-frame Haar scan exactly.
+                # clusters=disabled: run per-frame Haar scan on every sampled frame.
                 for fn, frame in sampled:
                     t_abs = round(fn / local_fps, 2)
                     t_rel = round(max(0.0, t_abs - start), 2)
@@ -1522,6 +1523,47 @@ class FaceCache:
                     flush=True,
                 )
 
+            # ── FACE_TIMELINE ────────────────────────────────────────────────────
+            # rel_results = {t_rel: [face_list]} already sorted by InsightFace/Haar
+            _tl_segs    = []  # list of (seg_start, seg_end, mode, n_faces)
+            _tl_items   = sorted(rel_results.items())
+            _clip_dur   = max(0.1, end - start)
+            if _tl_items:
+                _cur_mode   = None
+                _cur_start  = 0.0
+                _n_prev     = 0
+                for _t, _faces in _tl_items:
+                    _n    = len([f for f in _faces if not f.get('_synthetic')])
+                    _mode = "PODCAST" if _n >= 2 else "MONOLOGUE" if _n == 1 else "GAP"
+                    if _mode != _cur_mode:
+                        if _cur_mode is not None:
+                            _tl_segs.append((_cur_start, round(_t, 1), _cur_mode, _n_prev))
+                        _cur_mode, _cur_start = _mode, round(_t, 1)
+                    _n_prev = _n
+                if _cur_mode:
+                    _tl_segs.append((_cur_start, round(_clip_dur, 1), _cur_mode, _n_prev))
+
+            # Print face timeline
+            _BAR_CH   = {"PODCAST": "\u2588", "MONOLOGUE": "\u2591", "GAP": "?"}
+            _switches  = max(0, len(_tl_segs) - 1)
+            _res_s     = round(stride / max(1.0, local_fps), 1)
+            print(f"[FACE_TIMELINE] clip={start:.1f}-{end:.1f}s  "
+                  f"resolution=~{_res_s}s/sample  segments={len(_tl_segs)}", flush=True)
+            for _s, _e, _m, _n in _tl_segs:
+                _dur_s   = max(0.1, _e - _s)
+                _bar_len = max(1, round(_dur_s / _clip_dur * 24))
+                _bar     = _BAR_CH.get(_m, "?") * _bar_len
+                print(f"  t={_s:5.1f}s → {_e:5.1f}s : {_m:<9} ({_n}f)  [{_bar}]",
+                      flush=True)
+            if _tl_segs:
+                _dom_mode = max(
+                    set(s[2] for s in _tl_segs),
+                    key=lambda m: sum(s[1] - s[0] for s in _tl_segs if s[2] == m)
+                )
+                _dom_s = sum(s[1] - s[0] for s in _tl_segs if s[2] == _dom_mode)
+                print(f"  Dominant: {_dom_mode} ({_dom_s:.1f}s/{_clip_dur:.1f}s)  "
+                      f"Mode-switches: {_switches}", flush=True)
+
             print(f"\nClip {clip_idx + 1}\n"
                   f"Open Video .......... {int(t_open * 1000)} ms\n"
                   f"Seek ............... {int(t_seek * 1000)} ms\n"
@@ -1533,14 +1575,19 @@ class FaceCache:
                   f"Anchor Build ........ {int(t_anchor * 1000)} ms\n", flush=True)
 
             cap.release()
-            return (round(start, 2), round(end, 2)), abs_results, rel_results
+            return (round(start, 2), round(end, 2)), abs_results, rel_results, _tl_segs
 
         with ThreadPoolExecutor(max_workers=min(workers, max(1, len(clips)))) as ex:
             futures = [ex.submit(scan_one_clip, i, clip) for i, clip in enumerate(clips)]
             for future in futures:
-                key, abs_results, rel_results = future.result()
+                key, abs_results, rel_results, tl_segs = future.result()
                 self.cache.update(abs_results)
                 self.clip_caches[key] = rel_results
+                # Store real-detection timeline for director pre-cognition
+                self.clip_timelines[key] = [
+                    {"start": s, "end": e, "mode": m, "n_faces": n}
+                    for s, e, m, n in tl_segs
+                ]
 
         self._done = True
         _face_cache_elapsed = time.time() - _face_cache_start
