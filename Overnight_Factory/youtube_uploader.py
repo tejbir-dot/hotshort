@@ -1,127 +1,164 @@
 import asyncio
-import json
+import random
+import requests
 from playwright.async_api import async_playwright
 
+# ⚙️ CTO CONFIG: Teri Dolphin ID yahan daal
+DOLPHIN_PROFILE_ID = "864437795"  # Same ID jo TikTok me daali thi
+  # Same ID jo TikTok me daali thi
+
+def get_dolphin_ws_endpoint():
+    """Dolphin Anty API se active browser ka connection port nikalta hai"""
+    print(f"🔌 Pinging Dolphin Anty for Profile ID: {DOLPHIN_PROFILE_ID}...")
+    url = f"http://localhost:3001/v1.0/browser_profiles/{DOLPHIN_PROFILE_ID}/start?automation=1"
+    
+    try:
+        response = requests.get(url)
+        data = response.json()
+        
+        if data.get("success"):
+            ws_url = data["automation"]["wsEndpoint"]
+            print(f"✅ Dolphin Hijacked! WS Endpoint: {ws_url}")
+            return ws_url
+        else:
+            raise Exception(f"Dolphin connection failed: {data}")
+    except Exception as e:
+        print(f"❌ ERROR: Dolphin Anty open nahi hai ya ID galat hai! Error: {e}")
+        return None
+
 async def run_youtube_uploader(video_path, caption):
-    print("🚀 Starting YouTube Ghost Factory...")
+    print(f"🚀 STARTING GHOST FACTORY: GOD MODE FOR YOUTUBE")
+    
+    ws_endpoint = get_dolphin_ws_endpoint()
+    if not ws_endpoint:
+        return
     
     async with async_playwright() as p:
-        # Browser Start (Headless=False taaki nazaara dikhe)
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context()
-
-        # 1. 🍪 Injecting Golden Ticket (Cookies)
-        print("🍪 Injecting YouTube Cookies...")
-        try:
-            import os
-            cookie_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'youtube_cookie.json')
-            with open(cookie_path, 'r') as f:
-                raw_cookies = json.load(f)
-                
-                clean_cookies = []
-                for cookie in raw_cookies:
-                    # 🧹 CTO AUTO-CLEANER: Fix sameSite values
-                    if 'sameSite' in cookie:
-                        if cookie['sameSite'] not in ['Strict', 'Lax', 'None']:
-                            if cookie['sameSite'] == 'no_restriction':
-                                cookie['sameSite'] = 'None'
-                            else:
-                                del cookie['sameSite'] # Delete if null or invalid
-                    
-                    # Remove extra keys that Playwright hates
-                    for bad_key in ['hostOnly', 'session', 'storeId', 'id']:
-                        if bad_key in cookie:
-                            del cookie[bad_key]
-                            
-                    clean_cookies.append(cookie)
-
-                await context.add_cookies(clean_cookies)
-            print("✅ Cookies Cleaned & Injected! System Hacked In.")
-        except Exception as e:
-            print(f"❌ Cookie error: {e}")
-            return
-
+        # --- 1. THE CDP CONNECTION ---
+        print("🔗 Connecting Playwright to running Dolphin Profile...")
+        browser = await p.chromium.connect_over_cdp(ws_endpoint)
+        context = browser.contexts[0]
         page = await context.new_page()
 
-        try:
-            # 2. 🛡️ Navigate to YouTube Studio
-            print("🛡️ Navigating to YouTube Studio...")
-            await page.goto("https://studio.youtube.com/", timeout=60000)
-            await asyncio.sleep(5.0)
-            
-            # 🛠️ THE NEW CTO BYPASS: Waking up the Upload Box
-            print("🖱️ Clicking 'Upload' icon to wake up the system...")
-            try:
-                # Top right upload arrow icon ko click karega
-                await page.locator('#upload-icon').click(timeout=5000)
-            except:
-                # Agar naya channel hai toh beech wale 'Upload videos' button ko click karega
-                await page.locator('#upload-button').click()
-                
-            await asyncio.sleep(3.0) # Upload box khulne ka wait karega
+        # --- 2. WARM-UP SHIELD (YouTube Homepage Scroll) ---
+        print("🧘‍♂️ Warming up the Algorithm... Scrolling YouTube Homepage...")
+        await page.goto("https://www.youtube.com/", timeout=60000)
+        await asyncio.sleep(random.uniform(3.0, 5.0))
+        
+        # Thoda human jaisa scroll
+        await page.mouse.wheel(0, 800)
+        await asyncio.sleep(random.uniform(2.0, 4.0))
+        await page.mouse.wheel(0, 1200)
+        print("✅ Warm-up complete! Looking like a real USA viewer.")
+        await asyncio.sleep(2.0)
 
-            # 3. 📂 Direct File Injection
-            print(f"📂 Uploading Video directly to server: {video_path}")
+        try:
+            # --- 3. NAVIGATE TO YT STUDIO ---
+            print("🛡️ Entering YouTube Studio Mainframe...")
+            await page.goto("https://studio.youtube.com/", timeout=60000)
+            await asyncio.sleep(random.uniform(5.0, 8.0))
+
+            # Click "Create" Button
+            print("🖱️ Clicking 'Create'...")
+            await page.locator('#create-icon').click()
+            await asyncio.sleep(random.uniform(1.0, 2.0))
+            
+            # Click "Upload videos"
+            await page.locator('#text:has-text("Upload videos")').first.click()
+            await asyncio.sleep(random.uniform(2.0, 3.0))
+
+            # --- 4. INJECT VIDEO FILE ---
+            print(f"📂 Injecting Video File: {video_path}")
             await page.set_input_files("input[type='file']", video_path)
             
-            print("⏳ Waiting for upload page to load (10 seconds)...")
-            await asyncio.sleep(10.0)
+            print("⏳ Waiting for USA servers to ingest file...")
+            await asyncio.sleep(random.uniform(8.0, 12.0)) # Video load hone ka time
 
-            # 4. ✍️ Typing Title / Caption
-            print("✍️ Typing Title & Hashtags...")
-            title_box = page.locator('#title-textarea #textbox')
-            await title_box.click(force=True)
-            await title_box.clear() # Default video naam hatane ke liye
-            await title_box.type(caption, delay=100)
+            # --- 5. HUMAN TYPING (Title & Description) ---
+            print("✍️ Typing Title and Description...")
+            # Title Box (Pehla contenteditable)
+            title_box = page.locator('#textbox').nth(0)
+            await title_box.click()
+            await asyncio.sleep(0.5)
+            await page.keyboard.press('Control+A')
+            await page.keyboard.press('Backspace')
+            await asyncio.sleep(1.0)
+            
+            # YouTube Shorts ke liye chota title nikal rahe hain (Pehli line)
+            short_title = caption.split('\n')[0][:90] 
+            
+            for char in short_title:
+                await page.keyboard.type(char)
+                await asyncio.sleep(random.uniform(0.02, 0.1))
+                
+            await asyncio.sleep(1.0)
+
+            # Description Box (Doosra contenteditable)
+            desc_box = page.locator('#textbox').nth(1)
+            await desc_box.click()
+            await asyncio.sleep(0.5)
+            await page.keyboard.press('Control+A')
+            await page.keyboard.press('Backspace')
+            
+            # Type full caption in description (Thoda fast)
+            await page.keyboard.type(caption, delay=10) 
             await asyncio.sleep(2.0)
 
-            # 5. 👶 The Kids Policy Check (Bohot zaroori)
-            print("🛡️ Selecting 'No, it's not made for kids'...")
+            # --- 6. 'NOT FOR KIDS' SETTING ---
+            print("👶 Setting 'Not made for kids'...")
             kids_radio = page.locator('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]')
             await kids_radio.scroll_into_view_if_needed()
-            await kids_radio.click(force=True)
-            await asyncio.sleep(2.0)
+            await kids_radio.click()
+            await asyncio.sleep(1.0)
 
-            # 6. ⏩ Skipping extra checks (Click NEXT 3 times)
-            print("⏩ Bypassing extra checks...")
-            for i in range(3):
-                next_btn = page.locator('#next-button')
-                await next_btn.click(force=True)
-                await asyncio.sleep(1.5)
+            # --- 7. NEXT, NEXT, NEXT (Bypassing steps) ---
+            print("⏭️ Bypassing Checks and Elements...")
+            next_btn = page.locator('#next-button')
+            
+            for _ in range(3): # Teen baar Next dabana padta hai
+                await next_btn.click()
+                await asyncio.sleep(random.uniform(1.5, 3.0))
 
-            # 7. 🌍 Privacy to Public
-            print("🌍 Forcing Privacy to 'Public'...")
+            # --- 8. PUBLISH SETTINGS ---
+            print("🌍 Setting visibility to PUBLIC...")
             public_radio = page.locator('tp-yt-paper-radio-button[name="PUBLIC"]')
-            await public_radio.click(force=True)
-            await asyncio.sleep(2.0)
+            await public_radio.click()
+            await asyncio.sleep(1.0)
 
-            # 8. 🔥 THE LAUNCH BUTTON
-            print("🔥 Clicking PUBLISH button...")
-            publish_btn = page.locator('#done-button')
-            await publish_btn.click(force=True)
+            print("🔥 SMASHING THE PUBLISH BUTTON!")
+            done_btn = page.locator('#done-button')
+            await done_btn.click()
 
-            print("⏳ Uploading to USA Servers... Waiting 20 seconds...")
-            await asyncio.sleep(20.0)
+            print("⏳ Waiting for YouTube to process the final publish...")
+            await asyncio.sleep(15.0)
 
-            print("🏆 BOOM! Video is LIVE on YouTube Shorts USA!")
+            # Dialog band karna (Video published modal)
+            try:
+                close_btn = page.locator('#close-button').first
+                if await close_btn.is_visible():
+                    await close_btn.click()
+            except:
+                pass
+
+            print("\n" + "="*50)
+            print("✅ BINGO! YOUTUBE SHORT UPLOADED SUCCESSFULLY!")
+            print("="*50 + "\n")
 
         except Exception as e:
-            print(f"❌ Error occurred during YouTube upload: {e}")
-
+            print(f"❌ YouTube Upload Failed: {e}")
+            
         finally:
-            await browser.close()
-            print("🚪 Browser closed securely.")
+            # 🚨 DISCONNECTING (Not Closing) taaki Dolphin profile safe rahe
+            await page.close()
+            await browser.disconnect()
+            print("🚪 YouTube Script Detached. Dolphin profile still running safely.")
 
-# --- EXECUTION (Test Fire) ---
+# Sync Wrapper for Manager.py
+def upload_video(video_path, caption):
+    asyncio.run(run_youtube_uploader(video_path, caption))
+
+# --- QUICK TEST EXECUTION ---
 if __name__ == "__main__":
-    # Yahan test karne ke liye apni koi video ka path daal de
-    test_video = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Output\Daniel_Rewards\clip_0_0_71.mp4"
-    test_caption = "Crazy facts you didn't know! 🤯 #shorts #usa #viral"
-    
-    asyncio.run(run_youtube_uploader(test_video, test_caption))
-
-
-# ── Public API for Manager.py ─────────────────────────────────────────────────
-def upload_video(video_path: str, caption: str) -> None:
-    """Sync wrapper — Manager calls this via run_in_executor (non-blocking)."""
-    asyncio.run(run_youtube_uploader(video_path, caption))
+    test_vid = "C:/Users/n/Documents/hotshort/Overnight_Factory/Output/Daniel_Rewards/clip_0_0_71.mp4" # Path adjust kar lena
+    test_cap = "Crazy new AI strategy! 🤯\n\n#shorts #entrepreneur #mindset"
+    upload_video(test_vid, test_cap)
