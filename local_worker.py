@@ -1563,50 +1563,118 @@ class FaceCache:
             for f in faces if not f.get('_synthetic')
         )
 
-        # Per-clip breakdown
+        # ── Per-clip breakdown (genius edition) ─────────────────────────────
+        BAR_W     = 24   # chars wide for timeline bar
         clip_report = []
         for (s, e), rel_cache in self.clip_caches.items():
-            c_counts   = [len(v) for v in rel_cache.values()]
-            c_2f       = sum(1 for c in c_counts if c >= 2)
-            c_synth    = sum(1 for v in rel_cache.values() for f in v if f.get('_synthetic'))
-            clip_fmt_n = "unknown"
+            c_frames_sorted = sorted(rel_cache.keys())
+            c_counts  = [len(rel_cache[t]) for t in c_frames_sorted]
+            n_frames  = max(1, len(c_counts))
+            dur_s     = max(0.1, e - s)
+
+            c_2f   = sum(1 for c in c_counts if c >= 2)
+            c_1f   = sum(1 for c in c_counts if c == 1)
+            c_0f   = sum(1 for c in c_counts if c == 0)
+            c_synth = sum(1 for v in rel_cache.values() for f in v if f.get('_synthetic'))
+
+            # Seconds estimation (proportional to sampled frames)
+            solo_s = round(dur_s * c_1f / n_frames, 1)
+            dual_s = round(dur_s * c_2f / n_frames, 1)
+            gap_s  = round(dur_s * c_0f / n_frames, 1)
+
+            # Find clip metadata
+            clip_meta = None
             for clip in self.clips:
                 if abs(float(clip.get('start', -1)) - s) < 0.1:
-                    clip_fmt_n = clip.get('_fmt_type', 'unknown')
+                    clip_meta = clip
                     break
+            clip_fmt_n  = clip_meta.get('_fmt_type', 'unknown') if clip_meta else 'unknown'
+            speakers    = clip_meta.get('_speaker_positions', []) if clip_meta else []
+
+            # 24-char timeline bar  ░=solo  █=dual  ?=gap
+            bar = ""
+            for i in range(BAR_W):
+                seg_s = int(i * n_frames / BAR_W)
+                seg_e = max(seg_s + 1, int((i + 1) * n_frames / BAR_W))
+                seg   = c_counts[seg_s:seg_e]
+                avg   = sum(seg) / max(1, len(seg))
+                bar  += ("█" if avg >= 1.7 else "▒" if avg >= 0.7 else "░" if avg >= 0.1 else "?")
+
+            # Format-override warning
+            dual_pct = c_2f / n_frames
+            override = ""
+            if clip_fmt_n == "monologue" and dual_pct > 0.45:
+                override = " ⚠"
+            elif clip_fmt_n == "podcast" and dual_pct < 0.25:
+                override = " ⚠"
+
+            # Speaker gap (split readiness)
+            spk_str = ""
+            if len(speakers) >= 2:
+                gap = round(abs(speakers[1] - speakers[0]), 2)
+                ok  = "✓" if gap >= 0.38 else "✗"
+                spk_str = f"  L={speakers[0]:.2f} R={speakers[1]:.2f} gap={gap:.2f}{ok}"
+
             clip_report.append({
-                "clip": f"{s:.1f}-{e:.1f}s",
+                "clip": f"{s:.0f}-{e:.0f}s",
+                "dur_s": dur_s,
                 "format": clip_fmt_n,
-                "frames_cached": len(c_counts),
+                "override": override,
+                "frames_cached": n_frames,
                 "frames_with_2plus_faces": c_2f,
-                "pct_dual": f"{100*c_2f/max(1,len(c_counts)):.0f}%",
+                "pct_dual": f"{100*dual_pct:.0f}%",
+                "solo_s": solo_s,
+                "dual_s": dual_s,
+                "gap_s": gap_s,
                 "synthetic_face_slots": c_synth,
+                "speakers": speakers,
+                "bar": bar,
+                "spk_str": spk_str,
             })
 
+        # ── Aggregate seconds ─────────────────────────────────────────────────
+        total_dur_s  = sum(cr['dur_s'] for cr in clip_report)
+        total_solo_s = sum(cr['solo_s'] for cr in clip_report)
+        total_dual_s = sum(cr['dual_s'] for cr in clip_report)
+
         # ── Terminal banner ───────────────────────────────────────────────────
-        sep = "─" * 66
-        print(f"\n{'═'*66}", flush=True)
-        print(f"  FACECACHE COMPLETE  |  wall={_face_cache_elapsed:.2f}s  |  frames={total_frames}", flush=True)
+        W   = 80
+        sep = "─" * W
+        print(f"\n{'═'*W}", flush=True)
+        print(
+            f"  FACECACHE COMPLETE  |  wall={_face_cache_elapsed:.2f}s  "
+            f"|  {len(clip_report)} clips  |  {total_frames} frames  |  {total_dur_s:.0f}s total",
+            flush=True,
+        )
         print(sep, flush=True)
-        print(f"  Faces per frame breakdown:", flush=True)
+        print(f"  Global face distribution:", flush=True)
         print(f"    0 faces  : {frames_0_faces:4d} frames  ({100*frames_0_faces/max(1,total_frames):.0f}%)", flush=True)
-        print(f"    1 face   : {frames_1_face:4d} frames  ({100*frames_1_face/max(1,total_frames):.0f}%)", flush=True)
-        print(f"    2 faces  : {frames_2_faces:4d} frames  ({100*frames_2_faces/max(1,total_frames):.0f}%)  ← SPLIT eligible", flush=True)
+        print(f"    1 face   : {frames_1_face:4d} frames  ({100*frames_1_face/max(1,total_frames):.0f}%)  → ~{total_solo_s:.0f}s solo", flush=True)
+        print(f"    2 faces  : {frames_2_faces:4d} frames  ({100*frames_2_faces/max(1,total_frames):.0f}%)  → ~{total_dual_s:.0f}s split-eligible", flush=True)
         print(f"    3+ faces : {frames_3p_face:4d} frames  ({100*frames_3p_face/max(1,total_frames):.0f}%)", flush=True)
-        print(f"  avg_faces_per_frame : {avg_faces:.2f}", flush=True)
-        print(f"  real face slots     : {real_count}  |  synthetic slots: {synth_count}", flush=True)
+        print(f"  avg_faces/frame : {avg_faces:.2f}   real slots: {real_count}   synth slots: {synth_count}", flush=True)
         print(sep, flush=True)
-        print(f"  {'CLIP':<18} {'FMT':<14} {'FRAMES':>7} {'2-FACE%':>8} {'SYNTH':>6}", flush=True)
-        print(f"  {'-'*18} {'-'*14} {'-'*7} {'-'*8} {'-'*6}", flush=True)
-        for cr in clip_report:
-            synth_flag = " ← ghost" if cr["synthetic_face_slots"] > 0 else ""
+        hdr = f"  {'#':<3} {'RANGE':<14} {'DUR':>6} {'FORMAT':<13} {'SOLO':>7} {'DUAL':>7}  {'TIMELINE (░=solo █=dual)'}"
+        print(hdr, flush=True)
+        print(f"  {'─'*3} {'─'*14} {'─'*6} {'─'*13} {'─'*7} {'─'*7}  {'─'*BAR_W}", flush=True)
+        for i, cr in enumerate(clip_report):
+            synth_flag = " s" if cr["synthetic_face_slots"] > 0 else ""
+            fmt_label  = f"{cr['format']}{cr['override']}"
             print(
-                f"  {cr['clip']:<18} {cr['format']:<14} "
-                f"{cr['frames_cached']:>7} {cr['pct_dual']:>8} "
-                f"{cr['synthetic_face_slots']:>6}{synth_flag}",
+                f"  {i:<3} {cr['clip']:<14} {cr['dur_s']:>5.0f}s  "
+                f"{fmt_label:<13} {cr['solo_s']:>6.1f}s {cr['dual_s']:>6.1f}s  "
+                f"[{cr['bar']}]{synth_flag}",
                 flush=True,
             )
-        print(f"{'═'*66}\n", flush=True)
+            if cr['spk_str']:
+                print(f"       {'':14} {'':6}  {'':13} {'':7} {'':7} {cr['spk_str']}", flush=True)
+        print(f"  {'─'*3} {'─'*14} {'─'*6} {'─'*13} {'─'*7} {'─'*7}  {'─'*BAR_W}", flush=True)
+        print(
+            f"  {'TOT':<3} {'ALL CLIPS':<14} {total_dur_s:>5.0f}s  "
+            f"{'':13} {total_solo_s:>6.1f}s {total_dual_s:>6.1f}s",
+            flush=True,
+        )
+        print(f"{'═'*W}\n", flush=True)
 
         # ── JSON report to debug_out ─────────────────────────────────────────
         _debug_dir = os.getenv("HS_DEBUG_FRAMES", "./debug_out").strip()
@@ -1832,6 +1900,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             if _fmt is not None:
                                 _fc_fmt_map[id(_clip)] = _fmt
                                 _clip["_fmt_type"] = _fmt.format_type
+                                _clip["_speaker_positions"] = list(_fmt.speaker_positions or [])
 
                 _bench.finish("3_format_classify")
 
