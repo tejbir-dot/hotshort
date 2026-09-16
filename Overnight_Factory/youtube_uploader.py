@@ -119,3 +119,9 @@ if __name__ == "__main__":
     test_caption = "Crazy facts you didn't know! 🤯 #shorts #usa #viral"
     
     asyncio.run(run_youtube_uploader(test_video, test_caption))
+
+
+# ── Public API for Manager.py ─────────────────────────────────────────────────
+def upload_video(video_path: str, caption: str) -> None:
+    """Sync wrapper — Manager calls this via run_in_executor (non-blocking)."""
+    asyncio.run(run_youtube_uploader(video_path, caption))
