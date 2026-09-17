@@ -171,22 +171,10 @@ async def run_youtube_uploader(video_path: str, caption: str):
             print("      ⚠️  No cookies found. Will rely on saved profile session.")
 
         try:
-            # ── 4. WARM-UP: BROWSE YOUTUBE ─────────────────
-            print("[4/8] 🧘  Warming up... (browsing YouTube homepage)")
-            try:
-                await page.goto("https://www.youtube.com/", timeout=90000, wait_until="commit")
-                await asyncio.sleep(random.uniform(2.0, 4.0))
-                await page.mouse.wheel(0, random.randint(400, 900))
-                await asyncio.sleep(random.uniform(1.0, 2.5))
-                await page.mouse.wheel(0, random.randint(600, 1200))
-                print("      ✅  Warm-up complete. Looks like a real US viewer.")
-            except Exception as warm_err:
-                print(f"      ⚠️  Warm-up skipped (proxy slow): {warm_err}")
-
-            # ── 5. ENTER YOUTUBE STUDIO ───────────────────
-            print("[5/8] 🎬  Entering YouTube Studio...")
+            # ── 4. GO STRAIGHT TO YOUTUBE STUDIO ─────────
+            print("[4/6] 🎬  Going straight to YouTube Studio...")
             await page.goto("https://studio.youtube.com/", timeout=90000, wait_until="commit")
-            await asyncio.sleep(random.uniform(4.0, 7.0))
+            await asyncio.sleep(random.uniform(3.0, 5.0))
 
             # Open upload dialog
             clicked = await safe_click(page, '#create-icon', timeout=15000)

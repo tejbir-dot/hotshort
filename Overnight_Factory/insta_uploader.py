@@ -167,26 +167,20 @@ async def run_insta_uploader(video_path: str, caption: str):
         else:
             print("      ⚠️  No cookies. Will rely on saved profile session.")
 
-        try:
-            # ── 4. WARM-UP: BROWSE IG FEED ────────────────
-            print("[4/8] 🧘  Warming up... (scrolling IG feed)")
-            await page.goto("https://www.instagram.com/", timeout=60000, wait_until="domcontentloaded")
-            await asyncio.sleep(random.uniform(4.0, 7.0))
+            # ── 4. GO TO INSTAGRAM & TRIGGER UPLOAD ──────
+            print("[4/6] 🎬  Loading Instagram for upload...")
+            await page.goto("https://www.instagram.com/", timeout=90000, wait_until="commit")
+            await asyncio.sleep(random.uniform(2.0, 3.5))
 
-            # Dismiss any login/notification popups
+            # Dismiss any login/notification popups immediately
             await dismiss_popups(page)
 
-            await human_scroll(page, times=random.randint(2, 4))
-            await asyncio.sleep(random.uniform(1.5, 3.0))
-            print("      ✅  Warm-up complete. Looks like a real US scroller.")
-
             # ── 5. TRIGGER UPLOAD FLOW ────────────────────
-            print("[5/8] 🎬  Clicking 'Create' (New Reel)...")
+            print("[5/6] 🖱️   Clicking 'Create' (New Post)...")
             clicked = await safe_click(page, "svg[aria-label='New post']", timeout=10000)
             if not clicked:
-                # Fallback: find any + button
                 await safe_click(page, "a[href='/create/style/']", timeout=5000)
-            await asyncio.sleep(random.uniform(2.0, 4.0))
+            await asyncio.sleep(random.uniform(1.5, 3.0))
 
             # Select "Post" from dropdown if visible
             try:
@@ -196,6 +190,7 @@ async def run_insta_uploader(video_path: str, caption: str):
                     await asyncio.sleep(random.uniform(2.0, 3.5))
             except:
                 pass
+
 
             # ── 6. INJECT VIDEO FILE ──────────────────────
             print(f"[6/8] 📂  Injecting video: {os.path.basename(video_path)}")
