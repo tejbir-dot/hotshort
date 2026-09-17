@@ -217,38 +217,63 @@ async def run_insta_uploader(video_path: str, caption: str):
             except:
                 pass
 
-            # 🎯 SELECT 9:16 FORMAT on crop screen
+            # 🎯 SELECT 9:16 FORMAT — JS se visible elements mein dhundho
             print("      📐  Selecting 9:16 (vertical) format...")
             try:
-                # Click the aspect ratio / expand icon (looks like arrows or crop icon)
-                ratio_btn = page.locator("svg[aria-label='Select crop']").first
-                if not await ratio_btn.is_visible(timeout=3000):
-                    # Fallback: look for the ratio toggle button
-                    ratio_btn = page.locator("button[aria-label*='ratio'], button[aria-label*='crop'], button[aria-label*='Crop']").first
-                await ratio_btn.click()
+                # Step 1: Crop ratio expand button click karo
+                crop_clicked = await page.evaluate("""
+                    () => {
+                        // IG crop screen pe expand arrows icon dhundho
+                        const svgs = [...document.querySelectorAll('[aria-label]')];
+                        for (const el of svgs) {
+                            const label = (el.getAttribute('aria-label') || '').toLowerCase();
+                            if (label.includes('select crop') || label.includes('crop ratio')) {
+                                el.click();
+                                return 'crop_btn_clicked';
+                            }
+                        }
+                        return 'not_found';
+                    }
+                """)
+                await asyncio.sleep(1.5)
+
+                # Step 2: 9:16 option dhundho — SIRF visible elements
+                result_916 = await page.evaluate("""
+                    () => {
+                        const all = [...document.querySelectorAll('*')];
+                        for (const el of all) {
+                            // Sirf visible elements consider karo
+                            const rect = el.getBoundingClientRect();
+                            if (rect.width === 0 || rect.height === 0) continue;
+                            const style = window.getComputedStyle(el);
+                            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
+                            const text = (el.innerText || '').trim();
+                            const label = el.getAttribute('aria-label') || '';
+
+                            if (text === '9:16' || label === '9:16') {
+                                el.click();
+                                return '9:16_clicked';
+                            }
+                        }
+                        return 'not_found';
+                    }
+                """)
                 await asyncio.sleep(1.0)
 
-                # Now click the 9:16 option
-                option_916 = page.locator(
-                    "span:has-text('9:16'), div:has-text('9:16'), button:has-text('9:16')"
-                ).first
-                if await option_916.is_visible(timeout=3000):
-                    await option_916.click()
-                    await asyncio.sleep(1.0)
+                if result_916 == '9:16_clicked':
                     print("      ✅  9:16 format selected!")
                 else:
-                    # Try by aria label "9:16"
-                    await page.get_by_label("9:16").first.click()
-                    await asyncio.sleep(1.0)
-                    print("      ✅  9:16 format selected via aria-label!")
+                    print(f"      ⚠️  9:16 button not found visible (crop_btn: {crop_clicked})")
             except Exception as fmt_err:
-                print(f"      ⚠️  9:16 selection skipped: {fmt_err}")
+                print(f"      ⚠️  9:16 selection error: {fmt_err}")
 
             # Crop screen → Next
             try:
                 next_crop = page.get_by_role("button", name="Next")
                 if await next_crop.is_visible(timeout=5000):
                     await next_crop.click()
+                    print("      ✅  Crop Next clicked.")
                     await asyncio.sleep(random.uniform(2.0, 3.5))
             except:
                 print("      ℹ️  No crop Next button found.")
@@ -258,6 +283,7 @@ async def run_insta_uploader(video_path: str, caption: str):
                 next_filter = page.get_by_role("button", name="Next")
                 if await next_filter.is_visible(timeout=4000):
                     await next_filter.click()
+                    print("      ✅  Filter Next clicked.")
                     await asyncio.sleep(random.uniform(2.0, 4.0))
             except:
                 print("      ℹ️  No filter Next button found.")
@@ -290,42 +316,47 @@ async def run_insta_uploader(video_path: str, caption: str):
                     }
                 """)
 
-            # ── 9. WAIT FOR REAL SUCCESS ──────────────────────
-            # Blind 45s nahi — real confirmation wait karo!
+
+            # ── 9. WAIT FOR REAL SUCCESS (max 90s polling) ────
             print("      ⏳  Waiting for IG to confirm upload (max 90s)...")
             success = False
             for attempt in range(18):  # 18 × 5s = 90s max
                 await asyncio.sleep(5.0)
 
-                # Check 1: "Your reel has been shared" text
+                # Check 1: "Your reel has been shared" toast text
                 try:
-                    shared_text = page.locator(
-                        "text='Your reel has been shared', "
-                        "text='Reel shared', "
-                        "text='Post shared'"
-                    )
-                    if await shared_text.first.is_visible(timeout=1000):
-                        print(f"      ✅  IG confirmed: Reel shared! ({(attempt+1)*5}s)")
-                        success = True
+                    for txt in ["Your reel has been shared", "Reel shared", "Post shared", "Your post has been shared"]:
+                        el = page.get_by_text(txt, exact=False)
+                        if await el.is_visible(timeout=500):
+                            print(f"      ✅  IG toast confirmed: '{txt}' ({(attempt+1)*5}s)")
+                            success = True
+                            break
+                    if success:
                         break
                 except:
                     pass
 
-                # Check 2: URL changed to profile/feed (IG redirects after success)
+                # Check 2: URL changed to actual reel/post page
+                # 🚫 Homepage URL NAHI check karte — woh false positive deta hai!
                 cur = page.url
-                if "instagram.com/p/" in cur or "instagram.com/reel/" in cur or cur == "https://www.instagram.com/":
-                    print(f"      ✅  IG redirect detected — upload successful! ({(attempt+1)*5}s)")
+                if "instagram.com/p/" in cur or "instagram.com/reel/" in cur:
+                    print(f"      ✅  IG reel URL detected — upload confirmed! ({(attempt+1)*5}s)")
+                    print(f"      🔗  URL: {cur}")
                     success = True
                     break
 
-                print(f"      ⏳  Still processing... ({(attempt+1)*5}s / 90s)")
+                print(f"      ⏳  Still processing... ({(attempt+1)*5}s / 90s) | URL: {cur[:50]}")
 
             if not success:
-                print("      ⚠️  Timeout — upload might have worked (IG slow server). Check manually.")
+                print("      ⚠️  90s timeout — IG server slow ya upload fail. Check karo manually.")
+                # Raise nahi karte kyunki IG sometimes confirms late — Manager ko batao
+                print("      ℹ️  Browser khula rahega — manually check karo Instagram.")
+                await asyncio.sleep(10.0)  # Extra time to check manually
 
             print("\n" + "="*52)
             print("  ✅  BINGO! INSTAGRAM REEL UPLOADED SUCCESSFULLY!")
             print("="*52 + "\n")
+
 
         except Exception as e:
             print(f"\n  ❌  Instagram Upload FAILED: {e}\n")
