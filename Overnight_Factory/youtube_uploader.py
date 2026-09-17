@@ -173,18 +173,37 @@ async def run_youtube_uploader(video_path: str, caption: str):
         try:
             # ── 4. GO STRAIGHT TO YOUTUBE STUDIO ─────────
             print("[4/6] 🎬  Going straight to YouTube Studio...")
-            await page.goto("https://studio.youtube.com/", timeout=90000, wait_until="commit")
-            await asyncio.sleep(random.uniform(3.0, 5.0))
+            await page.goto("https://studio.youtube.com/", timeout=90000, wait_until="domcontentloaded")
+
+            # 🔍 LOGIN CHECK — agar redirect hua toh cookies expired hain
+            await asyncio.sleep(3.0)
+            current_url = page.url
+            if "accounts.google.com" in current_url or "signin" in current_url:
+                raise Exception(
+                    "❌ YouTube cookies EXPIRED! Studio ne login page pe redirect kiya. "
+                    "youtube_cookie.json ko fresh export kar aur replace kar."
+                )
+            print(f"      ✅  Studio loaded. URL: {current_url[:60]}")
+
+            # Wait for the #create-icon to actually appear (not just blank React shell)
+            print("      ⏳  Waiting for Studio UI to fully render...")
+            try:
+                await page.locator('#create-icon').wait_for(state="visible", timeout=20000)
+                print("      ✅  Studio UI ready!")
+            except:
+                # Sometimes create-icon loads slowly — give it extra time
+                await asyncio.sleep(5.0)
+                print("      ⚠️  create-icon slow to load, trying anyway...")
 
             # Open upload dialog
-            clicked = await safe_click(page, '#create-icon', timeout=15000)
+            clicked = await safe_click(page, '#create-icon', timeout=10000)
             if not clicked:
-                # Fallback: try the "Upload videos" button directly
                 await safe_click(page, 'ytcp-icon-button[id="create-icon"]', timeout=5000)
             await asyncio.sleep(random.uniform(1.0, 2.0))
 
             await safe_click(page, '#text:has-text("Upload videos")', timeout=8000)
             await asyncio.sleep(random.uniform(2.0, 3.5))
+
 
             # ── 6. INJECT VIDEO FILE ──────────────────────
             print(f"[6/8] 📂  Injecting video: {os.path.basename(video_path)}")
