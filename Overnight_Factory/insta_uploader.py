@@ -220,40 +220,41 @@ async def run_insta_uploader(video_path: str, caption: str):
             # 🎯 SELECT 9:16 FORMAT — JS se visible elements mein dhundho
             print("      📐  Selecting 9:16 (vertical) format...")
             try:
-                # Step 1: Crop ratio expand button click karo
+                # Step 1: Crop ratio expand button click karo (open wala symbol)
                 crop_clicked = await page.evaluate("""
                     () => {
-                        // IG crop screen pe expand arrows icon dhundho
-                        const svgs = [...document.querySelectorAll('[aria-label]')];
-                        for (const el of svgs) {
+                        const all = [...document.querySelectorAll('[aria-label]')];
+                        for (const el of all) {
                             const label = (el.getAttribute('aria-label') || '').toLowerCase();
-                            if (label.includes('select crop') || label.includes('crop ratio')) {
-                                el.click();
-                                return 'crop_btn_clicked';
+                            if (label.includes('select crop') || label.includes('crop ratio') || label.includes('expand')) {
+                                // dispatchEvent SVG pe bhi kaam karta hai (unlike .click())
+                                el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+                                return 'crop_btn_clicked: ' + label;
                             }
                         }
                         return 'not_found';
                     }
                 """)
+                print(f"      🔍  Crop expand: {crop_clicked}")
                 await asyncio.sleep(1.5)
 
-                # Step 2: 9:16 option dhundho — SIRF visible elements
+                # Step 2: 9:16 option dhundho — SIRF visible elements, dispatchEvent use karo
                 result_916 = await page.evaluate("""
                     () => {
                         const all = [...document.querySelectorAll('*')];
                         for (const el of all) {
-                            // Sirf visible elements consider karo
                             const rect = el.getBoundingClientRect();
                             if (rect.width === 0 || rect.height === 0) continue;
                             const style = window.getComputedStyle(el);
                             if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
 
-                            const text = (el.innerText || '').trim();
+                            const text = (el.innerText || el.textContent || '').trim();
                             const label = el.getAttribute('aria-label') || '';
 
                             if (text === '9:16' || label === '9:16') {
-                                el.click();
-                                return '9:16_clicked';
+                                // dispatchEvent — SVG & non-button elements pe bhi chalta hai
+                                el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+                                return '9:16_clicked on: ' + el.tagName;
                             }
                         }
                         return 'not_found';
@@ -261,12 +262,13 @@ async def run_insta_uploader(video_path: str, caption: str):
                 """)
                 await asyncio.sleep(1.0)
 
-                if result_916 == '9:16_clicked':
-                    print("      ✅  9:16 format selected!")
+                if '9:16_clicked' in result_916:
+                    print(f"      ✅  9:16 format selected! ({result_916})")
                 else:
-                    print(f"      ⚠️  9:16 button not found visible (crop_btn: {crop_clicked})")
+                    print(f"      ⚠️  9:16 visible button nahi mila ({result_916})")
             except Exception as fmt_err:
                 print(f"      ⚠️  9:16 selection error: {fmt_err}")
+
 
             # Crop screen → Next
             try:
