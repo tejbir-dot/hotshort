@@ -135,7 +135,7 @@ async def run_youtube_uploader(video_path: str, caption: str):
 
         # ── 1. LAUNCH STEALTH BROWSER ──────────────────────
         print("\n[1/8] 🔗  Launching Stealth Persistent Context...")
-        context = await Stealth().use_async(p.chromium.launch_persistent_context)(
+        context = await p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_DIR,
             channel="chrome",
             headless=False,
@@ -157,7 +157,9 @@ async def run_youtube_uploader(video_path: str, caption: str):
 
         page = await context.new_page()
 
-        print("[2/8] 🕵️  Applying Stealth Mask (anti-fingerprint)...")  # Applied via context below
+        # ── 2. APPLY STEALTH MASK ──────────────────────────
+        print("[2/8] 🕵️  Applying Stealth Mask (anti-fingerprint)...")
+        await Stealth().apply_stealth_async(page)
 
         # ── 3. INJECT COOKIES (bypass login) ──────────────
         print("[3/8] 🍪  Injecting YouTube Session Cookies...")
