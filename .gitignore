@@ -48,7 +48,7 @@ bin/ffprobe.exe
 bin/
 .git-rewrite/
 debug_out/
-scratch/benchmarks/
+scratch/
 Overnight_Factory/Ghost_Profile/
   
  
