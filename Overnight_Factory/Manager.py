@@ -22,10 +22,14 @@ sys.path.insert(0, str(FACTORY_DIR))
 def load_engine(module_name, func_name="upload_video"):
     try:
         mod = __import__(module_name)
+        fn = getattr(mod, func_name)
         print(f"  🟢 {module_name.upper():<18} : ONLINE & ARMED")
-        return getattr(mod, func_name)
-    except ImportError:
-        print(f"  🔴 {module_name.upper():<18} : OFFLINE (File not found)")
+        return fn
+    except ImportError as e:
+        print(f"  🔴 {module_name.upper():<18} : OFFLINE — ImportError: {e}")
+        return None
+    except Exception as e:
+        print(f"  🔴 {module_name.upper():<18} : OFFLINE — Error: {e}")
         return None
 
 print("\n" + "="*50)
@@ -115,6 +119,11 @@ async def factory_manager():
             except Exception as e:
                 print(f"    ❌ Instagram: FAILED ({e})\n")
                 upload_success = False
+
+        # If none of the uploaders loaded, fail immediately
+        if not yt_upload and not tiktok_upload and not ig_upload:
+            print("  💀 ALL ENGINES OFFLINE — skipping to Failed_Videos\n")
+            upload_success = False
 
         # ── ARCHIVE & SLEEP ────────────────────────────────────────────
         dest_dir   = UPLOADED_DIR if upload_success else FAILED_DIR

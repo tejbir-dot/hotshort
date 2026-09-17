@@ -17,7 +17,7 @@ import json
 import os
 from pathlib import Path
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import Stealth
 
 # ============================================================
 #  ⚙️ FACTORY CONFIG — Edit only here
@@ -117,7 +117,7 @@ async def run_tiktok_uploader(video_path: str, caption: str):
 
         # ── 1. LAUNCH STEALTH BROWSER ──────────────────────
         print("\n[1/8] 🔗  Launching Stealth Persistent Context...")
-        context = await p.chromium.launch_persistent_context(
+        context = await Stealth().use_async(p.chromium.launch_persistent_context)(
             user_data_dir=PROFILE_DIR,
             channel="chrome",
             headless=False,
@@ -139,9 +139,7 @@ async def run_tiktok_uploader(video_path: str, caption: str):
 
         page = await context.new_page()
 
-        # ── 2. APPLY STEALTH MASK ──────────────────────────
-        print("[2/8] 🕵️  Applying Stealth Mask (anti-fingerprint)...")
-        await stealth_async(page)
+        print("[2/8] 🕵️  Applying Stealth Mask (anti-fingerprint)...")  # Applied via context below
 
         # ── 3. INJECT COOKIES ─────────────────────────────
         print("[3/8] 🍪  Injecting TikTok Session Cookies...")
