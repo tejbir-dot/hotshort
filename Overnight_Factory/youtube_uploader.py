@@ -25,6 +25,9 @@ from playwright_stealth import Stealth
 FACTORY_DIR   = Path(__file__).parent
 PROFILE_DIR   = str(FACTORY_DIR / "Ghost_Profile" / "youtube")
 COOKIE_FILE   = str(FACTORY_DIR / "youtube_cookie.json")
+
+# 🔌 Set USE_PROXY = False to test without proxy (uses your real IP)
+USE_PROXY     = False   # ← ABHI PROXY BAND HAI (test mode)
 PROXY         = {
     "server":   "http://162.210.64.27:12323",
     "username": "14a930ebcafee",
@@ -84,17 +87,14 @@ def load_cookies(cookie_path: str) -> list:
         normalized = []
         valid_same_site = {"Strict", "Lax", "None"}
         for c in raw:
-            # Playwright requires sameSite to be one of these exact strings
             same_site = c.get("sameSite") or "None"
             if same_site not in valid_same_site:
                 same_site = "None"
             c["sameSite"] = same_site
 
-            # Remove browser-extension-only fields that playwright rejects
             for key in ["storeId", "hostOnly", "session"]:
                 c.pop(key, None)
 
-            # expirationDate → expires (playwright uses 'expires')
             if "expirationDate" in c and "expires" not in c:
                 c["expires"] = c.pop("expirationDate")
 
@@ -122,10 +122,10 @@ async def run_youtube_uploader(video_path: str, caption: str):
     if "YOUTUBE SHORTS CAPTION:" in caption:
         block = caption.split("YOUTUBE SHORTS CAPTION:")[1]
         yt_caption = block.split("----")[0].strip()
-    
+
     # First line = title (max 90 chars), full = description
-    title_line   = yt_caption.split('\n')[0][:90]
-    description  = yt_caption
+    title_line  = yt_caption.split('\n')[0][:90]
+    description = yt_caption
 
     print(f"  📋  Title   : {title_line}")
     print(f"  🎬  Video   : {os.path.basename(video_path)}")
@@ -135,11 +135,10 @@ async def run_youtube_uploader(video_path: str, caption: str):
 
         # ── 1. LAUNCH STEALTH BROWSER ──────────────────────
         print("\n[1/8] 🔗  Launching Stealth Persistent Context...")
-        context = await p.chromium.launch_persistent_context(
+        launch_kwargs = dict(
             user_data_dir=PROFILE_DIR,
             channel="chrome",
             headless=False,
-            proxy=PROXY,
             viewport={"width": 1366, "height": 768},
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -154,6 +153,12 @@ async def run_youtube_uploader(video_path: str, caption: str):
             ],
             ignore_default_args=["--enable-automation"],
         )
+        if USE_PROXY:
+            launch_kwargs["proxy"] = PROXY
+            print("      🌐  Proxy: ENABLED")
+        else:
+            print("      🔌  Proxy: DISABLED (direct connection — test mode)")
+        context = await p.chromium.launch_persistent_context(**launch_kwargs)
 
         page = await context.new_page()
 
@@ -171,50 +176,55 @@ async def run_youtube_uploader(video_path: str, caption: str):
             print("      ⚠️  No cookies found. Will rely on saved profile session.")
 
         try:
-            # ── 4. STEPPING STONE: Prime the proxy via Google ──
-            print("[4/6] 🧘  Warming up proxy tunnel via Google...")
+            # ── 4. WARM-UP: YouTube Homepage (human-like) ──
+            print("[4/6] 🧘  Warm-up: Visiting YouTube homepage first...")
             try:
-                await page.goto("https://www.google.com", timeout=45000, wait_until="domcontentloaded")
-                await asyncio.sleep(random.uniform(2.0, 3.5))
-                print("      ✅  Proxy tunnel ALIVE! Google loaded.")
+                await page.goto("https://www.youtube.com/", timeout=60000, wait_until="domcontentloaded")
+                await asyncio.sleep(random.uniform(2.5, 4.0))
+                await page.mouse.wheel(0, random.randint(300, 700))
+                await asyncio.sleep(random.uniform(1.0, 2.0))
+                await page.mouse.wheel(0, random.randint(400, 900))
+                await asyncio.sleep(random.uniform(1.0, 2.0))
+                print("      ✅  YouTube homepage loaded. Looks like a real viewer!")
             except Exception as warm_err:
-                print(f"      ⚠️  Google warmup slow/failed: {warm_err}")
-                print("      ⚠️  Proxy IP dead hogi — Ctrl+C maar aur dobara run kar (naya IP milega)")
-                raise Exception(f"Proxy tunnel failed on Google warmup: {warm_err}")
+                print(f"      ⚠️  Warm-up skipped: {warm_err}")
 
-            # ── 5. ENTER YOUTUBE STUDIO ───────────────────────
+            # ── 5. ENTER YOUTUBE STUDIO ───────────────────
             print("[5/6] 🎬  Entering YouTube Studio...")
             await page.goto("https://studio.youtube.com/", timeout=120000, wait_until="domcontentloaded")
-
-            # 🔍 LOGIN CHECK — agar redirect hua toh cookies expired hain
             await asyncio.sleep(3.0)
+
+            # 🔍 LOGIN CHECK
             current_url = page.url
             if "accounts.google.com" in current_url or "signin" in current_url:
                 raise Exception(
-                    "❌ YouTube cookies EXPIRED! Studio ne login page pe redirect kiya. "
-                    "youtube_cookie.json ko fresh export kar aur replace kar."
+                    "❌ YouTube cookies EXPIRED! youtube_cookie.json ko fresh export kar."
                 )
-            print(f"      ✅  Studio loaded. URL: {current_url[:60]}")
+            print(f"      ✅  Studio loaded. URL: {current_url[:70]}")
+            await asyncio.sleep(random.uniform(2.0, 3.0))
 
-            # Wait for the #create-icon to actually appear (not just blank React shell)
-            print("      ⏳  Waiting for Studio UI to fully render...")
-            try:
-                await page.locator('#create-icon').wait_for(state="visible", timeout=20000)
-                print("      ✅  Studio UI ready!")
-            except:
-                # Sometimes create-icon loads slowly — give it extra time
-                await asyncio.sleep(5.0)
-                print("      ⚠️  create-icon slow to load, trying anyway...")
+            # 🎯 CHANNEL ID extract karo → direct upload URL pe jao
+            # Yeh approach create-icon dhundne se 10x reliable hai!
+            channel_id = None
+            if "/channel/" in current_url:
+                channel_id = current_url.split("/channel/")[1].split("/")[0]
 
-            # Open upload dialog
-            clicked = await safe_click(page, '#create-icon', timeout=10000)
-            if not clicked:
-                await safe_click(page, 'ytcp-icon-button[id="create-icon"]', timeout=5000)
-            await asyncio.sleep(random.uniform(1.0, 2.0))
-
-            await safe_click(page, '#text:has-text("Upload videos")', timeout=8000)
-            await asyncio.sleep(random.uniform(2.0, 3.5))
-
+            if channel_id:
+                upload_url = (
+                    f"https://studio.youtube.com/channel/{channel_id}"
+                    f"/videos/upload?filter=[]&sort=ct&d=ud&pageSize=10"
+                )
+                print(f"      🎯  Channel ID: {channel_id}")
+                print("      🚀  Direct upload page pe ja raha hoon...")
+                await page.goto(upload_url, timeout=60000, wait_until="domcontentloaded")
+                await asyncio.sleep(random.uniform(3.0, 5.0))
+            else:
+                # Fallback: Create button click karo
+                print("      ⚠️  Channel ID nahi mila, Create button try kar raha hoon...")
+                await safe_click(page, 'button:has-text("Create")', timeout=10000)
+                await asyncio.sleep(random.uniform(1.0, 2.0))
+                await safe_click(page, 'tp-yt-paper-item:has-text("Upload videos")', timeout=8000)
+                await asyncio.sleep(random.uniform(2.0, 3.5))
 
             # ── 6. INJECT VIDEO FILE ──────────────────────
             print(f"[6/8] 📂  Injecting video: {os.path.basename(video_path)}")
@@ -274,7 +284,6 @@ async def run_youtube_uploader(video_path: str, caption: str):
             print("      ⏳  Waiting for YouTube to confirm publish (15s)...")
             await asyncio.sleep(15.0)
 
-            # Close post-publish dialog
             await safe_click(page, '#close-button', timeout=5000)
 
             print("\n" + "="*52)
@@ -283,7 +292,7 @@ async def run_youtube_uploader(video_path: str, caption: str):
 
         except Exception as e:
             print(f"\n  ❌  YouTube Upload FAILED: {e}\n")
-            raise  # Re-raise so Manager.py catches it and moves to Failed_Videos
+            raise
 
         finally:
             # ── 8. CLEAN EXIT ─────────────────────────────
