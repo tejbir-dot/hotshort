@@ -23,7 +23,7 @@ from playwright_stealth import Stealth
 #  ⚙️ FACTORY CONFIG — Edit only here
 # ============================================================
 FACTORY_DIR   = Path(__file__).parent
-PROFILE_DIR   = str(FACTORY_DIR / "Ghost_Profile")
+PROFILE_DIR   = str(FACTORY_DIR / "Ghost_Profile" / "youtube")
 COOKIE_FILE   = str(FACTORY_DIR / "youtube_cookie.json")
 PROXY         = {
     "server":   "http://162.210.64.27:12323",
@@ -173,15 +173,19 @@ async def run_youtube_uploader(video_path: str, caption: str):
         try:
             # ── 4. WARM-UP: BROWSE YOUTUBE ─────────────────
             print("[4/8] 🧘  Warming up... (browsing YouTube homepage)")
-            await page.goto("https://www.youtube.com/", timeout=60000, wait_until="domcontentloaded")
-            await asyncio.sleep(random.uniform(3.0, 5.0))
-            await human_scroll(page, times=random.randint(2, 4))
-            await asyncio.sleep(random.uniform(1.5, 3.0))
-            print("      ✅  Warm-up complete. Looks like a real US viewer.")
+            try:
+                await page.goto("https://www.youtube.com/", timeout=90000, wait_until="commit")
+                await asyncio.sleep(random.uniform(2.0, 4.0))
+                await page.mouse.wheel(0, random.randint(400, 900))
+                await asyncio.sleep(random.uniform(1.0, 2.5))
+                await page.mouse.wheel(0, random.randint(600, 1200))
+                print("      ✅  Warm-up complete. Looks like a real US viewer.")
+            except Exception as warm_err:
+                print(f"      ⚠️  Warm-up skipped (proxy slow): {warm_err}")
 
             # ── 5. ENTER YOUTUBE STUDIO ───────────────────
             print("[5/8] 🎬  Entering YouTube Studio...")
-            await page.goto("https://studio.youtube.com/", timeout=60000, wait_until="domcontentloaded")
+            await page.goto("https://studio.youtube.com/", timeout=90000, wait_until="commit")
             await asyncio.sleep(random.uniform(4.0, 7.0))
 
             # Open upload dialog

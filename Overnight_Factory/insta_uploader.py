@@ -23,7 +23,7 @@ from playwright_stealth import Stealth
 #  ⚙️ FACTORY CONFIG — Edit only here
 # ============================================================
 FACTORY_DIR   = Path(__file__).parent
-PROFILE_DIR   = str(FACTORY_DIR / "Ghost_Profile")
+PROFILE_DIR   = str(FACTORY_DIR / "Ghost_Profile" / "instagram")
 COOKIE_FILE   = str(FACTORY_DIR / "ig_cookie.json")
 PROXY         = {
     "server":   "http://162.210.64.27:12323",
@@ -235,12 +235,24 @@ async def run_insta_uploader(video_path: str, caption: str):
             except Exception as e:
                 print(f"      ⚠️  Caption box error: {e}")
 
-            # ── 8. SHARE ──────────────────────────────────
+            # ── 8. SHARE ──────────────────────────────
             print("      🔥  SMASHING THE SHARE BUTTON!")
-            shared = await safe_click(page, 'button:has-text("Share")', timeout=10000)
-            if not shared:
-                # Fallback
-                await safe_click(page, "text='Share'", timeout=5000)
+            # Use get_by_role to avoid matching <title>Share</title> HTML tag
+            share_btn = page.get_by_role("button", name="Share", exact=True)
+            try:
+                await share_btn.wait_for(state="visible", timeout=15000)
+                await share_btn.scroll_into_view_if_needed()
+                await share_btn.click()
+            except:
+                # Fallback: force-evaluate click on any element with Share text that is a button
+                print("      ⚠️  Share btn not found by role, trying JS click...")
+                await page.evaluate("""
+                    () => {
+                        const btns = [...document.querySelectorAll('button, div[role="button"]')];
+                        const share = btns.find(b => b.innerText && b.innerText.trim() === 'Share');
+                        if (share) share.click();
+                    }
+                """)
 
             print("      ⏳  Waiting for IG to process the Reel (45s)...")
             await asyncio.sleep(45.0)
