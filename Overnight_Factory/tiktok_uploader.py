@@ -5,21 +5,22 @@ import subprocess
 import re
 
 def get_dolphin_ws_endpoint():
-    print("🔍 Using Windows Deep-Scan (WMIC) for hidden ports...")
+    print("🔍 Using PowerShell Deep-Scan for hidden ports...")
     try:
-        # 🚨 Yeh command OS ko force karegi saare process command-lines dump karne ke liye
-        output = subprocess.check_output("wmic process get commandline", shell=True, text=True, errors='ignore')
+        # 🚨 Calling Windows PowerShell to dump all running process command lines
+        cmd = 'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine"'
+        output = subprocess.check_output(cmd, shell=True, text=True, errors='ignore')
         
         # Scanner searching for the port
         match = re.search(r'--remote-debugging-port=(\d+)', output)
         if match:
             port = match.group(1)
-            print(f"🎯 BOOM! TARGET ACQUIRED! Deep-Scan found Port: {port}")
+            print(f"🎯 BOOM! TARGET ACQUIRED! PowerShell found Port: {port}")
             return f"http://127.0.0.1:{port}"
     except Exception as e:
-        print(f"WMIC Error: {e}")
+        print(f"PowerShell Scan Error: {e}")
         
-    raise Exception("❌ Windows Deep-Scan failed! Dolphin mein START dabao, ya VS Code ko 'Run as Administrator' karke kholo.")
+    raise Exception("❌ PowerShell Deep-Scan failed! Dolphin mein START dabao aur browser ko open hone do.")
 
 # 1. Human-Like Typing Effect
 async def human_type(page, selector, text):
