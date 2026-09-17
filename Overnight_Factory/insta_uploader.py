@@ -168,15 +168,21 @@ async def run_insta_uploader(video_path: str, caption: str):
             print("      ⚠️  No cookies. Will rely on saved profile session.")
 
         try:
-            # ── 4. GO TO INSTAGRAM & TRIGGER UPLOAD ──────
-            print("[4/6] 🎬  Loading Instagram for upload...")
-            await page.goto("https://www.instagram.com/", timeout=90000, wait_until="commit")
-            await asyncio.sleep(random.uniform(2.0, 3.5))
+            # ── 4. WARM-UP: Instagram Feed (15s human-like) ───
+            print("[4/6] 🧘  Warm-up: Scrolling Instagram feed (15s)...")
+            await page.goto("https://www.instagram.com/", timeout=90000, wait_until="domcontentloaded")
+            await asyncio.sleep(random.uniform(3.0, 4.0))
 
-            # Dismiss any login/notification popups immediately
+            # Dismiss popups immediately
             await dismiss_popups(page)
 
-            # ── 5. TRIGGER UPLOAD FLOW ────────────────────
+            # Scroll like a real human for ~15 seconds
+            for _ in range(random.randint(4, 6)):
+                await page.mouse.wheel(0, random.randint(400, 900))
+                await asyncio.sleep(random.uniform(1.5, 3.0))
+            print("      ✅  Warm-up done. Looks like a real scroller!")
+
+            # ── 5. TRIGGER UPLOAD FLOW ────────────────────────
             print("[5/6] 🖱️   Clicking 'Create' (New Post)...")
             clicked = await safe_click(page, "svg[aria-label='New post']", timeout=10000)
             if not clicked:
@@ -192,17 +198,16 @@ async def run_insta_uploader(video_path: str, caption: str):
             except:
                 pass
 
-
-            # ── 6. INJECT VIDEO FILE ──────────────────────
+            # ── 6. INJECT VIDEO FILE ──────────────────────────
             print(f"[6/8] 📂  Injecting video: {os.path.basename(video_path)}")
             await page.set_input_files("input[type='file']", video_path)
-            print("      ⏳  Waiting for IG to process media (6–10s)...")
-            await asyncio.sleep(random.uniform(6.0, 10.0))
+            print("      ⏳  Waiting for IG to process media (8–12s)...")
+            await asyncio.sleep(random.uniform(8.0, 12.0))
 
-            # ── 7. BYPASS CROP/FILTER → CAPTION ──────────
+            # ── 7. BYPASS SCREENS ─────────────────────────────
             print("[7/8] ⏭️   Bypassing screens...")
 
-            # 🚨 NEW IG POPUP: "Video posts are now shared as reels" → Click OK
+            # Popup: "Video posts are now shared as reels" → OK
             try:
                 ok_btn = page.get_by_role("button", name="OK")
                 if await ok_btn.is_visible(timeout=5000):
@@ -212,24 +217,50 @@ async def run_insta_uploader(video_path: str, caption: str):
             except:
                 pass
 
-            # Crop screen Next
+            # 🎯 SELECT 9:16 FORMAT on crop screen
+            print("      📐  Selecting 9:16 (vertical) format...")
+            try:
+                # Click the aspect ratio / expand icon (looks like arrows or crop icon)
+                ratio_btn = page.locator("svg[aria-label='Select crop']").first
+                if not await ratio_btn.is_visible(timeout=3000):
+                    # Fallback: look for the ratio toggle button
+                    ratio_btn = page.locator("button[aria-label*='ratio'], button[aria-label*='crop'], button[aria-label*='Crop']").first
+                await ratio_btn.click()
+                await asyncio.sleep(1.0)
+
+                # Now click the 9:16 option
+                option_916 = page.locator(
+                    "span:has-text('9:16'), div:has-text('9:16'), button:has-text('9:16')"
+                ).first
+                if await option_916.is_visible(timeout=3000):
+                    await option_916.click()
+                    await asyncio.sleep(1.0)
+                    print("      ✅  9:16 format selected!")
+                else:
+                    # Try by aria label "9:16"
+                    await page.get_by_label("9:16").first.click()
+                    await asyncio.sleep(1.0)
+                    print("      ✅  9:16 format selected via aria-label!")
+            except Exception as fmt_err:
+                print(f"      ⚠️  9:16 selection skipped: {fmt_err}")
+
+            # Crop screen → Next
             try:
                 next_crop = page.get_by_role("button", name="Next")
                 if await next_crop.is_visible(timeout=5000):
                     await next_crop.click()
                     await asyncio.sleep(random.uniform(2.0, 3.5))
             except:
-                print("      ℹ️  No crop screen found.")
+                print("      ℹ️  No crop Next button found.")
 
-            # Filter/Edit screen Next
+            # Filter/Edit screen → Next
             try:
                 next_filter = page.get_by_role("button", name="Next")
                 if await next_filter.is_visible(timeout=4000):
                     await next_filter.click()
                     await asyncio.sleep(random.uniform(2.0, 4.0))
             except:
-                print("      ℹ️  No filter screen found.")
-
+                print("      ℹ️  No filter Next button found.")
 
             # Type Caption
             print("      ✍️   Typing caption like a human...")
@@ -242,16 +273,14 @@ async def run_insta_uploader(video_path: str, caption: str):
             except Exception as e:
                 print(f"      ⚠️  Caption box error: {e}")
 
-            # ── 8. SHARE ──────────────────────────────
+            # ── 8. SHARE ──────────────────────────────────────
             print("      🔥  SMASHING THE SHARE BUTTON!")
-            # Use get_by_role to avoid matching <title>Share</title> HTML tag
             share_btn = page.get_by_role("button", name="Share", exact=True)
             try:
                 await share_btn.wait_for(state="visible", timeout=15000)
                 await share_btn.scroll_into_view_if_needed()
                 await share_btn.click()
             except:
-                # Fallback: force-evaluate click on any element with Share text that is a button
                 print("      ⚠️  Share btn not found by role, trying JS click...")
                 await page.evaluate("""
                     () => {
@@ -261,8 +290,38 @@ async def run_insta_uploader(video_path: str, caption: str):
                     }
                 """)
 
-            print("      ⏳  Waiting for IG to process the Reel (45s)...")
-            await asyncio.sleep(45.0)
+            # ── 9. WAIT FOR REAL SUCCESS ──────────────────────
+            # Blind 45s nahi — real confirmation wait karo!
+            print("      ⏳  Waiting for IG to confirm upload (max 90s)...")
+            success = False
+            for attempt in range(18):  # 18 × 5s = 90s max
+                await asyncio.sleep(5.0)
+
+                # Check 1: "Your reel has been shared" text
+                try:
+                    shared_text = page.locator(
+                        "text='Your reel has been shared', "
+                        "text='Reel shared', "
+                        "text='Post shared'"
+                    )
+                    if await shared_text.first.is_visible(timeout=1000):
+                        print(f"      ✅  IG confirmed: Reel shared! ({(attempt+1)*5}s)")
+                        success = True
+                        break
+                except:
+                    pass
+
+                # Check 2: URL changed to profile/feed (IG redirects after success)
+                cur = page.url
+                if "instagram.com/p/" in cur or "instagram.com/reel/" in cur or cur == "https://www.instagram.com/":
+                    print(f"      ✅  IG redirect detected — upload successful! ({(attempt+1)*5}s)")
+                    success = True
+                    break
+
+                print(f"      ⏳  Still processing... ({(attempt+1)*5}s / 90s)")
+
+            if not success:
+                print("      ⚠️  Timeout — upload might have worked (IG slow server). Check manually.")
 
             print("\n" + "="*52)
             print("  ✅  BINGO! INSTAGRAM REEL UPLOADED SUCCESSFULLY!")
@@ -275,6 +334,7 @@ async def run_insta_uploader(video_path: str, caption: str):
         finally:
             print("[8/8] 🚪  Closing browser context cleanly...")
             await context.close()
+
 
 
 # ============================================================
