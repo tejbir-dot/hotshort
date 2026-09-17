@@ -1,12 +1,27 @@
 import asyncio
 import random
-import requests  # <-- Naya import Dolphin API ke liye
 from playwright.async_api import async_playwright
+import psutil
+import re
 
-# ⚙️ TERA PROXY DATA
-PROFILE_DIR = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Ghost_Profile"
-PROXY_IP, PROXY_PORT = "162.210.64.27", "12323"
-PROXY_USER, PROXY_PASS = "14a930ebcafee", "e269d4d909"
+def get_dolphin_ws_endpoint():
+    print("🔍 Scanning OS for Dolphin Anty's hidden port...")
+    for p in psutil.process_iter(['name', 'cmdline']):
+        try:
+            cmd_args = p.info.get('cmdline') or []
+            cmd = " ".join(cmd_args)
+            name = (p.info.get('name') or '').lower()
+            
+            if 'chrome' in name and '--remote-debugging-port=' in cmd:
+                match = re.search(r'--remote-debugging-port=(\d+)', cmd)
+                if match:
+                    port = match.group(1)
+                    print(f"🎯 TARGET ACQUIRED! Dolphin running on Port: {port}")
+                    return f"http://127.0.0.1:{port}"
+        except Exception:
+            pass
+            
+    raise Exception("❌ Dolphin Anty profile running nahi hai! Pehle app mein START click kar.")
 
 # 1. Human-Like Typing Effect
 async def human_type(page, selector, text):
@@ -18,16 +33,13 @@ async def human_type(page, selector, text):
 async def run_ghost_factory(video_path, caption):
     print(f"🚀 STARTING GHOST FACTORY: GOD MODE FOR TIKTOK")
     
+    ws_endpoint = get_dolphin_ws_endpoint()
+    
     async with async_playwright() as p:
-        # --- 2. THE PERSISTENT CONTEXT CONNECTION ---
-        print("🔗 Launching Ghost Browser Profile...")
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=PROFILE_DIR,
-            channel="chrome",
-            headless=False,
-            proxy={"server": f"http://{PROXY_IP}:{PROXY_PORT}", "username": PROXY_USER, "password": PROXY_PASS},
-            viewport={"width": 1280, "height": 720}
-        )
+        # --- 2. THE CDP CONNECTION ---
+        print("🔗 Connecting Playwright to running Dolphin Profile...")
+        browser = await p.chromium.connect_over_cdp(ws_endpoint)
+        context = browser.contexts[0]
         page = await context.new_page()
 
         # --- 3. THE WARM-UP SHIELD (Human Emulation) ---
@@ -137,10 +149,9 @@ async def run_ghost_factory(video_path, caption):
             print(f"❌ Error occurred during upload: {e}")
             
         finally:
-            # 🚨 Closing context
             await page.close()
-            await context.close()
-            print("🚪 Script Detached. Ghost profile closed safely.")
+            await browser.disconnect()  # 🚨 Browser khula rahega agle uploader ke liye!
+            print("🚪 Script Detached gracefully.")
 
 # Sync Wrapper for Manager.py
 def upload_video(video_path, caption):
