@@ -1,28 +1,25 @@
 import asyncio
 import random
 from playwright.async_api import async_playwright
-import psutil
+import subprocess
 import re
 
 def get_dolphin_ws_endpoint():
-    print("🔍 Scanning OS for ANY hidden debugging port...")
-    for p in psutil.process_iter(['cmdline']): # Naam ki condition hata di
-        try:
-            cmd_args = p.info.get('cmdline') or []
-            # List ko string banaya taaki dhoondhne mein aasaani ho
-            cmd = " ".join([str(arg) for arg in cmd_args if arg is not None])
-            
-            # Agar cmd mein remote debugging port hai (chahe process ka naam kuch bhi ho)
-            if '--remote-debugging-port=' in cmd:
-                match = re.search(r'--remote-debugging-port=(\d+)', cmd)
-                if match:
-                    port = match.group(1)
-                    print(f"🎯 TARGET ACQUIRED! Hidden Browser running on Port: {port}")
-                    return f"http://127.0.0.1:{port}"
-        except Exception:
-            pass # Access denied wale processes ko ignore karo
-            
-    raise Exception("❌ Koi browser running nahi hai! Pehle Dolphin mein START click kar.")
+    print("🔍 Using Windows Deep-Scan (WMIC) for hidden ports...")
+    try:
+        # 🚨 Yeh command OS ko force karegi saare process command-lines dump karne ke liye
+        output = subprocess.check_output("wmic process get commandline", shell=True, text=True, errors='ignore')
+        
+        # Scanner searching for the port
+        match = re.search(r'--remote-debugging-port=(\d+)', output)
+        if match:
+            port = match.group(1)
+            print(f"🎯 BOOM! TARGET ACQUIRED! Deep-Scan found Port: {port}")
+            return f"http://127.0.0.1:{port}"
+    except Exception as e:
+        print(f"WMIC Error: {e}")
+        
+    raise Exception("❌ Windows Deep-Scan failed! Dolphin mein START dabao, ya VS Code ko 'Run as Administrator' karke kholo.")
 
 # 1. Human-Like Typing Effect
 async def human_type(page, selector, text):
