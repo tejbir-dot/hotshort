@@ -3,41 +3,24 @@ import random
 import requests
 from playwright.async_api import async_playwright
 
-# ⚙️ CTO CONFIG: Teri Dolphin ID yahan daal
-DOLPHIN_PROFILE_ID = "864437795"  # Same ID jo TikTok me daali thi
-  # Same ID jo TikTok me daali thi
-
-def get_dolphin_ws_endpoint():
-    """Dolphin Anty API se active browser ka connection port nikalta hai"""
-    print(f"🔌 Pinging Dolphin Anty for Profile ID: {DOLPHIN_PROFILE_ID}...")
-    url = f"http://localhost:3001/v1.0/browser_profiles/{DOLPHIN_PROFILE_ID}/start?automation=1"
-    
-    try:
-        response = requests.get(url)
-        data = response.json()
-        
-        if data.get("success"):
-            ws_url = data["automation"]["wsEndpoint"]
-            print(f"✅ Dolphin Hijacked! WS Endpoint: {ws_url}")
-            return ws_url
-        else:
-            raise Exception(f"Dolphin connection failed: {data}")
-    except Exception as e:
-        print(f"❌ ERROR: Dolphin Anty open nahi hai ya ID galat hai! Error: {e}")
-        return None
+# ⚙️ TERA PROXY DATA
+PROFILE_DIR = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Ghost_Profile"
+PROXY_IP, PROXY_PORT = "162.210.64.27", "12323"
+PROXY_USER, PROXY_PASS = "14a930ebcafee", "e269d4d909"
 
 async def run_youtube_uploader(video_path, caption):
     print(f"🚀 STARTING GHOST FACTORY: GOD MODE FOR YOUTUBE")
     
-    ws_endpoint = get_dolphin_ws_endpoint()
-    if not ws_endpoint:
-        return
-    
     async with async_playwright() as p:
-        # --- 1. THE CDP CONNECTION ---
-        print("🔗 Connecting Playwright to running Dolphin Profile...")
-        browser = await p.chromium.connect_over_cdp(ws_endpoint)
-        context = browser.contexts[0]
+        # --- 1. THE PERSISTENT CONTEXT CONNECTION ---
+        print("🔗 Launching Ghost Browser Profile...")
+        context = await p.chromium.launch_persistent_context(
+            user_data_dir=PROFILE_DIR,
+            channel="chrome",
+            headless=False,
+            proxy={"server": f"http://{PROXY_IP}:{PROXY_PORT}", "username": PROXY_USER, "password": PROXY_PASS},
+            viewport={"width": 1280, "height": 720}
+        )
         page = await context.new_page()
 
         # --- 2. WARM-UP SHIELD (YouTube Homepage Scroll) ---
@@ -148,10 +131,10 @@ async def run_youtube_uploader(video_path, caption):
             print(f"❌ YouTube Upload Failed: {e}")
             
         finally:
-            # 🚨 DISCONNECTING (Not Closing) taaki Dolphin profile safe rahe
+            # 🚨 Closing context
             await page.close()
-            await browser.close()
-            print("🚪 YouTube Script Detached. Dolphin profile still running safely.")
+            await context.close()
+            print("🚪 YouTube Script Detached. Ghost profile closed safely.")
 
 # Sync Wrapper for Manager.py
 def upload_video(video_path, caption):
