@@ -6071,3 +6071,1985 @@ frame=  453 fps= 24 q=16.0 size=   13312KiB time=00:00:15.13 bitrate=7203.2kbits
 frame=  472 fps= 25 q=18.0 size=   14080KiB time=00:00:15.74 bitrate=7326.6kbits/s dup=95 drop=0 speed=0.819x elapsed=0:00:19.22
 frame=  492 fps= 25 q=21.0 size=   14848KiB time=00:00:16.43 bitrate=7398.9kbits/s dup=99 drop=0 speed=0.833x elapsed=0:00:19.74
 frame=  509 fps= 25 q=17.0 size=   15360KiB time=00
+
+
+
+
+
+
+
+
+THIS
+[INFO] [FUSION] No clips have visual_energy attached yet (pre-edit). Skipping re-rank.
+[BENCH] stage=2_orchestration                 wall= 1469.2s
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-3_0
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-3_3
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-3_1
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-3_2
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0001 median_x=0.448 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.13 co_occurrence_rate=0.13 frames_with_two_faces=2/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.38 right=0.68 switches/s=0.00 avg_faces=1.13 co_occ=0.13
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.20 co_occurrence_rate=0.13 frames_with_two_faces=2/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.39 right=0.75 switches/s=0.00 avg_faces=1.20 co_occ=0.13
+[FORMAT_CLASSIFY] 0s-68s mode=PODCAST avg_faces=1.20 speakers=[0.393, 0.749]
+[FORMAT_CLASSIFY] 3240s-3310s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.4479166666666667]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.07 co_occurrence_rate=0.07 frames_with_two_faces=1/15
+[INFO] [WCE-FORMAT] single-face variance=0.0014 median_x=0.439 avg_faces=1.07
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 1442s-1510s mode=SINGLE_CENTERED avg_faces=1.07 speakers=[0.4393229166666667]
+[FORMAT_CLASSIFY] 429s-497s mode=PODCAST avg_faces=1.13 speakers=[0.38, 0.68]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.33 co_occurrence_rate=0.33 frames_with_two_faces=5/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.22 right=0.70 switches/s=0.00 avg_faces=1.33 co_occ=0.33
+[FORMAT_CLASSIFY] 1486s-1555s mode=PODCAST avg_faces=1.33 speakers=[0.223, 0.704]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.20 co_occurrence_rate=0.20 frames_with_two_faces=3/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.34 right=0.68 switches/s=0.00 avg_faces=1.20 co_occ=0.20
+[FORMAT_CLASSIFY] 300s-370s mode=PODCAST avg_faces=1.20 speakers=[0.335, 0.683]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.20 co_occurrence_rate=0.20 frames_with_two_faces=3/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.32 right=0.68 switches/s=0.00 avg_faces=1.20 co_occ=0.20
+[FORMAT_CLASSIFY] 471s-540s mode=PODCAST avg_faces=1.20 speakers=[0.325, 0.684]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0003 median_x=0.442 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 3321s-3390s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.44166666666666665]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0001 median_x=0.454 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 83s-128s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.45416666666666666]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmp2lffbij8\video.mp4 avg_faces=1.13 co_occurrence_rate=0.13 frames_with_two_faces=2/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.37 right=0.68 switches/s=0.00 avg_faces=1.13 co_occ=0.13
+[FORMAT_CLASSIFY] 1197s-1266s mode=PODCAST avg_faces=1.13 speakers=[0.373, 0.682]
+[BENCH] stage=3_format_classify               wall=   89.4s
+[FACE_CACHE] format_map populated for 10/10 clips
+[FACE_CACHE] Starting targeted Haar face detection...
+[FACE_CACHE] Scanning 10 clips = 665s total (not full video)
+[FACE_CACHE] clip=0-68 format=podcast stride=30 speakers=[0.393, 0.749]
+[FACE_CACHE] clip=3240-3310 format=monologue stride=30 speakers=[0.4479166666666667]
+[FACE_CACHE] clip=1442-1510 format=monologue stride=30 speakers=[0.4393229166666667]
+[FACE_CACHE] clip=429-497 format=podcast stride=30 speakers=[0.38, 0.68]
+[SEEK_VERIFY] clip=0.00-68.34 requested=0.00s landed=0.00s delta=0frames [OK]
+[SEEK_VERIFY] clip=428.70-496.94 requested=428.70s landed=428.68s delta=0frames [OK]
+[SEEK_VERIFY] clip=3240.20-3310.30 requested=3240.20s landed=3240.20s delta=0frames [OK]
+[SEEK_VERIFY] clip=1441.98-1509.85 requested=1441.98s landed=1441.94s delta=0frames [OK]
+[CLUSTER_SCAN] clip=3240.20-3310.30 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[CLUSTER_SCAN] clip=0.00-68.34 sample_decode=grab_optimized frames_preloaded=55 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=2 max=34 avg=17.0 threshold=40 segmentation_s=1.035
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=36 avg=24.6 threshold=40 segmentation_s=0.471
+[SCENE_SEG] built 1 segments from 55 frames, avg_segment_size=55.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=42.5 min=0 max=255
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-4_1
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-4_0
+[FACE_CACHE] clip=1486-1555 format=podcast stride=30 speakers=[0.223, 0.704]
+[PODCAST_CLUSTER] clip=0.0-68.3 cluster=0 found=3 faces at conf=0.45 rep=3
+[PODCAST_CLUSTER] clip=0.0-68.3 cluster=0 final_faces=3 real_valid=3 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=0.00-68.34 format=podcast clusters=1 haar_calls=1 frames_covered=55 wall_s=48.07
+
+Clip 1
+Open Video .......... 115 ms
+Seek ............... 67 ms
+Decode ........... 46709 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 473 ms
+Representative Pick.. 451 ms
+Face Detect ........ 237 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=300-370 format=podcast stride=30 speakers=[0.335, 0.683]
+[SEEK_VERIFY] clip=300.38-369.76 requested=300.38s landed=300.34s delta=0frames [OK]
+[SEEK_VERIFY] clip=1486.30-1555.30 requested=1486.30s landed=1486.28s delta=0frames [OK]
+[CLUSTER_SCAN] clip=428.70-496.94 sample_decode=grab_optimized frames_preloaded=55 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=34 avg=18.4 threshold=40 segmentation_s=0.776
+[SCENE_SEG] built 1 segments from 55 frames, avg_segment_size=55.0
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-4_3
+[PODCAST_CLUSTER] clip=428.7-496.9 cluster=0 ROI_detect found=2 faces
+[PODCAST_CLUSTER] clip=428.7-496.9 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=428.70-496.94 format=podcast clusters=1 haar_calls=15 frames_covered=55 wall_s=54.92
+
+Clip 4
+Open Video .......... 478 ms
+Seek ............... 1581 ms
+Decode ........... 50448 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 781 ms
+Representative Pick.. 469 ms
+Face Detect ........ 1124 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=471-540 format=podcast stride=30 speakers=[0.325, 0.684]
+[SEEK_VERIFY] clip=471.18-540.10 requested=471.18s landed=471.18s delta=0frames [OK]
+[CLUSTER_SCAN] clip=1441.98-1509.85 sample_decode=grab_optimized frames_preloaded=55 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=38 avg=20.7 threshold=40 segmentation_s=0.679
+[SCENE_SEG] built 1 segments from 55 frames, avg_segment_size=55.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=36.3 min=0 max=255
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-4_2
+[DETECT_RAW] mediapipe_faces=2
+[CLUSTER_SCAN] clip=1441.98-1509.85 format=monologue clusters=1 haar_calls=1 frames_covered=55 wall_s=61.78
+
+Clip 3
+Open Video .......... 796 ms
+Seek ............... 3373 ms
+Decode ........... 56023 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 685 ms
+Representative Pick.. 463 ms
+Face Detect ........ 403 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=3321-3390 format=monologue stride=30 speakers=[0.44166666666666665]
+[SEEK_VERIFY] clip=3321.18-3390.01 requested=3321.18s landed=3321.15s delta=0frames [OK]
+[CLUSTER_SCAN] clip=300.38-369.76 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[CLUSTER_SCAN] clip=1486.30-1555.30 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=8 max=34 avg=24.2 threshold=40 segmentation_s=0.785
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[SCENE_SEG_DEBUG] diff distribution: min=6 max=34 avg=24.7 threshold=40 segmentation_s=0.610
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[PODCAST_CLUSTER] clip=1486.3-1555.3 cluster=0 found=2 faces at conf=0.45 rep=3
+[PODCAST_CLUSTER] clip=1486.3-1555.3 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=1486.30-1555.30 format=podcast clusters=1 haar_calls=1 frames_covered=56 wall_s=48.52
+
+Clip 5
+Open Video .......... 206 ms
+Seek ............... 3086 ms
+Decode ........... 44151 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 616 ms
+Representative Pick.. 356 ms
+Face Detect ........ 55 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=83-128 format=monologue stride=30 speakers=[0.45416666666666666]
+[PODCAST_CLUSTER] clip=300.4-369.8 cluster=0 ROI_detect found=2 faces
+[PODCAST_CLUSTER] clip=300.4-369.8 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=300.38-369.76 format=podcast clusters=1 haar_calls=15 frames_covered=56 wall_s=48.57
+
+Clip 6
+Open Video .......... 320 ms
+Seek ............... 1352 ms
+Decode ........... 44983 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 787 ms
+Representative Pick.. 324 ms
+Face Detect ........ 755 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=1197-1266 format=podcast stride=30 speakers=[0.373, 0.682]
+[SEEK_VERIFY] clip=1196.88-1265.94 requested=1196.88s landed=1196.86s delta=0frames [OK]
+[CLUSTER_SCAN] clip=471.18-540.10 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SEEK_VERIFY] clip=82.58-128.20 requested=82.58s landed=82.54s delta=0frames [OK]
+[SCENE_SEG_DEBUG] diff distribution: min=0 max=36 avg=24.7 threshold=40 segmentation_s=0.638
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[PODCAST_CLUSTER] clip=471.2-540.1 cluster=0 found=2 faces at conf=0.45 rep=42
+[PODCAST_CLUSTER] clip=471.2-540.1 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=471.18-540.10 format=podcast clusters=1 haar_calls=1 frames_covered=56 wall_s=44.94
+
+Clip 7
+Open Video .......... 357 ms
+Seek ............... 2143 ms
+Decode ........... 41281 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 638 ms
+Representative Pick.. 440 ms
+Face Detect ........ 47 ms
+Anchor Build ........ 0 ms
+
+[CLUSTER_SCAN] clip=3321.18-3390.01 sample_decode=grab_optimized frames_preloaded=55 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=0 max=38 avg=18.4 threshold=40 segmentation_s=0.474
+[SCENE_SEG] built 1 segments from 55 frames, avg_segment_size=55.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=43.7 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=3321.18-3390.01 format=monologue clusters=1 haar_calls=1 frames_covered=55 wall_s=43.26
+
+Clip 8
+Open Video .......... 386 ms
+Seek ............... 1666 ms
+Decode ........... 40308 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 481 ms
+Representative Pick.. 310 ms
+Face Detect ........ 79 ms
+Anchor Build ........ 1 ms
+
+[CLUSTER_SCAN] clip=82.58-128.20 sample_decode=grab_optimized frames_preloaded=37 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=34 avg=16.9 threshold=40 segmentation_s=0.296
+[SCENE_SEG] built 1 segments from 37 frames, avg_segment_size=37.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=54.0 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=82.58-128.20 format=monologue clusters=1 haar_calls=1 frames_covered=37 wall_s=18.72
+
+Clip 9
+Open Video .......... 297 ms
+Seek ............... 2431 ms
+Decode ........... 15377 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 295 ms
+Representative Pick.. 153 ms
+Face Detect ........ 149 ms
+Anchor Build ........ 0 ms
+
+[CLUSTER_SCAN] clip=1196.88-1265.94 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=0 max=36 avg=28.8 threshold=40 segmentation_s=0.312
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[PODCAST_CLUSTER] clip=1196.9-1265.9 cluster=0 found=2 faces at conf=0.45 rep=7
+[PODCAST_CLUSTER] clip=1196.9-1265.9 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=1196.88-1265.94 format=podcast clusters=1 haar_calls=2 frames_covered=56 wall_s=22.78
+
+Clip 10
+Open Video .......... 497 ms
+Seek ............... 640 ms
+Decode ........... 21096 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 311 ms
+Representative Pick.. 154 ms
+Face Detect ........ 60 ms
+Anchor Build ........ 0 ms
+
+
+══════════════════════════════════════════════════════════════════
+  FACECACHE COMPLETE  |  wall=119.78s  |  frames=537
+──────────────────────────────────────────────────────────────────
+  Faces per frame breakdown:
+    0 faces  :    0 frames  (0%)
+    1 face   :  148 frames  (28%)
+    2 faces  :  334 frames  (62%)  ← SPLIT eligible
+    3+ faces :   55 frames  (10%)
+  avg_faces_per_frame : 1.83
+  real face slots     : 981  |  synthetic slots: 0
+──────────────────────────────────────────────────────────────────
+  CLIP               FMT             FRAMES  2-FACE%  SYNTH
+  ------------------ -------------- ------- -------- ------
+  0.0-68.3s          podcast             55     100%      0
+  3240.2-3310.3s     monologue           56       0%      0
+  1442.0-1509.8s     monologue           55     100%      0
+  428.7-496.9s       podcast             55     100%      0
+  1486.3-1555.3s     podcast             56     100%      0
+  300.4-369.8s       podcast             56     100%      0
+  471.2-540.1s       podcast             56     100%      0
+  3321.2-3390.0s     monologue           55       0%      0
+  82.6-128.2s        monologue           37       0%      0
+  1196.9-1265.9s     podcast             56     100%      0
+══════════════════════════════════════════════════════════════════
+
+[FACE_CACHE] Report written → ./debug_out\face_cache_report.json
+[BENCH] stage=4_haar_scan                     wall=  119.8s
+[LOCAL_WORKER] Orchestration done: 10 clips. Pre-generating captions...
+[BENCH] stage=5_caption_pregen                wall=    0.0s
+[PIPELINE] Clip queued: 0
+[PIPELINE] Clip queued: 1
+[PIPELINE] Clip queued: 2
+[PIPELINE] Clip queued: 3
+[PIPELINE] Clip queued: 4
+[PIPELINE] Clip queued: 5
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=20 words=302 missing_words_in_segs=0 for clip 3240.20-3310.30
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=26 words=280 missing_words_in_segs=0 for clip 428.70-496.94
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=17 words=243 missing_words_in_segs=0 for clip 0.00-68.34
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=17 words=254 missing_words_in_segs=0 for clip 1441.98-1509.85
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=23 words=239 missing_words_in_segs=0 for clip 471.18-540.10
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=18 words=277 missing_words_in_segs=0 for clip 3321.18-3390.01
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=25 words=268 missing_words_in_segs=0 for clip 300.38-369.76
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=20 words=257 missing_words_in_segs=0 for clip 1486.30-1555.30
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=33 words=271 missing_words_in_segs=0 for clip 1196.88-1265.94
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=15 words=169 missing_words_in_segs=0 for clip 82.58-128.20
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[BENCH] stage=6a_extract_clip0                wall=    8.5s
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=17 words=243 missing_words_in_segs=0 for clip 0.00-68.34
+[INFO] [WCE-FORENSIC] Loaded 243 transcript words for 0.0-68.34.
+[INFO] [SMART_END] ← BACKWARD to last complete sentence: 't on Snapchat and they were paying you ad revenue.' at t=28.380s
+[INFO] [SMART_END] silence found at t=28.620s (rms=0.0011 thresh=0.0126 after last_word=28.380s)
+[INFO] [CAPTION_SNAP] end=28.62 -> snapped=28.38 (word: ' revenue.')
+[INFO] [WCE] NVDEC available: True
+[INFO] [WCE-VISUAL] export_quality crf=23 maxrate=8000k
+[INFO] [WCE] NVENC available: True
+[INFO] [WCE] encode=NVENC codec=h264_nvenc
+ffmpeg version N-125674-g9bc73ba344-20260719 Copyright (c) 2000-2026 the FFmpeg developers
+  built with gcc 15.2.0 (crosstool-NG 1.28.0.23_185f348)
+  configuration: --prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-w64-mingw32- --arch=x86_64 --target-os=mingw32 --enable-gpl --enable-version3 --disable-debug --disable-w32threads --enable-pthreads --enable-iconv --enable-zlib --enable-libxml2 --enable-libvmaf --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libvorbis --disable-libxcb --disable-xlib --disable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-libaribb24 --enable-avisynth --enable-chromaprint --enable-libdav1d --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librav1e --enable-librubberband --enable-schannel --enable-sdl2 --enable-libsnappy --enable-libsoxr --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --disable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --disable-whisper --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs=-lgomp --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-w64-mingw32-gcc --cxx=x86_64-w64-mingw32-g++ --ar=x86_64-w64-mingw32-gcc-ar --ranlib=x86_64-w64-mingw32-gcc-ranlib --nm=x86_64-w64-mingw32-gcc-nm --extra-version=20260719
+  libavutil      61.  5.100 / 61.  5.100
+  libavcodec     63.  6.101 / 63.  6.101
+  libavformat    63.  5.101 / 63.  5.101
+  libavdevice    63.  2.100 / 63.  2.100
+  libavfilter    12.  3.101 / 12.  3.101
+  libswscale     10.  2.100 / 10.  2.100
+  libswresample   7.  2.100 /  7.  2.100
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\AppData\Local\Temp\tmp2lffbij8\clip_0_0_68.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf63.5.101
+  Duration: 00:01:08.36, start: 0.000000, bitrate: 6172 kb/s
+  Stream #0:0[0x1](und): Video: h264 (Constrained Baseline) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 6085 kb/s, 23.98 fps, 23.98 tbr, 24k tbn (default)
+    Metadata:
+      handler_name    : ISO Media file produced by Google Inc.
+      encoder         : Lavc63.6.101 libx264
+  Stream #0:1[0x2](eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 82 kb/s (default)
+    Metadata:
+      handler_name    : ISO Media file produced by Google Inc.
+Stream mapping:
+  Stream #0:0 -> #0:0 (h264 (native) -> h264 (h264_nvenc))
+  Stream #0:1 -> #0:1 (aac (native) -> aac (native))
+Output #0, mp4, to 'C:\Users\n\AppData\Local\Temp\tmp2lffbij8\wce_work\wc_cut_9cf84a1f37a24671a73cf9b505ea1eb1.mp4':
+  Metadata:
+    encoder         : Lavf63.5.101
+  Stream #0:0(und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], q=2-31, 23.98 fps, 24k tbn (default)
+    Metadata:
+      encoder         : Lavc63.6.101 h264_nvenc
+      handler_name    : ISO Media file produced by Google Inc.
+    Side data:
+      CPB properties: bitrate max/min/avg: 8000000/0/0 buffer size: 0 vbv_delay: N/A
+  Stream #0:1(eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 128 kb/s (default)
+    Metadata:
+      encoder         : Lavc63.6.101 aac
+      handler_name    : ISO Media file produced by Google Inc.
+frame=   42 fps=0.0 q=16.0 size=    1024KiB time=00:00:01.92 bitrate=4352.8kbits/s speed=3.71x elapsed=0:00:00.51
+frame=  183 fps=177 q=16.0 size=    4608KiB time=00:00:07.70 bitrate=4896.7kbits/s speed=7.46x elapsed=0:00:01.03
+frame=  311 fps=201 q=16.0 size=    6400KiB time=00:00:12.97 bitrate=4039.2kbits/s speed=8.41x elapsed=0:00:01.54
+frame=  451 fps=219 q=16.0 size=    8960KiB time=00:00:18.97 bitrate=3869.2kbits/s speed=9.21x elapsed=0:00:02.05
+frame=  604 fps=234 q=16.0 size=   13312KiB time=00:00:25.28 bitrate=4312.7kbits/s speed=9.81x elapsed=0:00:02.57
+[out#0/mp4 @ 00000241148a5b40] video:15080KiB audio:295KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 0.113646%
+frame=  681 fps=236 q=16.0 Lsize=   15393KiB time=00:00:28.40 bitrate=4439.6kbits/s speed=9.83x elapsed=0:00:02.89
+[aac @ 000002412504d140] Qavg: 1.040  Tr: 14.2%  TNS(L): 22.3%  TNS(S): 23.6%  M/S: 99.7%  I/S: 0.3%  PNS: 0.0%
+[INFO] [WCE_TIMELINE] materialized trim 0.000-28.380; director/render timeline reset to 0-28.380
+[INFO] [SMART_BROLL] transcript mode=ABSOLUTE | segs=17 | source_start=0.0 | clip_dur=28.4
+[INFO] [SMART_BROLL] scored: t=5.76s word='money' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=9.06s word='million' cat=money_assets score=2.0
+[INFO] [SMART_BROLL] scored: t=15.28s word='mind' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=21.48s word='revenue' cat=money_assets score=2.0
+[INFO] [SMART_BROLL] ✓ Cut @ t=9.06s | word='million' | category=money_assets | asset=money_succes.mp4
+[INFO] [SMART_BROLL] ✓ Cut @ t=21.48s | word='revenue' | category=money_assets | asset=payout.mp4
+[INFO] [SMART_BROLL] ✓ Cut @ t=15.28s | word='mind' | category=money_assets | asset=the real game.mp4
+[INFO] [WCE-BROLL] 🎬 Smart Local B-Roll: 3 cuts | total_dur=7.5s | first_cut=9.06s
+[INFO] [WCE-FORMAT] format=monologue avg_faces=1.00 speakers=[0.5]
+[WARNING] [WCE-FORMAT-OVERRIDE] FaceCache forced podcast: dual_rate=1.00 frames=55/55 speakers=[0.371, 0.869]
+[WARNING] [WCE-FORMAT-ROUTE] analyzer=monologue -> podcast live-director via dual-face hint
+[INFO] [INIT] last_mode seeded=SOLO_RIGHT speaker_positions=[0.37135416666666665, 0.86875] median=0.620
+[INFO] [INIT] solo_x seeded=0.620 px=1190
+[INFO] [WCE_PERF] director_frame_stride=1 (1=every frame, 3=every 3rd)
+[INFO] [WCE-LIVE] live_detection=ON interval=8 frames (~0.33s at 24.0fps)
+[INFO] [VAD_RMS] clip=wc_cut_9cf84a1f37a24671a73cf9b505ea1eb1.mp4 audio_frames=946 speech_pct=92.6% rms_max=0.1369
+[INFO] [VAD_RMS] rms_gate populated: 681 frames
+[INFO] [DEBUG_VIZ] Session started → ./debug_out\wc_cut_9cf84a1f37a24671a73cf9b505ea1eb1
+[INFO] [WCE_PERF] director_frame_stride=1 (1=every frame, 3=every 3rd)
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=Editor
+[INFO] [FACE_DETECT] frame0 detector=InsightFace faces=1
+[INFO] [WCE-LIVE] t=0.00s live_faces=1
+[INFO] [FACE_DEBUG] t=0.00s raw=1 frame_shape=(1080,1920,3) gray_mean=53.0 filters=['OK']
+[INFO] [FACE_FILTER] OK  h=388px aspect=0.68 cy=318 cx=838  face=(705,124,265,388)
+[INFO] [FACE_DEBUG] t=0.00s valid=1 / raw=1 smoothed_h=388
+[INFO] [SLOT_DEBUG] t=0.00s left=YES right=NONE valid_total=1 podcast_fmt=True
+[INFO] [SLOT_ASSIGN] t=0.00s left_face=True right_face=False (tracked=False, live_haar_hits=1)
+[INFO] [GHOST_SUPPLEMENT] t=0.00s ghost_RIGHT started at x=1668px (expiry in 150 frames)
+[INFO] [GAP_CHECK] t=0.00s face_gap=0.44 min_required=0.38 split_eligible=True
+[INFO] [TALKING] t=0.00s L_ema=0.0 R_ema=0.0 L_talk=False R_talk=False thresh=80.0
+[INFO] [DIR] t=0.00s  mode=SOLO_RIGHT    gap=0.44(>0.38)  L=False R=False  ema_l=0.0 ema_r=0.0
+[INFO] [CAPCUT_TRACKER] LEFT State=SPRING_PAN Dist=339px Vel=2.58 CamX=482
+[INFO] [CAPCUT_TRACKER] RIGHT State=SPRING_PAN Dist=228px Vel=1.03 CamX=1441
+[INFO] [CAPCUT_TRACKER] SOLO State=SPRING_PAN Dist=477px Vel=5.07 CamX=1195
+[INFO] [DIRECTOR_MODE] t=0.00s mode=SOLO_RIGHT active_slot=right L_x=482 R_x=1441 solo_x=1195
+[PIPELINE] Clip failed: 0 -> module 'cv2' has no attribute 'TrackerCSRT_create'
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\effects\face_tracker.py", line 22, in init
+    self.tracker = cv2.legacy.TrackerCSRT_create()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'cv2.legacy' has no attribute 'TrackerCSRT_create'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\local_worker.py", line 1970, in run_editor
+    edit_result = editor_instance.enhance_pretrimmed_clip(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\effects\world_class_editor.py", line 4421, in enhance_pretrimmed_clip
+    focus_x = self._get_crop_expression(video_fmt, transcript_window, cfg, work_b, face_cache=precomputed_face_cache)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\effects\world_class_editor.py", line 2421, in _get_crop_expression
+    solo_face_tracker.init(
+  File "C:\Users\n\Documents\hotshort\effects\face_tracker.py", line 24, in init
+    self.tracker = cv2.TrackerCSRT_c
+
+
+
+
+
+    
+[INFO] [FUSION] No clips have visual_energy attached yet (pre-edit). Skipping re-rank.
+[BENCH] stage=2_orchestration                 wall= 1311.7s
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-2_0
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-2_2
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-2_1
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-2_3
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.13 co_occurrence_rate=0.13 frames_with_two_faces=2/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.37 right=0.69 switches/s=0.00 avg_faces=1.13 co_occ=0.13
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0003 median_x=0.465 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 5427s-5498s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.46458333333333335]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.27 co_occurrence_rate=0.20 frames_with_two_faces=3/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.34 right=0.73 switches/s=0.00 avg_faces=1.27 co_occ=0.20
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.07 co_occurrence_rate=0.07 frames_with_two_faces=1/15
+[INFO] [WCE-FORMAT] single-face variance=0.0014 median_x=0.407 avg_faces=1.07
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 1411s-1480s mode=SINGLE_CENTERED avg_faces=1.07 speakers=[0.40677083333333336]
+[FORMAT_CLASSIFY] 0s-92s mode=PODCAST avg_faces=1.27 speakers=[0.345, 0.735]
+[FORMAT_CLASSIFY] 448s-552s mode=PODCAST avg_faces=1.13 speakers=[0.372, 0.685]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.47 co_occurrence_rate=0.47 frames_with_two_faces=7/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.24 right=0.70 switches/s=0.02 avg_faces=1.47 co_occ=0.47
+[FORMAT_CLASSIFY] 1013s-1081s mode=PODCAST avg_faces=1.47 speakers=[0.245, 0.705]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0002 median_x=0.446 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 4556s-4624s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.44609375]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0002 median_x=0.457 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 3259s-3316s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.45677083333333335]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.13 co_occurrence_rate=0.13 frames_with_two_faces=2/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.39 right=0.66 switches/s=0.00 avg_faces=1.13 co_occ=0.13
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0003 median_x=0.448 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 2459s-2531s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.4479166666666667]
+[FORMAT_CLASSIFY] 2126s-2195s mode=PODCAST avg_faces=1.13 speakers=[0.392, 0.658]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.07 co_occurrence_rate=0.07 frames_with_two_faces=1/15
+[INFO] [WCE-FORMAT] single-face variance=0.0007 median_x=0.443 avg_faces=1.07
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 3446s-3516s mode=SINGLE_CENTERED avg_faces=1.07 speakers=[0.4427083333333333]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.20 co_occurrence_rate=0.20 frames_with_two_faces=3/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.37 right=0.73 switches/s=0.00 avg_faces=1.20 co_occ=0.20
+[FORMAT_CLASSIFY] 858s-973s mode=PODCAST avg_faces=1.20 speakers=[0.375, 0.732]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.56 co_occurrence_rate=0.56 frames_with_two_faces=5/9
+[INFO] [WCE-FORMAT] classified=podcast left=0.24 right=0.70 switches/s=0.00 avg_faces=1.56 co_occ=0.56
+[FORMAT_CLASSIFY] 5840s-5908s mode=PODCAST avg_faces=1.56 speakers=[0.242, 0.701]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.20 co_occurrence_rate=0.20 frames_with_two_faces=3/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.36 right=0.68 switches/s=0.03 avg_faces=1.20 co_occ=0.20
+[FORMAT_CLASSIFY] 2936s-3005s mode=PODCAST avg_faces=1.20 speakers=[0.357, 0.682]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.07 co_occurrence_rate=0.07 frames_with_two_faces=1/15
+[INFO] [WCE-FORMAT] single-face variance=0.0006 median_x=0.451 avg_faces=1.07
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 1221s-1318s mode=SINGLE_CENTERED avg_faces=1.07 speakers=[0.45052083333333337]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.07 co_occurrence_rate=0.07 frames_with_two_faces=1/15
+[INFO] [WCE-FORMAT] single-face variance=0.0004 median_x=0.460 avg_faces=1.07
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 1115s-1202s mode=SINGLE_CENTERED avg_faces=1.07 speakers=[0.4595052083333333]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.53 co_occurrence_rate=0.53 frames_with_two_faces=8/15
+[INFO] [WCE-FORMAT] classified=podcast left=0.21 right=0.66 switches/s=0.00 avg_faces=1.53 co_occ=0.53
+[FORMAT_CLASSIFY] 4644s-4713s mode=PODCAST avg_faces=1.53 speakers=[0.213, 0.662]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0006 median_x=0.448 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 3112s-3180s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.4479166666666667]
+[INFO] [CLASSIFY_DEBUG] clip=C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\video.mp4 avg_faces=1.00 co_occurrence_rate=0.00 frames_with_two_faces=0/15
+[INFO] [WCE-FORMAT] single-face variance=0.0002 median_x=0.448 avg_faces=1.00
+[INFO] [WCE-FORMAT] classified=monologue
+[FORMAT_CLASSIFY] 2207s-2275s mode=SINGLE_CENTERED avg_faces=1.00 speakers=[0.44765625]
+[BENCH] stage=3_format_classify               wall=  136.1s
+[FACE_CACHE] format_map populated for 18/18 clips
+[FACE_CACHE] Starting targeted Haar face detection...
+[FACE_CACHE] Scanning 18 clips = 1380s total (not full video)
+[FACE_CACHE] clip=5427-5498 format=monologue stride=30 speakers=[0.46458333333333335]
+[FACE_CACHE] clip=1411-1480 format=monologue stride=30 speakers=[0.40677083333333336]
+[FACE_CACHE] clip=0-92 format=podcast stride=30 speakers=[0.345, 0.735]
+[FACE_CACHE] clip=448-552 format=podcast stride=30 speakers=[0.372, 0.685]
+[SEEK_VERIFY] clip=5427.07-5497.57 requested=5427.07s landed=5427.05s delta=0frames [OK]
+[SEEK_VERIFY] clip=0.00-91.74 requested=0.00s landed=0.00s delta=0frames [OK]
+[SEEK_VERIFY] clip=447.58-552.26 requested=447.58s landed=447.57s delta=0frames [OK]
+[SEEK_VERIFY] clip=1410.60-1480.00 requested=1410.60s landed=1410.58s delta=0frames [OK]
+[CLUSTER_SCAN] clip=5427.07-5497.57 sample_decode=grab_optimized frames_preloaded=57 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=2 max=34 avg=10.7 threshold=40 segmentation_s=0.877
+[SCENE_SEG] built 1 segments from 57 frames, avg_segment_size=57.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=45.9 min=0 max=255
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-3_0
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=5427.07-5497.57 format=monologue clusters=1 haar_calls=1 frames_covered=57 wall_s=42.63
+
+Clip 1
+Open Video .......... 115 ms
+Seek ............... 708 ms
+Decode ........... 39833 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 889 ms
+Representative Pick.. 507 ms
+Face Detect ........ 547 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=1013-1081 format=podcast stride=30 speakers=[0.245, 0.705]
+[SEEK_VERIFY] clip=1013.28-1080.78 requested=1013.28s landed=1013.26s delta=0frames [OK]
+[CLUSTER_SCAN] clip=447.58-552.26 sample_decode=grab_optimized frames_preloaded=84 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[CLUSTER_SCAN] clip=1410.60-1480.00 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=10 max=32 avg=18.4 threshold=40 segmentation_s=0.666
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[SCENE_SEG_DEBUG] diff distribution: min=0 max=34 avg=17.5 threshold=40 segmentation_s=1.050
+[SCENE_SEG] built 1 segments from 84 frames, avg_segment_size=84.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=49.9 min=0 max=255
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-3_1
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-3_3
+[FACE_CACHE] clip=4556-4624 format=monologue stride=30 speakers=[0.44609375]
+[CLUSTER_SCAN] clip=0.00-91.74 sample_decode=grab_optimized frames_preloaded=74 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[PODCAST_CLUSTER] clip=447.6-552.3 cluster=0 found=2 faces at conf=0.45 rep=61
+[PODCAST_CLUSTER] clip=447.6-552.3 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=447.58-552.26 format=podcast clusters=1 haar_calls=3 frames_covered=84 wall_s=54.49
+
+Clip 4
+Open Video .......... 538 ms
+Seek ............... 1347 ms
+Decode ........... 50471 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1057 ms
+Representative Pick.. 587 ms
+Face Detect ........ 449 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=3259-3316 format=monologue stride=30 speakers=[0.45677083333333335]
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=36 avg=26.8 threshold=40 segmentation_s=0.921
+[SCENE_SEG] built 1 segments from 74 frames, avg_segment_size=74.0
+[SEEK_VERIFY] clip=4556.42-4623.90 requested=4556.42s landed=4556.39s delta=0frames [OK]
+[SEEK_VERIFY] clip=3259.18-3316.32 requested=3259.18s landed=3259.17s delta=0frames [OK]
+[INFO] [INSIGHTFACE] Registered system cuDNN from C:\Program Files\NVIDIA\CUDNN\v9.25\bin\12.9\x64
+[INFO] [INSIGHTFACE] provider=CUDA (set HS_INSIGHTFACE_CUDA=1 for GPU)
+[INFO] [INSIGHTFACE] Initialized: model=buffalo_sc det_size=640x640 device=CUDA thread=ThreadPoolExecutor-3_2
+[PODCAST_CLUSTER] clip=0.0-91.7 cluster=0 found=3 faces at conf=0.45 rep=3
+[PODCAST_CLUSTER] clip=0.0-91.7 cluster=0 final_faces=3 real_valid=3 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=0.00-91.74 format=podcast clusters=1 haar_calls=1 frames_covered=74 wall_s=56.72
+
+Clip 3
+Open Video .......... 947 ms
+Seek ............... 337 ms
+Decode ........... 52975 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 922 ms
+Representative Pick.. 896 ms
+Face Detect ........ 615 ms
+Anchor Build ........ 1 ms
+
+[FACE_CACHE] clip=2459-2531 format=monologue stride=30 speakers=[0.4479166666666667]
+[SEEK_VERIFY] clip=2459.24-2531.38 requested=2459.24s landed=2459.21s delta=0frames [OK]
+[CLUSTER_SCAN] clip=1013.28-1080.78 sample_decode=grab_optimized frames_preloaded=54 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=2 max=36 avg=19.4 threshold=40 segmentation_s=0.895
+[SCENE_SEG] built 1 segments from 54 frames, avg_segment_size=54.0
+[PODCAST_CLUSTER] clip=1013.3-1080.8 cluster=0 ROI_detect found=2 faces
+[PODCAST_CLUSTER] clip=1013.3-1080.8 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=1013.28-1080.78 format=podcast clusters=1 haar_calls=15 frames_covered=54 wall_s=39.28
+
+Clip 5
+Open Video .......... 696 ms
+Seek ............... 1487 ms
+Decode ........... 34811 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 895 ms
+Representative Pick.. 468 ms
+Face Detect ........ 899 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=2126-2195 format=podcast stride=30 speakers=[0.392, 0.658]
+[CLUSTER_SCAN] clip=3259.18-3316.32 sample_decode=grab_optimized frames_preloaded=46 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=2 max=34 avg=17.0 threshold=40 segmentation_s=0.610
+[SCENE_SEG] built 1 segments from 46 frames, avg_segment_size=46.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=42.7 min=0 max=255
+[SEEK_VERIFY] clip=2125.79-2194.78 requested=2125.79s landed=2125.75s delta=0frames [OK]
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=3259.18-3316.32 format=monologue clusters=1 haar_calls=1 frames_covered=46 wall_s=30.16
+
+Clip 7
+Open Video .......... 343 ms
+Seek ............... 1081 ms
+Decode ........... 27613 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 623 ms
+Representative Pick.. 373 ms
+Face Detect ........ 99 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=3446-3516 format=monologue stride=30 speakers=[0.4427083333333333]
+[SEEK_VERIFY] clip=3446.15-3515.69 requested=3446.15s landed=3446.11s delta=0frames [OK]
+[CLUSTER_SCAN] clip=4556.42-4623.90 sample_decode=grab_optimized frames_preloaded=54 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=18 avg=11.7 threshold=40 segmentation_s=0.790
+[SCENE_SEG] built 1 segments from 54 frames, avg_segment_size=54.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=19.3 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=4556.42-4623.90 format=monologue clusters=1 haar_calls=1 frames_covered=54 wall_s=37.82
+
+Clip 6
+Open Video .......... 229 ms
+Seek ............... 872 ms
+Decode ........... 35103 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 795 ms
+Representative Pick.. 579 ms
+Face Detect ........ 206 ms
+Anchor Build ........ 1 ms
+
+[FACE_CACHE] clip=858-973 format=podcast stride=30 speakers=[0.375, 0.732]
+[SEEK_VERIFY] clip=857.82-973.30 requested=857.82s landed=857.82s delta=0frames [OK]
+[CLUSTER_SCAN] clip=2459.24-2531.38 sample_decode=grab_optimized frames_preloaded=58 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=6 max=28 avg=15.9 threshold=40 segmentation_s=1.385
+[SCENE_SEG] built 1 segments from 58 frames, avg_segment_size=58.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=47.1 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=2459.24-2531.38 format=monologue clusters=1 haar_calls=1 frames_covered=58 wall_s=46.99
+
+Clip 8
+Open Video .......... 556 ms
+Seek ............... 2629 ms
+Decode ........... 41712 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1395 ms
+Representative Pick.. 494 ms
+Face Detect ........ 176 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=5840-5908 format=podcast stride=30 speakers=[0.242, 0.701]
+[SEEK_VERIFY] clip=5840.46-5907.96 requested=5840.46s landed=5840.46s delta=0frames [OK]
+[CLUSTER_SCAN] clip=2125.79-2194.78 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=34 avg=10.3 threshold=40 segmentation_s=1.136
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[PODCAST_CLUSTER] clip=2125.8-2194.8 cluster=0 found=2 faces at conf=0.45 rep=31
+[PODCAST_CLUSTER] clip=2125.8-2194.8 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=2125.79-2194.78 format=podcast clusters=1 haar_calls=1 frames_covered=56 wall_s=39.23
+
+Clip 9
+Open Video .......... 415 ms
+Seek ............... 2171 ms
+Decode ........... 34624 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1136 ms
+Representative Pick.. 695 ms
+Face Detect ........ 155 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=2936-3005 format=podcast stride=30 speakers=[0.357, 0.682]
+[CLUSTER_SCAN] clip=3446.15-3515.69 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SEEK_VERIFY] clip=2935.58-3005.12 requested=2935.58s landed=2935.56s delta=0frames [OK]
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=38 avg=23.4 threshold=40 segmentation_s=1.031
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=49.4 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=3446.15-3515.69 format=monologue clusters=1 haar_calls=1 frames_covered=56 wall_s=38.95
+
+Clip 10
+Open Video .......... 301 ms
+Seek ............... 1879 ms
+Decode ........... 35123 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1031 ms
+Representative Pick.. 427 ms
+Face Detect ........ 163 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=1221-1318 format=monologue stride=30 speakers=[0.45052083333333337]
+[SEEK_VERIFY] clip=1220.82-1317.74 requested=1220.82s landed=1220.80s delta=0frames [OK]
+[CLUSTER_SCAN] clip=5840.46-5907.96 sample_decode=grab_optimized frames_preloaded=29 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=10 max=38 avg=23.8 threshold=40 segmentation_s=0.552
+[SCENE_SEG] built 1 segments from 29 frames, avg_segment_size=29.0
+[PODCAST_CLUSTER] clip=5840.5-5908.0 cluster=0 found=2 faces at conf=0.45 rep=28
+[PODCAST_CLUSTER] clip=5840.5-5908.0 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=5840.46-5907.96 format=podcast clusters=1 haar_calls=1 frames_covered=29 wall_s=23.57
+
+Clip 12
+Open Video .......... 576 ms
+Seek ............... 1673 ms
+Decode ........... 20332 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 553 ms
+Representative Pick.. 284 ms
+Face Detect ........ 120 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=1115-1202 format=monologue stride=30 speakers=[0.4595052083333333]
+[SEEK_VERIFY] clip=1114.56-1201.50 requested=1114.56s landed=1114.53s delta=0frames [OK]
+Open Video .......... 947 ms
+Seek ............... 337 ms
+Decode ........... 52975 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 922 ms
+Representative Pick.. 896 ms
+Face Detect ........ 615 ms
+Anchor Build ........ 1 ms
+
+[FACE_CACHE] clip=2459-2531 format=monologue stride=30 speakers=[0.4479166666666667]
+[SEEK_VERIFY] clip=2459.24-2531.38 requested=2459.24s landed=2459.21s delta=0frames [OK]
+[CLUSTER_SCAN] clip=1013.28-1080.78 sample_decode=grab_optimized frames_preloaded=54 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=2 max=36 avg=19.4 threshold=40 segmentation_s=0.895
+[SCENE_SEG] built 1 segments from 54 frames, avg_segment_size=54.0
+[PODCAST_CLUSTER] clip=1013.3-1080.8 cluster=0 ROI_detect found=2 faces
+[PODCAST_CLUSTER] clip=1013.3-1080.8 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=1013.28-1080.78 format=podcast clusters=1 haar_calls=15 frames_covered=54 wall_s=39.28
+
+Clip 5
+Open Video .......... 696 ms
+Seek ............... 1487 ms
+Decode ........... 34811 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 895 ms
+Representative Pick.. 468 ms
+Face Detect ........ 899 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=2126-2195 format=podcast stride=30 speakers=[0.392, 0.658]
+[CLUSTER_SCAN] clip=3259.18-3316.32 sample_decode=grab_optimized frames_preloaded=46 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=2 max=34 avg=17.0 threshold=40 segmentation_s=0.610
+[SCENE_SEG] built 1 segments from 46 frames, avg_segment_size=46.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=42.7 min=0 max=255
+[SEEK_VERIFY] clip=2125.79-2194.78 requested=2125.79s landed=2125.75s delta=0frames [OK]
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=3259.18-3316.32 format=monologue clusters=1 haar_calls=1 frames_covered=46 wall_s=30.16
+
+Clip 7
+Open Video .......... 343 ms
+Seek ............... 1081 ms
+Decode ........... 27613 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 623 ms
+Representative Pick.. 373 ms
+Face Detect ........ 99 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=3446-3516 format=monologue stride=30 speakers=[0.4427083333333333]
+[SEEK_VERIFY] clip=3446.15-3515.69 requested=3446.15s landed=3446.11s delta=0frames [OK]
+[CLUSTER_SCAN] clip=4556.42-4623.90 sample_decode=grab_optimized frames_preloaded=54 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=18 avg=11.7 threshold=40 segmentation_s=0.790
+[SCENE_SEG] built 1 segments from 54 frames, avg_segment_size=54.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=19.3 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=4556.42-4623.90 format=monologue clusters=1 haar_calls=1 frames_covered=54 wall_s=37.82
+
+Clip 6
+Open Video .......... 229 ms
+Seek ............... 872 ms
+Decode ........... 35103 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 795 ms
+Representative Pick.. 579 ms
+Face Detect ........ 206 ms
+Anchor Build ........ 1 ms
+
+[FACE_CACHE] clip=858-973 format=podcast stride=30 speakers=[0.375, 0.732]
+[SEEK_VERIFY] clip=857.82-973.30 requested=857.82s landed=857.82s delta=0frames [OK]
+[CLUSTER_SCAN] clip=2459.24-2531.38 sample_decode=grab_optimized frames_preloaded=58 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=6 max=28 avg=15.9 threshold=40 segmentation_s=1.385
+[SCENE_SEG] built 1 segments from 58 frames, avg_segment_size=58.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=47.1 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=2459.24-2531.38 format=monologue clusters=1 haar_calls=1 frames_covered=58 wall_s=46.99
+
+Clip 8
+Open Video .......... 556 ms
+Seek ............... 2629 ms
+Decode ........... 41712 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1395 ms
+Representative Pick.. 494 ms
+Face Detect ........ 176 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=5840-5908 format=podcast stride=30 speakers=[0.242, 0.701]
+[SEEK_VERIFY] clip=5840.46-5907.96 requested=5840.46s landed=5840.46s delta=0frames [OK]
+[CLUSTER_SCAN] clip=2125.79-2194.78 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=34 avg=10.3 threshold=40 segmentation_s=1.136
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[PODCAST_CLUSTER] clip=2125.8-2194.8 cluster=0 found=2 faces at conf=0.45 rep=31
+[PODCAST_CLUSTER] clip=2125.8-2194.8 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=2125.79-2194.78 format=podcast clusters=1 haar_calls=1 frames_covered=56 wall_s=39.23
+
+Clip 9
+Open Video .......... 415 ms
+Seek ............... 2171 ms
+Decode ........... 34624 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1136 ms
+Representative Pick.. 695 ms
+Face Detect ........ 155 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=2936-3005 format=podcast stride=30 speakers=[0.357, 0.682]
+[CLUSTER_SCAN] clip=3446.15-3515.69 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SEEK_VERIFY] clip=2935.58-3005.12 requested=2935.58s landed=2935.56s delta=0frames [OK]
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=38 avg=23.4 threshold=40 segmentation_s=1.031
+[SCENE_SEG] built 1 segments from 56 frames, avg_segment_size=56.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=49.4 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=3446.15-3515.69 format=monologue clusters=1 haar_calls=1 frames_covered=56 wall_s=38.95
+
+Clip 10
+Open Video .......... 301 ms
+Seek ............... 1879 ms
+Decode ........... 35123 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1031 ms
+Representative Pick.. 427 ms
+Face Detect ........ 163 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=1221-1318 format=monologue stride=30 speakers=[0.45052083333333337]
+[SEEK_VERIFY] clip=1220.82-1317.74 requested=1220.82s landed=1220.80s delta=0frames [OK]
+[CLUSTER_SCAN] clip=5840.46-5907.96 sample_decode=grab_optimized frames_preloaded=29 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=10 max=38 avg=23.8 threshold=40 segmentation_s=0.552
+[SCENE_SEG] built 1 segments from 29 frames, avg_segment_size=29.0
+[PODCAST_CLUSTER] clip=5840.5-5908.0 cluster=0 found=2 faces at conf=0.45 rep=28
+[PODCAST_CLUSTER] clip=5840.5-5908.0 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=5840.46-5907.96 format=podcast clusters=1 haar_calls=1 frames_covered=29 wall_s=23.57
+
+Clip 12
+Open Video .......... 576 ms
+Seek ............... 1673 ms
+Decode ........... 20332 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 553 ms
+Representative Pick.. 284 ms
+Face Detect ........ 120 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=1115-1202 format=monologue stride=30 speakers=[0.4595052083333333]
+[SEEK_VERIFY] clip=1114.56-1201.50 requested=1114.56s landed=1114.53s delta=0frames [OK]
+[CLUSTER_SCAN] clip=857.82-973.30 sample_decode=grab_optimized frames_preloaded=93 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=2 max=36 avg=25.3 threshold=40 segmentation_s=1.175
+[SCENE_SEG] built 1 segments from 93 frames, avg_segment_size=93.0
+[PODCAST_CLUSTER] clip=857.8-973.3 cluster=0 found=2 faces at conf=0.45 rep=14
+[PODCAST_CLUSTER] clip=857.8-973.3 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=857.82-973.30 format=podcast clusters=1 haar_calls=4 frames_covered=93 wall_s=70.09
+
+Clip 11
+Open Video .......... 667 ms
+Seek ............... 3907 ms
+Decode ........... 63253 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1183 ms
+Representative Pick.. 733 ms
+Face Detect ........ 299 ms
+Anchor Build ........ 1 ms
+
+[FACE_CACHE] clip=4644-4713 format=podcast stride=30 speakers=[0.213, 0.662]
+[CLUSTER_SCAN] clip=2935.58-3005.12 sample_decode=grab_optimized frames_preloaded=56 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG] frame=43 diff_from_anchor=42 > threshold=40 -> scene cut, closing segment of 43 frames
+[SCENE_SEG] frame=43 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=0 max=42 avg=23.0 threshold=40 segmentation_s=0.709
+[SCENE_SEG] built 2 segments from 56 frames, avg_segment_size=28.0
+[PODCAST_CLUSTER] clip=2935.6-3005.1 cluster=0 found=2 faces at conf=0.45 rep=8
+[PODCAST_CLUSTER] clip=2935.6-3005.1 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[PODCAST_CLUSTER] clip=2935.6-3005.1 cluster=1 ROI_detect found=2 faces
+[PODCAST_CLUSTER] clip=2935.6-3005.1 cluster=1 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=2935.58-3005.12 format=podcast clusters=2 haar_calls=16 frames_covered=56 wall_s=43.57
+
+Clip 13
+Open Video .......... 709 ms
+Seek ............... 1004 ms
+Decode ........... 39652 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 716 ms
+Representative Pick.. 542 ms
+Face Detect ........ 912 ms
+Anchor Build ........ 1 ms
+
+[SEEK_VERIFY] clip=4644.26-4712.76 requested=4644.26s landed=4644.22s delta=0frames [OK]
+[FACE_CACHE] clip=3112-3180 format=monologue stride=30 speakers=[0.4479166666666667]
+[SEEK_VERIFY] clip=3111.67-3179.58 requested=3111.67s landed=3111.65s delta=0frames [OK]
+[CLUSTER_SCAN] clip=1220.82-1317.74 sample_decode=grab_optimized frames_preloaded=78 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=0 max=36 avg=23.6 threshold=40 segmentation_s=1.017
+[SCENE_SEG] built 1 segments from 78 frames, avg_segment_size=78.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=25.8 min=0 max=255
+[DETECT_RAW] mediapipe_faces=2
+[CLUSTER_SCAN] clip=1220.82-1317.74 format=monologue clusters=1 haar_calls=1 frames_covered=78 wall_s=56.42
+
+Clip 14
+Open Video .......... 552 ms
+Seek ............... 1519 ms
+Decode ........... 52662 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 1017 ms
+Representative Pick.. 521 ms
+Face Detect ........ 89 ms
+Anchor Build ........ 0 ms
+
+[FACE_CACHE] clip=2207-2275 format=monologue stride=30 speakers=[0.44765625]
+[CLUSTER_SCAN] clip=1114.56-1201.50 sample_decode=grab_optimized frames_preloaded=70 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=8 max=36 avg=17.8 threshold=40 segmentation_s=0.817
+[SCENE_SEG] built 1 segments from 70 frames, avg_segment_size=70.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=47.3 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=1114.56-1201.50 format=monologue clusters=1 haar_calls=1 frames_covered=70 wall_s=54.15
+
+Clip 15
+Open Video .......... 779 ms
+Seek ............... 1283 ms
+Decode ........... 50604 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 821 ms
+Representative Pick.. 495 ms
+Face Detect ........ 109 ms
+Anchor Build ........ 0 ms
+
+[SEEK_VERIFY] clip=2206.94-2275.22 requested=2206.94s landed=2206.91s delta=0frames [OK]
+[CLUSTER_SCAN] clip=4644.26-4712.76 sample_decode=grab_optimized frames_preloaded=55 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[CLUSTER_SCAN] clip=3111.67-3179.58 sample_decode=grab_optimized frames_preloaded=55 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=2 max=40 avg=20.9 threshold=40 segmentation_s=0.462
+[SCENE_SEG] built 1 segments from 55 frames, avg_segment_size=55.0
+[SCENE_SEG_DEBUG] diff distribution: min=4 max=30 avg=12.0 threshold=40 segmentation_s=0.404
+[SCENE_SEG] built 1 segments from 55 frames, avg_segment_size=55.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=19.4 min=0 max=255
+[PODCAST_CLUSTER] clip=4644.3-4712.8 cluster=0 found=2 faces at conf=0.45 rep=30
+[PODCAST_CLUSTER] clip=4644.3-4712.8 cluster=0 final_faces=2 real_valid=2 synthesized=False top_k=5 reps_tried=15
+[CLUSTER_SCAN] clip=4644.26-4712.76 format=podcast clusters=1 haar_calls=3 frames_covered=55 wall_s=38.52
+
+Clip 16
+Open Video .......... 363 ms
+Seek ............... 2294 ms
+Decode ........... 34991 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 463 ms
+Representative Pick.. 194 ms
+Face Detect ........ 185 ms
+Anchor Build ........ 0 ms
+
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=3111.67-3179.58 format=monologue clusters=1 haar_calls=1 frames_covered=55 wall_s=35.83
+
+Clip 17
+Open Video .......... 331 ms
+Seek ............... 2145 ms
+Decode ........... 32650 ms
+Frame Sampling ..... 1 ms
+Scene Detection ..... 404 ms
+Representative Pick.. 206 ms
+Face Detect ........ 58 ms
+Anchor Build ........ 0 ms
+
+[CLUSTER_SCAN] clip=2206.94-2275.22 sample_decode=grab_optimized frames_preloaded=55 frames_skipped_invalid=0
+[SCENE_SEG] frame=0 is anchor (new segment)
+[SCENE_SEG_DEBUG] diff distribution: min=6 max=26 avg=11.7 threshold=40 segmentation_s=0.298
+[SCENE_SEG] built 1 segments from 55 frames, avg_segment_size=55.0
+[DETECT_DEBUG] frame_shape=(1080, 1920, 3) dtype=uint8 mean=20.9 min=0 max=255
+[DETECT_RAW] mediapipe_faces=1
+[CLUSTER_SCAN] clip=2206.94-2275.22 format=monologue clusters=1 haar_calls=1 frames_covered=55 wall_s=24.47
+
+Clip 18
+Open Video .......... 284 ms
+Seek ............... 2043 ms
+Decode ........... 21612 ms
+Frame Sampling ..... 0 ms
+Scene Detection ..... 298 ms
+Representative Pick.. 143 ms
+Face Detect ........ 61 ms
+Anchor Build ........ 0 ms
+
+
+══════════════════════════════════════════════════════════════════
+  FACECACHE COMPLETE  |  wall=205.22s  |  frames=1086
+──────────────────────────────────────────────────────────────────
+  Faces per frame breakdown:
+    0 faces  :    0 frames  (0%)
+    1 face   :  507 frames  (47%)
+    2 faces  :  505 frames  (47%)  ← SPLIT eligible
+    3+ faces :   74 frames  (7%)
+  avg_faces_per_frame : 1.60
+  real face slots     : 1739  |  synthetic slots: 0
+──────────────────────────────────────────────────────────────────
+  CLIP               FMT             FRAMES  2-FACE%  SYNTH
+  ------------------ -------------- ------- -------- ------
+  5427.1-5497.6s     monologue           57       0%      0
+  1410.6-1480.0s     monologue           56       0%      0
+  0.0-91.7s          podcast             74     100%      0
+  447.6-552.3s       podcast             84     100%      0
+  1013.3-1080.8s     podcast             54     100%      0
+  4556.4-4623.9s     monologue           54       0%      0
+  3259.2-3316.3s     monologue           46       0%      0
+  2459.2-2531.4s     monologue           58       0%      0
+  2125.8-2194.8s     podcast             56     100%      0
+  3446.2-3515.7s     monologue           56       0%      0
+  857.8-973.3s       podcast             93     100%      0
+  5840.5-5908.0s     podcast             29     100%      0
+  2935.6-3005.1s     podcast             56     100%      0
+  1220.8-1317.7s     monologue           78     100%      0
+  1114.6-1201.5s     monologue           70       0%      0
+  4644.3-4712.8s     podcast             55     100%      0
+  3111.7-3179.6s     monologue           55       0%      0
+  2206.9-2275.2s     monologue           55       0%      0
+══════════════════════════════════════════════════════════════════
+
+[FACE_CACHE] Report written → ./debug_out\face_cache_report.json
+[BENCH] stage=4_haar_scan                     wall=  205.2s
+[LOCAL_WORKER] Orchestration done: 18 clips. Pre-generating captions...
+[BENCH] stage=5_caption_pregen                wall=    0.0s
+[PIPELINE] Clip queued: 0
+[PIPELINE] Clip queued: 1
+[PIPELINE] Clip queued: 2
+[PIPELINE] Clip queued: 3
+[PIPELINE] Clip queued: 4
+[PIPELINE] Clip queued: 5
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=15 words=224 missing_words_in_segs=0 for clip 5427.07-5497.57
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=33 words=391 missing_words_in_segs=0 for clip 447.58-552.26
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=22 words=272 missing_words_in_segs=0 for clip 1410.60-1480.00
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=24 words=332 missing_words_in_segs=0 for clip 0.00-91.74
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=27 words=249 missing_words_in_segs=0 for clip 1013.28-1080.78
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=23 words=271 missing_words_in_segs=0 for clip 4556.42-4623.90
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=29 words=286 missing_words_in_segs=0 for clip 2459.24-2531.38
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=17 words=257 missing_words_in_segs=0 for clip 3259.18-3316.32
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=19 words=246 missing_words_in_segs=0 for clip 2125.79-2194.78
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=22 words=283 missing_words_in_segs=0 for clip 3446.15-3515.69
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=15 words=157 missing_words_in_segs=0 for clip 5840.46-5907.96
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=31 words=442 missing_words_in_segs=0 for clip 857.82-973.30
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=21 words=286 missing_words_in_segs=0 for clip 2935.58-3005.12
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=36 words=354 missing_words_in_segs=0 for clip 1220.82-1317.74
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=30 words=350 missing_words_in_segs=0 for clip 1114.56-1201.50
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=20 words=312 missing_words_in_segs=0 for clip 4644.26-4712.76
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=19 words=228 missing_words_in_segs=0 for clip 3111.67-3179.58
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=26 words=264 missing_words_in_segs=0 for clip 2206.94-2275.22
+[INFO] [WCE-CAPTION] per-event speaker-side \an alignment: ACTIVE
+[INFO] [WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE
+[BENCH] stage=6a_extract_clip0                wall=    7.8s
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=15 words=224 missing_words_in_segs=0 for clip 5427.07-5497.57
+[INFO] [WCE-FORENSIC] Loaded 224 transcript words for 5427.07-5497.57.
+[INFO] [SMART_END] ← BACKWARD to last complete sentence: 'And it's kind of like implanted in my head.' at t=2.320s
+[INFO] [SMART_END] silence found at t=2.320s (rms=0.0117 thresh=0.0126 after last_word=2.320s)
+[INFO] [CAPTION_SNAP] end=70.53 -> snapped=70.50 (word: ' wings')
+[INFO] [SMART_BROLL] transcript mode=RELATIVE | segs=15 | source_start=5427.1 | clip_dur=70.5
+[INFO] [SMART_BROLL] scored: t=29.40s word='podcast' cat=content_assets score=2.0
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'podcast' in content_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=content_assets word='podcast'
+[INFO] [WCE-BROLL] No keyword matches — B-Roll skipped for this clip.
+[INFO] [WCE-FORMAT] format=monologue avg_faces=1.00 speakers=[0.5]
+[INFO] [WCE-VISUAL] monologue face_cache check: median_largest_face_h=368px threshold=108px frames=57
+[INFO] [WCE-VISUAL] mode=MONOLOGUE_ANCHOR_SINGLE x=0.482
+[INFO] [COLOR_GRADE] preset=premium vignette=True
+[INFO] [WCE-VISUAL] color_grade=premium vignette=True
+[INFO] [SMART_BROLL] transcript mode=RELATIVE | segs=15 | source_start=5427.1 | clip_dur=70.5
+[INFO] [SMART_BROLL] scored: t=29.40s word='podcast' cat=content_assets score=2.0
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'podcast' in content_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=content_assets word='podcast'
+[INFO] [WCE-CORTEX] Using Groq hook_type '' -> CTA: Follow for more creator breakdowns.
+[INFO] [WCE-DEBUG] .ass file written OK: C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\wce_work\wc_subs_async_66e6e4f93b2349dfbe05b12d2516cc0c.ass (60262 bytes)
+[INFO] [DOPAMINE] 🎬 Ending: 10.0s window | 8 fast cuts (1.2s each) | music=NO
+[INFO]   Cut 1: t=60.53s → db_luxury_house.mp4
+[INFO]   Cut 2: t=61.73s → IMG_1722.mp4
+[INFO]   Cut 3: t=62.93s → db_lxury.mp4
+[INFO]   Cut 4: t=64.13s → db_luxury_house.mp4
+[INFO]   Cut 5: t=65.33s → IMG_1722.mp4
+[INFO]   Cut 6: t=66.53s → DB_LUXURY_1.mp4
+[INFO]   Cut 7: t=67.73s → db_luxury_house.mp4
+[INFO]   Cut 8: t=68.93s → DB_LUXURY_1.mp4
+[INFO] [DOPAMINE] ✅ Ending injected: 8 video inputs + music=False
+[INFO] [WCE] Applied 1 light leak transitions to WCE pass
+[INFO] [WCE] Swoosh + Camera Click mixed for 1 transitions
+[INFO] [WCE] Output pads set up (no outro)
+[INFO] [WCE] NVDEC available: True
+[INFO] [WCE-VISUAL] export_quality crf=23 maxrate=8000k
+[INFO] [WCE] NVENC available: True
+[INFO] [WCE] encode=NVENC codec=h264_nvenc
+ffmpeg version N-125674-g9bc73ba344-20260719 Copyright (c) 2000-2026 the FFmpeg developers
+  built with gcc 15.2.0 (crosstool-NG 1.28.0.23_185f348)
+  configuration: --prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-w64-mingw32- --arch=x86_64 --target-os=mingw32 --enable-gpl --enable-version3 --disable-debug --disable-w32threads --enable-pthreads --enable-iconv --enable-zlib --enable-libxml2 --enable-libvmaf --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libvorbis --disable-libxcb --disable-xlib --disable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-libaribb24 --enable-avisynth --enable-chromaprint --enable-libdav1d --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librav1e --enable-librubberband --enable-schannel --enable-sdl2 --enable-libsnappy --enable-libsoxr --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --disable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --disable-whisper --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs=-lgomp --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-w64-mingw32-gcc --cxx=x86_64-w64-mingw32-g++ --ar=x86_64-w64-mingw32-gcc-ar --ranlib=x86_64-w64-mingw32-gcc-ranlib --nm=x86_64-w64-mingw32-gcc-nm --extra-version=20260719
+  libavutil      61.  5.100 / 61.  5.100
+  libavcodec     63.  6.101 / 63.  6.101
+  libavformat    63.  5.101 / 63.  5.101
+  libavdevice    63.  2.100 / 63.  2.100
+  libavfilter    12.  3.101 / 12.  3.101
+  libswscale     10.  2.100 / 10.  2.100
+  libswresample   7.  2.100 /  7.  2.100
+[Parsed_subtitles_6 @ 000001edad3d1700] libass API version: 0x1705000
+[Parsed_subtitles_6 @ 000001edad3d1700] libass source: meson, commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+[Parsed_subtitles_6 @ 000001edad3d1700] Shaper: FriBidi 1.0.16 (SIMPLE) HarfBuzz-ng 14.2.1 (COMPLEX)
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Black.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-BlackItalic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Bold.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-BoldItalic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ExtraBold.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ExtraBoldItalic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ExtraLight.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ExtraLightItalic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Italic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Light.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-LightItalic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Medium.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-MediumItalic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Regular.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-SemiBold.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-SemiBoldItalic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Thin.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ThinItalic.ttf'
+[Parsed_subtitles_6 @ 000001edad3d1700] Using font provider directwrite (with GDI)
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\clip_0_5427_5497.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf63.5.101
+  Duration: 00:01:10.53, start: 0.000000, bitrate: 5547 kb/s
+  Stream #0:0[0x1](und): Video: h264 (Constrained Baseline) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 5460 kb/s, 23.98 fps, 23.98 tbr, 24k tbn (default)
+    Metadata:
+      handler_name    : ISO Media file produced by Google Inc.
+      encoder         : Lavc63.6.101 libx264
+  Stream #0:1[0x2](eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 82 kb/s (default)
+    Metadata:
+      handler_name    : ISO Media file produced by Google Inc.
+Input #1, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\transitions\light_leak_1080x1920_v3.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2mp41
+    encoder         : Lavf61.7.100
+  Duration: 00:00:01.00, start: 0.000000, bitrate: 6185 kb/s
+  Stream #1:0[0x1](und): Video: mpeg4 (Simple Profile) (mp4v / 0x7634706D), yuv420p, 1080x1920 [SAR 1:1 DAR 9:16], 6176 kb/s, 30 fps, 30 tbr, 15360 tbn (default)
+    Metadata:
+      handler_name    : VideoHandler
+[aist#2:0/pcm_s16le @ 000001edaf525680] Guessed Channel Layout: mono
+Input #2, wav, from 'C:\Users\n\Documents\hotshort\assets\transitions\swoosh.wav':
+  Duration: 00:00:01.00, bitrate: 705 kb/s
+  Stream #2:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, mono, s16, 705 kb/s
+[aist#3:0/pcm_s16le @ 000001edaf525100] Guessed Channel Layout: mono
+Input #3, wav, from 'C:\Users\n\Documents\hotshort\assets\transitions\camera_click.wav':
+  Duration: 00:00:00.18, bitrate: 707 kb/s
+  Stream #3:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, mono, s16, 705 kb/s
+Input #4, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\Dopamine_assets\db_luxury_house.mp4':
+  Metadata:
+    major_brand     : mp42
+    minor_version   : 0
+    compatible_brands: mp42isom
+  Duration: 00:00:03.35, start: 0.000000, bitrate: 1708 kb/s
+  Stream #4:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709/bt709/smpte170m, progressive), 478x850, 1386 kb/s, 30.13 fps, 30 tbr, 90k tbn (default)
+  Stream #4:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 317 kb/s (default)
+[aist#5:1/pcm_s16le @ 000001edafaa1a40] Guessed Channel Layout: mono
+Input #5, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\Dopamine_assets\IMG_1722.mp4':
+  Metadata:
+    major_brand     : qt
+    minor_version   : 0
+    compatible_brands: qt
+    creation_time   : 2024-07-24T15:34:05.000000Z
+    com.apple.quicktime.location.accuracy.horizontal: 4.771754
+    com.apple.quicktime.location.ISO6709: +36.2252+029.3648+000.391/
+    com.apple.quicktime.make: Apple
+    com.apple.quicktime.model: iPhone 14 Pro Max
+    com.apple.quicktime.software: 17.6
+    com.apple.quicktime.creationdate: 2024-07-24T18:34:04+0300
+  Duration: 00:00:05.77, start: 0.000000, bitrate: 10535 kb/s
+  Stream group #5:0[0x3]: Track Reference:
+    Stream #5:0[0x1](und): Video: hevc (Main) (hvc1 / 0x31637668), yuvj420p(pc, smpte170m/smpte432/bt709), 1920x1440, 9710 kb/s, 30 fps, 30 tbr, 600 tbn (default)
+      Metadata:
+        creation_time   : 2024-07-24T15:34:05.000000Z
+        handler_name    : Core Media Video
+        vendor_id       : [0][0][0][0]
+        encoder         : HEVC
+      Side data:
+        Display Matrix: rotation of -90.00 degrees
+    Stream #5:2[0x3](und): Data: none (mebx / 0x7862656D), 0 kb/s (default)
+      Metadata:
+        creation_time   : 2024-07-24T15:34:05.000000Z
+        handler_name    : Core Media Metadata
+  Stream group #5:1[0x4]: Track Reference:
+    Stream #5:0[0x1](und): Video: hevc (Main) (hvc1 / 0x31637668), yuvj420p(pc, smpte170m/smpte432/bt709), 1920x1440, 9710 kb/s, 30 fps, 30 tbr, 600 tbn (default)
+      Metadata:
+        creation_time   : 2024-07-24T15:34:05.000000Z
+        handler_name    : Core Media Video
+        vendor_id       : [0][0][0][0]
+        encoder         : HEVC
+      Side data:
+        Display Matrix: rotation of -90.00 degrees
+    Stream #5:3[0x4](und): Data: none (mebx / 0x7862656D), 94 kb/s (default)
+      Metadata:
+        creation_time   : 2024-07-24T15:34:05.000000Z
+        handler_name    : Core Media Metadata
+  Stream #5:1[0x2](und): Audio: pcm_s16le (lpcm / 0x6D63706C), 44100 Hz, mono, s16, 705 kb/s (default)
+    Metadata:
+      creation_time   : 2024-07-24T15:34:05.000000Z
+      handler_name    : Core Media Audio
+      vendor_id       : [0][0][0][0]
+Input #6, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\Dopamine_assets\db_lxury.mp4':
+  Metadata:
+    major_brand     : mp42
+    minor_version   : 0
+    compatible_brands: mp42isom
+  Duration: 00:00:05.69, start: 0.000000, bitrate: 1686 kb/s
+  Stream #6:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709/bt709/smpte170m, progressive), 478x850, 1366 kb/s, 30.04 fps, 30 tbr, 90k tbn (default)
+  Stream #6:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 317 kb/s (default)
+Input #7, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\Dopamine_assets\db_luxury_house.mp4':
+  Metadata:
+    major_brand     : mp42
+    minor_version   : 0
+    compatible_brands: mp42isom
+  Duration: 00:00:03.35, start: 0.000000, bitrate: 1708 kb/s
+  Stream #7:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709/bt709/smpte170m, progressive), 478x850, 1386 kb/s, 30.13 fps, 30 tbr, 90k tbn (default)
+  Stream #7:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 317 kb/s (default)
+[aist#8:1/pcm_s16le @ 000001edafaa2a80] Guessed Channel Layout: mono
+Input #8, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\Dopamine_assets\IMG_1722.mp4':
+  Metadata:
+    major_brand     : qt
+    minor_version   : 0
+    compatible_brands: qt
+    creation_time   : 2024-07-24T15:34:05.000000Z
+    com.apple.quicktime.location.accuracy.horizontal: 4.771754
+    com.apple.quicktime.location.ISO6709: +36.2252+029.3648+000.391/
+    com.apple.quicktime.make: Apple
+    com.apple.quicktime.model: iPhone 14 Pro Max
+    com.apple.quicktime.software: 17.6
+    com.apple.quicktime.creationdate: 2024-07-24T18:34:04+0300
+  Duration: 00:00:05.77, start: 0.000000, bitrate: 10535 kb/s
+  Stream group #8:0[0x3]: Track Reference:
+    Stream #8:0[0x1](und): Video: hevc (Main) (hvc1 / 0x31637668), yuvj420p(pc, smpte170m/smpte432/bt709), 1920x1440, 9710 kb/s, 30 fps, 30 tbr, 600 tbn (default)
+      Metadata:
+        creation_time   : 2024-07-24T15:34:05.000000Z
+        handler_name    : Core Media Video
+        vendor_id       : [0][0][0][0]
+        encoder         : HEVC
+      Side data:
+        Display Matrix: rotation of -90.00 degrees
+    Stream #8:2[0x3](und): Data: none (mebx / 0x7862656D), 0 kb/s (default)
+      Metadata:
+        creation_time   : 2024-07-24T15:34:05.000000Z
+        handler_name    : Core Media Metadata
+  Stream group #8:1[0x4]: Track Reference:
+    Stream #8:0[0x1](und): Video: hevc (Main) (hvc1 / 0x31637668), yuvj420p(pc, smpte170m/smpte432/bt709), 1920x1440, 9710 kb/s, 30 fps, 30 tbr, 600 tbn (default)
+      Metadata:
+        creation_time   : 2024-07-24T15:34:05.000000Z
+        handler_name    : Core Media Video
+        vendor_id       : [0][0][0][0]
+        encoder         : HEVC
+      Side data:
+        Display Matrix: rotation of -90.00 degrees
+    Stream #8:3[0x4](und): Data: none (mebx / 0x7862656D), 94 kb/s (default)
+      Metadata:
+        creation_time   : 2024-07-24T15:34:05.000000Z
+        handler_name    : Core Media Metadata
+  Stream #8:1[0x2](und): Audio: pcm_s16le (lpcm / 0x6D63706C), 44100 Hz, mono, s16, 705 kb/s (default)
+    Metadata:
+      creation_time   : 2024-07-24T15:34:05.000000Z
+      handler_name    : Core Media Audio
+      vendor_id       : [0][0][0][0]
+Input #9, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\Dopamine_assets\DB_LUXURY_1.mp4':
+  Metadata:
+    major_brand     : qt
+    minor_version   : 0
+    compatible_brands: qt
+    creation_time   : 2024-07-25T02:19:59.000000Z
+    com.apple.quicktime.location.accuracy.horizontal: 4.742039
+    com.apple.quicktime.cinematic-video:
+    com.apple.quicktime.location.ISO6709: +36.2251+029.3756+003.930/
+    com.apple.quicktime.make: Apple
+    com.apple.quicktime.model: iPhone 15 Pro Max
+    com.apple.quicktime.software: 17.6
+    com.apple.quicktime.creationdate: 2024-07-24T19:58:46+0300
+  Duration: 00:00:11.34, start: 0.000000, bitrate: 20665 kb/s
+  Stream #9:0[0x1](und): Video: hevc (Main 10) (hvc1 / 0x31637668), yuv420p10le(tv, bt2020nc/bt2020/arib-std-b67), 3840x2160, 20468 kb/s, 30 fps, 30 tbr, 600 tbn (default)
+    Metadata:
+      creation_time   : 2024-07-25T02:19:59.000000Z
+      handler_name    : Core Media Video
+      vendor_id       : [0][0][0][0]
+      encoder         : HEVC
+    Side data:
+      DOVI configuration record: version: 1.0, profile: 8, level: 8, rpu flag: 1, el flag: 0, bl flag: 1, compatibility id: 4, compression: 0
+      Display Matrix: rotation of -90.00 degrees
+      Ambient viewing environment: ambient_illuminance=314.000000, ambient_light_x=0.312700, ambient_light_y=0.329000
+  Stream #9:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 188 kb/s (default)
+    Metadata:
+      creation_time   : 2024-07-25T02:19:59.000000Z
+      handler_name    : Core Media Audio
+      vendor_id       : [0][0][0][0]
+Input #10, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\Dopamine_assets\db_luxury_house.mp4':
+  Metadata:
+    major_brand     : mp42
+    minor_version   : 0
+    compatible_brands: mp42isom
+  Duration: 00:00:03.35, start: 0.000000, bitrate: 1708 kb/s
+  Stream #10:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709/bt709/smpte170m, progressive), 478x850, 1386 kb/s, 30.13 fps, 30 tbr, 90k tbn (default)
+  Stream #10:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 317 kb/s (default)
+Input #11, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\Documents\hotshort\assets\Dopamine_assets\DB_LUXURY_1.mp4':
+  Metadata:
+    major_brand     : qt
+    minor_version   : 0
+    compatible_brands: qt
+    creation_time   : 2024-07-25T02:19:59.000000Z
+    com.apple.quicktime.location.accuracy.horizontal: 4.742039
+    com.apple.quicktime.cinematic-video:
+    com.apple.quicktime.location.ISO6709: +36.2251+029.3756+003.930/
+    com.apple.quicktime.make: Apple
+    com.apple.quicktime.model: iPhone 15 Pro Max
+    com.apple.quicktime.software: 17.6
+    com.apple.quicktime.creationdate: 2024-07-24T19:58:46+0300
+  Duration: 00:00:11.34, start: 0.000000, bitrate: 20665 kb/s
+  Stream #11:0[0x1](und): Video: hevc (Main 10) (hvc1 / 0x31637668), yuv420p10le(tv, bt2020nc/bt2020/arib-std-b67), 3840x2160, 20468 kb/s, 30 fps, 30 tbr, 600 tbn (default)
+    Metadata:
+      creation_time   : 2024-07-25T02:19:59.000000Z
+      handler_name    : Core Media Video
+      vendor_id       : [0][0][0][0]
+      encoder         : HEVC
+    Side data:
+      DOVI configuration record: version: 1.0, profile: 8, level: 8, rpu flag: 1, el flag: 0, bl flag: 1, compatibility id: 4, compression: 0
+      Display Matrix: rotation of -90.00 degrees
+      Ambient viewing environment: ambient_illuminance=314.000000, ambient_light_x=0.312700, ambient_light_y=0.329000
+  Stream #11:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 188 kb/s (default)
+    Metadata:
+      creation_time   : 2024-07-25T02:19:59.000000Z
+      handler_name    : Core Media Audio
+      vendor_id       : [0][0][0][0]
+Stream mapping:
+  Stream #0:0 (h264) -> setpts:default
+  Stream #0:1 (aac) -> highpass:default
+  Stream #1:0 (mpeg4) -> scale:default
+  Stream #2:0 (pcm_s16le) -> volume:default
+  Stream #3:0 (pcm_s16le) -> volume:default
+  Stream #4:0 (h264) -> setpts:default
+  Stream #5:0 (hevc) -> setpts:default
+  Stream #6:0 (h264) -> setpts:default
+  Stream #7:0 (h264) -> setpts:default
+  Stream #8:0 (hevc) -> setpts:default
+  Stream #9:0 (hevc) -> setpts:default
+  Stream #10:0 (h264) -> setpts:default
+  Stream #11:0 (hevc) -> setpts:default
+  null:default -> Stream #0:0 (h264_nvenc)
+  anull:default -> Stream #0:1 (aac)
+[hevc @ 000001edbd5ea3c0] Multiple Dolby Vision RPUs found in one AU. Skipping previous.
+[hevc @ 000001edbd5e98c0] Multiple Dolby Vision RPUs found in one AU. Skipping previous.
+[hevc @ 000001edbd5ea780] Multiple Dolby Vision RPUs found in one AU. Skipping previous.
+[hevc @ 000001edbd7d56c0] Multiple Dolby Vision RPUs found in one AU. Skipping previous.
+[hevc @ 000001edbd7d5a80] Multiple Dolby Vision RPUs found in one AU. Skipping previous.
+[hevc @ 000001edbd7d6cc0] Multiple Dolby Vision RPUs found in one AU. Skipping previous.
+[Parsed_subtitles_6 @ 000001edbcc45780] libass API version: 0x1705000
+[Parsed_subtitles_6 @ 000001edbcc45780] libass source: meson, commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+[Parsed_subtitles_6 @ 000001edbcc45780] Shaper: FriBidi 1.0.16 (SIMPLE) HarfBuzz-ng 14.2.1 (COMPLEX)
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Black.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-BlackItalic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Bold.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-BoldItalic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ExtraBold.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ExtraBoldItalic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ExtraLight.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ExtraLightItalic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Italic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Light.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-LightItalic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Medium.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-MediumItalic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Regular.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-SemiBold.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-SemiBoldItalic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-Thin.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Loading font file 'C:/Users/n/Documents/hotshort/fonts\Montserrat-ThinItalic.ttf'
+[Parsed_subtitles_6 @ 000001edbcc45780] Using font provider directwrite (with GDI)
+[Parsed_subtitles_6 @ 000001edbcc45780] fontselect: (Impact, 400, 0) -> Impact, 0, Impact
+[swscaler @ 000001edf85b8ac0] deprecated pixel format used, make sure you did set range correctly
+[swscaler @ 000001edcbfa2cc0] deprecated pixel format used, make sure you did set range correctly
+[swscaler @ 000001edcc82e8c0] No accelerated colorspace conversion found from yuva420p to argb.
+[swscaler @ 000001edcc82e8c0] [swscaler @ 000001edd2f9eac0] No accelerated colorspace conversion found from yuva420p to argb.
+[swscaler @ 000001edcc82e8c0] [swscaler @ 000001edcc8163c0] No accelerated colorspace conversion found from yuva420p to argb.
+[swscaler @ 000001edcc82e8c0] [swscaler @ 000001eddc1ca140] No accelerated colorspace conversion found from yuva420p to argb.
+[swscaler @ 000001edcc82e8c0] [swscaler @ 000001eddc1d7200] No accelerated colorspace conversion found from yuva420p to argb.
+[swscaler @ 000001edcc82e8c0] [swscaler @ 000001edd2d0f540] No accelerated colorspace conversion found from yuva420p to argb.
+[swscaler @ 000001edcc82e8c0] [swscaler @ 000001eddb483d80] No accelerated colorspace conversion found from yuva420p to argb.
+[swscaler @ 000001edcc82e8c0] [swscaler @ 000001eddb496e40] No accelerated colorspace conversion found from yuva420p to argb.
+Output #0, mp4, to 'C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\edited_0_5427_5497.mp4':
+  Metadata:
+    encoder         : Lavf63.5.101
+  Stream #0:0: Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1080x1920 [SAR 1216:1215 DAR 76:135], q=2-31, 30 fps, 15360 tbn
+    Metadata:
+      encoder         : Lavc63.6.101 h264_nvenc
+    Side data:
+      CPB properties: bitrate max/min/avg: 8000000/0/0 buffer size: 0 vbv_delay: N/A
+  Stream #0:1: Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 128 kb/s
+    Metadata:
+      encoder         : Lavc63.6.101 aac
+[Parsed_subtitles_6 @ 000001edbcc45780] fontselect: (Rockwell, 700, 0) -> Rockwell-Bold, 0, Rockwell-Bold
+frame=    2 fps=0.6 q=19.0 size=       0KiB time=00:00:00.13 bitrate=   2.8kbits/s dup=1 drop=0 speed=0.045x elapsed=0:00:03.09
+frame=    7 fps=1.9 q=16.0 size=       0KiB time=00:00:00.34 bitrate=   1.1kbits/s dup=2 drop=0 speed=0.0967x elapsed=0:00:03.60
+frame=   12 fps=2.9 q=16.0 size=     256KiB time=00:00:00.44 bitrate=4754.4kbits/s dup=3 drop=0 speed=0.107x elapsed=0:00:04.11
+frame=   18 fps=3.9 q=18.0 size=     512KiB time=00:00:00.65 bitrate=6451.8kbits/s dup=4 drop=0 speed=0.14x elapsed=0:00:04.63
+frame=   22 fps=4.3 q=19.0 size=     512KiB time=00:00:00.83 bitrate=5018.1kbits/s dup=5 drop=0 speed=0.162x elapsed=0:00:05.15
+frame=   24 fps=4.2 q=19.0 size=     512KiB time=00:00:00.83 bitrate=5018.1kbits/s dup=5 drop=0 speed=0.147x elapsed=0:00:05.67
+frame=   28 fps=4.5 q=19.0 size=     768KiB time=00:00:00.95 bitrate=6609.0kbits/s dup=6 drop=0 speed=0.154x elapsed=0:00:06.18
+frame=   33 fps=4.9 q=21.0 size=     768KiB time=00:00:01.23 bitrate=5112.6kbits/s dup=7 drop=0 speed=0.184x elapsed=0:00:06.69
+frame=   38 fps=5.3 q=18.0 size=    1024KiB time=00:00:01.34 bitrate=6229.0kbits/s dup=8 drop=0 speed=0.187x elapsed=0:00:07.21
+frame=   47 fps=6.1 q=16.0 size=    1280KiB time=00:00:01.56 bitrate=6693.3kbits/s dup=10 drop=0 speed=0.203x elapsed=0:00:07.73
+frame=   66 fps=8.0 q=16.0 size=    1536KiB time=00:00:02.20 bitrate=5719.7kbits/s dup=14 drop=0 speed=0.267x elapsed=0:00:08.24
+frame=   83 fps=9.5 q=19.0 size=    2048KiB time=00:00:02.76 bitrate=6064.2kbits/s dup=17 drop=0 speed=0.316x elapsed=0:00:08.76
+frame=  101 fps= 11 q=22.0 size=    2560KiB time=00:00:03.36 bitrate=6229.3kbits/s dup=21 drop=0 speed=0.363x elapsed=0:00:09.27
+frame=  117 fps= 12 q=22.0 size=    3072KiB time=00:00:03.94 bitrate=6375.4kbits/s dup=24 drop=0 speed=0.403x elapsed=0:00:09.78
+frame=  136 fps= 13 q=18.0 size=    3584KiB time=00:00:04.55 bitrate=6451.3kbits/s dup=28 drop=0 speed=0.442x elapsed=0:00:10.30
+frame=  154 fps= 14 q=17.0 size=    4096KiB time=00:00:05.13 bitrate=6536.7kbits/s dup=31 drop=0 speed=0.474x elapsed=0:00:10.81
+frame=  172 fps= 15 q=20.0 size=    4864KiB time=00:00:05.73 bitrate=6947.5kbits/s dup=35 drop=0 speed=0.506x elapsed=0:00:11.34
+frame=  191 fps= 16 q=22.0 size=    5376KiB time=00:00:06.36 bitrate=6917.4kbits/s dup=39 drop=0 speed=0.537x elapsed=0:00:11.85
+frame=  211 fps= 17 q=17.0 size=    5888KiB time=00:00:07.03 bitrate=6858.0kbits/s dup=43 drop=0 speed=0.569x elapsed=0:00:12.37
+frame=  227 fps= 18 q=17.0 size=    6400KiB time=00:00:07.56 bitrate=6929.0kbits/s dup=46 drop=0 speed=0.587x elapsed=0:00:12.88
+frame=  247 fps= 18 q=16.0 size=    6912KiB time=00:00:08.33 bitrate=6792.7kbits/s dup=50 drop=0 speed=0.622x elapsed=0:00:13.40
+frame=  267 fps= 19 q=16.0 size=    7424KiB time=00:00:09.03 bitrate=6733.2kbits/s dup=54 drop=0 speed=0.649x elapsed=0:00:13.91
+frame=  287 fps= 20 q=16.0 size=    7680KiB time=00:00:09.63 bitrate=6529.0kbits/s dup=58 drop=0 speed=0.668x elapsed=0:00:14.43
+frame=  307 fps= 21 q=16.0 size=    7936KiB time=00:00:10.24 bitrate=6348.8kbits/s dup=62 drop=0 speed=0.685x elapsed=0:00:14.95
+frame=  325 fps= 21 q=16.0 size=    8448KiB time=00:00:10.84 bitrate=6382.2kbits/s dup=66 drop=0 speed=0.701x elapsed=0:00:15.46
+frame=  343 fps= 21 q=16.0 size=    8704KiB time=00:00:11.44 bitrate=6228.8kbits/s dup=69 drop=0 speed=0.717x elapsed=0:00:15.97
+frame=  361 fps= 22 q=16.0 size=    8960KiB time=00:00:12.05 bitrate=6090.8kbits/s dup=73 drop=0 speed=0.731x elapsed=0:00:16.48
+frame=  380 fps= 22 q=16.0 size=    9216KiB time=00:00:12.66 bitrate=5960.4kbits/s dup=77 drop=0 speed=0.745x elapsed=0:00:17.01
+frame=  397 fps= 23 q=16.0 size=    9216KiB time=00:00:13.23 bitrate=5704.2kbits/s dup=80 drop=0 speed=0.755x elapsed=0:00:17.53
+frame=  415 fps= 23 q=16.0 size=    9472KiB time=00:00:13.83 bitrate=5606.9kbits/s dup=84 drop=0 speed=0.767x elapsed=0:00:18.03
+frame=  433 fps= 23 q=16.0 size=    9728KiB time=00:00:14.44 bitrate=5517.8kbits/s dup=87 drop=0 speed=0.778x elapsed=0:00:18.55
+frame=  455 fps= 24 q=16.0 size=    9984KiB time=00:00:15.23 bitrate=5369.5kbits/s dup=92 drop=0 speed=0.799x elapsed=0:00:19.06
+frame=  475 fps= 24 q=16.0 size=    9984KiB time=00:00:15.95 bitrate=5127.2kbits/s dup=96 drop=0 speed=0.815x elapsed=0:00:19.58
+frame=  497 fps= 25 q=16.0 size=   10496KiB time=00:00:16.56 bitrate=5190.2kbits/s dup=100 drop=0 speed=0.824x elapsed=0:00:20.09
+frame=  517 fps= 25 q=16.0 size=   11008KiB time=00:00:17.34 bitrate=5199.0kbits/s dup=104 drop=0 speed=0.841x elapsed=0:00:20.62
+frame=  536 fps= 25 q=16.0 size=   11264KiB time=00:00:17.94 bitrate=5141.0kbits/s dup=108 drop=0 speed=0.849x elapsed=0:00:21.14
+frame=  556 fps= 26 q=16.0 size=   11776KiB time=00:00:18.64 bitrate=5173.8kbits/s dup=112 drop=0 speed=0.861x elapsed=0:00:21.65
+frame=  579 fps= 26 q=18.0 size=   12288KiB time=00:00:19.30 bitrate=5215.7kbits/s dup=117 drop=0 speed=0.871x elapsed=0:00:22.16
+frame=  600 fps= 26 q=16.0 size=   12800KiB time=00:00:20.03 bitrate=5232.7kbits/s dup=121 drop=0 speed=0.883x elapsed=0:00:22.68
+frame=  619 fps= 27 q=16.0 size=   13056KiB time=00:00:20.73 bitrate=5158.1kbits/s dup=125 drop=0 speed=0.894x elapsed=0:00:23.19
+frame=  639 fps= 27 q=16.0 size=   13312KiB time=00:00:21.33 bitrate=5110.4kbits/s dup=129 drop=0 speed= 0.9x elapsed=0:00:23.71
+frame=  659 fps= 27 q=16.0 size=   13568KiB time=00:00:21.96 bitrate=5059.9kbits/s dup=133 drop=0 speed=0.907x elapsed=0:00:24.22
+frame=  679 fps= 27 q=16.0 size=   14080KiB time=00:00:22.73 bitrate=5074.0kbits/s dup=137 drop=0 speed=0.919x elapsed=0:00:24.73
+frame=  699 fps= 28 q=16.0 size=   14592KiB time=00:00:23.45 bitrate=5097.1kbits/s dup=141 drop=0 speed=0.929x elapsed=0:00:25.25
+frame=  721 fps= 28 q=16.0 size=   15104KiB time=00:00:24.03 bitrate=5148.4kbits/s dup=145 drop=0 speed=0.932x elapsed=0:00:25.77
+frame=  741 fps= 28 q=16.0 size=   15360KiB time=00:00:24.84 bitrate=5064.5kbits/s dup=149 drop=0 speed=0.945x elapsed=0:00:26.29
+frame=  763 fps= 28 q=16.0 size=   16128KiB time=00:00:25.54 bitrate=5172.7kbits/s dup=154 drop=0 speed=0.953x elapsed=0:00:26.80
+frame=  784 fps= 29 q=16.0 size=   16640KiB time=00:00:26.14 bitrate=5213.7kbits/s dup=158 drop=0 speed=0.957x elapsed=0:00:27.32
+frame=  805 fps= 29 q=16.0 size=   17152KiB time=00:00:26.93 bitrate=5216.6kbits/s dup=162 drop=0 speed=0.967x elapsed=0:00:27.84
+frame=  826 fps= 29 q=16.0 size=   17664KiB time=00:00:27.63 bitrate=5236.9kbits/s dup=167 drop=0 speed=0.974x elapsed=0:00:28.35
+frame=  849 fps= 29 q=16.0 size=   17920KiB time=00:00:28.30 bitrate=5187.3kbits/s dup=171 drop=0 speed=0.98x elapsed=0:00:28.86
+frame=  870 fps= 30 q=16.0 size=   18176KiB time=00:00:29.04 bitrate=5125.9kbits/s dup=175 drop=0 speed=0.989x elapsed=0:00:29.38
+frame=  891 fps= 30 q=22.0 size=   18944KiB time=00:00:29.74 bitrate=5217.4kbits/s dup=179 drop=0 speed=0.995x elapsed=0:00:29.89
+frame=  913 fps= 30 q=21.0 size=   19712KiB time=00:00:30.53 bitrate=5288.5kbits/s dup=184 drop=0 speed=   1x elapsed=0:00:30.41
+frame=  930 fps= 30 q=21.0 size=   20224KiB time=00:00:31.00 bitrate=5344.4kbits/s dup=187 drop=0 speed=   1x elapsed=0:00:30.92
+frame=  949 fps= 30 q=21.0 size=   20992KiB time=00:00:31.74 bitrate=5417.7kbits/s dup=191 drop=0 speed=1.01x elapsed=0:00:31.44
+frame=  970 fps= 30 q=20.0 size=   21504KiB time=00:00:32.41 bitrate=5434.5kbits/s dup=195 drop=0 speed=1.01x elapsed=0:00:31.96
+frame=  990 fps= 30 q=18.0 size=   22016KiB time=00:00:33.04 bitrate=5458.4kbits/s dup=199 drop=0 speed=1.02x elapsed=0:00:32.48
+frame= 1012 fps= 31 q=17.0 size=   22784KiB time=00:00:33.83 bitrate=5517.0kbits/s dup=204 drop=0 speed=1.03x elapsed=0:00:33.00
+frame= 1033 fps= 31 q=16.0 size=   23296KiB time=00:00:34.55 bitrate=5523.4kbits/s dup=208 drop=0 speed=1.03x elapsed=0:00:33.53
+frame= 1055 fps= 31 q=18.0 size=   23808KiB time=00:00:35.16 bitrate=5546.0kbits/s dup=212 drop=0 speed=1.03x elapsed=0:00:34.04
+frame= 1077 fps= 31 q=17.0 size=   24320KiB time=00:00:35.94 bitrate=5542.7kbits/s dup=217 drop=0 speed=1.04x elapsed=0:00:34.56
+frame= 1095 fps= 31 q=18.0 size=   24832KiB time=00:00:36.54 bitrate=5565.9kbits/s dup=220 drop=0 speed=1.04x elapsed=0:00:35.06
+frame= 1110 fps= 31 q=18.0 size=   25344KiB time=00:00:37.15 bitrate=5588.4kbits/s dup=223 drop=0 speed=1.04x elapsed=0:00:35.58
+frame= 1130 fps= 31 q=16.0 size=   25856KiB time=00:00:37.73 bitrate=5613.5kbits/s dup=227 drop=0 speed=1.04x elapsed=0:00:36.11
+frame= 1147 fps= 31 q=18.0 size=   26368KiB time=00:00:38.24 bitrate=5648.2kbits/s dup=231 drop=0 speed=1.04x elapsed=0:00:36.62
+frame= 1165 fps= 31 q=17.0 size=   26880KiB time=00:00:38.93 bitrate=5654.9kbits/s dup=234 drop=0 speed=1.05x elapsed=0:00:37.16
+frame= 1183 fps= 31 q=16.0 size=   27392KiB time=00:00:39.54 bitrate=5674.6kbits/s dup=238 drop=0 speed=1.05x elapsed=0:00:37.69
+frame= 1204 fps= 32 q=16.0 size=   27648KiB time=00:00:40.24 bitrate=5628.5kbits/s dup=242 drop=0 speed=1.05x elapsed=0:00:38.20
+frame= 1224 fps= 32 q=16.0 size=   27904KiB time=00:00:40.84 bitrate=5596.7kbits/s dup=246 drop=0 speed=1.05x elapsed=0:00:38.72
+frame= 1245 fps= 32 q=16.0 size=   28160KiB time=00:00:41.63 bitrate=5540.9kbits/s dup=250 drop=0 speed=1.06x elapsed=0:00:39.24
+frame= 1267 fps= 32 q=16.0 size=   28672KiB time=00:00:42.35 bitrate=5545.8kbits/s dup=255 drop=0 speed=1.07x elapsed=0:00:39.76
+frame= 1289 fps= 32 q=16.0 size=   29184KiB time=00:00:42.96 bitrate=5564.2kbits/s dup=259 drop=0 speed=1.07x elapsed=0:00:40.28
+frame= 1312 fps= 32 q=16.0 size=   29696KiB time=00:00:43.83 bitrate=5549.1kbits/s dup=264 drop=0 speed=1.07x elapsed=0:00:40.79
+frame= 1328 fps= 32 q=16.0 size=   29952KiB time=00:00:44.35 bitrate=5532.5kbits/s dup=267 drop=0 speed=1.07x elapsed=0:00:41.30
+frame= 1348 fps= 32 q=16.0 size=   30464KiB time=00:00:45.04 bitrate=5540.1kbits/s dup=271 drop=0 speed=1.08x elapsed=0:00:41.82
+frame= 1369 fps= 32 q=16.0 size=   30720KiB time=00:00:45.65 bitrate=5512.7kbits/s dup=275 drop=0 speed=1.08x elapsed=0:00:42.33
+frame= 1389 fps= 32 q=16.0 size=   31232KiB time=00:00:46.43 bitrate=5509.3kbits/s dup=279 drop=0 speed=1.08x elapsed=0:00:42.85
+frame= 1411 fps= 33 q=16.0 size=   31744KiB time=00:00:47.13 bitrate=5516.9kbits/s dup=284 drop=0 speed=1.09x elapsed=0:00:43.36
+frame= 1432 fps= 33 q=16.0 size=   32000KiB time=00:00:47.74 bitrate=5491.1kbits/s dup=288 drop=0 speed=1.09x elapsed=0:00:43.88
+frame= 1452 fps= 33 q=16.0 size=   32512KiB time=00:00:48.40 bitrate=5502.9kbits/s dup=292 drop=0 speed=1.09x elapsed=0:00:44.39
+frame= 1472 fps= 33 q=16.0 size=   32768KiB time=00:00:49.13 bitrate=5463.4kbits/s dup=296 drop=0 speed=1.09x elapsed=0:00:44.91
+frame= 1491 fps= 33 q=16.0 size=   33280KiB time=00:00:49.78 bitrate=5476.3kbits/s dup=300 drop=0 speed= 1.1x elapsed=0:00:45.43
+frame= 1512 fps= 33 q=16.0 size=   33792KiB time=00:00:50.43 bitrate=5488.9kbits/s dup=304 drop=0 speed= 1.1x elapsed=0:00:45.94
+frame= 1531 fps= 33 q=16.0 size=   34048KiB time=00:00:51.03 bitrate=5465.0kbits/s dup=308 drop=0 speed= 1.1x elapsed=0:00:46.46
+frame= 1552 fps= 33 q=16.0 size=   34560KiB time=00:00:51.85 bitrate=5460.3kbits/s dup=312 drop=0 speed= 1.1x elapsed=0:00:46.97
+frame= 1573 fps= 33 q=16.0 size=   34816KiB time=00:00:52.54 bitrate=5427.8kbits/s dup=316 drop=0 speed=1.11x elapsed=0:00:47.48
+frame= 1593 fps= 33 q=16.0 size=   35328KiB time=00:00:53.15 bitrate=5445.1kbits/s dup=320 drop=0 speed=1.11x elapsed=0:00:48.00
+frame= 1617 fps= 33 q=16.0 size=   35584KiB time=00:00:54.00 bitrate=5397.3kbits/s dup=325 drop=0 speed=1.11x elapsed=0:00:48.53
+frame= 1640 fps= 33 q=17.0 size=   35840KiB time=00:00:54.66 bitrate=5370.8kbits/s dup=330 drop=0 speed=1.11x elapsed=0:00:49.05
+frame= 1661 fps= 34 q=16.0 size=   36608KiB time=00:00:55.44 bitrate=5408.4kbits/s dup=334 drop=0 speed=1.12x elapsed=0:00:49.57
+frame= 1681 fps= 34 q=16.0 size=   36864KiB time=00:00:56.14 bitrate=5378.7kbits/s dup=338 drop=0 speed=1.12x elapsed=0:00:50.09
+frame= 1702 fps= 34 q=16.0 size=   37376KiB time=00:00:56.74 bitrate=5395.4kbits/s dup=342 drop=0 speed=1.12x elapsed=0:00:50.62
+frame= 1722 fps= 34 q=16.0 size=   37632KiB time=00:00:57.44 bitrate=5366.4kbits/s dup=346 drop=0 speed=1.12x elapsed=0:00:51.13
+frame= 1742 fps= 34 q=16.0 size=   38144KiB time=00:00:58.14 bitrate=5374.3kbits/s dup=350 drop=0 speed=1.13x elapsed=0:00:51.65
+frame= 1759 fps= 34 q=16.0 size=   38656KiB time=00:00:58.74 bitrate=5390.5kbits/s dup=354 drop=0 speed=1.13x elapsed=0:00:52.16
+frame= 1781 fps= 34 q=16.0 size=   39168KiB time=00:00:59.44 bitrate=5397.8kbits/s dup=358 drop=0 speed=1.13x elapsed=0:00:52.68
+frame= 1802 fps= 34 q=16.0 size=   39680KiB time=00:01:00.06 bitrate=5411.6kbits/s dup=362 drop=0 speed=1.13x elapsed=0:00:53.19
+frame= 1821 fps= 34 q=16.0 size=   40192KiB time=00:01:00.83 bitrate=5412.1kbits/s dup=366 drop=0 speed=1.13x elapsed=0:00:53.70
+frame= 1843 fps= 34 q=17.0 size=   40704KiB time=00:01:01.53 bitrate=5419.0kbits/s dup=371 drop=0 speed=1.13x elapsed=0:00:54.22
+frame= 1865 fps= 34 q=16.0 size=   41216KiB time=00:01:02.16 bitrate=5431.2kbits/s dup=375 drop=0 speed=1.14x elapsed=0:00:54.74
+frame= 1885 fps= 34 q=16.0 size=   41728KiB time=00:01:02.94 bitrate=5430.3kbits/s dup=379 drop=0 speed=1.14x elapsed=0:00:55.26
+frame= 1907 fps= 34 q=16.0 size=   42240KiB time=00:01:03.64 bitrate=5436.8kbits/s dup=383 drop=0 speed=1.14x elapsed=0:00:55.78
+frame= 1930 fps= 34 q=16.0 size=   42752KiB time=00:01:04.43 bitrate=5435.3kbits/s dup=388 drop=0 speed=1.14x elapsed=0:00:56.28
+frame= 1951 fps= 34 q=16.0 size=   43008KiB time=00:01:05.13 bitrate=5409.4kbits/s dup=392 drop=0 speed=1.15x elapsed=0:00:56.80
+frame= 1972 fps= 34 q=16.0 size=   43520KiB time=00:01:05.85 bitrate=5413.9kbits/s dup=396 drop=0 speed=1.15x elapsed=0:00:57.31
+frame= 1994 fps= 34 q=16.0 size=   43776KiB time=00:01:06.54 bitrate=5388.8kbits/s dup=401 drop=0 speed=1.15x elapsed=0:00:57.83
+frame= 2016 fps= 35 q=16.0 size=   44288KiB time=00:01:07.24 bitrate=5395.3kbits/s dup=405 drop=0 speed=1.15x elapsed=0:00:58.35
+frame= 2033 fps= 35 q=17.0 size=   44800KiB time=00:01:10.44 bitrate=5209.4kbits/s dup=409 drop=0 speed= 1.2x elapsed=0:00:58.86
+frame= 2055 fps= 35 q=17.0 size=   45568KiB time=00:01:10.44 bitrate=5298.7kbits/s dup=413 drop=0 speed=1.19x elapsed=0:00:59.38
+frame= 2079 fps= 35 q=16.0 size=   46080KiB time=00:01:10.44 bitrate=5358.3kbits/s dup=418 drop=0 speed=1.18x elapsed=0:00:59.89
+frame= 2102 fps= 35 q=18.0 size=   46592KiB time=00:01:10.44 bitrate=5417.8kbits/s dup=423 drop=0 speed=1.17x elapsed=0:01:00.42
+[out#0/mp4 @ 000001edaf372740] video:46462KiB audio:721KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 0.126545%
+frame= 2116 fps= 35 q=17.0 Lsize=   47243KiB time=00:01:10.53 bitrate=5487.0kbits/s dup=425 drop=0 speed=1.16x elapsed=0:01:00.74
+[aac @ 000001edaf47d300] Qavg: 5.824  Tr: 14.3%  TNS(L): 14.0%  TNS(S): 20.5%  M/S: 99.1%  I/S: 0.5%  PNS: 0.0%
+[INFO] [WCE_PARALLEL] clip=edited_0_5427_5497.mp4 cpu_done=3.6s gpu_done=61.1s
+[BENCH] stage=6b_wce_clip0                    wall=   64.7s
+🔥 Starting Silence Killer...
+[INFO] [SILENCE_KILLER] Processing: C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\edited_0_5427_5497.mp4
+🔍 Analyzing audio for silent gaps...
+✂️ Cutting 15 speaking chunks and concatenating...
+[INFO] [SILENCE_KILLER] Kept 15 chunks.
+
+
+
+
+(und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], q=2-31, 23.98 fps, 24k tbn (default)
+    Metadata:
+      encoder         : Lavc63.6.101 h264_nvenc
+      handler_name    : ISO Media file produced by Google Inc.
+    Side data:
+      CPB properties: bitrate max/min/avg: 8000000/0/0 buffer size: 0 vbv_delay: N/A
+  Stream #0:1(eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 128 kb/s (default)
+    Metadata:
+      encoder         : Lavc63.6.101 aac
+      handler_name    : ISO Media file produced by Google Inc.
+frame=  134 fps=0.0 q=16.0 size=    3328KiB time=00:00:05.71 bitrate=4772.9kbits/s speed=11.2x elapsed=0:00:00.51
+frame=  296 fps=287 q=16.0 size=    6144KiB time=00:00:12.56 bitrate=4006.7kbits/s speed=12.2x elapsed=0:00:01.03
+frame=  445 fps=288 q=16.0 size=    8704KiB time=00:00:18.80 bitrate=3791.1kbits/s speed=12.2x elapsed=0:00:01.54
+frame=  602 fps=293 q=16.0 size=   11264KiB time=00:00:25.30 bitrate=3645.8kbits/s speed=12.3x elapsed=0:00:02.05
+frame=  761 fps=296 q=16.0 size=   13824KiB time=00:00:31.97 bitrate=3541.8kbits/s speed=12.4x elapsed=0:00:02.57
+[out#0/mp4 @ 00000264e8936b00] video:14935KiB audio:362KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 0.140688%
+frame=  852 fps=299 q=16.0 Lsize=   15318KiB time=00:00:35.57 bitrate=3527.1kbits/s speed=12.5x elapsed=0:00:02.85
+[aac @ 00000264f9026300] Qavg: 0.927  Tr: 11.5%  TNS(L): 17.1%  TNS(S): 15.4%  M/S: 99.3%  I/S: 0.6%  PNS: 0.0%
+[INFO] [WCE_TIMELINE] materialized trim 0.000-35.500; director/render timeline reset to 0-35.500
+[INFO] [SMART_BROLL] transcript mode=RELATIVE | segs=15 | source_start=5840.5 | clip_dur=35.5
+[INFO] [SMART_BROLL] scored: t=11.78s word='million' cat=money_assets score=2.0
+[INFO] [SMART_BROLL] scored: t=15.90s word='million' cat=money_assets score=2.0
+[INFO] [SMART_BROLL] scored: t=20.96s word='billion' cat=money_assets score=2.0
+[INFO] [SMART_BROLL] scored: t=30.42s word='earning' cat=money_assets score=2.0
+[INFO] [SMART_BROLL] ✓ Cut @ t=11.78s | word='million' | category=money_assets | asset=money_succes.mp4
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'billion' in money_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=money_assets word='billion'
+[INFO] [SMART_BROLL] ✓ Cut @ t=30.42s | word='earning' | category=money_assets | asset=money.mp4
+[INFO] [WCE-BROLL] 🎬 Smart Local B-Roll: 2 cuts | total_dur=5.0s | first_cut=11.78s
+[INFO] [WCE-FORMAT] format=monologue avg_faces=1.00 speakers=[0.5]
+[WARNING] [WCE-FORMAT-OVERRIDE] FaceCache forced podcast: dual_rate=1.00 frames=29/29 speakers=[0.197, 0.683]
+[WARNING] [WCE-FORMAT-ROUTE] analyzer=monologue -> podcast live-director via dual-face hint
+[INFO] [INIT] last_mode seeded=ACTIVE_CENTER (podcast: 2 speakers, skipping median-bias seed to avoid ghost-slot SOLO_RIGHT lock)
+[INFO] [INIT] solo_x seeded=0.440 px=845
+[INFO] [WCE_PERF] director_frame_stride=1 (1=every frame, 3=every 3rd)
+[INFO] [WCE-LIVE] live_detection=ON interval=8 frames (~0.33s at 24.0fps)
+[INFO] [VAD_RMS] clip=wc_cut_6432322450c74b3caeff0bdc5fc56909.mp4 audio_frames=1182 speech_pct=92.9% rms_max=0.1131
+[INFO] [VAD_RMS] rms_gate populated: 852 frames
+[INFO] [DEBUG_VIZ] Session started → ./debug_out\wc_cut_6432322450c74b3caeff0bdc5fc56909
+[INFO] [WCE_PERF] director_frame_stride=1 (1=every frame, 3=every 3rd)
+[INFO] [FACE_DETECT] frame0 detector=InsightFace faces=1
+[INFO] [WCE-LIVE] t=0.00s live_faces=1
+[INFO] [FACE_DEBUG] t=0.00s raw=1 frame_shape=(1080,1920,3) gray_mean=23.8 filters=['OK']
+[INFO] [FACE_FILTER] OK  h=159px aspect=0.84 cy=538 cx=312  face=(245,458,133,159)
+[INFO] [FACE_DEBUG] t=0.00s valid=1 / raw=1 smoothed_h=159
+[INFO] [SLOT_DEBUG] t=0.00s left=YES right=NONE valid_total=1 podcast_fmt=True
+[INFO] [SLOT_ASSIGN] t=0.00s left_face=True right_face=False (tracked=False, live_haar_hits=1)
+[INFO] [GHOST_SUPPLEMENT] t=0.00s ghost_RIGHT started at x=1312px (expiry in 150 frames)
+[INFO] [GAP_CHECK] t=0.00s face_gap=0.49 min_required=0.38 split_eligible=True
+[INFO] [TALKING] t=0.00s L_ema=0.0 R_ema=0.0 L_talk=False R_talk=False thresh=80.0
+[INFO] [DIR] t=0.00s  mode=ACTIVE_CENTER  gap=0.49(>0.38)  L=False R=False  ema_l=0.0 ema_r=0.0
+[INFO] [CAPCUT_TRACKER] LEFT State=SPRING_PAN Dist=-109px Vel=-0.03 CamX=479
+[INFO] [CAPCUT_TRACKER] RIGHT State=SPRING_PAN Dist=-128px Vel=-0.12 CamX=1439
+[INFO] [DIRECTOR_MODE] t=0.00s mode=ACTIVE_CENTER active_slot=left L_x=479 R_x=1439 solo_x=845
+[INFO] [GHOST_EXPIRY] t=0.04s RIGHT ghost CORROBORATED by real detection at frame 1 — podcast confirmed
+[INFO] [SCENE_CUT] t=0.63s grad_diff=113.3 > 22.0 → HARD CUT detected (gradient-magnitude) — wiping trackers + resetting EMA
+[INFO] [GHOST_EXPIRY] t=0.71s RIGHT ghost CORROBORATED by real detection at frame 17 — podcast confirmed
+[INFO] [FACE_DEBUG] t=1.04s raw=2 frame_shape=(1080,1920,3) gray_mean=46.1 filters=['OK', 'OK']
+[INFO] [FACE_FILTER] OK  h=165px aspect=0.79 cy=516 cx=326  face=(261,434,131,165)
+[INFO] [FACE_FILTER] OK  h=163px aspect=0.73 cy=504 cx=1364  face=(1304,422,119,163)
+[INFO] [FACE_DEBUG] t=1.04s valid=2 / raw=2 smoothed_h=182
+[INFO] [SLOT_ASSIGN] t=1.04s left_face=True right_face=True (tracked=False, live_haar_hits=2)
+[INFO] [GHOST_EXPIRY] t=1.04s RIGHT ghost CORROBORATED by real detection at frame 25 — podcast confirmed
+[INFO] [GAP_CHECK] t=1.04s face_gap=0.49 min_required=0.38 split_eligible=True
+[INFO] [MOUTH] L t=1.04s  roi=(261,552,392,599) diff=0.00  nz=0  ema_after=1642.4  thresh=80.0
+[INFO] [MOUTH] R t=1.04s  roi=(1304,539,1423,585) diff=3.50  nz=0  ema_after=94.2  thresh=80.0
+[INFO] [DIR] t=1.04s  mode=ACTIVE_CENTER  gap=0.49(>0.38)  L=True R=True  ema_l=1642.4 ema_r=94.2
+[INFO] [GHOST_EXPIRY] t=1.38s RIGHT ghost CORROBORATED by real detection at frame 33 — podcast confirmed
+[INFO] [GHOST_EXPIRY] t=1.71s RIGHT ghost CORROBORATED by real detection at frame 41 — podcast confirmed
+[PIPELINE] Clip failed: 11 -> module 'cv2' has no attribute 'TrackerCSRT_create'
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\effects\face_tracker.py", line 22, in init
+    # Try all known OpenCV tracker APIs in order (location changed across versions)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'cv2.legacy' has no attribute 'TrackerCSRT_create'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\local_worker.py", line 1970, in run_editor
+    edit_result = editor_instance.enhance_pretrimmed_clip(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\effects\world_class_editor.py", line 4435, in enhance_pretrimmed_clip
+    focus_x = self._get_crop_expression(video_fmt, transcript_window, cfg, work_b, face_cache=precomputed_face_cache)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\effects\world_class_editor.py", line 2435, in _get_crop_expression
+    solo_face_tracker.init(
+  File "C:\Users\n\Documents\hotshort\effects\face_tracker.py", line 24, in init
+    lambda: cv2.legacy.TrackerCSRT_create(),   # OpenCV 4.5+ contrib
+                   ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'cv2' has no attribute 'TrackerCSRT_create'
+
+[PIPELINE] Clip queued: 17
+[BENCH] stage=6a_extract_clip12               wall=    6.9s
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=21 words=286 missing_words_in_segs=0 for clip 2935.58-3005.12
+[INFO] [WCE-FORENSIC] Loaded 286 transcript words for 2935.58-3005.12.
+[INFO] [SMART_END] ← BACKWARD to last complete sentence: ' that I'm in, which is pretty cool to see as well.' at t=50.240s
+[INFO] [SMART_END] silence found at t=50.240s (rms=0.0004 thresh=0.0126 after last_word=50.240s)
+[INFO] [WCE-VISUAL] export_quality crf=23 maxrate=8000k
+[INFO] [WCE] encode=NVENC codec=h264_nvenc
+ffmpeg version N-125674-g9bc73ba344-20260719 Copyright (c) 2000-2026 the FFmpeg developers
+  built with gcc 15.2.0 (crosstool-NG 1.28.0.23_185f348)
+  configuration: --prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-w64-mingw32- --arch=x86_64 --target-os=mingw32 --enable-gpl --enable-version3 --disable-debug --disable-w32threads --enable-pthreads --enable-iconv --enable-zlib --enable-libxml2 --enable-libvmaf --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libvorbis --disable-libxcb --disable-xlib --disable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-libaribb24 --enable-avisynth --enable-chromaprint --enable-libdav1d --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librav1e --enable-librubberband --enable-schannel --enable-sdl2 --enable-libsnappy --enable-libsoxr --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --disable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --disable-whisper --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs=-lgomp --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-w64-mingw32-gcc --cxx=x86_64-w64-mingw32-g++ --ar=x86_64-w64-mingw32-gcc-ar --ranlib=x86_64-w64-mingw32-gcc-ranlib --nm=x86_64-w64-mingw32-gcc-nm --extra-version=20260719
+  libavutil      61.  5.100 / 61.  5.100
+  libavcodec     63.  6.101 / 63.  6.101
+  libavformat    63.  5.101 / 63.  5.101
+  libavdevice    63.  2.100 / 63.  2.100
+  libavfilter    12.  3.101 / 12.  3.101
+  libswscale     10.  2.100 / 10.  2.100
+  libswresample   7.  2.100 /  7.  2.100
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\clip_12_2935_3005.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf63.5.101
+  Duration: 00:01:09.57, start: 0.000000, bitrate: 5917 kb/s
+  Stream #0:0[0x1](und): Video: h264 (Constrained Baseline) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 5831 kb/s, 23.98 fps, 23.98 tbr, 24k tbn (default)
+    Metadata:
+      handler_name    : ISO Media file produced by Google Inc.
+      encoder         : Lavc63.6.101 libx264
+  Stream #0:1[0x2](eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 81 kb/s (default)
+    Metadata:
+      handler_name    : ISO Media file produced by Google Inc.
+Stream mapping:
+  Stream #0:0 -> #0:0 (h264 (native) -> h264 (h264_nvenc))
+  Stream #0:1 -> #0:1 (aac (native) -> aac (native))
+Output #0, mp4, to 'C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\wce_work\wc_cut_4c39b065ba064a06a411cc97a17eb115.mp4':
+  Metadata:
+    encoder         : Lavf63.5.101
+  Stream #0:0(und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], q=2-31, 23.98 fps, 24k tbn (default)
+    Metadata:
+      encoder         : Lavc63.6.101 h264_nvenc
+      handler_name    : ISO Media file produced by Google Inc.
+    Side data:
+      CPB properties: bitrate max/min/avg: 8000000/0/0 buffer size: 0 vbv_delay: N/A
+  Stream #0:1(eng): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 128 kb/s (default)
+    Metadata:
+      encoder         : Lavc63.6.101 aac
+      handler_name    : ISO Media file produced by Google Inc.
+frame=  138 fps=0.0 q=16.0 size=    1792KiB time=00:00:05.96 bitrate=2460.1kbits/s speed=11.4x elapsed=0:00:00.52
+frame=  300 fps=289 q=16.0 size=    4352KiB time=00:00:12.67 bitrate=2812.1kbits/s speed=12.2x elapsed=0:00:01.03
+frame=  453 fps=292 q=16.0 size=    6400KiB time=00:00:18.97 bitrate=2763.7kbits/s speed=12.2x elapsed=0:00:01.55
+frame=  608 fps=294 q=16.0 size=    8960KiB time=00:00:25.49 bitrate=2879.0kbits/s speed=12.3x elapsed=0:00:02.06
+frame=  770 fps=298 q=16.0 size=   11264KiB time=00:00:32.20 bitrate=2865.1kbits/s speed=12.5x elapsed=0:00:02.58
+frame=  926 fps=299 q=16.0 size=   13056KiB time=00:00:38.82 bitrate=2754.9kbits/s speed=12.5x elapsed=0:00:03.09
+frame= 1093 fps=303 q=16.0 size=   15104KiB time=00:00:45.72 bitrate=2706.3kbits/s speed=12.7x elapsed=0:00:03.61
+[out#0/mp4 @ 000001cf02c74d80] video:16451KiB audio:516KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 0.175670%
+frame= 1205 fps=304 q=16.0 Lsize=   16997KiB time=00:00:50.25 bitrate=2770.4kbits/s speed=12.7x elapsed=0:00:03.96
+[aac @ 000001cf1323ff40] Qavg: 0.767  Tr: 17.9%  TNS(L): 18.5%  TNS(S): 21.3%  M/S: 99.4%  I/S: 0.4%  PNS: 0.0%
+[INFO] [WCE_TIMELINE] materialized trim 0.000-50.240; director/render timeline reset to 0-50.240
+[INFO] [SMART_BROLL] transcript mode=RELATIVE | segs=21 | source_start=2935.6 | clip_dur=50.2
+[INFO] [SMART_BROLL] scored: t=9.24s word='subscriber' cat=content_assets score=2.0
+[INFO] [SMART_BROLL] scored: t=15.08s word='podcast' cat=content_assets score=2.0
+[INFO] [SMART_BROLL] scored: t=18.26s word='car' cat=luxury score=1.5
+[INFO] [SMART_BROLL] scored: t=23.00s word='ai' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=29.62s word='watch' cat=luxury score=1.5
+[INFO] [SMART_BROLL] scored: t=42.34s word='subscriber' cat=content_assets score=2.0
+[INFO] [SMART_BROLL] ✓ Cut @ t=9.24s | word='subscriber' | category=content_assets | asset=content_growth.mp4
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'podcast' in content_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=content_assets word='podcast'
+[INFO] [SMART_BROLL] ✓ Cut @ t=42.34s | word='subscriber' | category=content_assets | asset=content_growth.mp4
+[INFO] [SMART_BROLL] ✓ Cut @ t=18.26s | word='car' | category=luxury | asset=bmw.mp4
+[INFO] [WCE-BROLL] 🎬 Smart Local B-Roll: 3 cuts | total_dur=7.5s | first_cut=9.24s
+[INFO] [WCE-FORMAT] format=monologue avg_faces=1.00 speakers=[0.5]
+[WARNING] [WCE-FORMAT-OVERRIDE] FaceCache forced podcast: dual_rate=0.77 frames=43/56 speakers=[0.188, 0.671]
+[WARNING] [WCE-FORMAT-ROUTE] analyzer=monologue -> podcast live-director via dual-face hint
+[INFO] [INIT] last_mode seeded=ACTIVE_CENTER (podcast: 2 speakers, skipping median-bias seed to avoid ghost-slot SOLO_RIGHT lock)
+[INFO] [INIT] solo_x seeded=0.430 px=825
+[INFO] [WCE_PERF] director_frame_stride=1 (1=every frame, 3=every 3rd)
+[INFO] [WCE-LIVE] live_detection=ON interval=8 frames (~0.33s at 24.0fps)
+[INFO] [VAD_RMS] clip=wc_cut_4c39b065ba064a06a411cc97a17eb115.mp4 audio_frames=1674 speech_pct=95.1% rms_max=0.0955
+[INFO] [VAD_RMS] rms_gate populated: 1205 frames
+[INFO] [DEBUG_VIZ] Session started → ./debug_out\wc_cut_4c39b065ba064a06a411cc97a17eb115
+[INFO] [WCE_PERF] director_frame_stride=1 (1=every frame, 3=every 3rd)
+[INFO] [FACE_DETECT] frame0 detector=InsightFace faces=2
+[INFO] [WCE-LIVE] t=0.00s live_faces=2
+[INFO] [FACE_DEBUG] t=0.00s raw=2 frame_shape=(1080,1920,3) gray_mean=25.3 filters=['OK', 'OK']
+[INFO] [FACE_FILTER] OK  h=146px aspect=0.75 cy=537 cx=1280  face=(1225,464,110,146)
+[INFO] [FACE_FILTER] OK  h=158px aspect=0.78 cy=525 cx=332  face=(270,446,123,158)
+[INFO] [FACE_DEBUG] t=0.00s valid=2 / raw=2 smoothed_h=147
+[INFO] [SLOT_DEBUG] t=0.00s left=YES right=YES valid_total=2 podcast_fmt=True
+[INFO] [SLOT_ASSIGN] t=0.00s left_face=True right_face=True (tracked=False, live_haar_hits=2)
+[INFO] [GAP_CHECK] t=0.00s face_gap=0.45 min_required=0.38 split_eligible=True
+[INFO] [TALKING] t=0.00s L_ema=0.0 R_ema=0.0 L_talk=False R_talk=False thresh=80.0
+[INFO] [DIR] t=0.00s  mode=ACTIVE_CENTER  gap=0.45(>0.38)  L=False R=False  ema_l=0.0 ema_r=0.0
+[INFO] [CAPCUT_TRACKER] LEFT State=TRIPOD_LOCK Dist=-93px Vel=0.00 CamX=480
+[INFO] [CAPCUT_TRACKER] RIGHT State=SPRING_PAN Dist=-189px Vel=-0.61 CamX=1439
+[INFO] [DIRECTOR_MODE] t=0.00s mode=ACTIVE_CENTER active_slot=left L_x=480 R_x=1439 solo_x=825
+[INFO] [FACE_DEBUG] t=1.04s raw=2 frame_shape=(1080,1920,3) gray_mean=25.3 filters=['OK', 'OK']
+[INFO] [FACE_FILTER] OK  h=157px aspect=0.83 cy=512 cx=314  face=(249,433,130,157)
+[INFO] [FACE_FILTER] OK  h=91px aspect=1.01 cy=492 cx=1313  face=(1267,447,92,91)
+[INFO] [FACE_DEBUG] t=1.04s valid=2 / raw=2 smoothed_h=128
+[INFO] [SLOT_ASSIGN] t=1.04s left_face=True right_face=True (tracked=False, live_haar_hits=2)
+[INFO] [GAP_CHECK] t=1.04s face_gap=0.48 min_required=0.38 split_eligible=True
+[INFO] [MOUTH] L t=1.04s  roi=(249,546,379,590) diff=12.87  nz=1787  ema_after=865.2  thresh=80.0
+[INFO] [MOUTH] R t=1.04s  roi=(1267,512,1359,538) diff=5.18  nz=208  ema_after=140.7  thresh=80.0
+[INFO] [DIR] t=1.04s  mode=SPLIT         gap=0.48(>0.38)  L=True R=True  ema_l=865.2 ema_r=140.7
+[INFO] [FACE_DEBUG] t=2.09s raw=2 frame_shape=(1080,1920,3) gray_mean=25.4 filters=['OK', 'OK']
+[INFO] [FACE_FILTER] OK  h=157px aspect=0.83 cy=512 cx=314  face=(249,433,130,157)
+[INFO] [FACE_FILTER] OK  h=91px aspect=1.01 cy=492 cx=1313  face=(1267,447,92,91)
+[INFO] [FACE_DEBUG] t=2.09s valid=2 / raw=2 smoothed_h=127
+[INFO] [SLOT_ASSIGN] t=2.09s left_face=True right_face=True (tracked=False, live_haar_hits=2)
+[INFO] [GAP_CHECK] t=2.09s face_gap=0.48 min_required=0.38 split_eligible=True
+[INFO] [MOUTH] L t=2.09s  roi=(249,546,379,590) diff=1.92  nz=93  ema_after=368.2  thresh=80.0
+[INFO] [MOUTH] R t=2.09s  roi=(1267,512,1359,538) diff=1.78  nz=27  ema_after=68.7  thresh=80.0
+[INFO] [DIR] t=2.09s  mode=SPLIT         gap=0.48(>0.38)  L=True R=False  ema_l=368.2 ema_r=68.7
+[INFO] [CAPCUT_TRACKER] LEFT State=SPRING_PAN Dist=-108px Vel=-0.10 CamX=468
+[INFO] [CAPCUT_TRACKER] RIGHT State=SPRING_PAN Dist=-99px Vel=-0.48 CamX=1388
+[PIPELINE] Clip failed: 12 -> module 'cv2' has no attribute 'TrackerCSRT_create'
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\effects\face_tracker.py", line 22, in init
+    # Try all known OpenCV tracker APIs in order (location changed across versions)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'cv2.legacy' has no attribute 'TrackerCSRT_create'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\local_worker.py", line 1970, in run_editor
+    edit_result = editor_instance.enhance_pretrimmed_clip(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\effects\world_class_editor.py", line 4435, in enhance_pretrimmed_clip
+    focus_x = self._get_crop_expression(video_fmt, transcript_window, cfg, work_b, face_cache=precomputed_face_cache)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\effects\world_class_editor.py", line 2435, in _get_crop_expression
+    solo_face_tracker.init(
+  File "C:\Users\n\Documents\hotshort\effects\face_tracker.py", line 24, in init
+    lambda: cv2.legacy.TrackerCSRT_create(),   # OpenCV 4.5+ contrib
+                   ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'cv2' has no attribute 'TrackerCSRT_create'
+
+[BENCH] stage=6a_extract_clip13               wall=    9.4s
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=36 words=354 missing_words_in_segs=0 for clip 1220.82-1317.74
+[INFO] [WCE-FORENSIC] Loaded 354 transcript words for 1220.82-1317.74.
+[INFO] [SMART_END] ← BACKWARD to last complete sentence: 'they'll get a bonus.' at t=96.920s
+[INFO] [SMART_END] ffmpeg audio extract failed, using fallback
+[INFO] [CAPTION_SNAP] end=96.93 -> snapped=96.92 (word: ' month,')
+[INFO] [SMART_BROLL] transcript mode=RELATIVE | segs=36 | source_start=1220.8 | clip_dur=96.9
+[INFO] [SMART_BROLL] scored: t=22.30s word='cost' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=25.00s word='cost' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=27.44s word='king' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=56.44s word='ai' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=59.82s word='ai' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=72.64s word='tiktok' cat=content_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=75.96s word='click' cat=content_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=81.04s word='click' cat=content_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=84.22s word='king' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=90.62s word='bonus' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=93.72s word='million' cat=money_assets score=2.0
+[INFO] [SMART_BROLL] ✓ Cut @ t=93.72s | word='million' | category=money_assets | asset=money_succes.mp4
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'cost' in money_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=money_assets word='cost'
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'cost' in money_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=money_assets word='cost'
+[INFO] [SMART_BROLL] ✓ Cut @ t=27.44s | word='king' | category=money_assets | asset=king.mp4
+[INFO] [SMART_BROLL] ✓ Cut @ t=56.44s | word='ai' | category=money_assets | asset=payout.mp4
+[INFO] [WCE-BROLL] 🎬 Smart Local B-Roll: 3 cuts | total_dur=7.5s | first_cut=27.44s
+[INFO] [WCE-FORMAT] format=monologue avg_faces=1.00 speakers=[0.5]
+[WARNING] [WCE-FORMAT-OVERRIDE] FaceCache forced podcast: dual_rate=1.00 frames=78/78 speakers=[0.181, 0.671]
+[WARNING] [WCE-FORMAT-ROUTE] analyzer=monologue -> podcast live-director via dual-face hint
+[INFO] [INIT] last_mode seeded=ACTIVE_CENTER (podcast: 2 speakers, skipping median-bias seed to avoid ghost-slot SOLO_RIGHT lock)
+[INFO] [INIT] solo_x seeded=0.426 px=818
+[INFO] [WCE_PERF] director_frame_stride=1 (1=every frame, 3=every 3rd)
+[INFO] [WCE-LIVE] live_detection=ON interval=8 frames (~0.33s at 24.0fps)
+[INFO] [VAD_RMS] clip=clip_13_1220_1317.mp4 audio_frames=3230 speech_pct=93.3% rms_max=0.0908
+[INFO] [VAD_RMS] rms_gate populated: 2324 frames
+[INFO] [DEBUG_VIZ] Session started → ./debug_out\clip_13_1220_1317
+[INFO] [WCE_PERF] director_frame_stride=1 (1=every frame, 3=every 3rd)
+[INFO] [FACE_DETECT] frame0 detector=InsightFace faces=1
+[INFO] [WCE-LIVE] t=0.00s live_faces=1
+[INFO] [FACE_DEBUG] t=0.00s raw=1 frame_shape=(1080,1920,3) gray_mean=42.1 filters=['OK']
+[INFO] [FACE_FILTER] OK  h=358px aspect=0.72 cy=359 cx=783  face=(655,180,256,358)
+[INFO] [FACE_DEBUG] t=0.00s valid=1 / raw=1 smoothed_h=358
+[INFO] [SLOT_DEBUG] t=0.00s left=YES right=NONE valid_total=1 podcast_fmt=True
+[INFO] [SLOT_ASSIGN] t=0.00s left_face=True right_face=False (tracked=False, live_haar_hits=1)
+[INFO] [GHOST_SUPPLEMENT] t=0.00s ghost_RIGHT started at x=1288px (expiry in 150 frames)
+[INFO] [GAP_CHECK] t=0.00s face_gap=0.30 min_required=0.38 split_eligible=False
+[INFO] [TALKING] t=0.00s L_ema=0.0 R_ema=0.0 L_talk=False R_talk=False thresh=80.0
+[INFO] [DIR] t=0.00s  mode=ACTIVE_CENTER  gap=0.30(>0.38)  L=False R=False  ema_l=0.0 ema_r=0.0
+[INFO] [CAPCUT_TRACKER] LEFT State=SPRING_PAN Dist=225px Vel=1.00 CamX=480
+[INFO] [CAPCUT_TRACKER] RIGHT State=SPRING_PAN Dist=-152px Vel=-0.28 CamX=1439
+[INFO] [DIRECTOR_MODE] t=0.00s mode=ACTIVE_CENTER active_slot=left L_x=480 R_x=1439 solo_x=817
+[INFO] [GHOST_EXPIRY] t=0.04s RIGHT ghost CORROBORATED by real detection at frame 1 — podcast confirmed
+[INFO] [GHOST_EXPIRY] t=0.38s RIGHT ghost CORROBORATED by real detection at frame 9 — podcast confirmed
+[INFO] [GHOST_EXPIRY] t=0.71s RIGHT ghost CORROBORATED by real detection at frame 17 — podcast confirmed
+[INFO] [FACE_DEBUG] t=1.04s raw=2 frame_shape=(1080,1920,3) gray_mean=42.0 filters=['OK', 'OK']
+[INFO] [FACE_FILTER] OK  h=141px aspect=0.72 cy=526 cx=1288  face=(1237,455,102,141)
+[INFO] [FACE_FILTER] OK  h=169px aspect=0.73 cy=520 cx=347  face=(285,435,124,169)
+[INFO] [FACE_DEBUG] t=1.04s valid=2 / raw=2 smoothed_h=179
+[INFO] [SLOT_ASSIGN] t=1.04s left_face=True right_face=True (tracked=False, live_haar_hits=2)
+[INFO] [GHOST_EXPIRY] t=1.04s RIGHT ghost CORROBORATED by real detection at frame 25 — podcast confirmed
+[INFO] [GAP_CHECK] t=1.04s face_gap=0.49 min_required=0.38 split_eligible=True
+[INFO] [MOUTH] L t=1.04s  roi=(285,556,409,604) diff=0.01  nz=0  ema_after=298.9  thresh=80.0
+[INFO] [MOUTH] R t=1.04s  roi=(1237,556,1339,596) diff=0.12  nz=0  ema_after=0.0  thresh=80.0
+[INFO] [DIR] t=1.04s  mode=ACTIVE_CENTER  gap=0.49(>0.38)  L=True R=False  ema_l=298.9 ema_r=0.0
+[INFO] [GHOST_EXPIRY] t=1.38s RIGHT ghost CORROBORATED by real detection at frame 33 — podcast confirmed
+[INFO] [GHOST_EXPIRY] t=1.71s RIGHT ghost CORROBORATED by real detection at frame 41 — podcast confirmed
+[PIPELINE] Clip failed: 13 -> module 'cv2' has no attribute 'TrackerCSRT_create'
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\effects\face_tracker.py", line 22, in init
+    # Try all known OpenCV tracker APIs in order (location changed across versions)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'cv2.legacy' has no attribute 'TrackerCSRT_create'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\local_worker.py", line 1970, in run_editor
+    edit_result = editor_instance.enhance_pretrimmed_clip(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\effects\world_class_editor.py", line 4435, in enhance_pretrimmed_clip
+    focus_x = self._get_crop_expression(video_fmt, transcript_window, cfg, work_b, face_cache=precomputed_face_cache)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\n\Documents\hotshort\effects\world_class_editor.py", line 2435, in _get_crop_expression
+    solo_face_tracker.init(
+  File "C:\Users\n\Documents\hotshort\effects\face_tracker.py", line 24, in init
+    lambda: cv2.legacy.TrackerCSRT_create(),   # OpenCV 4.5+ contrib
+                   ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'cv2' has no attribute 'TrackerCSRT_create'
+
+[BENCH] stage=6a_extract_clip14               wall=    9.2s
+[INFO] [WCE-SYNC-FORENSIC] _window_transcript: segments=30 words=350 missing_words_in_segs=0 for clip 1114.56-1201.50
+[INFO] [WCE-FORENSIC] Loaded 350 transcript words for 1114.56-1201.5.
+[INFO] [SMART_END] ← BACKWARD to last complete sentence: 'Be an affiliate or make sure for them.' at t=86.940s
+[INFO] [SMART_END] ffmpeg audio extract failed, using fallback
+[INFO] [CAPTION_SNAP] end=86.96 -> snapped=86.94 (word: ' Be')
+[INFO] [SMART_BROLL] transcript mode=RELATIVE | segs=30 | source_start=1114.6 | clip_dur=87.0
+[INFO] [SMART_BROLL] scored: t=4.30s word='video' cat=content_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=12.18s word='money' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=16.90s word='money' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=19.80s word='ai' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=21.20s word='tiktok' cat=content_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=25.18s word='short' cat=content_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=40.50s word='ai' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=56.76s word='focus' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=62.46s word='creator' cat=content_assets score=2.0
+[INFO] [SMART_BROLL] scored: t=67.74s word='creator' cat=content_assets score=2.0
+[INFO] [SMART_BROLL] scored: t=72.90s word='system' cat=money_assets score=1.5
+[INFO] [SMART_BROLL] scored: t=80.74s word='video' cat=content_assets score=1.5
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'creator' in content_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=content_assets word='creator'
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'creator' in content_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=content_assets word='creator'
+[INFO] [SMART_BROLL] No precise B-Roll found for word 'video' in content_assets. Skipping to avoid irrelevant b-roll.
+[WARNING] [SMART_BROLL] No asset found for category=content_assets word='video'
+[INFO] [SMART_BROLL] ✓ Cut @ t=12.18s | word='money' | category=money_assets | asset=money.mp4
+[INFO] [SMART_BROLL] ✓ Cut @ t=16.90s | word='money' | category=money_assets | asset=money.mp4
+[INFO] [SMART_BROLL] ✓ Cut @ t=25.18s | word='short' | category=content_assets | asset=million of clips.mp4
+[INFO] [WCE-BROLL] 🎬 Smart Local B-Roll: 3 cuts | total_dur=7.5s | first_cut=12.18s
+[INFO] [WCE-FORMAT] format=monologue avg_faces=1.00 speakers=[0.5]
+[INFO] [WCE-VISUAL] monologue face_cache check: median_largest_face_h=359px threshold=108px frames=70
+[INFO] [WCE-VISUAL] mode=MONOLOGUE_ANCHOR_SINGLE x=0.452
+[INFO] [COLOR_GRADE] preset=premium vignette=True
+[INFO] [WCE-VISUAL] color_grade=premium vignette=True
+[INFO] [WCE-CORTEX] Using Groq hook_type '' -> CTA: Follow for more creator breakdowns.
+[INFO] [WCE-DEBUG] .ass file written OK: C:\Users\n\AppData\Local\Temp\tmpmbdhfkj5\wce_work\wc_subs_async_be07e520b7624e53bfa0ecaf3536545c.ass (91404 bytes)
+[INFO]
+
+🎬 [SMART BROLL FILT
+
+
+

@@ -1,92 +1,343 @@
 {
-  "wall_time_s": 119.783,
-  "total_frames_cached": 537,
-  "avg_faces_per_frame": 1.827,
-  "real_face_slots": 981,
+  "wall_time_s": 230.427,
+  "total_frames_cached": 1054,
+  "avg_faces_per_frame": 1.525,
+  "real_face_slots": 1607,
   "synthetic_face_slots": 0,
   "frames_with_0_faces": 0,
-  "frames_with_1_face": 148,
-  "frames_with_2plus_faces": 389,
+  "frames_with_1_face": 556,
+  "frames_with_2plus_faces": 498,
   "clips": [
     {
-      "clip": "0.0-68.3s",
-      "format": "podcast",
-      "frames_cached": 55,
-      "frames_with_2plus_faces": 55,
-      "pct_dual": "100%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "3240.2-3310.3s",
+      "clip": "1221-1290s",
+      "dur_s": 68.75999999999999,
       "format": "monologue",
-      "frames_cached": 56,
-      "frames_with_2plus_faces": 0,
-      "pct_dual": "0%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "1442.0-1509.8s",
-      "format": "monologue",
-      "frames_cached": 55,
-      "frames_with_2plus_faces": 55,
-      "pct_dual": "100%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "428.7-496.9s",
-      "format": "podcast",
-      "frames_cached": 55,
-      "frames_with_2plus_faces": 55,
-      "pct_dual": "100%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "1486.3-1555.3s",
-      "format": "podcast",
-      "frames_cached": 56,
-      "frames_with_2plus_faces": 56,
-      "pct_dual": "100%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "300.4-369.8s",
-      "format": "podcast",
-      "frames_cached": 56,
-      "frames_with_2plus_faces": 56,
-      "pct_dual": "100%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "471.2-540.1s",
-      "format": "podcast",
-      "frames_cached": 56,
-      "frames_with_2plus_faces": 56,
-      "pct_dual": "100%",
-      "synthetic_face_slots": 0
-    },
-    {
-      "clip": "3321.2-3390.0s",
-      "format": "monologue",
+      "override": "",
       "frames_cached": 55,
       "frames_with_2plus_faces": 0,
       "pct_dual": "0%",
-      "synthetic_face_slots": 0
+      "solo_s": 68.8,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.4390625
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
     },
     {
-      "clip": "82.6-128.2s",
+      "clip": "0-68s",
+      "dur_s": 68.34,
+      "format": "podcast",
+      "override": "",
+      "frames_cached": 55,
+      "frames_with_2plus_faces": 55,
+      "pct_dual": "100%",
+      "solo_s": 0.0,
+      "dual_s": 68.3,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.393,
+        0.749
+      ],
+      "bar": "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
+      "spk_str": "  L=0.39 R=0.75 gap=0.36\u2717"
+    },
+    {
+      "clip": "120-200s",
+      "dur_s": 79.51999999999998,
+      "format": "podcast",
+      "override": "",
+      "frames_cached": 64,
+      "frames_with_2plus_faces": 64,
+      "pct_dual": "100%",
+      "solo_s": 0.0,
+      "dual_s": 79.5,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.329,
+        0.717
+      ],
+      "bar": "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
+      "spk_str": "  L=0.33 R=0.72 gap=0.39\u2713"
+    },
+    {
+      "clip": "448-552s",
+      "dur_s": 104.68,
+      "format": "podcast",
+      "override": "",
+      "frames_cached": 84,
+      "frames_with_2plus_faces": 84,
+      "pct_dual": "100%",
+      "solo_s": 0.0,
+      "dual_s": 104.7,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.372,
+        0.685
+      ],
+      "bar": "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
+      "spk_str": "  L=0.37 R=0.69 gap=0.31\u2717"
+    },
+    {
+      "clip": "2965-3035s",
+      "dur_s": 69.51000000000022,
       "format": "monologue",
-      "frames_cached": 37,
+      "override": "",
+      "frames_cached": 56,
       "frames_with_2plus_faces": 0,
       "pct_dual": "0%",
-      "synthetic_face_slots": 0
+      "solo_s": 69.5,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.41484375
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
     },
     {
-      "clip": "1196.9-1265.9s",
+      "clip": "3857-3926s",
+      "dur_s": 68.67000000000007,
+      "format": "monologue",
+      "override": "",
+      "frames_cached": 55,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "solo_s": 68.7,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.45416666666666666
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
+    },
+    {
+      "clip": "1380-1437s",
+      "dur_s": 57.27999999999997,
+      "format": "monologue",
+      "override": "",
+      "frames_cached": 46,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "solo_s": 57.3,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.4080729166666667
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
+    },
+    {
+      "clip": "5840-5908s",
+      "dur_s": 67.5,
       "format": "podcast",
-      "frames_cached": 56,
-      "frames_with_2plus_faces": 56,
+      "override": "",
+      "frames_cached": 29,
+      "frames_with_2plus_faces": 29,
       "pct_dual": "100%",
-      "synthetic_face_slots": 0
+      "solo_s": 0.0,
+      "dual_s": 67.5,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.242,
+        0.701
+      ],
+      "bar": "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
+      "spk_str": "  L=0.24 R=0.70 gap=0.46\u2713"
+    },
+    {
+      "clip": "3972-4041s",
+      "dur_s": 68.73999999999978,
+      "format": "monologue",
+      "override": "",
+      "frames_cached": 55,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "solo_s": 68.7,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.4549479166666667
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
+    },
+    {
+      "clip": "5157-5225s",
+      "dur_s": 67.53999999999996,
+      "format": "monologue",
+      "override": "",
+      "frames_cached": 54,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "solo_s": 67.5,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.453125
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
+    },
+    {
+      "clip": "2312-2379s",
+      "dur_s": 67.5,
+      "format": "monologue",
+      "override": "",
+      "frames_cached": 54,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "solo_s": 67.5,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.4505208333333333
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
+    },
+    {
+      "clip": "2459-2554s",
+      "dur_s": 94.44000000000005,
+      "format": "monologue",
+      "override": "",
+      "frames_cached": 76,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "solo_s": 94.4,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.42890625
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
+    },
+    {
+      "clip": "4587-4658s",
+      "dur_s": 71.27000000000044,
+      "format": "podcast",
+      "override": "",
+      "frames_cached": 57,
+      "frames_with_2plus_faces": 57,
+      "pct_dual": "100%",
+      "solo_s": 0.0,
+      "dual_s": 71.3,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.37,
+        0.674
+      ],
+      "bar": "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
+      "spk_str": "  L=0.37 R=0.67 gap=0.30\u2717"
+    },
+    {
+      "clip": "2118-2218s",
+      "dur_s": 99.56999999999971,
+      "format": "podcast",
+      "override": "",
+      "frames_cached": 80,
+      "frames_with_2plus_faces": 80,
+      "pct_dual": "100%",
+      "solo_s": 0.0,
+      "dual_s": 99.6,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.386,
+        0.658
+      ],
+      "bar": "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
+      "spk_str": "  L=0.39 R=0.66 gap=0.27\u2717"
+    },
+    {
+      "clip": "722-807s",
+      "dur_s": 84.32000000000005,
+      "format": "podcast",
+      "override": "",
+      "frames_cached": 68,
+      "frames_with_2plus_faces": 68,
+      "pct_dual": "100%",
+      "solo_s": 0.0,
+      "dual_s": 84.3,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.317,
+        0.677
+      ],
+      "bar": "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
+      "spk_str": "  L=0.32 R=0.68 gap=0.36\u2717"
+    },
+    {
+      "clip": "3446-3516s",
+      "dur_s": 69.53999999999996,
+      "format": "monologue",
+      "override": "",
+      "frames_cached": 56,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "solo_s": 69.5,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.4427083333333333
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
+    },
+    {
+      "clip": "1434-1510s",
+      "dur_s": 76.04999999999995,
+      "format": "monologue",
+      "override": " \u26a0",
+      "frames_cached": 61,
+      "frames_with_2plus_faces": 61,
+      "pct_dual": "100%",
+      "solo_s": 0.0,
+      "dual_s": 76.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.42109375000000004
+      ],
+      "bar": "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
+      "spk_str": ""
+    },
+    {
+      "clip": "4547-4611s",
+      "dur_s": 64.13999999999942,
+      "format": "monologue",
+      "override": "",
+      "frames_cached": 52,
+      "frames_with_2plus_faces": 0,
+      "pct_dual": "0%",
+      "solo_s": 64.1,
+      "dual_s": 0.0,
+      "gap_s": 0.0,
+      "synthetic_face_slots": 0,
+      "speakers": [
+        0.44296875
+      ],
+      "bar": "\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592",
+      "spk_str": ""
     }
   ],
   "cache_sample": [
