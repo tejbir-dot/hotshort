@@ -171,9 +171,20 @@ async def run_youtube_uploader(video_path: str, caption: str):
             print("      ⚠️  No cookies found. Will rely on saved profile session.")
 
         try:
-            # ── 4. GO STRAIGHT TO YOUTUBE STUDIO ─────────
-            print("[4/6] 🎬  Going straight to YouTube Studio...")
-            await page.goto("https://studio.youtube.com/", timeout=90000, wait_until="domcontentloaded")
+            # ── 4. STEPPING STONE: Prime the proxy via Google ──
+            print("[4/6] 🧘  Warming up proxy tunnel via Google...")
+            try:
+                await page.goto("https://www.google.com", timeout=45000, wait_until="domcontentloaded")
+                await asyncio.sleep(random.uniform(2.0, 3.5))
+                print("      ✅  Proxy tunnel ALIVE! Google loaded.")
+            except Exception as warm_err:
+                print(f"      ⚠️  Google warmup slow/failed: {warm_err}")
+                print("      ⚠️  Proxy IP dead hogi — Ctrl+C maar aur dobara run kar (naya IP milega)")
+                raise Exception(f"Proxy tunnel failed on Google warmup: {warm_err}")
+
+            # ── 5. ENTER YOUTUBE STUDIO ───────────────────────
+            print("[5/6] 🎬  Entering YouTube Studio...")
+            await page.goto("https://studio.youtube.com/", timeout=120000, wait_until="domcontentloaded")
 
             # 🔍 LOGIN CHECK — agar redirect hua toh cookies expired hain
             await asyncio.sleep(3.0)
