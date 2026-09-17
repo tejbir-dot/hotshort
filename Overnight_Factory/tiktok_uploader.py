@@ -5,23 +5,24 @@ import psutil
 import re
 
 def get_dolphin_ws_endpoint():
-    print("🔍 Scanning OS for Dolphin Anty's hidden port...")
-    for p in psutil.process_iter(['name', 'cmdline']):
+    print("🔍 Scanning OS for ANY hidden debugging port...")
+    for p in psutil.process_iter(['cmdline']): # Naam ki condition hata di
         try:
             cmd_args = p.info.get('cmdline') or []
-            cmd = " ".join(cmd_args)
-            name = (p.info.get('name') or '').lower()
+            # List ko string banaya taaki dhoondhne mein aasaani ho
+            cmd = " ".join([str(arg) for arg in cmd_args if arg is not None])
             
-            if 'chrome' in name and '--remote-debugging-port=' in cmd:
+            # Agar cmd mein remote debugging port hai (chahe process ka naam kuch bhi ho)
+            if '--remote-debugging-port=' in cmd:
                 match = re.search(r'--remote-debugging-port=(\d+)', cmd)
                 if match:
                     port = match.group(1)
-                    print(f"🎯 TARGET ACQUIRED! Dolphin running on Port: {port}")
+                    print(f"🎯 TARGET ACQUIRED! Hidden Browser running on Port: {port}")
                     return f"http://127.0.0.1:{port}"
         except Exception:
-            pass
+            pass # Access denied wale processes ko ignore karo
             
-    raise Exception("❌ Dolphin Anty profile running nahi hai! Pehle app mein START click kar.")
+    raise Exception("❌ Koi browser running nahi hai! Pehle Dolphin mein START click kar.")
 
 # 1. Human-Like Typing Effect
 async def human_type(page, selector, text):
