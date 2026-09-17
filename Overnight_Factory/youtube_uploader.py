@@ -284,7 +284,12 @@ async def run_youtube_uploader(video_path: str, caption: str):
             print("      ⏳  Waiting for YouTube to confirm publish (15s)...")
             await asyncio.sleep(15.0)
 
-            await safe_click(page, '#close-button', timeout=5000)
+            # Close post-publish dialog (force click — button ho sakta hai hidden)
+            try:
+                await page.locator('#close-button').first.evaluate("el => el.click()")
+            except:
+                pass  # Dialog already closed ya nahi tha — no problem
+
 
             print("\n" + "="*52)
             print("  ✅  BINGO! YOUTUBE SHORT UPLOADED SUCCESSFULLY!")
