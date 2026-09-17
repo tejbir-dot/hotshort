@@ -156,7 +156,7 @@ async def run_ghost_factory(video_path, caption):
             # 🚨 CTO NOTE: Ab hum browser close nahi kar rahe, DISCONNECT kar rahe hain.
             # Taki Dolphin profile zinda rahe agle upload ke liye!
             await page.close()
-            await browser.disconnect()
+            await browser.close()
             print("🚪 Script Detached. Dolphin profile still running safely.")
 
 # Sync Wrapper for Manager.py

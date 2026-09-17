@@ -150,7 +150,7 @@ async def run_youtube_uploader(video_path, caption):
         finally:
             # 🚨 DISCONNECTING (Not Closing) taaki Dolphin profile safe rahe
             await page.close()
-            await browser.disconnect()
+            await browser.close()
             print("🚪 YouTube Script Detached. Dolphin profile still running safely.")
 
 # Sync Wrapper for Manager.py

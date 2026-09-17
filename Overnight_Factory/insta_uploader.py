@@ -130,7 +130,7 @@ async def run_insta_uploader(video_path, caption):
         
         # 🚨 DISCONNECTING (Not Closing) taaki Dolphin profile safe rahe
         await page.close()
-        await browser.disconnect()
+        await browser.close()
         print("🚪 IG Script Detached. Dolphin profile still running safely.")
 
 # Sync wrapper for Manager.py
