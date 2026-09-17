@@ -167,6 +167,7 @@ async def run_insta_uploader(video_path: str, caption: str):
         else:
             print("      ⚠️  No cookies. Will rely on saved profile session.")
 
+        try:
             # ── 4. GO TO INSTAGRAM & TRIGGER UPLOAD ──────
             print("[4/6] 🎬  Loading Instagram for upload...")
             await page.goto("https://www.instagram.com/", timeout=90000, wait_until="commit")
@@ -199,7 +200,17 @@ async def run_insta_uploader(video_path: str, caption: str):
             await asyncio.sleep(random.uniform(6.0, 10.0))
 
             # ── 7. BYPASS CROP/FILTER → CAPTION ──────────
-            print("[7/8] ⏭️   Bypassing Crop & Filter screens...")
+            print("[7/8] ⏭️   Bypassing screens...")
+
+            # 🚨 NEW IG POPUP: "Video posts are now shared as reels" → Click OK
+            try:
+                ok_btn = page.get_by_role("button", name="OK")
+                if await ok_btn.is_visible(timeout=5000):
+                    print("      🛡️  Dismissed 'Video posts as reels' popup...")
+                    await ok_btn.click()
+                    await asyncio.sleep(1.5)
+            except:
+                pass
 
             # Crop screen Next
             try:
@@ -210,7 +221,7 @@ async def run_insta_uploader(video_path: str, caption: str):
             except:
                 print("      ℹ️  No crop screen found.")
 
-            # Filter screen Next
+            # Filter/Edit screen Next
             try:
                 next_filter = page.get_by_role("button", name="Next")
                 if await next_filter.is_visible(timeout=4000):
@@ -218,6 +229,7 @@ async def run_insta_uploader(video_path: str, caption: str):
                     await asyncio.sleep(random.uniform(2.0, 4.0))
             except:
                 print("      ℹ️  No filter screen found.")
+
 
             # Type Caption
             print("      ✍️   Typing caption like a human...")
