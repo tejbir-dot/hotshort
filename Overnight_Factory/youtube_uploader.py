@@ -15,9 +15,11 @@ import asyncio
 import random
 import json
 import os
+import datetime
 from pathlib import Path
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
+
 
 # ============================================================
 #  ⚙️ FACTORY CONFIG — Edit only here
@@ -112,7 +114,7 @@ def load_cookies(cookie_path: str) -> list:
 # ============================================================
 #  🚀 MAIN UPLOADER ENGINE
 # ============================================================
-async def run_youtube_uploader(video_path: str, caption: str):
+async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
     print("\n" + "="*52)
     print("  🥷  GHOST FACTORY: YOUTUBE STEALTH ENGINE v4.0")
     print("="*52)
@@ -131,6 +133,7 @@ async def run_youtube_uploader(video_path: str, caption: str):
     print(f"  🎬  Video   : {os.path.basename(video_path)}")
     print(f"  🌐  Proxy   : {PROXY['server']}")
 
+    video_url: str | None = None  # Will be populated after publish
     async with async_playwright() as p:
 
         # ── 1. LAUNCH STEALTH BROWSER ──────────────────────
@@ -281,18 +284,45 @@ async def run_youtube_uploader(video_path: str, caption: str):
             print("      🔥  SMASHING THE PUBLISH BUTTON...")
             await safe_click(page, '#done-button', timeout=10000)
 
-            print("      ⏳  Waiting for YouTube to confirm publish (15s)...")
-            await asyncio.sleep(15.0)
+            # ── 8. EXTRACT LIVE LINK (from success dialog) ──
+            print("[8/8] 🔍  Extracting live video link...")
+            try:
+                # YouTube success dialog pe youtu.be short link hota hai
+                link_el = page.locator('a[href*="youtu.be"]').first
+                await link_el.wait_for(state="visible", timeout=20000)
+
+                # Human-like: hover over the link before grabbing it
+                await link_el.hover()
+                await asyncio.sleep(random.uniform(0.8, 1.5))
+
+                video_url = await link_el.get_attribute("href")
+                print(f"      ✅  BOOM! Live Link: {video_url}")
+
+                # Log to links.txt for Whop submitter
+                links_file = FACTORY_DIR / "uploaded_links.txt"
+                with open(links_file, "a", encoding="utf-8") as f:
+                    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    f.write(f"{ts} | {os.path.basename(video_path)} | {video_url}\n")
+                print(f"      💾  Saved to uploaded_links.txt")
+
+            except Exception as link_err:
+                print(f"      ⚠️  Link extraction failed: {link_err}")
+                # Fallback: build URL from channel ID if we know it
+                video_url = None
+
+            # Human pause — like a person admiring their post
+            await asyncio.sleep(random.uniform(3.0, 5.0))
 
             # Close post-publish dialog (force click — button ho sakta hai hidden)
             try:
                 await page.locator('#close-button').first.evaluate("el => el.click()")
             except:
-                pass  # Dialog already closed ya nahi tha — no problem
-
+                pass
 
             print("\n" + "="*52)
             print("  ✅  BINGO! YOUTUBE SHORT UPLOADED SUCCESSFULLY!")
+            if video_url:
+                print(f"  🔗  URL : {video_url}")
             print("="*52 + "\n")
 
         except Exception as e:
@@ -300,16 +330,19 @@ async def run_youtube_uploader(video_path: str, caption: str):
             raise
 
         finally:
-            # ── 8. CLEAN EXIT ─────────────────────────────
-            print("[8/8] 🚪  Closing browser context cleanly...")
+            # ── 9. CLEAN EXIT ─────────────────────────────
+            print("[9/9] 🚪  Closing browser context cleanly...")
             await context.close()
+
+    return video_url  # ← Manager.py is use karega Whop submit ke liye
 
 
 # ============================================================
 #  📦 SYNC WRAPPER (called by Manager.py)
 # ============================================================
-def upload_video(video_path: str, caption: str):
-    asyncio.run(run_youtube_uploader(video_path, caption))
+def upload_video(video_path: str, caption: str) -> str | None:
+    """Returns the live YouTube URL (youtu.be format) after upload, or None on failure."""
+    return asyncio.run(run_youtube_uploader(video_path, caption))
 
 
 # ============================================================

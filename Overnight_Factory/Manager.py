@@ -38,6 +38,7 @@ print("="*50)
 yt_upload     = load_engine("youtube_uploader")
 tiktok_upload = load_engine("tiktok_uploader")
 ig_upload     = load_engine("insta_uploader")
+whop_submit   = load_engine("whop_submitter", func_name="submit_to_whop")
 print("="*50 + "\n")
 
 # ── 🧠 SMART CAPTION PARSER ──────────────────────────────────────────────────
@@ -91,14 +92,31 @@ async def factory_manager():
         upload_success = True
 
         # ── 1. YOUTUBE STRIKE ──────────────────────────────────────────
+        yt_video_url = None   # Will hold youtu.be link for Whop
         if yt_upload:
             print("  ▶️ [1/3] Firing YouTube Engine...")
             try:
-                await asyncio.get_event_loop().run_in_executor(None, yt_upload, str(video_path), smart_caps['youtube'])
-                print("    ✅ YouTube: SUCCESS\n")
+                yt_video_url = await asyncio.get_event_loop().run_in_executor(
+                    None, yt_upload, str(video_path), smart_caps['youtube']
+                )
+                print(f"    ✅ YouTube: SUCCESS | URL: {yt_video_url or 'not captured'}\n")
             except Exception as e:
                 print(f"    ❌ YouTube: FAILED ({e})\n")
                 upload_success = False
+
+        # ── 1b. WHOP AUTO-SUBMIT ───────────────────────────────────────
+        if yt_video_url and whop_submit:
+            print("  💰 [1b] Submitting to Whop campaign...")
+            try:
+                whop_ok = await asyncio.get_event_loop().run_in_executor(
+                    None, whop_submit, yt_video_url, current_clip
+                )
+                if whop_ok:
+                    print("    ✅ Whop: SUBMITTED — $$ on the way!\n")
+                else:
+                    print("    ⚠️ Whop: Skipped (form URL not set or submission failed)\n")
+            except Exception as e:
+                print(f"    ⚠️ Whop: FAILED ({e}) — upload still counted as success\n")
 
         # ── 2. TIKTOK STRIKE ───────────────────────────────────────────
         if tiktok_upload:
