@@ -145,8 +145,92 @@ High-retention = starts with identity threat, delivers specific tactical payoff.
 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 """
 
+    # ── TJR Trades / Day Trading / Stock Market Campaign ──────────────────────
+    _TJR_KEYWORDS = [
+        "tjr", "tjrtrades", "tjr trades", "day trading", "day trade",
+        "trading", "stock market", "futures", "nq", "nasdaq", "scalp",
+        "chart", "candlestick", "price action", "risk management",
+        "how to trade", "trade setup", "market open", "supply demand",
+        "order flow", "prop firm", "funded account", "pnl", "profit loss"
+    ]
+    if any(kw in intent_lower for kw in _TJR_KEYWORDS):
+        return """
+📚 CAMPAIGN SIGNAL LIBRARY: TJR Trades / Day Trading
+────────────────────────────────────────────────────
+You are now an expert in day trading content virality. You know exactly what makes
+retail traders (beginners trying to escape 9-5, people who lost money, aspiring prop
+firm traders) STOP SCROLLING on trading content.
+
+🎯 HIGH-RETENTION MOMENT FINGERPRINTS (Prioritize these exact patterns):
+
+FINGERPRINT 1 — THE MONEY MOMENT (Highest priority)
+  What it sounds like: "I made $[X] today...", "I turned $[X] into $[X]...",
+  "This one setup made me...", "I was up $[X] then...", "My PnL today was..."
+  Why it stops the scroll: RAW GREED + SOCIAL PROOF — viewer imagines their own account
+  Viral trigger: WEALTH VISUALIZATION + TIME COMPRESSION
+  Trading-specific hook: Any mention of specific dollar amounts = instant thumb-stopper
+  Scoring boost: +20 if exact dollar figure mentioned
+
+FINGERPRINT 2 — THE SYSTEM REVEAL (Second highest)
+  What it sounds like: "The only setup I trade is...", "This is the exact entry I look for...",
+  "Every professional trader does this one thing...", "Most people miss this level...",
+  "Before you place ANY trade, do this...", "I never trade without checking..."
+  Why it stops the scroll: INFORMATION GAP — viewer feels they're getting insider knowledge
+  Viral trigger: SECRET REVELATION + AUTHORITY SIGNAL
+  Trading-specific hook: Specific rules/systems create "write this down" urgency
+
+FINGERPRINT 3 — THE MISTAKE/LOSS CONFESSION
+  What it sounds like: "I blew my account because...", "I lost $[X] when I was starting...",
+  "Every new trader makes this exact mistake...", "I used to do this and it cost me...",
+  "Stop doing [X], here's why I quit it..."
+  Why it stops the scroll: IDENTITY RECOGNITION — viewer sees themselves in the mistake
+  Viral trigger: PAIN AVOIDANCE + RELATABILITY TRAP
+  Trading-specific hook: Loss confessions in trading = massive comments ("THIS IS ME")
+
+FINGERPRINT 4 — THE CONTRARIAN TRUTH
+  What it sounds like: "Indicators don't work...", "Stop using [popular indicator]...",
+  "Everyone on YouTube teaches this wrong...", "The prop firm industry doesn't want you to know...",
+  "Most trading educators are...", "You don't need a big account to...",
+  "The market makers specifically target..."
+  Why it stops the scroll: BELIEF DISRUPTION — challenges what viewer thinks they know
+  Viral trigger: CONTRARIAN AUTHORITY + GATEKEEPING DESTRUCTION
+  Trading-specific hook: Anti-indicator, anti-guru takes = massive engagement + debate
+
+FINGERPRINT 5 — THE SPEED/SIMPLICITY SHOCK
+  What it sounds like: "I only look at [1 thing]...", "This entire strategy in 60 seconds...",
+  "I trade for 30 minutes a day and...", "You only need [X] to start...",
+  "Stop overcomplicating this — it's just...", "I risk $[small] to make $[big]..."
+  Why it stops the scroll: COMPLEXITY REDUCTION — viewer overwhelmed by trading complexity sees hope
+  Viral trigger: SIMPLIFICATION SHOCK + ACCESSIBILITY PROMISE
+  Trading-specific hook: Risk:reward ratios + session duration = aspirational lifestyle clip
+
+🚫 WHAT TO REJECT FOR THIS CAMPAIGN:
+  - Slow chart walkthrough with no emotional hook in first 5 seconds
+  - Technical jargon dumps with no personal story or result attached
+  - Generic "trading is risky" disclaimers as opening (instant scroll)
+  - Any moment where the speaker is NOT speaking (chart-only silent sections)
+  - Rambling context-setting before the actual insight lands
+
+⚡ SILENCE AWARENESS (TJR videos often have long silent chart analysis pauses):
+  - Moments with >2 seconds of silence/chart-staring BEFORE the insight = bad clip start
+  - The IDEAL clip starts MID-SENTENCE with the hook, not with the setup
+  - "Let me show you..." (bad start) vs "This right here is why I made $2k" (perfect start)
+
+🏆 SCORING GUIDE FOR TRADING CONTENT:
+  +20 → Exact dollar figure mentioned (made OR lost)
+  +15 → Specific rule/setup revealed ("The only setup I trade is...")
+  +15 → Direct mistake/loss confession with lesson
+  +12 → Contrarian take against mainstream trading advice
+  +10 → Simplicity promise + lifestyle angle
+  +8  → Prop firm / funded account mention (huge aspirational trigger)
+  -10 → Clip starts with >2s of silence or chart-only screen
+  -15 → No clear hook in first 5 seconds of spoken content
+────────────────────────────────────────────────────
+"""
+
     # ── Default: no domain signals, return empty ──────────────────────────────
     return ""
+
 
 
 def is_groq_enabled() -> bool:
