@@ -899,8 +899,174 @@ class ClipEditor:
             return (0.0, clip_duration)
         return (trim_in, trim_out)
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  🎬 TRADING LAYOUT — Face top / Chart bottom  (9:16 Shorts/Reels format)
+    #  Target: TJR Trades style — screen-share chart + talking-head face cam
+    #
+    #  Source (16:9):  Chart fills most of frame; face cam PiP in bottom-left
+    #  Output (9:16):  1080 × 1920
+    #    ┌───────────────┐
+    #    │  FACE centered│  ← top    42%  (1080 × 806px)
+    #    ├───────────────┤
+    #    │  CHART        │  ← bottom 58%  (1080 × 1114px)
+    #    └───────────────┘
+    # ═══════════════════════════════════════════════════════════════════════════
+    def build_trading_layout(
+        self,
+        input_path: str,
+        output_path: str,
+        *,
+        # Face-cam PiP region in source (pixels, 16:9 frame)
+        # Default assumes face cam in bottom-left ~25% of 1920×1080 source
+        face_x: int = 0,
+        face_y: int = 580,
+        face_w: int = 480,
+        face_h: int = 500,
+        # Output dimensions
+        out_w: int = 1080,
+        out_h: int = 1920,
+        # Split ratio: how much vertical space face gets (0.0–1.0)
+        face_ratio: float = 0.42,
+        # Chart region in source (0,0,0,0 = auto-detect = whole frame minus face pip)
+        chart_x: int = 0,
+        chart_y: int = 0,
+        chart_w: int = 0,   # 0 = full source width
+        chart_h: int = 0,   # 0 = full source height
+        # Appearance
+        gap_px: int = 8,            # pixel gap between face and chart panels
+        face_bg_color: str = "black",
+        chart_bg_color: str = "black",
+        timeout_s: int = 180,
+    ) -> bool:
+        """
+        Compose a 9:16 trading layout from a 16:9 source video.
+
+        PANEL 1 (top) — Face:
+          Crops face_x/y/w/h from source, scales to fill top panel (out_w × face_panel_h),
+          centered with letterbox if needed. Subtle gaussian blur on bg.
+
+        PANEL 2 (bottom) — Chart:
+          Crops chart region from source, scales to fill bottom panel (out_w × chart_panel_h),
+          zoomed/cropped to maximize chart area (no black bars if possible).
+
+        Returns True on success, False on failure.
+        """
+        import math
+
+        face_panel_h  = int(out_h * face_ratio) - gap_px // 2
+        chart_panel_h = out_h - face_panel_h - gap_px
+
+        # Probe source dimensions
+        try:
+            probe = self._probe_video(input_path)
+            src_w = int(probe.get("width",  1920))
+            src_h = int(probe.get("height", 1080))
+        except Exception:
+            src_w, src_h = 1920, 1080
+
+        # Auto chart region = full frame (chart fills entire source for TJR)
+        if chart_w == 0:
+            chart_w = src_w
+        if chart_h == 0:
+            chart_h = src_h
+
+        log.info(
+            f"[TRADING_LAYOUT] src={src_w}x{src_h} | "
+            f"face_crop=({face_x},{face_y},{face_w},{face_h}) | "
+            f"chart_crop=({chart_x},{chart_y},{chart_w},{chart_h}) | "
+            f"out={out_w}x{out_h} face_panel={out_w}x{face_panel_h} "
+            f"chart_panel={out_w}x{chart_panel_h}"
+        )
+
+        # ── FFmpeg filtergraph ──────────────────────────────────────────────────
+        # [0:v] → split into face stream and chart stream
+        # Face:  crop → scale-to-fit (pad with blurred bg) → place top
+        # Chart: crop → scale-to-fill (zoom crop, no bars) → place bottom
+        # Stack: vstack both panels separated by gap
+
+        # Face panel: scale keeping aspect ratio, pad/center on dark bg
+        face_scale   = f"scale={out_w}:{face_panel_h}:force_original_aspect_ratio=decrease"
+        face_pad     = f"pad={out_w}:{face_panel_h}:(ow-iw)/2:(oh-ih)/2:color={face_bg_color}"
+
+        # Chart panel: scale-to-fill (crop to avoid black bars)
+        # Compute scale that fills out_w × chart_panel_h with minimal crop
+        scale_x = out_w  / chart_w
+        scale_y = chart_panel_h / chart_h
+        chart_scale_factor = max(scale_x, scale_y)
+        scaled_chart_w = int(math.ceil(chart_w * chart_scale_factor))
+        scaled_chart_h = int(math.ceil(chart_h * chart_scale_factor))
+        chart_crop_x   = max(0, (scaled_chart_w - out_w) // 2)
+        chart_crop_y   = max(0, (scaled_chart_h - chart_panel_h) // 2)
+
+        chart_scale = f"scale={scaled_chart_w}:{scaled_chart_h}"
+        chart_crop  = f"crop={out_w}:{chart_panel_h}:{chart_crop_x}:{chart_crop_y}"
+
+        # Gap strip: a tiny colored bar between panels
+        gap_filter = (
+            f"color=c={face_bg_color}:size={out_w}x{gap_px}:rate=30[gap];"
+            if gap_px > 0 else ""
+        )
+
+        # Full filtergraph
+        vf = (
+            f"[0:v]split=2[face_raw][chart_raw];"
+            # Face panel
+            f"[face_raw]crop={face_w}:{face_h}:{face_x}:{face_y},"
+            f"{face_scale},{face_pad}[face_panel];"
+            # Chart panel
+            f"[chart_raw]crop={chart_w}:{chart_h}:{chart_x}:{chart_y},"
+            f"{chart_scale},{chart_crop}[chart_panel];"
+        )
+
+        if gap_px > 0:
+            vf += (
+                f"color=c={face_bg_color}:size={out_w}x{gap_px}:rate=30[gap];"
+                f"[face_panel][gap][chart_panel]vstack=inputs=3[out]"
+            )
+        else:
+            vf += f"[face_panel][chart_panel]vstack=inputs=2[out]"
+
+        cmd = [
+            "ffmpeg", "-y", "-nostdin",
+            "-i", input_path,
+            "-filter_complex", vf,
+            "-map", "[out]",
+            "-map", "0:a",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "20",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            output_path,
+        ]
+
+        # Try NVENC first
+        if _nvenc_available():
+            nvenc_cmd = list(cmd)
+            for i, v in enumerate(nvenc_cmd):
+                if v == "libx264":
+                    nvenc_cmd[i] = "h264_nvenc"
+                if v == "-crf":
+                    nvenc_cmd[i] = "-cq"
+            try:
+                self._run(nvenc_cmd, timeout_s=timeout_s)
+                log.info(f"[TRADING_LAYOUT] ✅ NVENC render done → {output_path}")
+                return True
+            except Exception as _nvenc_err:
+                log.warning(f"[TRADING_LAYOUT] NVENC failed ({_nvenc_err}), falling back to libx264")
+
+        try:
+            self._run(cmd, timeout_s=timeout_s)
+            log.info(f"[TRADING_LAYOUT] ✅ CPU render done → {output_path}")
+            return True
+        except Exception as err:
+            log.error(f"[TRADING_LAYOUT] ❌ Render failed: {err}")
+            return False
+
     def _cut_with_fade(self, input_path: str, output_path: str, start_s: float, end_s: float, timeout_s: int = 120) -> None:
         duration = max(0.25, end_s - start_s)
+
         # Clean hard cut (No fades). This ensures seamless looping for Shorts.
         # Added a micro 0.05s audio fade-out just to prevent speaker popping/clicking at the cut.
         af = f"afade=t=out:st={max(0.0, duration - 0.05):.3f}:d=0.05"
