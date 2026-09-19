@@ -50,5 +50,14 @@ bin/
 debug_out/
 scratch/
 Overnight_Factory/Ghost_Profile/
-  
- 
+
+# Sensitive credentials — NEVER commit these
+Overnight_Factory/*_cookie.json
+Overnight_Factory/whop_cookie.json
+Overnight_Factory/youtube_cookie.json
+Overnight_Factory/insta_cookie.json
+Overnight_Factory/tiktok_cookie.json
+
+# Output logs (optional — contains links)
+Overnight_Factory/uploaded_links.txt
+Overnight_Factory/whop_submissions.log
