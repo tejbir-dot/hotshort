@@ -99,17 +99,59 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
         print("[2/6] 🕵️  Applying Stealth Mask...")
         await Stealth().apply_stealth_async(page)
 
+        # ── 3. INJECT WHOP COOKIES ────────────────────────
+        # Google bot-detection bypass — seedha session inject karo
+        print("[3/6] 🍪  Injecting Whop session cookies...")
+        cookie_file = FACTORY_DIR / "whop_cookie.json"
         try:
-            # ── 3. NAVIGATE TO CAMPAIGN ───────────────────
-            print("[3/6] 🌐  Loading TJR campaign page...")
+            with open(cookie_file, 'r', encoding='utf-8') as f:
+                raw_cookies = json.load(f)
+
+            # Normalize cookies for Playwright
+            clean = []
+            for c in raw_cookies:
+                ss = c.get("sameSite") or "None"
+                if ss not in {"Strict", "Lax", "None"}:
+                    ss = "None"
+                c["sameSite"] = ss
+                for key in ["storeId", "hostOnly", "session"]:
+                    c.pop(key, None)
+                if "expirationDate" in c and "expires" not in c:
+                    c["expires"] = c.pop("expirationDate")
+                clean.append(c)
+
+            await context.add_cookies(clean)
+            print(f"      ✅  {len(clean)} cookies injected — Google login BYPASSED!")
+
+        except FileNotFoundError:
+            print("      ⚠️  whop_cookie.json nahi mili!")
+            print("      👉  Normal Chrome mein Whop.com kholo → Cookie-Editor → Export JSON")
+            print("      👉  Overnight_Factory/whop_cookie.json naam se save karo")
+            print("      ℹ️  Saved browser profile session pe try karta hoon...")
+        except Exception as cookie_err:
+            print(f"      ⚠️  Cookie injection error: {cookie_err}")
+            print("      ℹ️  Profile session pe fallback...")
+
+        try:
+            # ── 4. NAVIGATE TO CAMPAIGN ───────────────────
+            print("[4/6] 🌐  Loading TJR campaign page...")
             await page.goto(WHOP_CAMPAIGN_URL, timeout=60000,
                             wait_until="domcontentloaded")
             await asyncio.sleep(random.uniform(3.0, 4.5))
             await human_scroll(page, times=random.randint(2, 3))
-            print(f"      ✅  Campaign loaded. URL: {page.url[:60]}")
 
-            # ── 4. CLICK ORANGE "Submit clip" BUTTON ──────
-            print("[4/6] 🖱️   Clicking orange 'Submit clip' button...")
+            # Confirm logged in (not on login/auth page)
+            cur_url = page.url
+            if "accounts.google" in cur_url or "login" in cur_url or "sign" in cur_url.lower():
+                raise Exception(
+                    "Whop redirected to login page! "
+                    "whop_cookie.json expired ya missing hai. Fresh export karo."
+                )
+            print(f"      ✅  Campaign loaded. URL: {cur_url[:60]}")
+
+
+            # ── 5. CLICK ORANGE "Submit clip" BUTTON ──────
+            print("[5/7] 🖱️   Clicking orange 'Submit clip' button...")
             submit_clip_selectors = [
                 'button:has-text("Submit clip")',
                 'a:has-text("Submit clip")',
