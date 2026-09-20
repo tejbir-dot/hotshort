@@ -32,7 +32,7 @@ PROFILE_DIR   = str(FACTORY_DIR / "Ghost_Profile" / "whop")
 LOG_FILE      = FACTORY_DIR / "whop_submissions.log"
 
 # TJR Campaign URL (confirmed from Whop dashboard screenshot)
-WHOP_CAMPAIGN_URL = "https://whop.com/contentrewards/exp_KZokYGtmlbujDg/app/"
+WHOP_CAMPAIGN_URL = "https://whop.com/reachclipping/exp_6DJb0DkDMhATvG/app/"
 
 
 # ============================================================
@@ -133,66 +133,176 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
             print("      ℹ️  Profile session pe fallback...")
 
         try:
-            # ── 4. NAVIGATE TO CAMPAIGN ───────────────────
-            print("[4/6] 🌐  Loading TJR campaign page...")
-            await page.goto(WHOP_CAMPAIGN_URL, timeout=60000,
-                            wait_until="domcontentloaded")
-            await asyncio.sleep(random.uniform(3.0, 4.5))
-            await human_scroll(page, times=random.randint(2, 3))
+            # ── 4. NAVIGATE TO CAMPAIGN (stay on whop.com!) ────────
+            print("[4/6] Loading TJR campaign page...")
+            await page.goto(WHOP_CAMPAIGN_URL, timeout=60000, wait_until="domcontentloaded")
+            await asyncio.sleep(random.uniform(5.0, 7.0))  # Let React + iframe fully hydrate
 
-            # Confirm logged in (not on login/auth page)
             cur_url = page.url
-            if "accounts.google" in cur_url or "login" in cur_url or "sign" in cur_url.lower():
-                raise Exception(
-                    "Whop redirected to login page! "
-                    "whop_cookie.json expired ya missing hai. Fresh export karo."
-                )
-            print(f"      ✅  Campaign loaded. URL: {cur_url[:60]}")
+            if "accounts.google" in cur_url or "login" in cur_url:
+                raise Exception("Whop redirected to login! Refresh whop_cookie.json.")
+            print(f"      OK  Campaign loaded. URL: {cur_url[:80]}")
 
+            # ── 4b. CLICK CONTENT REWARDS IN SIDEBAR ─────────────
+            print("[4b] Clicking Content Rewards...")
+            clicked_cr = await page.evaluate("""
+                () => {
+                    const all = [...document.querySelectorAll('a, button, span, div, li')];
+                    const el = all.find(e => {
+                        const t = e.innerText && e.innerText.trim().toLowerCase();
+                        return t === 'content rewards';
+                    });
+                    if (el) { el.click(); return true; }
+                    return false;
+                }
+            """)
+            if clicked_cr:
+                print("      OK  Content Rewards clicked")
+                await asyncio.sleep(random.uniform(4.0, 5.0))
+            else:
+                print("      Warning: Content Rewards not found in sidebar")
 
-            # ── 5. CLICK ORANGE "Submit clip" BUTTON ──────
-            print("[5/7] 🖱️   Clicking orange 'Submit clip' button...")
-            submit_clip_selectors = [
-                'button:has-text("Submit clip")',
-                'a:has-text("Submit clip")',
-                'button:has-text("Submit Clip")',
-                '[data-testid="submit-clip"]',
-            ]
-            clicked_main = False
-            for sel in submit_clip_selectors:
-                try:
-                    el = page.locator(sel).first
-                    if await el.is_visible(timeout=5000):
-                        await el.scroll_into_view_if_needed()
-                        await asyncio.sleep(random.uniform(0.5, 1.0))
-                        await el.click()
-                        clicked_main = True
-                        print(f"      ✅  'Submit clip' clicked via [{sel}]")
-                        break
-                except:
-                    continue
+            # ── 4c. CLICK TJR CAMPAIGN CARD INSIDE THE IFRAME ────────
+            # The Reach Content Rewards app is in an apps.whop.com iframe.
+            # We must interact with the campaign card WITHIN that iframe,
+            # not by following anchor hrefs in the main DOM (which navigates away).
+            print("[4c] Clicking TJR campaign inside iframe...")
+            await asyncio.sleep(3.0)  # Let iframe render
 
-            if not clicked_main:
-                # JS fallback
-                clicked_main = await page.evaluate("""
+            # Find the Reach app iframe
+            reach_frame = None
+            for frame in page.frames:
+                if 'apps.whop.com' in frame.url or 'contentrewards' in frame.url.lower():
+                    reach_frame = frame
+                    print(f"      Found Reach iframe: {frame.url[:80]}")
+                    break
+
+            if reach_frame:
+                # Click TJR campaign card inside iframe
+                clicked_tjr = await reach_frame.evaluate("""
                     () => {
-                        const btns = [...document.querySelectorAll('button, a')];
-                        const btn = btns.find(b =>
-                            b.innerText && b.innerText.trim().toLowerCase().includes('submit clip')
-                        );
-                        if (btn) { btn.click(); return true; }
-                        return false;
+                        const all = [...document.querySelectorAll('a, button, div[role="button"], [onclick]')];
+                        // Look for TJR / $23,100 text
+                        const card = all.find(e => e.innerText && (
+                            e.innerText.includes('TJR') ||
+                            e.innerText.includes('23,100') ||
+                            e.innerText.includes('23000')
+                        ));
+                        if (card) {
+                            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            card.click();
+                            return card.innerText.trim().substring(0, 60);
+                        }
+                        // Fallback: click first campaign card link
+                        const links = [...document.querySelectorAll('a[href]')];
+                        const first = links.find(a => a.href && a.href.includes('exp_'));
+                        if (first) { first.click(); return first.href.substring(0, 60); }
+                        return null;
                     }
                 """)
-                if clicked_main:
-                    print("      ✅  'Submit clip' clicked via JS fallback")
+                if clicked_tjr:
+                    print(f"      OK  Clicked in iframe: {clicked_tjr}")
+                    await asyncio.sleep(random.uniform(4.0, 6.0))
                 else:
-                    raise Exception("'Submit clip' button not found on TJR campaign page!")
+                    print("      Warning: TJR card not found in iframe")
+            else:
+                print("      Warning: Reach iframe not found — will search all frames for Submit button")
+
+            # Scroll to trigger lazy-load rendering
+            await human_scroll(page, times=2)
+            await asyncio.sleep(2.0)
+
+            # Debug screenshot
+            _ss_path = str(FACTORY_DIR / "whop_debug_screenshot.png")
+            await page.screenshot(path=_ss_path, full_page=True)
+            print(f"      Screenshot: {_ss_path}")
+
+            # ── 5. FIND & CLICK SUBMIT BUTTON ─────────────────────
+            # Button lives in an iframe embedded in whop.com - search both main + iframes
+            print("[5/7] Looking for Submit button...")
+            # First: dump all frame URLs so we know what's loaded
+            all_frame_urls = [f.url[:80] for f in page.frames if f.url]
+            print(f"      Frames loaded ({len(page.frames)}): {all_frame_urls}")
+
+            submit_keywords = ["submit clip", "submit a clip", "submit"]
+            clicked_main = None
+            active_frame = None
+
+            for _attempt in range(20):  # 20s total wait
+                # Check main page DOM
+                clicked_main = await page.evaluate(
+                    """(keywords) => {
+                        const btns = [...document.querySelectorAll('button, a, [role="button"]')];
+                        for (const kw of keywords) {
+                            const btn = btns.find(b => {
+                                const t = b.innerText && b.innerText.trim().toLowerCase();
+                                return t && t.includes(kw);
+                            });
+                            if (btn) {
+                                btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                btn.click();
+                                return btn.innerText.trim();
+                            }
+                        }
+                        return null;
+                    }""",
+                    submit_keywords
+                )
+                if clicked_main:
+                    active_frame = page.main_frame
+                    break
+
+                # Check all iframes
+                for frame in page.frames:
+                    if frame == page.main_frame:
+                        continue
+                    try:
+                        clicked_main = await frame.evaluate(
+                            """(keywords) => {
+                                const btns = [...document.querySelectorAll('button, a, [role="button"]')];
+                                for (const kw of keywords) {
+                                    const btn = btns.find(b => {
+                                        const t = b.innerText && b.innerText.trim().toLowerCase();
+                                        return t && t.includes(kw);
+                                    });
+                                    if (btn) {
+                                        btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        btn.click();
+                                        return btn.innerText.trim();
+                                    }
+                                }
+                                return null;
+                            }""",
+                            submit_keywords
+                        )
+                        if clicked_main:
+                            active_frame = frame
+                            print(f"      Found in iframe: {frame.url[:80]}")
+                            break
+                    except:
+                        continue
+
+                if clicked_main:
+                    break
+                await asyncio.sleep(1.0)
+
+            if clicked_main:
+                print(f"      OK  Clicked: '{clicked_main}'")
+            else:
+                await page.screenshot(path=_ss_path, full_page=True)
+                _all_btns = await page.evaluate(
+                    """() => [...document.querySelectorAll('button, a, [role="button"]')]
+                           .map(b => b.innerText.trim()).filter(t => t && t.length < 60).slice(0, 30)"""
+                )
+                print(f"      Buttons: {_all_btns}")
+                print(f"      Screenshot: {_ss_path}")
+                print("      No submit button found")
+                return False
 
             await asyncio.sleep(random.uniform(1.5, 2.5))
 
-            # ── 5. FILL VIDEO URL IN INPUT BOX ────────────
-            print(f"[5/6] ✍️   Pasting {platform} link...")
+            # ── 5. FILL VIDEO URL IN INPUT BOX ────────────────────
+            print(f"[5/6] Pasting {platform} link...")
             input_selectors = [
                 'input[placeholder*="link" i]',
                 'input[placeholder*="url" i]',
@@ -206,33 +316,42 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
                 'textarea',
             ]
 
+            # Search input in same frame as submit button first
+            frames_to_search = []
+            if active_frame and active_frame != page.main_frame:
+                frames_to_search.append(active_frame)
+            frames_to_search.append(page.main_frame)
+            for f in page.frames:
+                if f not in frames_to_search:
+                    frames_to_search.append(f)
+
             filled = False
-            for sel in input_selectors:
-                try:
-                    el = page.locator(sel).first
-                    if await el.is_visible(timeout=3000):
-                        await el.click()
-                        await asyncio.sleep(random.uniform(0.4, 0.8))
-                        await page.keyboard.press("Control+A")
-                        await asyncio.sleep(0.2)
-                        await page.keyboard.press("Backspace")
-                        await asyncio.sleep(0.3)
-                        await human_type(page, video_url)
-                        await asyncio.sleep(random.uniform(1.0, 1.8))
-                        print(f"      ✅  Link filled in [{sel}]")
-                        filled = True
-                        break
-                except:
-                    continue
+            for search_frame in frames_to_search:
+                for sel in input_selectors:
+                    try:
+                        el = search_frame.locator(sel).first
+                        if await el.is_visible(timeout=2000):
+                            await el.click()
+                            await asyncio.sleep(random.uniform(0.4, 0.8))
+                            await el.press("Control+A")
+                            await asyncio.sleep(0.2)
+                            await el.press("Backspace")
+                            await asyncio.sleep(0.3)
+                            await el.type(video_url, delay=80)
+                            await asyncio.sleep(random.uniform(1.0, 1.8))
+                            print(f"      OK  Link filled [{sel}]")
+                            filled = True
+                            break
+                    except:
+                        continue
+                if filled:
+                    break
 
             if not filled:
-                raise Exception(
-                    "Input box not found! Whop may have updated their UI. "
-                    "Browser is open — inspect and update selectors."
-                )
+                raise Exception("Input box not found! Check whop_debug_screenshot.png")
 
-            # ── 6. TICK THE CHECKBOX ──────────────────────
-            print("[6/6] ☑️   Ticking 'I've read requirements' checkbox...")
+            # ── 6. TICK CHECKBOX ──────────────────────────────────
+            print("[6/6] Ticking checkbox...")
             checkbox_selectors = [
                 'input[type="checkbox"]',
                 '[role="checkbox"]',
@@ -241,60 +360,48 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
                 'label:has-text("read")',
             ]
             ticked = False
-            for sel in checkbox_selectors:
-                try:
-                    el = page.locator(sel).first
-                    if await el.is_visible(timeout=3000):
-                        await asyncio.sleep(random.uniform(0.5, 1.0))
-                        await el.click()
-                        ticked = True
-                        print(f"      ✅  Checkbox ticked via [{sel}]")
-                        break
-                except:
-                    continue
+            for search_frame in frames_to_search:
+                for sel in checkbox_selectors:
+                    try:
+                        el = search_frame.locator(sel).first
+                        if await el.is_visible(timeout=2000):
+                            await asyncio.sleep(random.uniform(0.5, 1.0))
+                            await el.click()
+                            ticked = True
+                            print(f"      OK  Checkbox ticked [{sel}]")
+                            break
+                    except:
+                        continue
+                if ticked:
+                    break
 
             if not ticked:
-                ticked = await page.evaluate("""
-                    () => {
-                        const cbs = [...document.querySelectorAll(
-                            'input[type="checkbox"], [role="checkbox"]'
-                        )];
-                        for (const cb of cbs) {
-                            const rect = cb.getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0) {
-                                cb.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-                                return true;
-                            }
-                        }
-                        return false;
-                    }
-                """)
-                if ticked:
-                    print("      ✅  Checkbox ticked via JS dispatchEvent")
-                else:
-                    print("      ⚠️  Checkbox not found — submitting anyway...")
+                # JS fallback
+                for search_frame in frames_to_search:
+                    try:
+                        ticked = await search_frame.evaluate(
+                            """() => {
+                                const cbs = [...document.querySelectorAll(
+                                    'input[type="checkbox"], [role="checkbox"]'
+                                )];
+                                for (const cb of cbs) {
+                                    const rect = cb.getBoundingClientRect();
+                                    if (rect.width > 0 && rect.height > 0) {
+                                        cb.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }"""
+                        )
+                        if ticked:
+                            print("      OK  Checkbox ticked via JS")
+                            break
+                    except:
+                        continue
 
-            await asyncio.sleep(random.uniform(0.8, 1.5))
-
-            # ── 7. FINAL SUBMIT ───────────────────────────
-            print("      🔥  Clicking final Submit button...")
-            final_selectors = [
-                'button[type="submit"]',
-                'button:has-text("Submit clip")',
-                'button:has-text("Submit")',
-                'button:has-text("Send")',
-            ]
-            for sel in final_selectors:
-                try:
-                    el = page.locator(sel).first
-                    if await el.is_visible(timeout=4000):
-                        await el.scroll_into_view_if_needed()
-                        await asyncio.sleep(random.uniform(0.5, 1.0))
-                        await el.click()
-                        print(f"      🔥  Final submit sent! [{sel}]")
-                        break
-                except:
-                    continue
+            if not ticked:
+                print("      Warning: Checkbox not found — submitting anyway...")
 
             # ── 8. CONFIRM ────────────────────────────────
             print("      ⏳  Waiting for confirmation (20s max)...")
@@ -362,7 +469,7 @@ def submit_to_whop(video_url: str, video_filename: str = "",
 #  🧪 STANDALONE TEST
 # ============================================================
 if __name__ == "__main__":
-    _test_url = "https://youtu.be/PASTE_REAL_LINK_HERE"
-    result = submit_to_whop(_test_url, "test_video.mp4", platform="YouTube")
+    # ← Real TikTok URL — just uploaded live!
+    _test_url = "https://www.tiktok.com/@eliteclipper.studios/video/7687480061590572319"
+    result = submit_to_whop(_test_url, "clip_0_914_987.mp4", platform="TikTok")
     print(f"\nResult: {'SUCCESS ✅' if result else 'FAILED ❌'}")
-

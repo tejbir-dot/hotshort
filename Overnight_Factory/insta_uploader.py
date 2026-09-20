@@ -354,11 +354,12 @@ async def run_insta_uploader(video_path: str, caption: str):
                 # Raise nahi karte kyunki IG sometimes confirms late — Manager ko batao
                 print("      ℹ️  Browser khula rahega — manually check karo Instagram.")
                 await asyncio.sleep(10.0)  # Extra time to check manually
+                cur = None # return None if failed
 
             print("\n" + "="*52)
             print("  ✅  BINGO! INSTAGRAM REEL UPLOADED SUCCESSFULLY!")
             print("="*52 + "\n")
-
+            return cur if success else None
 
         except Exception as e:
             print(f"\n  ❌  Instagram Upload FAILED: {e}\n")
@@ -369,12 +370,11 @@ async def run_insta_uploader(video_path: str, caption: str):
             await context.close()
 
 
-
 # ============================================================
 #  📦 SYNC WRAPPER (called by Manager.py)
 # ============================================================
 def upload_video(video_path: str, caption: str):
-    asyncio.run(run_insta_uploader(video_path, caption))
+    return asyncio.run(run_insta_uploader(video_path, caption))
 
 
 # ============================================================

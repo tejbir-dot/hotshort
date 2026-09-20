@@ -122,8 +122,16 @@ async def factory_manager():
         if tiktok_upload:
             print("  ▶️ [2/3] Firing TikTok Engine...")
             try:
-                await asyncio.get_event_loop().run_in_executor(None, tiktok_upload, str(video_path), smart_caps['tiktok'])
-                print("    ✅ TikTok: SUCCESS\n")
+                tt_video_url = await asyncio.get_event_loop().run_in_executor(None, tiktok_upload, str(video_path), smart_caps['tiktok'])
+                print(f"    ✅ TikTok: SUCCESS | URL: {tt_video_url or 'not captured'}\n")
+                if tt_video_url and whop_submit:
+                    print("  💰 [2b] Submitting TikTok to Whop campaign...")
+                    try:
+                        whop_ok = await asyncio.get_event_loop().run_in_executor(None, whop_submit, tt_video_url, current_clip, "TikTok")
+                        if whop_ok: print("    ✅ Whop: TikTok SUBMITTED!\n")
+                        else: print("    ⚠️ Whop: TikTok Skipped\n")
+                    except Exception as e:
+                        print(f"    ⚠️ Whop: TikTok FAILED ({e})\n")
             except Exception as e:
                 print(f"    ❌ TikTok: FAILED ({e})\n")
                 upload_success = False
@@ -132,8 +140,16 @@ async def factory_manager():
         if ig_upload:
             print("  ▶️ [3/3] Firing Instagram Engine...")
             try:
-                await asyncio.get_event_loop().run_in_executor(None, ig_upload, str(video_path), smart_caps['instagram'])
-                print("    ✅ Instagram: SUCCESS\n")
+                ig_video_url = await asyncio.get_event_loop().run_in_executor(None, ig_upload, str(video_path), smart_caps['instagram'])
+                print(f"    ✅ Instagram: SUCCESS | URL: {ig_video_url or 'not captured'}\n")
+                if ig_video_url and whop_submit:
+                    print("  💰 [3b] Submitting Instagram to Whop campaign...")
+                    try:
+                        whop_ok = await asyncio.get_event_loop().run_in_executor(None, whop_submit, ig_video_url, current_clip, "Instagram")
+                        if whop_ok: print("    ✅ Whop: Instagram SUBMITTED!\n")
+                        else: print("    ⚠️ Whop: Instagram Skipped\n")
+                    except Exception as e:
+                        print(f"    ⚠️ Whop: Instagram FAILED ({e})\n")
             except Exception as e:
                 print(f"    ❌ Instagram: FAILED ({e})\n")
                 upload_success = False

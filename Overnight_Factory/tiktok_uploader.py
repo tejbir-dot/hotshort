@@ -114,48 +114,74 @@ async def run_tiktok_uploader(video_path: str, caption: str):
     print(f"  🌐  Proxy   : {PROXY['server']}")
 
     async with async_playwright() as p:
+        try:
 
-        # ── 1. LAUNCH STEALTH BROWSER ──────────────────────
-        print("\n[1/8] 🔗  Launching Stealth Persistent Context...")
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=PROFILE_DIR,
-            channel="chrome",
-            headless=False,
-            proxy=PROXY,
-            viewport={"width": 1366, "height": 768},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0.0.0 Safari/537.36"
-            ),
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--no-first-run",
-                "--no-sandbox",
-            ],
-            ignore_default_args=["--enable-automation"],
-        )
+            # ── 1. LAUNCH STEALTH BROWSER ──────────────────────
+            # NOTE: Using browser.launch() + new_context() instead of
+            # launch_persistent_context() because persistent_context has a
+            # known Playwright bug where proxy auth fails on HTTPS sites.
+            # Session is restored via cookie injection (tiktok_cookie.json).
+            print("\n[1/8] 🔗  Launching Stealth Browser (US Proxy)...")
+            browser = await p.chromium.launch(
+                channel="chrome",
+                headless=False,
+                proxy=PROXY,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--no-first-run",
+                    "--no-sandbox",
+                ],
+            )
+            context = await browser.new_context(
+                viewport={"width": 1366, "height": 768},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/126.0.0.0 Safari/537.36"
+                ),
+            )
 
-        page = await context.new_page()
+            page = await context.new_page()
 
-        # ── 2. APPLY STEALTH MASK ──────────────────────────
-        print("[2/8] 🕵️  Applying Stealth Mask (anti-fingerprint)...")
-        await Stealth().apply_stealth_async(page)
 
-        # ── 3. INJECT COOKIES ─────────────────────────────
-        print("[3/8] 🍪  Injecting TikTok Session Cookies...")
-        cookies = load_cookies(COOKIE_FILE)
-        if cookies:
-            await context.add_cookies(cookies)
-            print(f"      ✅  {len(cookies)} cookies injected — login bypassed!")
-        else:
-            print("      ⚠️  No cookies. Will rely on saved profile session.")
+            # ── 2. APPLY STEALTH MASK ──────────────────────────
+            print("[2/8] 🕵️  Applying Stealth Mask (anti-fingerprint)...")
+            await Stealth().apply_stealth_async(page)
+
+            # ── 3. INJECT COOKIES ─────────────────────────────
+            print("[3/8] 🍪  Injecting TikTok Session Cookies...")
+            cookies = load_cookies(COOKIE_FILE)
+            if cookies:
+                await context.add_cookies(cookies)
+                print(f"      ✅  {len(cookies)} cookies injected — login bypassed!")
+            else:
+                print("      ⚠️  No cookies. Will rely on saved profile session.")
 
             # ── 4. GO STRAIGHT TO TIKTOK UPLOAD ──────────
             print("[4/6] 🎬  Going straight to TikTok Creator Center...")
-            await page.goto("https://www.tiktok.com/creator-center/upload", timeout=90000, wait_until="commit")
-            await asyncio.sleep(random.uniform(3.0, 5.0))
+            await page.goto("https://www.tiktok.com/creator-center/upload", timeout=90000, wait_until="domcontentloaded")
+            await asyncio.sleep(random.uniform(2.5, 4.0))
+
+            # ── 5. HUMAN WARM-UP (15s scrolling) ──────────
+            print("[5/8] 🧘  Human warm-up: Reading page like a real user (15s)...")
+            warm_up_end = asyncio.get_event_loop().time() + 15.0
+            scroll_count = 0
+            while asyncio.get_event_loop().time() < warm_up_end:
+                # Randomize: sometimes scroll down, sometimes up (like reading)
+                scroll_dir = random.choice([1, 1, 1, -1])  # bias towards scrolling down
+                scroll_px  = random.randint(80, 320) * scroll_dir
+                await page.mouse.wheel(0, scroll_px)
+                scroll_count += 1
+                # Pause between scrolls — mimics natural reading rhythm
+                await asyncio.sleep(random.uniform(0.8, 2.5))
+                # Occasionally move mouse randomly (like hover-reading)
+                if random.random() < 0.35:
+                    x = random.randint(300, 900)
+                    y = random.randint(200, 500)
+                    await page.mouse.move(x, y, steps=random.randint(3, 8))
+                    await asyncio.sleep(random.uniform(0.3, 0.9))
+            print(f"      ✅  Warm-up done — {scroll_count} scroll events fired.")
 
 
             # ── 6. INJECT VIDEO FILE ──────────────────────
@@ -213,23 +239,62 @@ async def run_tiktok_uploader(video_path: str, caption: str):
             print("      ⏳  Waiting for server confirmation (20s)...")
             await asyncio.sleep(20.0)
 
-            # Save video URL
+            # ── 9. INTERCEPT VIDEO ID FROM API RESPONSE ───
+            # TikTok's publish API returns video_id in the response.
+            # We intercept it directly instead of scraping the profile page.
+            captured_video_id = None
+
+            async def _capture_video_id(response):
+                nonlocal captured_video_id
+                try:
+                    if "/publish/" in response.url or "item/create" in response.url or "upload/v1" in response.url:
+                        try:
+                            data = await response.json()
+                            vid = (
+                                data.get("data", {}).get("video_id")
+                                or data.get("data", {}).get("aweme_id")
+                                or data.get("video_id")
+                                or data.get("aweme_id")
+                            )
+                            if vid and not captured_video_id:
+                                captured_video_id = str(vid)
+                                print(f"      🎯  API intercepted video_id: {captured_video_id}")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            page.on("response", _capture_video_id)
+
+            print("      ⏳  Waiting for server confirmation (20s)...")
+            await asyncio.sleep(20.0)
+
+            # Build URL from intercepted ID or fall back to profile scrape
             try:
-                await page.goto(f"https://www.tiktok.com/@{TIKTOK_HANDLE}", timeout=30000)
-                await asyncio.sleep(5.0)
-                first_video = page.locator('a[href*="/video/"]').first
-                video_url = await first_video.get_attribute('href')
+                if captured_video_id:
+                    video_url = f"https://www.tiktok.com/@{TIKTOK_HANDLE}/video/{captured_video_id}"
+                else:
+                    # Fallback: navigate to profile and grab first video link
+                    print("      🔄  API intercept missed — scraping profile page...")
+                    await page.goto(f"https://www.tiktok.com/@{TIKTOK_HANDLE}", timeout=60000, wait_until="domcontentloaded")
+                    await asyncio.sleep(8.0)
+                    first_video = page.locator('a[href*="/video/"]').first
+                    video_url = await first_video.get_attribute('href', timeout=10000)
+
                 print(f"\n{'='*52}")
                 print("  ✅  BINGO! TIKTOK VIDEO UPLOADED SUCCESSFULLY!")
                 print(f"  🔗  URL: {video_url}")
                 print(f"{'='*52}\n")
                 with open(str(FACTORY_DIR / "published_links.txt"), "a") as f:
-                    f.write(f"TIKTOK: {video_url}\n")
+                    import datetime as _dt
+                    f.write(f"[{_dt.datetime.now():%Y-%m-%d %H:%M}] TIKTOK: {video_url}\n")
+                return video_url
             except Exception as e:
                 print(f"      ⚠️  Could not fetch video URL: {e}")
                 print("\n" + "="*52)
                 print("  ✅  TIKTOK UPLOAD COMPLETE (URL fetch failed)")
                 print("="*52 + "\n")
+                return None
 
         except Exception as e:
             print(f"\n  ❌  TikTok Upload FAILED: {e}\n")
@@ -238,25 +303,27 @@ async def run_tiktok_uploader(video_path: str, caption: str):
         finally:
             print("[8/8] 🚪  Closing browser context cleanly...")
             await context.close()
+            await browser.close()
 
 
 # ============================================================
 #  📦 SYNC WRAPPER (called by Manager.py)
 # ============================================================
 def upload_video(video_path: str, caption: str):
-    asyncio.run(run_tiktok_uploader(video_path, caption))
+    return asyncio.run(run_tiktok_uploader(video_path, caption))
 
 
 # ============================================================
 #  🧪 STANDALONE TEST
 # ============================================================
 if __name__ == "__main__":
-    _test_vid = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Pending_Videos\clip_1_0_70.mp4"
-    _test_cap = (
-        "TIKTOK CAPTION:\n"
-        "How he grew to 1 MILLION subscribers just posting Shorts! 📈 "
-        "The secret is choosing a niche you actually enjoy. Watch till the end! "
-        "#youtubeshorts #sidehustle #entrepreneur #rich #foryou\n"
-        "----"
-    )
+    import os
+    _test_vid = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Pending_Videos\clip_0_914_987.mp4"
+    _test_cap_file = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Pending_Videos\clip_0_914_987_caption.txt"
+    if os.path.exists(_test_cap_file):
+        with open(_test_cap_file, "r", encoding="utf-8") as f:
+            _test_cap = f.read()
+    else:
+        _test_cap = "TIKTOK CAPTION:\nTest caption\n----"
+        
     upload_video(_test_vid, _test_cap)

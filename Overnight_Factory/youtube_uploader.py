@@ -29,7 +29,7 @@ PROFILE_DIR   = str(FACTORY_DIR / "Ghost_Profile" / "youtube")
 COOKIE_FILE   = str(FACTORY_DIR / "youtube_cookie.json")
 
 # 🔌 Set USE_PROXY = False to test without proxy (uses your real IP)
-USE_PROXY     = False   # ← ABHI PROXY BAND HAI (test mode)
+USE_PROXY     = False   # ← DIRECT — proxy blocks YouTube Studio
 PROXY         = {
     "server":   "http://162.210.64.27:12323",
     "username": "14a930ebcafee",
@@ -221,12 +221,19 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
                 print("      🚀  Direct upload page pe ja raha hoon...")
                 await page.goto(upload_url, timeout=60000, wait_until="domcontentloaded")
                 await asyncio.sleep(random.uniform(3.0, 5.0))
-            else:
-                # Fallback: Create button click karo
-                print("      ⚠️  Channel ID nahi mila, Create button try kar raha hoon...")
-                await safe_click(page, 'button:has-text("Create")', timeout=10000)
+            
+            # Agar direct URL se modal nahi khula (file input missing hai), toh manual click karo
+            try:
+                await page.wait_for_selector("input[type='file']", state="attached", timeout=5000)
+            except:
+                print("      ⚠️  Modal auto-open nahi hua, manual Create button click kar raha hoon...")
+                try:
+                    await safe_click(page, '#create-icon', timeout=10000)
+                except:
+                    # Alternative selector
+                    await safe_click(page, 'ytcp-button#create-icon', timeout=5000)
                 await asyncio.sleep(random.uniform(1.0, 2.0))
-                await safe_click(page, 'tp-yt-paper-item:has-text("Upload videos")', timeout=8000)
+                await safe_click(page, 'tp-yt-paper-item:has-text("Upload videos"), #text:has-text("Upload videos")', timeout=8000)
                 await asyncio.sleep(random.uniform(2.0, 3.5))
 
             # ── 6. INJECT VIDEO FILE ──────────────────────
@@ -247,6 +254,18 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
             await asyncio.sleep(0.3)
             await human_type(page, title_line)
             await asyncio.sleep(1.0)
+            
+            # Extract video URL early (it's visible on the right panel in step 1)
+            video_url = None
+            try:
+                # The video link is usually an anchor with href starting with https://youtu.be/
+                link_el = page.locator('a.ytcp-video-info[href*="youtu.be"]').first
+                if await link_el.is_visible(timeout=3000):
+                    video_url = await link_el.get_attribute("href")
+                    print(f"      ✅  Extracted early URL: {video_url}")
+            except Exception:
+                pass
+
 
             # Description
             desc_box = page.locator('#textbox').nth(1)
@@ -284,34 +303,66 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
             print("      🔥  SMASHING THE PUBLISH BUTTON...")
             await safe_click(page, '#done-button', timeout=10000)
 
-            # ── 8. EXTRACT LIVE LINK (from success dialog) ──
-            print("[8/8] 🔍  Extracting live video link...")
+            # ── 8. EXTRACT LIVE LINK (from "Video published" modal) ──
+            print("[8/8] 🔍  Extracting live video link from success modal...")
+            video_url = None
             try:
-                # YouTube success dialog pe youtu.be short link hota hai
-                link_el = page.locator('a[href*="youtu.be"]').first
-                await link_el.wait_for(state="visible", timeout=20000)
+                # YouTube Studio shows "Video published" dialog with a Video link input
+                # Selector priority: input showing youtube.com/shorts URL → a[href*=youtu.be] fallback
+                await asyncio.sleep(3.0)   # let the modal animate in
 
-                # Human-like: hover over the link before grabbing it
-                await link_el.hover()
-                await asyncio.sleep(random.uniform(0.8, 1.5))
+                # Try 1: read the "Video link" input in the success dialog
+                link_input = page.locator('input[aria-label="Video link"], input.ytcp-video-share-dialog__text-input, ytcp-social-share-panel input').first
+                try:
+                    await link_input.wait_for(state="visible", timeout=15000)
+                    video_url = await link_input.get_attribute("value")
+                    if not video_url:
+                        video_url = await link_input.input_value()
+                    print(f"      ✅  Modal input URL: {video_url}")
+                except Exception:
+                    pass
 
-                video_url = await link_el.get_attribute("href")
-                print(f"      ✅  BOOM! Live Link: {video_url}")
+                # Try 2: any anchor whose href contains youtube.com/shorts or youtu.be
+                if not video_url:
+                    for selector in ['a[href*="youtube.com/shorts"]', 'a[href*="youtu.be"]']:
+                        try:
+                            link_el = page.locator(selector).first
+                            await link_el.wait_for(state="visible", timeout=8000)
+                            await link_el.hover()
+                            await asyncio.sleep(random.uniform(0.5, 1.0))
+                            video_url = await link_el.get_attribute("href")
+                            if video_url:
+                                print(f"      ✅  Anchor URL: {video_url}")
+                                break
+                        except Exception:
+                            pass
 
-                # Log to links.txt for Whop submitter
-                links_file = FACTORY_DIR / "uploaded_links.txt"
-                with open(links_file, "a", encoding="utf-8") as f:
-                    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                    f.write(f"{ts} | {os.path.basename(video_path)} | {video_url}\n")
-                print(f"      💾  Saved to uploaded_links.txt")
+                # Try 3: Intercept any API response that leaked the video ID
+                if not video_url:
+                    # Extract video ID from current page URL (Studio sometimes updates it)
+                    current_url = page.url
+                    import re as _re
+                    vid_match = _re.search(r'/video/([A-Za-z0-9_-]{8,})', current_url)
+                    if vid_match:
+                        video_url = f"https://www.youtube.com/shorts/{vid_match.group(1)}"
+                        print(f"      ✅  Extracted from page URL: {video_url}")
+
+                if video_url:
+                    links_file = FACTORY_DIR / "uploaded_links.txt"
+                    with open(links_file, "a", encoding="utf-8") as f:
+                        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                        f.write(f"{ts} | {os.path.basename(video_path)} | {video_url}\n")
+                    print(f"      💾  Saved to uploaded_links.txt")
+                else:
+                    print("      ⚠️  Could not extract URL — upload still succeeded.")
 
             except Exception as link_err:
-                print(f"      ⚠️  Link extraction failed: {link_err}")
-                # Fallback: build URL from channel ID if we know it
+                print(f"      ⚠️  Link extraction error: {link_err}")
                 video_url = None
 
             # Human pause — like a person admiring their post
             await asyncio.sleep(random.uniform(3.0, 5.0))
+
 
             # Close post-publish dialog (force click — button ho sakta hai hidden)
             try:
@@ -349,12 +400,27 @@ def upload_video(video_path: str, caption: str) -> str | None:
 #  🧪 STANDALONE TEST
 # ============================================================
 if __name__ == "__main__":
-    _test_vid = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Pending_Videos\clip_1_0_70.mp4"
-    _test_cap = (
-        "YOUTUBE SHORTS CAPTION:\n"
-        "He made $20,000 in 6 months with YouTube Shorts! 🤯 "
-        "Step-by-step blueprint to find a viral niche. 👇 "
-        "#youtubeautomation #sidehustle #makemoneyonline #wealth #shorts\n"
-        "----"
-    )
-    upload_video(_test_vid, _test_cap)
+    import os
+    from whop_submitter import submit_to_whop
+    from Manager import parse_smart_captions
+    
+    _test_vid = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Failed_Videos\clip_1_182_243.mp4"
+    _test_cap_file = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Failed_Videos\clip_1_182_243_caption.txt"
+    
+    if os.path.exists(_test_cap_file):
+        with open(_test_cap_file, "r", encoding="utf-8") as f:
+            _test_cap = f.read()
+    else:
+        _test_cap = "YOUTUBE SHORTS CAPTION:\nTest caption\n----"
+        
+    smart_caps = parse_smart_captions(_test_cap)
+    yt_cap = smart_caps.get('youtube', _test_cap)
+        
+    print(f"\n🎬 Running Standalone YouTube Test for {os.path.basename(_test_vid)}...")
+    url = upload_video(_test_vid, yt_cap)
+    
+    if url:
+        print(f"\n💰 Submitting YouTube URL to Whop TJR campaign: {url} ...")
+        submit_to_whop(url, os.path.basename(_test_vid), "YouTube")
+    else:
+        print("❌ No URL captured, skipping Whop.")

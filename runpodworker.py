@@ -398,14 +398,15 @@ def handler(event):
                     # Step 1: Raw fast cut (stream copy)
                     print(f"[WORKER] ffmpeg cut clip {i}: {start:.1f}s → {end:.1f}s")
                     try:
+                        duration = end - start
                         result = subprocess.run(
                             [
-                                "ffmpeg", "-y",
+                                "ffmpeg", "-y", "-nostdin",
                                 "-ss", str(start),
-                                "-to", str(end),
                                 "-i", video_path,
-                                "-c", "copy",
-                                "-avoid_negative_ts", "make_zero",
+                                "-t", str(duration),
+                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                                "-c:a", "aac", "-async", "1",
                                 clip_path,
                             ],
                             capture_output=True,

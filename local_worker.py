@@ -1256,325 +1256,326 @@ class FaceCache:
 
             t0 = time.perf_counter()
             cap = cv2.VideoCapture(self.video_path)
-            t_open += time.perf_counter() - t0
-            local_fps = cap.get(cv2.CAP_PROP_FPS) or fps or 25.0
-            # Cascade initialization removed (OpenCV 5.0 compatibility)
+            try:
+                t_open += time.perf_counter() - t0
+                local_fps = cap.get(cv2.CAP_PROP_FPS) or fps or 25.0
+                # Cascade initialization removed (OpenCV 5.0 compatibility)
 
-            start_frame = int(start * local_fps)
-            end_frame = int(end * local_fps)
-            abs_results = {}
-            rel_results = {}
-            sampled = []
+                start_frame = int(start * local_fps)
+                end_frame = int(end * local_fps)
+                abs_results = {}
+                rel_results = {}
+                sampled = []
 
-            # AV1 random seeks restart decoding from a keyframe and dominate wall
-            # time. Seek once to the clip and decode forward, retaining only the
-            # sampled frames required for in-memory clustering and Haar detection.
-            t0 = time.perf_counter()
-            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-            t_seek += time.perf_counter() - t0
-
-            # ── Seek verification: confirm OpenCV actually landed where we asked ──
-            actual_landed_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
-            actual_landed_t = actual_landed_frame / local_fps
-            seek_delta_frames = abs(actual_landed_frame - start_frame)
-            if seek_delta_frames > local_fps:  # >1 second off = real problem
-                print(
-                    f"[SEEK_VERIFY] ⚠️ SEEK MISS clip={start:.2f}-{end:.2f} "
-                    f"requested_frame={start_frame} landed_frame={actual_landed_frame:.0f} "
-                    f"delta={seek_delta_frames:.0f}frames ({seek_delta_frames/local_fps:.2f}s off)",
-                    flush=True,
-                )
-            else:
-                print(
-                    f"[SEEK_VERIFY] clip={start:.2f}-{end:.2f} "
-                    f"requested={start:.2f}s landed={actual_landed_t:.2f}s "
-                    f"delta={seek_delta_frames:.0f}frames [OK]",
-                    flush=True,
-                )
-
-            frames_skipped_invalid = 0
-            for fn in range(start_frame, end_frame):
-                rel = fn - start_frame
-                is_sample = (rel % stride == 0)
-
+                # AV1 random seeks restart decoding from a keyframe and dominate wall
+                # time. Seek once to the clip and decode forward, retaining only the
+                # sampled frames required for in-memory clustering and Haar detection.
                 t0 = time.perf_counter()
-                if is_sample:
-                    # Full decode — we actually need this frame's pixels
-                    ret, frame = cap.read()
-                    t_decode += time.perf_counter() - t0
-                    if not ret:
-                        break
+                cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+                t_seek += time.perf_counter() - t0
 
-                    # Guard: only keep genuinely decoded frames.
-                    # A stale/buffer frame from a failed seek can appear valid (ret=True)
-                    # but will have an unexpected shape or be entirely overexposed.
-                    if frame is None or frame.ndim != 3:
-                        frames_skipped_invalid += 1
-                        continue
-
-                    t0 = time.perf_counter()
-                    sampled.append((fn, frame))
-                    t_sample += time.perf_counter() - t0
+                # ── Seek verification: confirm OpenCV actually landed where we asked ──
+                actual_landed_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
+                actual_landed_t = actual_landed_frame / local_fps
+                seek_delta_frames = abs(actual_landed_frame - start_frame)
+                if seek_delta_frames > local_fps:  # >1 second off = real problem
+                    print(
+                        f"[SEEK_VERIFY] ⚠️ SEEK MISS clip={start:.2f}-{end:.2f} "
+                        f"requested_frame={start_frame} landed_frame={actual_landed_frame:.0f} "
+                        f"delta={seek_delta_frames:.0f}frames ({seek_delta_frames/local_fps:.2f}s off)",
+                        flush=True,
+                    )
                 else:
-                    # grab() advances the decoder position WITHOUT full pixel decode.
-                    # ~10-14x faster than cap.read() for non-sampled frames.
-                    ret = cap.grab()
-                    t_decode += time.perf_counter() - t0
-                    if not ret:
-                        break
+                    print(
+                        f"[SEEK_VERIFY] clip={start:.2f}-{end:.2f} "
+                        f"requested={start:.2f}s landed={actual_landed_t:.2f}s "
+                        f"delta={seek_delta_frames:.0f}frames [OK]",
+                        flush=True,
+                    )
 
-            print(
-                f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} "
-                f"sample_decode=grab_optimized frames_preloaded={len(sampled)} "
-                f"frames_skipped_invalid={frames_skipped_invalid}",
-                flush=True,
-            )
+                frames_skipped_invalid = 0
+                for fn in range(start_frame, end_frame):
+                    rel = fn - start_frame
+                    is_sample = (rel % stride == 0)
 
-
-            haar_calls = 0
-            if ENABLE_CLUSTER_SCAN:
-                t0 = time.perf_counter()
-                clusters = find_scene_segments(
-                    [frame for _, frame in sampled], CLUSTER_HASH_THRESHOLD
-                )
-                t_scene += time.perf_counter() - t0
-                # ── Shared sharpness scorer (160x90 downsample, fast) ─────────────
-                _SHARP_W, _SHARP_H = 160, 90
-
-                def _sharpness(idx: int) -> float:
-                    f = sampled[idx][1]
-                    small = cv2.resize(f, (_SHARP_W, _SHARP_H), interpolation=cv2.INTER_AREA)
-                    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if small.ndim == 3 else small
-                    return cv2.Laplacian(gray, cv2.CV_32F).var()
-
-                _is_podcast_clip = (fmt_type == "podcast")
-
-                for cluster_id, cluster in enumerate(clusters):
                     t0 = time.perf_counter()
+                    if is_sample:
+                        # Full decode — we actually need this frame's pixels
+                        ret, frame = cap.read()
+                        t_decode += time.perf_counter() - t0
+                        if not ret:
+                            break
 
-                    # ── Representative frame selection ────────────────────────────
-                    # Podcast: Top-K sharpest frames to maximize chance of finding 2 faces.
-                    # Monologue/other: single sharpest frame (original behavior).
-                    TOP_K_PODCAST = max(2, int(os.getenv("HS_PODCAST_TOP_K_REPS", "5")))
-                    if _is_podcast_clip:
-                        top_k_reps = sorted(cluster, key=_sharpness, reverse=True)[:TOP_K_PODCAST]
+                        # Guard: only keep genuinely decoded frames.
+                        # A stale/buffer frame from a failed seek can appear valid (ret=True)
+                        # but will have an unexpected shape or be entirely overexposed.
+                        if frame is None or frame.ndim != 3:
+                            frames_skipped_invalid += 1
+                            continue
+
+                        t0 = time.perf_counter()
+                        sampled.append((fn, frame))
+                        t_sample += time.perf_counter() - t0
                     else:
-                        top_k_reps = [max(cluster, key=_sharpness)]
+                        # grab() advances the decoder position WITHOUT full pixel decode.
+                        # ~10-14x faster than cap.read() for non-sampled frames.
+                        ret = cap.grab()
+                        t_decode += time.perf_counter() - t0
+                        if not ret:
+                            break
 
-                    representative = top_k_reps[0]  # sharpest (used for frame_h/frame_w ref)
-                    t_rep += time.perf_counter() - t0
+                print(
+                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} "
+                    f"sample_decode=grab_optimized frames_preloaded={len(sampled)} "
+                    f"frames_skipped_invalid={frames_skipped_invalid}",
+                    flush=True,
+                )
 
-                    # ── Face detection with progressive confidence ladder ──────────
-                    # Podcast: try multiple confidence levels across top-K reps until
-                    # we find >= 2 valid faces. Falls back to ROI search + synthesis.
-                    # Monologue: original single-pass at 0.45.
+
+                haar_calls = 0
+                if ENABLE_CLUSTER_SCAN:
                     t0 = time.perf_counter()
-                    ref_frame   = sampled[representative][1]
-                    ref_frame_h = ref_frame.shape[0]
-                    ref_frame_w = ref_frame.shape[1]
+                    clusters = find_scene_segments(
+                        [frame for _, frame in sampled], CLUSTER_HASH_THRESHOLD
+                    )
+                    t_scene += time.perf_counter() - t0
+                    # ── Shared sharpness scorer (160x90 downsample, fast) ─────────────
+                    _SHARP_W, _SHARP_H = 160, 90
 
-                    best_raw_faces  = []
-                    best_valid_count = 0
-                    used_synthesis  = False
+                    def _sharpness(idx: int) -> float:
+                        f = sampled[idx][1]
+                        small = cv2.resize(f, (_SHARP_W, _SHARP_H), interpolation=cv2.INTER_AREA)
+                        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if small.ndim == 3 else small
+                        return cv2.Laplacian(gray, cv2.CV_32F).var()
 
-                    if _is_podcast_clip:
-                        CONF_LADDER = [0.45, 0.35, 0.25]
-                        target_faces = 2
+                    _is_podcast_clip = (fmt_type == "podcast")
 
-                        # Pass 1: Multi-rep × confidence ladder
-                        found_target = False
-                        for conf in CONF_LADDER:
-                            for rep_idx in top_k_reps:
-                                r_frame = sampled[rep_idx][1]
-                                r_faces = self._detect_with_conf(r_frame, conf)
-                                haar_calls += 1
-                                r_valid = self._valid_face_count(
-                                    r_faces, r_frame.shape[0], sampled_frame=r_frame
+                    for cluster_id, cluster in enumerate(clusters):
+                        t0 = time.perf_counter()
+
+                        # ── Representative frame selection ────────────────────────────
+                        # Podcast: Top-K sharpest frames to maximize chance of finding 2 faces.
+                        # Monologue/other: single sharpest frame (original behavior).
+                        TOP_K_PODCAST = max(2, int(os.getenv("HS_PODCAST_TOP_K_REPS", "5")))
+                        if _is_podcast_clip:
+                            top_k_reps = sorted(cluster, key=_sharpness, reverse=True)[:TOP_K_PODCAST]
+                        else:
+                            top_k_reps = [max(cluster, key=_sharpness)]
+
+                        representative = top_k_reps[0]  # sharpest (used for frame_h/frame_w ref)
+                        t_rep += time.perf_counter() - t0
+
+                        # ── Face detection with progressive confidence ladder ──────────
+                        # Podcast: try multiple confidence levels across top-K reps until
+                        # we find >= 2 valid faces. Falls back to ROI search + synthesis.
+                        # Monologue: original single-pass at 0.45.
+                        t0 = time.perf_counter()
+                        ref_frame   = sampled[representative][1]
+                        ref_frame_h = ref_frame.shape[0]
+                        ref_frame_w = ref_frame.shape[1]
+
+                        best_raw_faces  = []
+                        best_valid_count = 0
+                        used_synthesis  = False
+
+                        if _is_podcast_clip:
+                            CONF_LADDER = [0.45, 0.35, 0.25]
+                            target_faces = 2
+
+                            # Pass 1: Multi-rep × confidence ladder
+                            found_target = False
+                            for conf in CONF_LADDER:
+                                for rep_idx in top_k_reps:
+                                    r_frame = sampled[rep_idx][1]
+                                    r_faces = self._detect_with_conf(r_frame, conf)
+                                    haar_calls += 1
+                                    r_valid = self._valid_face_count(
+                                        r_faces, r_frame.shape[0], sampled_frame=r_frame
+                                    )
+                                    if r_valid > best_valid_count:
+                                        best_valid_count = r_valid
+                                        best_raw_faces   = r_faces
+                                    if best_valid_count >= target_faces:
+                                        print(
+                                            f"[PODCAST_CLUSTER] clip={start:.1f}-{end:.1f} "
+                                            f"cluster={cluster_id} found={best_valid_count} faces "
+                                            f"at conf={conf:.2f} rep={rep_idx}",
+                                            flush=True,
+                                        )
+                                        found_target = True
+                                        break
+                                if found_target:
+                                    break
+
+                            # Pass 2: ROI-targeted detection at known speaker positions
+                            if not found_target and clip_fmt and len(clip_fmt.speaker_positions or []) >= 2:
+                                roi_faces = _fc_detect_in_speaker_rois(
+                                    ref_frame, clip_fmt.speaker_positions,
+                                    ref_frame_w, ref_frame_h, conf=0.25,
                                 )
-                                if r_valid > best_valid_count:
-                                    best_valid_count = r_valid
-                                    best_raw_faces   = r_faces
-                                if best_valid_count >= target_faces:
+                                roi_valid = self._valid_face_count(roi_faces, ref_frame_h)
+                                if roi_valid > best_valid_count:
+                                    best_valid_count = roi_valid
+                                    best_raw_faces   = roi_faces
                                     print(
                                         f"[PODCAST_CLUSTER] clip={start:.1f}-{end:.1f} "
-                                        f"cluster={cluster_id} found={best_valid_count} faces "
-                                        f"at conf={conf:.2f} rep={rep_idx}",
+                                        f"cluster={cluster_id} ROI_detect found={roi_valid} faces",
                                         flush=True,
                                     )
-                                    found_target = True
-                                    break
-                            if found_target:
-                                break
 
-                        # Pass 2: ROI-targeted detection at known speaker positions
-                        if not found_target and clip_fmt and len(clip_fmt.speaker_positions or []) >= 2:
-                            roi_faces = _fc_detect_in_speaker_rois(
-                                ref_frame, clip_fmt.speaker_positions,
-                                ref_frame_w, ref_frame_h, conf=0.25,
-                            )
-                            roi_valid = self._valid_face_count(roi_faces, ref_frame_h)
-                            if roi_valid > best_valid_count:
-                                best_valid_count = roi_valid
-                                best_raw_faces   = roi_faces
-                                print(
-                                    f"[PODCAST_CLUSTER] clip={start:.1f}-{end:.1f} "
-                                    f"cluster={cluster_id} ROI_detect found={roi_valid} faces",
-                                    flush=True,
+                            # Pass 3: Synthesize missing speaker from format_classify position
+                            if best_valid_count < target_faces and clip_fmt:
+                                best_raw_faces = _fc_synthesize_missing_speaker(
+                                    best_raw_faces, clip_fmt, ref_frame_h, ref_frame_w
                                 )
+                                used_synthesis = len(best_raw_faces) > best_valid_count
 
-                        # Pass 3: Synthesize missing speaker from format_classify position
-                        if best_valid_count < target_faces and clip_fmt:
-                            best_raw_faces = _fc_synthesize_missing_speaker(
-                                best_raw_faces, clip_fmt, ref_frame_h, ref_frame_w
+                            print(
+                                f"[PODCAST_CLUSTER] clip={start:.1f}-{end:.1f} "
+                                f"cluster={cluster_id} final_faces={len(best_raw_faces)} "
+                                f"real_valid={best_valid_count} synthesized={used_synthesis} "
+                                f"top_k={len(top_k_reps)} reps_tried={len(top_k_reps) * len(CONF_LADDER)}",
+                                flush=True,
                             )
-                            used_synthesis = len(best_raw_faces) > best_valid_count
 
-                        print(
-                            f"[PODCAST_CLUSTER] clip={start:.1f}-{end:.1f} "
-                            f"cluster={cluster_id} final_faces={len(best_raw_faces)} "
-                            f"real_valid={best_valid_count} synthesized={used_synthesis} "
-                            f"top_k={len(top_k_reps)} reps_tried={len(top_k_reps) * len(CONF_LADDER)}",
-                            flush=True,
-                        )
-
-                    else:
-                        # ── Original single-rep logic for non-podcast clips ────────
-                        raw_faces = self._detect(ref_frame)
-                        haar_calls += 1
-                        valid_count = self._valid_face_count(
-                            raw_faces, ref_frame_h, sampled_frame=ref_frame
-                        )
-                        best_raw_faces  = raw_faces
-                        best_valid_count = valid_count
-
-                        # Retry on nearby frames if 0 valid faces found
-                        if best_valid_count == 0:
-                            retries = sorted(
-                                [idx for idx in cluster if idx != representative],
-                                key=lambda idx: abs(idx - representative)
+                        else:
+                            # ── Original single-rep logic for non-podcast clips ────────
+                            raw_faces = self._detect(ref_frame)
+                            haar_calls += 1
+                            valid_count = self._valid_face_count(
+                                raw_faces, ref_frame_h, sampled_frame=ref_frame
                             )
-                            if retries:
-                                print(
-                                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} "
-                                    f"cluster={cluster_id} redetect valid_count=0 "
-                                    f"attempts={min(len(retries), MIN_CLUSTER_REDETECT_ATTEMPTS)}",
-                                    flush=True,
+                            best_raw_faces  = raw_faces
+                            best_valid_count = valid_count
+
+                            # Retry on nearby frames if 0 valid faces found
+                            if best_valid_count == 0:
+                                retries = sorted(
+                                    [idx for idx in cluster if idx != representative],
+                                    key=lambda idx: abs(idx - representative)
                                 )
-                            for retry_idx in retries[:MIN_CLUSTER_REDETECT_ATTEMPTS]:
-                                t0b = time.perf_counter()
-                                r_faces = self._detect(sampled[retry_idx][1])
-                                t_face += time.perf_counter() - t0b
-                                haar_calls += 1
-                                r_valid = self._valid_face_count(
-                                    r_faces, sampled[retry_idx][1].shape[0],
-                                    sampled_frame=sampled[retry_idx][1]
-                                )
-                                if r_valid > best_valid_count:
-                                    best_valid_count = r_valid
-                                    best_raw_faces   = r_faces
-                                if best_valid_count >= 1:
-                                    break
+                                if retries:
+                                    print(
+                                        f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} "
+                                        f"cluster={cluster_id} redetect valid_count=0 "
+                                        f"attempts={min(len(retries), MIN_CLUSTER_REDETECT_ATTEMPTS)}",
+                                        flush=True,
+                                    )
+                                for retry_idx in retries[:MIN_CLUSTER_REDETECT_ATTEMPTS]:
+                                    t0b = time.perf_counter()
+                                    r_faces = self._detect(sampled[retry_idx][1])
+                                    t_face += time.perf_counter() - t0b
+                                    haar_calls += 1
+                                    r_valid = self._valid_face_count(
+                                        r_faces, sampled[retry_idx][1].shape[0],
+                                        sampled_frame=sampled[retry_idx][1]
+                                    )
+                                    if r_valid > best_valid_count:
+                                        best_valid_count = r_valid
+                                        best_raw_faces   = r_faces
+                                    if best_valid_count >= 1:
+                                        break
 
-                    t_face += time.perf_counter() - t0
+                        t_face += time.perf_counter() - t0
 
-                    # ── Stamp _slot labels + broadcast to all frames in cluster ──
-                    t0 = time.perf_counter()
-                    labeled_faces = _fc_assign_slots(best_raw_faces, ref_frame_w)
+                        # ── Stamp _slot labels + broadcast to all frames in cluster ──
+                        t0 = time.perf_counter()
+                        labeled_faces = _fc_assign_slots(best_raw_faces, ref_frame_w)
 
-                    for sample_idx in cluster:
-                        fn, _ = sampled[sample_idx]
+                        for sample_idx in cluster:
+                            fn, _ = sampled[sample_idx]
+                            t_abs = round(fn / local_fps, 2)
+                            t_rel = round(max(0.0, t_abs - start), 2)
+                            assigned_faces = [
+                                {
+                                    **face,
+                                    "_cluster_id":    cluster_id,
+                                    "_cluster_start": cluster[0],
+                                    "_cluster_end":   cluster[-1],
+                                }
+                                for face in labeled_faces
+                            ]
+                            abs_results[t_abs] = assigned_faces
+                            rel_results[t_rel] = assigned_faces
+                        t_anchor += time.perf_counter() - t0
+
+                    print(
+                        f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} format={fmt_type} "
+                        f"clusters={len(clusters)} haar_calls={haar_calls} "
+                        f"frames_covered={len(sampled)} wall_s={time.time() - _clip_start:.2f}",
+                        flush=True,
+                    )
+                else:
+                    # clusters=disabled: run per-frame Haar scan on every sampled frame.
+                    for fn, frame in sampled:
                         t_abs = round(fn / local_fps, 2)
                         t_rel = round(max(0.0, t_abs - start), 2)
-                        assigned_faces = [
-                            {
-                                **face,
-                                "_cluster_id":    cluster_id,
-                                "_cluster_start": cluster[0],
-                                "_cluster_end":   cluster[-1],
-                            }
-                            for face in labeled_faces
-                        ]
-                        abs_results[t_abs] = assigned_faces
-                        rel_results[t_rel] = assigned_faces
-                    t_anchor += time.perf_counter() - t0
+                        t0 = time.perf_counter()
+                        raw_faces = self._detect(frame)
+                        t_face += time.perf_counter() - t0
+                        haar_calls += 1
+                        if raw_faces:
+                            abs_results[t_abs] = raw_faces
+                            rel_results[t_rel] = raw_faces
+                    print(
+                        f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} clusters=disabled "
+                        f"haar_calls={haar_calls} frames_covered={len(sampled)} "
+                        f"wall_s={time.time() - _clip_start:.2f}",
+                        flush=True,
+                    )
 
-                print(
-                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} format={fmt_type} "
-                    f"clusters={len(clusters)} haar_calls={haar_calls} "
-                    f"frames_covered={len(sampled)} wall_s={time.time() - _clip_start:.2f}",
-                    flush=True,
-                )
-            else:
-                # clusters=disabled: run per-frame Haar scan on every sampled frame.
-                for fn, frame in sampled:
-                    t_abs = round(fn / local_fps, 2)
-                    t_rel = round(max(0.0, t_abs - start), 2)
-                    t0 = time.perf_counter()
-                    raw_faces = self._detect(frame)
-                    t_face += time.perf_counter() - t0
-                    haar_calls += 1
-                    if raw_faces:
-                        abs_results[t_abs] = raw_faces
-                        rel_results[t_rel] = raw_faces
-                print(
-                    f"[CLUSTER_SCAN] clip={start:.2f}-{end:.2f} clusters=disabled "
-                    f"haar_calls={haar_calls} frames_covered={len(sampled)} "
-                    f"wall_s={time.time() - _clip_start:.2f}",
-                    flush=True,
-                )
+                # ── FACE_TIMELINE ────────────────────────────────────────────────────
+                # rel_results = {t_rel: [face_list]} already sorted by InsightFace/Haar
+                _tl_segs    = []  # list of (seg_start, seg_end, mode, n_faces)
+                _tl_items   = sorted(rel_results.items())
+                _clip_dur   = max(0.1, end - start)
+                if _tl_items:
+                    _cur_mode   = None
+                    _cur_start  = 0.0
+                    _n_prev     = 0
+                    for _t, _faces in _tl_items:
+                        _n    = len([f for f in _faces if not f.get('_synthetic')])
+                        _mode = "PODCAST" if _n >= 2 else "MONOLOGUE" if _n == 1 else "GAP"
+                        if _mode != _cur_mode:
+                            if _cur_mode is not None:
+                                _tl_segs.append((_cur_start, round(_t, 1), _cur_mode, _n_prev))
+                            _cur_mode, _cur_start = _mode, round(_t, 1)
+                        _n_prev = _n
+                    if _cur_mode:
+                        _tl_segs.append((_cur_start, round(_clip_dur, 1), _cur_mode, _n_prev))
 
-            # ── FACE_TIMELINE ────────────────────────────────────────────────────
-            # rel_results = {t_rel: [face_list]} already sorted by InsightFace/Haar
-            _tl_segs    = []  # list of (seg_start, seg_end, mode, n_faces)
-            _tl_items   = sorted(rel_results.items())
-            _clip_dur   = max(0.1, end - start)
-            if _tl_items:
-                _cur_mode   = None
-                _cur_start  = 0.0
-                _n_prev     = 0
-                for _t, _faces in _tl_items:
-                    _n    = len([f for f in _faces if not f.get('_synthetic')])
-                    _mode = "PODCAST" if _n >= 2 else "MONOLOGUE" if _n == 1 else "GAP"
-                    if _mode != _cur_mode:
-                        if _cur_mode is not None:
-                            _tl_segs.append((_cur_start, round(_t, 1), _cur_mode, _n_prev))
-                        _cur_mode, _cur_start = _mode, round(_t, 1)
-                    _n_prev = _n
-                if _cur_mode:
-                    _tl_segs.append((_cur_start, round(_clip_dur, 1), _cur_mode, _n_prev))
+                # Print face timeline
+                _BAR_CH   = {"PODCAST": "\u2588", "MONOLOGUE": "\u2591", "GAP": "?"}
+                _switches  = max(0, len(_tl_segs) - 1)
+                _res_s     = round(stride / max(1.0, local_fps), 1)
+                print(f"[FACE_TIMELINE] clip={start:.1f}-{end:.1f}s  "
+                      f"resolution=~{_res_s}s/sample  segments={len(_tl_segs)}", flush=True)
+                for _s, _e, _m, _n in _tl_segs:
+                    _dur_s   = max(0.1, _e - _s)
+                    _bar_len = max(1, round(_dur_s / _clip_dur * 24))
+                    _bar     = _BAR_CH.get(_m, "?") * _bar_len
+                    print(f"  t={_s:5.1f}s → {_e:5.1f}s : {_m:<9} ({_n}f)  [{_bar}]",
+                          flush=True)
+                if _tl_segs:
+                    _dom_mode = max(
+                        set(s[2] for s in _tl_segs),
+                        key=lambda m: sum(s[1] - s[0] for s in _tl_segs if s[2] == m)
+                    )
+                    _dom_s = sum(s[1] - s[0] for s in _tl_segs if s[2] == _dom_mode)
+                    print(f"  Dominant: {_dom_mode} ({_dom_s:.1f}s/{_clip_dur:.1f}s)  "
+                          f"Mode-switches: {_switches}", flush=True)
 
-            # Print face timeline
-            _BAR_CH   = {"PODCAST": "\u2588", "MONOLOGUE": "\u2591", "GAP": "?"}
-            _switches  = max(0, len(_tl_segs) - 1)
-            _res_s     = round(stride / max(1.0, local_fps), 1)
-            print(f"[FACE_TIMELINE] clip={start:.1f}-{end:.1f}s  "
-                  f"resolution=~{_res_s}s/sample  segments={len(_tl_segs)}", flush=True)
-            for _s, _e, _m, _n in _tl_segs:
-                _dur_s   = max(0.1, _e - _s)
-                _bar_len = max(1, round(_dur_s / _clip_dur * 24))
-                _bar     = _BAR_CH.get(_m, "?") * _bar_len
-                print(f"  t={_s:5.1f}s → {_e:5.1f}s : {_m:<9} ({_n}f)  [{_bar}]",
-                      flush=True)
-            if _tl_segs:
-                _dom_mode = max(
-                    set(s[2] for s in _tl_segs),
-                    key=lambda m: sum(s[1] - s[0] for s in _tl_segs if s[2] == m)
-                )
-                _dom_s = sum(s[1] - s[0] for s in _tl_segs if s[2] == _dom_mode)
-                print(f"  Dominant: {_dom_mode} ({_dom_s:.1f}s/{_clip_dur:.1f}s)  "
-                      f"Mode-switches: {_switches}", flush=True)
-
-            print(f"\nClip {clip_idx + 1}\n"
-                  f"Open Video .......... {int(t_open * 1000)} ms\n"
-                  f"Seek ............... {int(t_seek * 1000)} ms\n"
-                  f"Decode ........... {int(t_decode * 1000)} ms\n"
-                  f"Frame Sampling ..... {int(t_sample * 1000)} ms\n"
-                  f"Scene Detection ..... {int(t_scene * 1000)} ms\n"
-                  f"Representative Pick.. {int(t_rep * 1000)} ms\n"
-                  f"Face Detect ........ {int(t_face * 1000)} ms\n"
-                  f"Anchor Build ........ {int(t_anchor * 1000)} ms\n", flush=True)
-
-            cap.release()
+                print(f"\nClip {clip_idx + 1}\n"
+                      f"Open Video .......... {int(t_open * 1000)} ms\n"
+                      f"Seek ............... {int(t_seek * 1000)} ms\n"
+                      f"Decode ........... {int(t_decode * 1000)} ms\n"
+                      f"Frame Sampling ..... {int(t_sample * 1000)} ms\n"
+                      f"Scene Detection ..... {int(t_scene * 1000)} ms\n"
+                      f"Representative Pick.. {int(t_rep * 1000)} ms\n"
+                      f"Face Detect ........ {int(t_face * 1000)} ms\n"
+                      f"Anchor Build ........ {int(t_anchor * 1000)} ms\n", flush=True)
+            finally:
+                cap.release()
             return (round(start, 2), round(end, 2)), abs_results, rel_results, _tl_segs
 
         with ThreadPoolExecutor(max_workers=min(workers, max(1, len(clips)))) as ex:
@@ -2043,10 +2044,12 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     # Frame-accurate extraction (avoid -c copy keyframe drift)
                     import subprocess
                     try:
+                        duration = end - start
                         subprocess.run([
-                            "ffmpeg", "-y", "-nostdin", "-ss", str(start), "-to", str(end),
-                            "-i", video_path, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
-                            "-c:a", "aac", raw_path
+                            "ffmpeg", "-y", "-nostdin", "-ss", str(start), 
+                            "-i", video_path, "-t", str(duration), 
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                            "-c:a", "aac", "-async", "1", raw_path
                         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
                     except subprocess.CalledProcessError as e:
                         print(f"[PIPELINE] Extraction failed for clip {i}: {e}", flush=True)
@@ -2219,7 +2222,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 _clip_text = str(_clip_transcript)
                             
                             # Extract creator name from job details if available
-                            _creator = job.get("creator_name", "Daniel")
+                            _creator = job.get("creator_name", "TJR")
                             
                             _cap_text = captioner.generate_viral_caption(_clip_text, creator_name=_creator)
                             if _cap_text:
