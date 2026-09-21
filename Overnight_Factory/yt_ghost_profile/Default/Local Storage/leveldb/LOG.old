@@ -1,0 +1,5 @@
+2026/09/21-13:25:14.151 6594 Creating DB C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Local Storage\leveldb since it was missing.
+2026/09/21-13:25:14.183 6594 Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/09/21-13:30:43.613 2904 Level-0 table #5: started
+2026/09/21-13:30:43.628 2904 Level-0 table #5: 20471 bytes OK
+2026/09/21-13:30:43.634 2904 Delete type=0 #3

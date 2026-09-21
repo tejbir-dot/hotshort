@@ -1,0 +1,42 @@
+{
+  "channel_id": "VhRZ5-JjlTQ",
+  "runs": 4,
+  "params": {
+    "HS_MIN_SWITCH_FRAMES": 35.82668647000973,
+    "HS_SPLIT_MIN_GAP": 0.41132422080000003,
+    "HS_TALKING_THRESHOLD": 92.69203320312499,
+    "HS_SCENE_CUT_THRESHOLD": 22.0,
+    "HS_EMA_FLOOR": 1.40625
+  },
+  "score_history": [
+    65.89,
+    62.95,
+    61.96,
+    55.8
+  ],
+  "avg_score": 61.65,
+  "best_score": 65.89,
+  "ghost_history": [
+    {
+      "slot": "right",
+      "pct": 1.174,
+      "ts": "2026-09-19T14:50:52.795529"
+    },
+    {
+      "slot": "right",
+      "pct": 0.691,
+      "ts": "2026-09-19T15:06:10.801181"
+    },
+    {
+      "slot": "right",
+      "pct": 0.876,
+      "ts": "2026-09-19T15:26:45.908796"
+    },
+    {
+      "slot": "right",
+      "pct": 0.821,
+      "ts": "2026-09-19T15:35:51.604790"
+    }
+  ],
+  "last_updated": "2026-09-19T15:35:51.604790"
+}

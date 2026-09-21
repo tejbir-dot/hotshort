@@ -25,7 +25,7 @@ from playwright_stealth import Stealth
 #  ⚙️ FACTORY CONFIG — Edit only here
 # ============================================================
 FACTORY_DIR   = Path(__file__).parent
-PROFILE_DIR   = str(FACTORY_DIR / "Ghost_Profile" / "youtube")
+PROFILE_DIR   = r"C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile"
 COOKIE_FILE   = str(FACTORY_DIR / "youtube_cookie.json")
 
 # 🔌 Set USE_PROXY = False to test without proxy (uses your real IP)
@@ -140,7 +140,7 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
         print("\n[1/8] 🔗  Launching Stealth Persistent Context...")
         launch_kwargs = dict(
             user_data_dir=PROFILE_DIR,
-            channel="chrome",
+            channel="msedge",
             headless=False,
             viewport={"width": 1366, "height": 768},
             user_agent=(
@@ -149,10 +149,9 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
                 "Chrome/126.0.0.0 Safari/537.36"
             ),
             args=[
+                "--start-maximized",
                 "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--no-first-run",
-                "--no-sandbox",
+                "--disable-infobars"
             ],
             ignore_default_args=["--enable-automation"],
         )
@@ -163,20 +162,21 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
             print("      🔌  Proxy: DISABLED (direct connection — test mode)")
         context = await p.chromium.launch_persistent_context(**launch_kwargs)
 
-        page = await context.new_page()
+        page = context.pages[0] if context.pages else await context.new_page()
 
         # ── 2. APPLY STEALTH MASK ──────────────────────────
         print("[2/8] 🕵️  Applying Stealth Mask (anti-fingerprint)...")
         await Stealth().apply_stealth_async(page)
 
-        # ── 3. INJECT COOKIES (bypass login) ──────────────
-        print("[3/8] 🍪  Injecting YouTube Session Cookies...")
-        cookies = load_cookies(COOKIE_FILE)
-        if cookies:
-            await context.add_cookies(cookies)
-            print(f"      ✅  {len(cookies)} cookies injected — login bypassed!")
-        else:
-            print("      ⚠️  No cookies found. Will rely on saved profile session.")
+        # ── 3. (REMOVED) INJECT COOKIES ───────────────────
+        # Cookies are now permanently saved in the yt_ghost_profile persistent context!
+        print("[3/8] 🍪  Cookie Injection Disabled (Using Persistent Session)...")
+        # cookies = load_cookies(COOKIE_FILE)
+        # if cookies:
+        #     await context.add_cookies(cookies)
+        #     print(f"      ✅  {len(cookies)} cookies injected — login bypassed!")
+        # else:
+        #     print("      ⚠️  No cookies found. Will rely on saved profile session.")
 
         try:
             # ── 4. WARM-UP: YouTube Homepage (human-like) ──
@@ -200,9 +200,16 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
             # 🔍 LOGIN CHECK
             current_url = page.url
             if "accounts.google.com" in current_url or "signin" in current_url:
-                raise Exception(
-                    "❌ YouTube cookies EXPIRED! youtube_cookie.json ko fresh export kar."
-                )
+                print("      ⚠️  LOGIN REQUIRED! Please login manually in the browser...")
+                print("      ⏳  You have 3 minutes to login and reach YouTube Studio.")
+                try:
+                    # Wait for the URL to change to studio.youtube.com (meaning login successful)
+                    await page.wait_for_url("https://studio.youtube.com/**", timeout=180000)
+                    print("      ✅  Login successful! Continuing automation...")
+                    current_url = page.url
+                    await asyncio.sleep(3.0)
+                except Exception:
+                    raise Exception("❌ Login timed out. Please run again and login faster.")
             print(f"      ✅  Studio loaded. URL: {current_url[:70]}")
             await asyncio.sleep(random.uniform(2.0, 3.0))
 
@@ -307,57 +314,29 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
             print("[8/8] 🔍  Extracting live video link from success modal...")
             video_url = None
             try:
-                # YouTube Studio shows "Video published" dialog with a Video link input
-                # Selector priority: input showing youtube.com/shorts URL → a[href*=youtu.be] fallback
-                await asyncio.sleep(3.0)   # let the modal animate in
-
-                # Try 1: read the "Video link" input in the success dialog
-                link_input = page.locator('input[aria-label="Video link"], input.ytcp-video-share-dialog__text-input, ytcp-social-share-panel input').first
-                try:
-                    await link_input.wait_for(state="visible", timeout=15000)
-                    video_url = await link_input.get_attribute("value")
-                    if not video_url:
-                        video_url = await link_input.input_value()
-                    print(f"      ✅  Modal input URL: {video_url}")
-                except Exception:
-                    pass
-
-                # Try 2: any anchor whose href contains youtube.com/shorts or youtu.be
+                # 1. Dialog box open hone ka wait (max 15 sec)
+                await page.wait_for_selector('text="Video published"', timeout=15000)
+                
+                # 2. 'youtube.com/shorts/' ya 'youtu.be/' wala href dhoondho
+                link_loc = page.locator('a[href*="youtube.com/shorts/"], a[href*="youtu.be/"]').first
+                video_url = await link_loc.get_attribute('href')
+                
+                # 3. Agar a tag mein na mile, toh pure text mein dhoondho (Fallback)
                 if not video_url:
-                    for selector in ['a[href*="youtube.com/shorts"]', 'a[href*="youtu.be"]']:
-                        try:
-                            link_el = page.locator(selector).first
-                            await link_el.wait_for(state="visible", timeout=8000)
-                            await link_el.hover()
-                            await asyncio.sleep(random.uniform(0.5, 1.0))
-                            video_url = await link_el.get_attribute("href")
-                            if video_url:
-                                print(f"      ✅  Anchor URL: {video_url}")
-                                break
-                        except Exception:
-                            pass
-
-                # Try 3: Intercept any API response that leaked the video ID
-                if not video_url:
-                    # Extract video ID from current page URL (Studio sometimes updates it)
-                    current_url = page.url
-                    import re as _re
-                    vid_match = _re.search(r'/video/([A-Za-z0-9_-]{8,})', current_url)
-                    if vid_match:
-                        video_url = f"https://www.youtube.com/shorts/{vid_match.group(1)}"
-                        print(f"      ✅  Extracted from page URL: {video_url}")
-
+                    text_loc = page.locator('text=https://youtube.com/shorts/').first
+                    video_url = await text_loc.inner_text()
+                    
+                print(f"      ✅  Extracted URL: {video_url}")
+                
                 if video_url:
                     links_file = FACTORY_DIR / "uploaded_links.txt"
                     with open(links_file, "a", encoding="utf-8") as f:
                         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                         f.write(f"{ts} | {os.path.basename(video_path)} | {video_url}\n")
                     print(f"      💾  Saved to uploaded_links.txt")
-                else:
-                    print("      ⚠️  Could not extract URL — upload still succeeded.")
-
-            except Exception as link_err:
-                print(f"      ⚠️  Link extraction error: {link_err}")
+                
+            except Exception as e:
+                print("      ⚠️  Could not extract URL — upload still succeeded.")
                 video_url = None
 
             # Human pause — like a person admiring their post
@@ -404,8 +383,8 @@ if __name__ == "__main__":
     from whop_submitter import submit_to_whop
     from Manager import parse_smart_captions
     
-    _test_vid = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Failed_Videos\clip_1_182_243.mp4"
-    _test_cap_file = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Failed_Videos\clip_1_182_243_caption.txt"
+    _test_vid = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Pending_Videos\clip_0_1156_1225.mp4"
+    _test_cap_file = r"C:\Users\n\Documents\hotshort\Overnight_Factory\Pending_Videos\clip_0_1156_1225_caption.txt"
     
     if os.path.exists(_test_cap_file):
         with open(_test_cap_file, "r", encoding="utf-8") as f:

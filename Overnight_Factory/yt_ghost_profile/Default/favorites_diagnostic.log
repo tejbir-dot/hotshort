@@ -1,0 +1,58 @@
+2026-09-21 07:55:12.473: [INFO] CurrentProfilePath: C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default
+2026-09-21 07:55:12.473: [INFO] Profiles total count: 1
+2026-09-21 07:55:12.475: [INFO] Profile: name=Profile 1 path=C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default lastActive=2026-09-21T07:55:12.437Z
+2026-09-21 07:55:12.475: [INFO] LastUsedProfileDir: C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default
+2026-09-21 07:55:12.475: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default lastActive=2026-09-21T07:55:12.437Z
+2026-09-21 07:55:12.475: [INFO] OnDoneLoading sync enabled: 0
+2026-09-21 07:55:12.475: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-21 07:55:12.475: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-21 07:55:12.475: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-21 07:55:12.513: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-21 07:55:17.741: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-21 07:55:17.746: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-21 07:55:17.756: [INFO] Primary account changed.
+2026-09-21 07:55:17.756: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-09-21 07:55:19.353: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-21 07:55:19.959: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-21 07:55:19.960: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-21 07:55:19.961: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-21 07:55:20.164: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-21 07:55:20.165: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-21 07:55:20.165: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-21 07:55:20.166: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:20.167: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:20.934: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:20.935: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:21.792: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:22.922: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:22.924: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-21 07:55:22.925: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-21 07:55:24.546: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-21 07:55:24.547: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-21 07:55:24.762: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-21 07:55:29.327: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:29.328: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:29.329: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:29.330: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-21 07:55:29.367: [INFO] VisibilityChanged: 0
+2026-09-21 07:55:30.789: [INFO] BookmarkNodeAdded, ABU: 0
+2026-09-21 07:55:30.789: [INFO] BookmarkNodeAdded, ABU: 0
+2026-09-21 07:55:30.789: [INFO] BookmarkNodeAdded, ABU: 0
+2026-09-21 07:55:30.789: [INFO] BookmarkNodeAdded, ABU: 0
+2026-09-21 07:55:31.589: [INFO] Sync initialization duration: 2256ms
+2026-09-21 07:56:22.113: [INFO] VisibilityChanged: 1
+2026-09-21 07:56:59.001: [INFO] VisibilityChanged: 0
+2026-09-21 07:58:55.194: [INFO] VisibilityChanged: 1
+2026-09-21 07:58:59.996: [INFO] VisibilityChanged: 0
+2026-09-21 08:01:44.340: [INFO] BookmarksSnapshot Shutdown total=4 bar=0 other=4 mobile=0 showBar=0 showBarNTP=1
+2026-09-21 08:20:06.682: [INFO] CurrentProfilePath: C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default
+2026-09-21 08:20:06.682: [INFO] Profiles total count: 1
+2026-09-21 08:20:06.682: [INFO] Profile: name=Personal path=C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default lastActive=2026-09-21T08:01:35.397Z
+2026-09-21 08:20:06.682: [INFO] LastUsedProfileDir: C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default
+2026-09-21 08:20:06.682: [INFO] MostRecentlyActiveProfile: name=Personal path=C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default lastActive=2026-09-21T08:01:35.397Z
+2026-09-21 08:20:06.682: [INFO] VisibilityChanged: 0
+2026-09-21 08:20:06.738: [INFO] OnDoneLoading sync enabled: 0
+2026-09-21 08:20:06.738: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-21 08:20:06.738: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-21 08:20:06.738: [INFO] BookmarksSnapshot Startup total=4 bar=0 other=4 mobile=0 showBar=0 showBarNTP=1
+2026-09-21 08:21:32.068: [INFO] BookmarksSnapshot Shutdown total=4 bar=0 other=4 mobile=0 showBar=0 showBarNTP=1

@@ -1,0 +1,9 @@
+{
+    "meaning_weight": 1.0,
+    "novelty_weight": 1.0,
+    "emotion_weight": 1.0,
+    "clarity_weight": 1.0,
+    "pattern_memory": [],
+    "learning_rate": 0.03,
+    "semantic_enabled": true
+}

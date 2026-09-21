@@ -1,0 +1,55 @@
+{
+   "action": {
+      "default_icon": {
+         "128": "images/icon/128.png",
+         "16": "images/icon/16.png",
+         "300": "images/icon/300.png",
+         "32": "images/icon/32.png",
+         "48": "images/icon/48.png",
+         "500": "images/icon/500.png"
+      },
+      "default_popup": "popup/index.html",
+      "default_title": "Facebook Ads Center Video&Data Downloader"
+   },
+   "background": {
+      "service_worker": "background/index.js"
+   },
+   "content_scripts": [ {
+      "css": [ "content-script/index.css" ],
+      "js": [ "content-script/index.js" ],
+      "matches": [ "*://*.facebook.com/**" ],
+      "run_at": "document_idle"
+   }, {
+      "js": [ "content-script/index.js" ],
+      "matches": [ "*://*.denote.net/**" ],
+      "run_at": "document_idle"
+   }, {
+      "js": [ "content-script/facebook-early-interceptor.js" ],
+      "matches": [ "https://www.facebook.com/ads/library/*", "https://facebook.com/ads/library/*" ],
+      "run_at": "document_start"
+   } ],
+   "default_locale": "en",
+   "description": "__MSG_description__",
+   "icons": {
+      "128": "images/icon/128.png",
+      "16": "images/icon/16.png",
+      "300": "images/icon/300.png",
+      "32": "images/icon/32.png",
+      "48": "images/icon/48.png",
+      "500": "images/icon/500.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAllH/DBa54p9LJ2yBZ75yz8Ptf3q1Z6PapPwOJ2qHQ3ApziWec4z0L0u4ST49Y1NwkoOvx59NPChGTK4iKNNLOs5TMvaR8GH030RvFSCnFse4iKzKbanuci4LTDdBEq0/BtDTfCb2O/icfZnPSG9B1iDetlw4BR9ziDm4hLX3BBa28LJ8BILctQkzSVha5qltxxyvjLYz+01zxBd4Z3wkumxQfDJFsvi6ZrxHUy6MOoHDNbpzCZ6eRtFQATmq0swQpXNirNcM9U9+x3sF+le7yHkYrW6tppyIrvHhVgsfPCU6QPOF+tk1loSMDR8dRbCUu/JcuzEpSQJ8JPE4C8LT/wIDAQAB",
+   "manifest_version": 3,
+   "name": "__MSG_name__",
+   "options_ui": {
+      "open_in_tab": true,
+      "page": "options/index.html"
+   },
+   "permissions": [ "storage", "unlimitedStorage", "webRequest" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.0.5.11",
+   "web_accessible_resources": [ {
+      "matches": [ "\u003Call_urls>" ],
+      "resources": [ "images/*", "content-script/inject.js", "facebook-early-interceptor-readable.js" ]
+   } ]
+}

@@ -319,21 +319,51 @@ async def run_insta_uploader(video_path: str, caption: str):
                 """)
 
 
-            # ── 9. WAIT FOR REAL SUCCESS (max 90s polling) ────
-            print("      ⏳  Waiting for IG to confirm upload (max 90s)...")
+            # ── 9. WAIT FOR REAL SUCCESS (max 110s polling) ────
+            print("      ⏳  Waiting for IG to confirm upload (max 110s)...")
             success = False
-            for attempt in range(18):  # 18 × 5s = 90s max
+            for attempt in range(22):  # 22 × 5s = 110s max
                 await asyncio.sleep(5.0)
 
                 # Check 1: "Your reel has been shared" toast text
                 try:
+                    toast_visible = False
                     for txt in ["Your reel has been shared", "Reel shared", "Post shared", "Your post has been shared"]:
                         el = page.get_by_text(txt, exact=False)
                         if await el.is_visible(timeout=500):
                             print(f"      ✅  IG toast confirmed: '{txt}' ({(attempt+1)*5}s)")
                             success = True
+                            toast_visible = True
                             break
-                    if success:
+                            
+                    if toast_visible:
+                        print("  🔍  Extracting IG Reel link...")
+                        try:
+                            # Option A: Try to find the 'View' or 'Reel' link in the success toast
+                            ig_url_element = page.locator('a[href*="/reel/"], a[href*="/p/"]').last
+                            ig_url = await ig_url_element.get_attribute('href')
+                            
+                            if not ig_url or ig_url == '/':
+                                raise Exception("Toast link not found, using profile fallback")
+                                
+                            if ig_url.startswith('/'):
+                                ig_url = f"https://www.instagram.com{ig_url}"
+                                
+                        except Exception:
+                            print("  🔄 Toast missed — scraping profile page directly...")
+                            # Option B: Fallback - Seedha profile pe jao aur latest video uthao
+                            await page.goto("https://www.instagram.com/eliteclipper.studios1/", timeout=60000, wait_until="domcontentloaded")
+                            await asyncio.sleep(5.0)
+                            
+                            # Pehli post/reel ka link uthao
+                            first_post = page.locator('article a[href*="/reel/"], article a[href*="/p/"]').first
+                            ig_url = await first_post.get_attribute('href')
+                            
+                            if ig_url and ig_url.startswith('/'):
+                                ig_url = f"https://www.instagram.com{ig_url}"
+
+                        print(f"  ✅  Extracted IG URL: {ig_url}")
+                        cur = ig_url
                         break
                 except:
                     pass
@@ -347,10 +377,10 @@ async def run_insta_uploader(video_path: str, caption: str):
                     success = True
                     break
 
-                print(f"      ⏳  Still processing... ({(attempt+1)*5}s / 90s) | URL: {cur[:50]}")
+                print(f"      ⏳  Still processing... ({(attempt+1)*5}s / 110s)")
 
             if not success:
-                print("      ⚠️  90s timeout — IG server slow ya upload fail. Check karo manually.")
+                print("      ⚠️  110s timeout — IG server slow ya upload fail. Check karo manually.")
                 # Raise nahi karte kyunki IG sometimes confirms late — Manager ko batao
                 print("      ℹ️  Browser khula rahega — manually check karo Instagram.")
                 await asyncio.sleep(10.0)  # Extra time to check manually

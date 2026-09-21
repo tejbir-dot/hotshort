@@ -280,6 +280,11 @@ async def run_tiktok_uploader(video_path: str, caption: str):
                     await asyncio.sleep(8.0)
                     first_video = page.locator('a[href*="/video/"]').first
                     video_url = await first_video.get_attribute('href', timeout=10000)
+                    
+                    if video_url and video_url.startswith("/@"):
+                        import re as _re
+                        video_url = _re.sub(r'/@[0-9]+', f'/@{TIKTOK_HANDLE}', video_url)
+                        video_url = f"https://www.tiktok.com{video_url}"
 
                 print(f"\n{'='*52}")
                 print("  ✅  BINGO! TIKTOK VIDEO UPLOADED SUCCESSFULLY!")

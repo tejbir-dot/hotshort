@@ -1,226 +1,531 @@
 """
-Smart Local B-Roll Matcher
-===========================
+Smart Local B-Roll Matcher v2 - INTELLIGENT DESIGN
+====================================================
 Maps transcript speech (with timestamps) to local video assets.
-Returns a list of (timestamp_sec, asset_path, duration_sec) tuples
-for the most impactful moments in the clip.
 
-Asset Library:
-  assets/broll_assets/money_assets/   → money, income, earn, wealth topics
-  assets/broll_assets/luxury/         → cars, jets, lifestyle topics
-  assets/broll_assets/content_assets/ → content, viral, clipping topics
+Architecture: Direct Asset Scoring (No Category Middleman)
+----------------------------------------------------------
+OLD BROKEN DESIGN:
+  text ? keyword ? CATEGORY ? random.choice(clips_in_category) ? GARBAGE
+
+NEW INTELLIGENT DESIGN:
+  text ? score EVERY asset directly ? pick HIGHEST scored asset ? PRECISE
+
+Each asset has its own INTENT list (what this video visually represents).
+Matching is done by computing an overlap score between the spoken text
+and every asset intent, then picking the highest scorer - zero randomness.
 """
 
 import os
-import random
 import logging
 from typing import List, Tuple, Optional
 
 log = logging.getLogger("smart_broll_matcher")
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # ASSET LIBRARY ROOT
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 _BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                      "assets", "broll_assets")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# KEYWORD → CATEGORY MAPPING  (add more as you add folders / clips)
-# ─────────────────────────────────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────────────────────────
-# KEYWORD → CATEGORY MAPPING
-# ─────────────────────────────────────────────────────────────────────────────
-KEYWORD_MAP = {
-    # ── MONEY / FINANCE ──────────────────────────────────────────────────────
-    "money_assets": [
-        "money", "million", "billion", "dollar", "earn", "earning",
-        "income", "revenue", "profit", "rich", "wealth", "wealthy",
-        "paid", "salary", "cash", "payment", "payout", "bank",
-        "invest", "investment", "fund", "funding", "return", "roi",
-        "financial", "finance", "expensive", "price", "cost",
-        "economy", "economic", "tax", "taxes", "broke", "savings",
-        "save", "spend", "spending", "budget", "passive",
-        "crypto", "bitcoin", "stock", "stocks", "trading", "trade",
-        "six figures", "seven figures", "paycheck", "payroll",
-        "commission", "bonus", "equity", "asset", "assets",
-        # Psychology / mindset (mapped to money_assets visuals)
-        "mindset", "mind", "brain", "focus", "deep work", "obsession",
-        "discipline", "sacrifice", "hustle", "grind", "king", "power",
-        "boss", "ceo", "empire", "control", "system", "secret", "roadmap",
-        "strategy", "hack", "exposed", "truth", "real game", "1%",
-        "elite", "top 1", "algorithm", "data", "ai", "automation",
-        "tech", "processor", "neurons", "awakening", "peace", "freedom",
-        "opportunity", "chance", "golden", "rare",
-    ],
-
-    # ── LUXURY / LIFESTYLE ───────────────────────────────────────────────────
-    "luxury": [
-        "luxury", "lamborghini", "ferrari", "bugatti", "bmw", "supercar",
-        "car", "cars", "vehicle", "jet", "private jet", "yacht",
-        "watch", "rolex", "mansion", "penthouse", "villa", "resort",
-        "travel", "trip", "vacation", "holiday", "lifestyle",
-        "high-end", "premium", "exclusive", "vip",
-        "successful", "entrepreneur",
-        "fast", "speed", "race", "drive", "flying", "luxury apartment",
-        "club", "party", "celebration", "dream",
-        "status", "flex", "flexing", "drip", "chaotic", "energy",
-    ],
-
-    # ── CONTENT / CLIPPING / DIGITAL ─────────────────────────────────────────
-    "content_assets": [
-        "content", "viral", "clip", "clips", "clipping", "short",
-        "shorts", "video", "videos", "views", "viewers",
-        "growth", "growing", "grow", "audience", "followers", "subscriber",
-        "subscribers", "channel", "platform", "youtube", "tiktok",
-        "instagram", "reel", "reels", "creator",
-        "editing", "editor", "edit", "thumbnail", "hook",
-        "network", "networking", "social media", "digital",
-        "online", "internet", "scale", "scaling", "workflow",
-        "agency", "business", "brand", "branding", "niche",
-        "podcast", "podcasting", "stream", "streaming",
-        "monetize", "monetization", "adsense", "sponsorship",
-        "graph", "analytics", "metric", "impression",
-        "reach", "engagement", "click", "conversion", "tone",
-        "million clips", "youtube button",
-    ],
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CLIP PREFERENCE — maps exact filenames to precise sub-keywords
-# ALL filenames verified against actual files on disk (Sep 2026)
-# ─────────────────────────────────────────────────────────────────────────────
-CLIP_PREFERENCE = {
-    "money_assets": {
-        # Core money visuals
-        "money.mp4":                    ["money", "cash", "dollar", "earn", "rich", "wealth"],
-        "payout.mp4":                   ["payout", "payment", "paid", "income", "revenue", "profit", "salary", "commission"],
-        "bank balance growing.mp4":     ["bank", "savings", "save", "passive", "growing", "balance"],
-        "tones of money.mp4":           ["wealth", "dollar", "financial", "rich", "abundance"],
-        "money_succes.mp4":             ["success", "wealthy", "millionaire", "achieve", "financial freedom"],
-        "bussiness.mp4":                ["business", "entrepreneur", "brand", "boss", "ceo"],
-        "win.mp4":                      ["win", "winning", "success", "goal", "reward"],
-        # Psychology / elite mindset
-        "king.mp4":                     ["king", "power", "boss", "empire", "authority", "elite", "1%", "top 1"],
-        "golden chance.mp4":            ["opportunity", "chance", "golden", "unlock", "rare", "discover"],
-        "secret roadmap.mp4":           ["secret", "roadmap", "strategy", "hack", "exposed", "plan", "system"],
-        "the real game.mp4":            ["real", "truth", "game", "mindset", "exposed", "actual", "real game"],
-        "1% people.mp4":                ["elite", "top 1", "1%", "exclusive", "rare", "best", "six figures", "seven figures"],
-        "deep work.mp4":                ["focus", "deep work", "productive", "grind", "build", "discipline", "work"],
-        "creative focus work.mp4":      ["creative", "idea", "build", "create", "creative work"],
-        "obsession.mp4":                ["obsession", "driven", "hustle", "grind", "dedicated"],
-        "sacrifice ,never give up.mp4": ["sacrifice", "never give up", "discipline", "consistent", "commit"],
-        "mind awakening.mp4":           ["mind", "mindset", "awakening", "realize", "conscious", "brain"],
-        "brain rot ,controlled.mp4":    ["attention", "control", "discipline", "focus", "brain"],
-        "war inner beast.mp4":          ["war", "beast", "inner", "fight", "conquer", "fearless", "courage"],
-        "neurons pathways.mp4":         ["neurons", "learn", "understand", "think", "pathway", "brain"],
-        # Tech / AI
-        "human and ai.mp4":             ["ai", "human and ai", "automation", "tech", "future", "robot"],
-        "algorithm.mp4":                ["algorithm", "system", "data", "code"],
-        "data centers.mp4":             ["data", "tech", "scale", "server", "digital", "processor"],
-        "processor ,tech.mp4":          ["processor", "tech", "speed", "compute", "chip"],
-        "DNA.mp4":                      ["genetics", "dna", "deep", "fundamental", "science"],
-        # Lifestyle / peace
-        "peace.mp4":                    ["peace", "freedom", "lifestyle", "balance", "calm", "rest"],
-        "luxury view.mp4":              ["luxury", "view", "premium", "lifestyle", "penthouse"],
-        # Content / network
-        "content networking.mp4":       ["network", "content", "social", "connection", "community"],
-        "controlled by.mp4":            ["control", "system", "matrix", "controlled", "power"],
-        "writing.mp4":                  ["write", "writing", "journal", "note", "document", "script"],
-        # Cinematic / emotional
-        "Flock_of_birds_flying_upward_20260911153702.mp4": ["growth", "upward", "rise", "momentum", "ascend", "climb"],
-        "Black_panther_roaring_in_flames_20260911153855.mp4": ["power", "beast", "fearless", "bold", "fierce", "strong"],
+# -----------------------------------------------------------------------------
+# ASSET INTENT MAP
+# Every asset has:
+#   "path"   : relative path inside _BASE (use forward slashes)
+#   "intent" : phrases this clip VISUALLY represents (lowercase)
+#   "weight" : quality multiplier (1.0 normal, 1.5 high impact)
+#   "avoid"  : words that make this clip WRONG - hard exclude
+# -----------------------------------------------------------------------------
+ASSET_INTENTS = [
+    # -- TRADING SPECIFIC -----------------------------------------------------
+    {
+        "path": "money_assets/down_fall_in_trading.mp4",
+        "intent": ["lose", "losing", "lost", "loss", "downfall", "blow", "blew",
+                   "blowing account", "account blown", "mistake", "failed", "failure",
+                   "crash", "crashed", "wipe out", "wiped", "negative", "destroyed",
+                   "ruined", "liquidated", "margin call", "blow up"],
+        "weight": 1.5,
+        "avoid": ["win", "profit", "made money", "success", "gaining"],
     },
-
-    "luxury": {
-        "buggatti_jet.mp4":                                     ["jet", "private jet", "flying", "travel", "bugatti"],
-        "bmw.mp4":                                              ["bmw", "car", "drive", "speed", "vehicle"],
-        "spead_car.mp4":                                        ["car", "supercar", "ferrari", "lamborghini", "speed", "race", "fast"],
-        "luxury.1.mp4":                                         ["luxury", "mansion", "penthouse", "villa", "lifestyle", "exclusive"],
-        "luxury_view_building.mp4":                             ["building", "penthouse", "apartment", "office", "city"],
-        "luxury_watch_view.mp4":                                ["watch", "rolex", "premium", "status", "flex"],
-        "Adding_running_chaotic_motion_20260911155141.mp4":      ["energy", "fast", "dynamic", "action", "chaotic", "running"],
-        "Animate_picture_in_slow_motion_20260911155031.mp4":     ["slow", "cinematic", "premium", "smooth", "aesthetic"],
-        "Tech_video_sequence_generation_p._20260911152335.mp4":  ["tech", "ai", "future", "digital", "innovation"],
+    {
+        "path": "money_assets/volume_trading.mp4",
+        "intent": ["volume", "liquidity", "indicator", "indicators", "chart", "charts",
+                   "candlestick", "candle", "technical", "technical analysis", "setup",
+                   "signal", "entry", "exit", "resistance", "support", "moving average",
+                   "rsi", "macd", "analysis", "read the chart"],
+        "weight": 1.5,
+        "avoid": ["psychology", "mindset", "lifestyle"],
     },
-
-    "content_assets": {
-        "viral_graph.mp4":              ["viral", "views", "analytics", "reach", "data", "impression", "graph"],
-        "million of clips.mp4":         ["clips", "clipping", "shorts", "automate", "scale", "million clips", "bulk"],
-        "tone of clip.mp4":             ["tone", "voice", "style", "content", "vibe"],
-        "content_growth.mp4":           ["growth", "growing", "grow", "audience", "followers", "subscriber"],
-        "higher_graph.mp4":             ["graph", "growth", "metric", "engagement", "scale", "higher"],
-        "digital_monoply.mp4":          ["digital", "online", "internet", "platform", "monopoly"],
-        "editing.mp4":                  ["editing", "editor", "edit", "thumbnail", "cut"],
-        "networks.mp4":                 ["network", "networking", "social media", "connection"],
-        "networks_from_clipping.mp4":   ["agency", "business", "brand", "niche", "system", "workflow"],
-        "quant_wealth.mp4":             ["monetize", "monetization", "revenue", "income stream", "passive", "sponsorship"],
-        "Youtube_button.mP4":           ["youtube", "channel", "subscribe", "youtube button"],
+    {
+        "path": "money_assets/the_secret_move_big_players.mp4",
+        "intent": ["big players", "institutional", "smart money", "manipulation",
+                   "market makers", "banks", "hedge fund", "whale", "whales",
+                   "they dont want you", "secret move", "hidden", "rigged", "trap",
+                   "retail trader", "they want you to"],
+        "weight": 1.5,
+        "avoid": [],
     },
-}
+    {
+        "path": "money_assets/trading_freedom.mp4",
+        "intent": ["trading for a living", "full time trader", "quit job",
+                   "financial freedom through trading", "day trading income",
+                   "trade for freedom", "live off trading", "replace your income"],
+        "weight": 1.4,
+        "avoid": ["lose", "failure"],
+    },
+    # -- MONEY / WEALTH --------------------------------------------------------
+    {
+        "path": "money_assets/money_flow.mp4",
+        "intent": ["money", "cash", "dollar", "dollars", "earn", "earning",
+                   "made", "making money", "wealth", "rich", "riches"],
+        "weight": 1.0,
+        "avoid": ["lose", "lost", "blew", "failure"],
+    },
+    {
+        "path": "money_assets/payout.mp4",
+        "intent": ["payout", "payment", "paid", "paycheck", "get paid",
+                   "income", "revenue", "profit", "salary", "commission", "bonus"],
+        "weight": 1.0,
+        "avoid": ["lose", "lost"],
+    },
+    {
+        "path": "money_assets/bank balance growing.mp4",
+        "intent": ["bank", "balance", "savings", "save", "account growing",
+                   "watching money grow", "compound", "passive income",
+                   "accumulate", "stack", "stacking"],
+        "weight": 1.0,
+        "avoid": ["lose", "crashed"],
+    },
+    {
+        "path": "money_assets/tones of money.mp4",
+        "intent": ["wealth", "abundance", "financial", "millions", "billions",
+                   "wealthy", "loaded", "filthy rich", "unlimited money"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/money_succes.mp4",
+        "intent": ["success", "successful", "wealthy", "millionaire", "billionaire",
+                   "achieve", "achieved", "financial freedom", "made it"],
+        "weight": 1.0,
+        "avoid": ["lose", "failure"],
+    },
+    {
+        "path": "money_assets/win.mp4",
+        "intent": ["win", "winning", "winner", "nailed it", "profitable",
+                   "consistently profitable", "goal achieved", "reward", "victory"],
+        "weight": 1.2,
+        "avoid": ["lose", "failure"],
+    },
+    # -- PSYCHOLOGY / MINDSET --------------------------------------------------
+    {
+        "path": "money_assets/mind awakening.mp4",
+        "intent": ["mindset", "realize", "realization", "woke up", "awareness",
+                   "conscious", "epiphany", "clicked", "understood", "perspective shift",
+                   "mental shift", "eye opening"],
+        "weight": 1.2,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/deep work.mp4",
+        "intent": ["focus", "deep work", "concentrated", "no distractions",
+                   "work session", "grind", "locked in", "productive", "output",
+                   "work ethic", "hard work", "relentless", "putting in the work"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/obsession.mp4",
+        "intent": ["obsessed", "obsession", "driven", "cant stop", "all in",
+                   "dedicated", "passionate", "consumed by", "eat sleep breathe"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/sacrifice ,never give up.mp4",
+        "intent": ["sacrifice", "never give up", "keep going", "consistent",
+                   "commitment", "stay the course", "dont quit", "resilience",
+                   "bounce back", "persistent", "showing up every day"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/king.mp4",
+        "intent": ["king", "top", "elite", "1%", "top 1 percent", "best",
+                   "boss", "empire", "authority", "legend", "top tier"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/the real game.mp4",
+        "intent": ["truth", "real", "reality", "the actual game", "what they dont tell you",
+                   "nobody talks about", "honest", "brutal truth", "real talk",
+                   "exposed", "the truth is", "nobody tells you"],
+        "weight": 1.2,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/golden chance.mp4",
+        "intent": ["opportunity", "chance", "right now", "window", "rare opportunity",
+                   "perfect timing", "golden window", "once in a lifetime", "dont miss",
+                   "this is it", "now or never"],
+        "weight": 1.2,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/secret roadmap.mp4",
+        "intent": ["roadmap", "blueprint", "plan", "system", "framework",
+                   "step by step", "exact steps", "formula", "playbook", "method",
+                   "strategy", "the plan", "my system"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/1% people.mp4",
+        "intent": ["1 percent", "top 1", "elite few", "exclusive", "six figures",
+                   "seven figures", "most people dont", "few people", "rare few"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/creative focus work.mp4",
+        "intent": ["creative", "creating", "build something", "building",
+                   "making something", "creative work", "idea", "ideas"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/war inner beast.mp4",
+        "intent": ["inner battle", "fight yourself", "beast mode", "conquer",
+                   "overcome", "fearless", "courage", "mental toughness",
+                   "inner demon", "war within"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/neurons pathways.mp4",
+        "intent": ["neurons", "brain", "learn", "learning", "habits", "habit",
+                   "rewire", "pathway", "neural", "repetition builds", "train your brain",
+                   "hard wired", "new neural"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/BLIND_FOLLOW.mp4",
+        "intent": ["following blindly", "sheep", "crowd", "everyone else",
+                   "copy trading", "following the herd", "influenced by",
+                   "blind follower", "most traders do", "what everyone does",
+                   "doing what everyone", "following someone"],
+        "weight": 1.3,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/Warrior.mp4",
+        "intent": ["warrior", "fight", "battle", "soldier", "strong mindset",
+                   "face challenges", "brave", "face it head on", "go to war",
+                   "fighting spirit"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/controlled by.mp4",
+        "intent": ["controlled", "matrix", "system controls you", "trapped",
+                   "conditioned", "social programming", "stuck", "cant escape",
+                   "puppet", "slave to the system"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/controlled_brain_rot.mp4",
+        "intent": ["attention", "distracted", "social media addiction", "dopamine",
+                   "scrolling", "brain rot", "phone addiction", "unfocused",
+                   "wasting time", "cant focus", "doom scrolling"],
+        "weight": 1.1,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/FREEDOM.mp4",
+        "intent": ["freedom", "free", "liberty", "escape the 9 to 5",
+                   "financial freedom", "be your own boss", "independence",
+                   "work from anywhere", "no boss", "quit the rat race"],
+        "weight": 1.3,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/peace.mp4",
+        "intent": ["peace", "calm", "relax", "rest", "mental peace",
+                   "inner peace", "quiet mind", "clarity", "zen"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    # -- TECH / AI -------------------------------------------------------------
+    {
+        "path": "money_assets/algorithm.mp4",
+        "intent": ["algorithm", "code", "automated", "automation",
+                   "software", "data driven", "programmed"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/human and ai.mp4",
+        "intent": ["ai", "artificial intelligence", "machine learning",
+                   "automation", "tech", "future of", "robot", "chatgpt"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/data centers.mp4",
+        "intent": ["data", "server", "scale", "digital infrastructure",
+                   "processing", "compute", "cloud"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/processor ,tech.mp4",
+        "intent": ["processor", "chip", "speed", "computing power",
+                   "technology", "hardware", "fast computing"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/DNA.mp4",
+        "intent": ["genetics", "dna", "fundamental", "deep rooted",
+                   "built into you", "wired", "innate", "core of who you are"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/writing.mp4",
+        "intent": ["write", "writing", "journaling", "note", "document",
+                   "script", "tracking", "log", "record", "journal"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/content networking.mp4",
+        "intent": ["network", "connection", "community", "relationship",
+                   "people around you", "mentors", "inner circle", "network effect"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/luxury view.mp4",
+        "intent": ["luxury", "penthouse", "premium view", "high life"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "money_assets/Black_panther_roaring_in_flames_20260911153855.mp4",
+        "intent": ["power", "beast", "fearless", "bold", "fierce", "strong",
+                   "unstoppable", "dominant", "predator mindset", "apex predator"],
+        "weight": 1.1,
+        "avoid": [],
+    },
+    # -- LUXURY / LIFESTYLE ----------------------------------------------------
+    {
+        "path": "luxury/spead_car.mp4",
+        "intent": ["car", "supercar", "ferrari", "lamborghini", "speed",
+                   "race", "fast car", "sports car", "exotic car"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "luxury/buggatti_jet.mp4",
+        "intent": ["jet", "private jet", "flying", "travel", "bugatti",
+                   "air travel", "private plane"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "luxury/bmw.mp4",
+        "intent": ["bmw", "sedan", "drive", "car ride", "vehicle",
+                   "commute", "on the road"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "luxury/luxury.1.mp4",
+        "intent": ["mansion", "penthouse", "villa", "luxury home",
+                   "exclusive lifestyle", "high end living"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "luxury/luxury_view_building.mp4",
+        "intent": ["office building", "city view", "skyline", "urban",
+                   "downtown", "apartment", "city life"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "luxury/luxury_watch_view.mp4",
+        "intent": ["watch", "rolex", "time", "timepiece", "premium accessory",
+                   "status symbol", "flex"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "luxury/Adding_running_chaotic_motion_20260911155141.mp4",
+        "intent": ["energy", "fast paced", "dynamic", "action", "running",
+                   "chaotic", "intensity", "hustle"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "luxury/Animate_picture_in_slow_motion_20260911155031.mp4",
+        "intent": ["slow motion", "cinematic", "smooth", "premium feel",
+                   "aesthetic", "slow", "beautiful"],
+        "weight": 0.8,
+        "avoid": [],
+    },
+    {
+        "path": "luxury/Tech_video_sequence_generation_p._20260911152335.mp4",
+        "intent": ["innovation", "future tech", "digital world", "ai driven",
+                   "technology sequence", "next generation"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    # -- CONTENT / CLIPPING ----------------------------------------------------
+    {
+        "path": "content_assets/viral_graph.mp4",
+        "intent": ["viral", "views", "view count", "analytics", "reach",
+                   "impression", "graph going up", "trending", "blew up"],
+        "weight": 1.2,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/million of clips.mp4",
+        "intent": ["clips", "clipping", "shorts", "automate", "scale content",
+                   "bulk", "mass", "million clips", "clip factory"],
+        "weight": 1.2,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/content_growth.mp4",
+        "intent": ["growth", "growing channel", "audience", "followers",
+                   "subscribers", "subscriber count", "channel growth"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/higher_graph.mp4",
+        "intent": ["going up", "higher", "metric", "engagement", "scaling",
+                   "growth chart", "upward trend"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/editing.mp4",
+        "intent": ["editing", "editor", "edit", "cut", "video editing",
+                   "thumbnail", "post production"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/networks.mp4",
+        "intent": ["network", "networking", "social media", "platform",
+                   "connections", "digital network"],
+        "weight": 0.9,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/networks_from_clipping.mp4",
+        "intent": ["clipping agency", "content business", "brand",
+                   "niche", "system", "workflow"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/quant_wealth.mp4",
+        "intent": ["monetize", "monetization", "revenue stream", "income stream",
+                   "passive income", "sponsorship", "brand deal"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/tone of clip.mp4",
+        "intent": ["tone", "voice", "style", "vibe", "content style",
+                   "brand voice"],
+        "weight": 0.8,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/digital_monoply.mp4",
+        "intent": ["digital monopoly", "dominate online", "own the platform",
+                   "internet empire", "digital real estate"],
+        "weight": 1.0,
+        "avoid": [],
+    },
+    {
+        "path": "content_assets/Youtube_button.mP4",
+        "intent": ["youtube", "youtube channel", "subscribe", "hit subscribe",
+                   "youtube button", "play button"],
+        "weight": 1.1,
+        "avoid": [],
+    },
+]
+
+# Build resolved paths once at import time
+_RESOLVED_INTENTS = []
+for _a in ASSET_INTENTS:
+    _full_path = os.path.join(_BASE, _a["path"].replace("/", os.sep))
+    if os.path.exists(_full_path):
+        _RESOLVED_INTENTS.append({**_a, "full_path": _full_path})
+    else:
+        log.debug("[SMART_BROLL] Asset not on disk, skipping: %s", _full_path)
 
 
+# -----------------------------------------------------------------------------
+# CORE: Direct Asset Scorer
+# -----------------------------------------------------------------------------
 
-
-def _pick_clip_for_category(category: str, matched_word: str) -> Optional[str]:
-    """Pick the most relevant clip file within a category for a matched word."""
-    folder = os.path.join(_BASE, category)
-    prefs = CLIP_PREFERENCE.get(category, {})
-    word_lower = matched_word.lower()
-
-    # 1) Try preference map — exact sub-keyword match
-    for clip_name, sub_kws in prefs.items():
-        if any(word_lower in kw or kw in word_lower for kw in sub_kws):
-            path = os.path.join(folder, clip_name)
-            if os.path.exists(path):
-                return path
-
-    # 2) Fallback: Semantic filename match (NO RANDOM CLIPS)
-    # If the word matches part of the filename, use it! Extremely precise.
-    try:
-        if os.path.exists(folder):
-            candidates = [
-                f for f in os.listdir(folder)
-                if f.lower().endswith((".mp4", ".mov", ".avi", ".webm"))
-            ]
-            
-            for f in candidates:
-                name_no_ext = os.path.splitext(f)[0].lower()
-                # Remove common separators for better matching (e.g. "trading_chart" -> "trading chart")
-                clean_name = name_no_ext.replace("_", " ").replace("-", " ")
-                if word_lower in clean_name or clean_name in word_lower:
-                    path = os.path.join(folder, f)
-                    return path
-                    
-    except Exception as e:
-        log.error(f"[SMART_BROLL] Error reading folder {folder}: {e}")
-        
-    log.info(f"[SMART_BROLL] No precise B-Roll found for word '{word_lower}' in {category}. Skipping to avoid irrelevant b-roll.")
-    return None
-
-
-def _score_segment(text: str) -> Tuple[str, str, float]:
+def _score_asset_for_text(text: str, asset: dict) -> float:
     """
-    Score a text segment against all keyword categories.
-    Returns (matched_word, category, score).
+    Score relevance between spoken text and a single asset.
+    +1.0 per single-word intent match
+    +2.5 per multi-word phrase match (more specific = higher weight)
+    x asset["weight"]
+    hard 0.0 if any avoid word matches
     """
     text_lower = text.lower()
-    best_score = 0.0
-    best_category = None
-    best_word = ""
+    for avoid_word in asset.get("avoid", []):
+        if avoid_word in text_lower:
+            return 0.0
 
-    for category, keywords in KEYWORD_MAP.items():
-        for kw in keywords:
-            if kw in text_lower:
-                # Longer keyword = more specific = higher weight
-                score = len(kw.split()) * 1.0 + (1.0 if len(kw) > 6 else 0.5)
-                if score > best_score:
-                    best_score = score
-                    best_category = category
-                    best_word = kw
+    score = 0.0
+    for phrase in asset["intent"]:
+        if phrase in text_lower:
+            word_count = len(phrase.split())
+            score += (2.5 if word_count > 1 else 1.0)
 
-    return best_word, best_category, best_score
+    return score * asset.get("weight", 1.0)
 
+
+def _pick_best_asset(text: str, used_assets: set) -> Optional[str]:
+    """Score ALL assets vs text, return path of highest-scoring unused asset."""
+    scored = []
+    for asset in _RESOLVED_INTENTS:
+        s = _score_asset_for_text(text, asset)
+        if s > 0:
+            scored.append((s, asset["full_path"]))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: -x[0])
+    for score, path in scored:
+        if path not in used_assets:
+            log.info("[SMART_BROLL] score=%.2f -> %s", score, os.path.basename(path))
+            return path
+
+    # All top candidates used - repeat best (better than irrelevant)
+    return scored[0][1]
+
+
+# -----------------------------------------------------------------------------
+# PUBLIC API  (drop-in replacement - same signature)
+# -----------------------------------------------------------------------------
 
 def find_broll_cuts(
     transcript_window: list,
@@ -232,132 +537,178 @@ def find_broll_cuts(
     cortex_keywords: List[str] = None,
 ) -> List[Tuple[float, str, float]]:
     """
-    Scan transcript segments and find the best B-Roll insertion points.
-
-    Args:
-        transcript_window: List of {"start", "end", "text"} dicts (absolute timestamps).
-        source_start: The absolute start of the clip in the source video (seconds).
-        clip_duration: Total duration of the clip after ramp/speed (seconds).
-        max_cuts: Maximum number of B-Roll cuts to inject.
-        min_cut_gap_s: Minimum gap between cuts (seconds) to avoid rapid-fire overlaps.
-        cut_duration_s: Duration of each B-Roll cut (seconds).
-
-    Returns:
-        List of (clip_relative_start_sec, asset_path, cut_duration_s).
-        Sorted by timestamp ascending.
+    Scan transcript segments and find best B-Roll insertion points.
+    Returns List of (clip_relative_start_sec, asset_path, cut_duration_sec).
     """
     if not transcript_window:
         return []
 
-    # Detect whether transcript_window uses ABSOLUTE or RELATIVE timestamps.
-    # WCE remaps them to clip-relative (0-based) before passing.
-    # But standalone calls (e.g. test scripts) may pass absolute timestamps.
-    # Heuristic: if all t_start values are < clip_duration*2, treat as relative.
     sample_starts = [float(s.get("start", 0)) for s in transcript_window if s.get("text")]
     _is_relative = bool(sample_starts) and max(sample_starts) < clip_duration * 2
 
     log.info(
-        "[SMART_BROLL] transcript mode=%s | segs=%d | source_start=%.1f | clip_dur=%.1f",
-        "RELATIVE" if _is_relative else "ABSOLUTE", len(transcript_window), source_start, clip_duration
+        "[SMART_BROLL] mode=%s | segs=%d | src_start=%.1f | clip_dur=%.1f | assets=%d",
+        "RELATIVE" if _is_relative else "ABSOLUTE",
+        len(transcript_window), source_start, clip_duration, len(_RESOLVED_INTENTS)
     )
 
-    # Score every transcript segment
-    scored = []
-    for seg in transcript_window:
+    candidates = []
+    for i, seg in enumerate(transcript_window):
         t_start = float(seg.get("start", 0))
-        t_end = float(seg.get("end", 0))
         text = seg.get("text", "")
         if not text.strip():
             continue
 
-        matched_word, category, score = _score_segment(text)
-        if score <= 0 or category is None:
-            continue
+        # Rich context: prev + current + next segment
+        ctx_parts = []
+        if i > 0:
+            ctx_parts.append(transcript_window[i - 1].get("text", ""))
+        ctx_parts.append(text)
+        if i < len(transcript_window) - 1:
+            ctx_parts.append(transcript_window[i + 1].get("text", ""))
+        full_context = " ".join(ctx_parts).strip()
 
-        # Convert to clip-relative timestamp
-        if _is_relative:
-            # Already clip-relative (from WCE remapping) — use directly
-            clip_rel_start = t_start
-        else:
-            # Absolute timestamp — subtract source_start
-            clip_rel_start = t_start - source_start
+        clip_rel_start = t_start if _is_relative else (t_start - source_start)
 
-        # Must fit within clip (leave room for cut_duration + 0.5s buffer)
-        # Also avoid the very start (first 3s) so it doesn't clash with hook
+        # Skip hook (first 3s) and end buffer
         if clip_rel_start < 3.0 or clip_rel_start + cut_duration_s > clip_duration - 0.3:
-            log.debug("[SMART_BROLL] skip seg t=%.2f (out of range) word='%s'", clip_rel_start, matched_word)
             continue
 
-        log.info("[SMART_BROLL] scored: t=%.2fs word='%s' cat=%s score=%.1f",
-                 clip_rel_start, matched_word, category, score)
+        # Find best asset for this moment
+        best_score = 0.0
+        best_path = None
+        for asset in _RESOLVED_INTENTS:
+            s = _score_asset_for_text(full_context, asset)
+            if s > best_score:
+                best_score = s
+                best_path = asset["full_path"]
 
-        scored.append({
+        if best_score <= 0 or best_path is None:
+            continue
+
+        log.info("[SMART_BROLL] candidate t=%.2fs score=%.2f asset=%s | '%s'",
+                 clip_rel_start, best_score, os.path.basename(best_path), text[:60])
+
+        candidates.append({
             "clip_rel_start": clip_rel_start,
-            "t_end": t_end,
-            "score": score,
-            "category": category,
-            "word": matched_word,
+            "score": best_score,
+            "asset_path": best_path,
+            "context": full_context,
         })
 
-    if not scored:
-        log.info("[SMART_BROLL] No keyword matches found in transcript window.")
-        
-        # Fallback to cortex hints
+    # Fallback: use cortex keyword hints if transcript had nothing
+    if not candidates:
+        log.info("[SMART_BROLL] No transcript matches - trying cortex hints.")
         if cortex_keywords:
-            fallback_scored = []
-            for kw in cortex_keywords:
-                matched_word, category, score = _score_segment(kw)
-                if score > 0 and category:
-                    fallback_scored.append({"word": matched_word, "category": category, "score": score})
-            
-            if fallback_scored:
-                fallback_scored.sort(key=lambda x: -x["score"])
-                best_fallback = fallback_scored[0]
-                
-                # Pick a safe timestamp (e.g., middle of the clip, at least 3.0s in)
+            hint_text = " ".join(cortex_keywords)
+            asset = _pick_best_asset(hint_text, set())
+            if asset:
                 safe_t = max(3.0, clip_duration / 2.0 - cut_duration_s / 2.0)
                 if safe_t + cut_duration_s < clip_duration - 0.3:
-                    asset = _pick_clip_for_category(best_fallback["category"], best_fallback["word"])
-                    if asset:
-                        log.info(f"[SMART_BROLL] Fallback using cortex keyword '{best_fallback['word']}' at t={safe_t:.2f}s")
-                        return [(safe_t, asset, cut_duration_s)]
-                        
+                    return [(safe_t, asset, cut_duration_s)]
         return []
 
-    # Sort by score descending, then pick with min-gap enforcement
-    scored.sort(key=lambda x: -x["score"])
-    selected = []
-    used_times = []
-    used_assets: set = set()   # anti-repeat: avoid same clip back-to-back
+    # ─────────────────────────────────────────────────────────────────────────
+    # PROFESSIONAL WEIGHTED ARC SELECTION (Cinematographic Zone System)
+    # ─────────────────────────────────────────────────────────────────────────
+    # Clip is divided into 4 zones based on storytelling structure.
+    # Each zone has its own min_score threshold and cut allowance.
+    # This prevents clustering and ensures B-roll lands at emotional peaks.
+    #
+    # Zone layout (% of clip_duration):
+    #   HOOK  (0% - 8%)   : BLOCKED — viewer must see the speaker's face
+    #   BUILD (8% - 50%)  : max 1 cut, min_score ≥ 0.9
+    #   CLIMAX(50% - 85%) : max 2 cuts, min_score ≥ 0.5  ← emotional peak
+    #   CTA   (85% - 100%): BLOCKED — clean face for the call-to-action
+    # ─────────────────────────────────────────────────────────────────────────
 
-    for candidate in scored:
-        t = candidate["clip_rel_start"]
-        # Enforce minimum gap between cuts
-        too_close = any(abs(t - ut) < min_cut_gap_s for ut in used_times)
-        if too_close:
-            continue
+    hook_end    = clip_duration * 0.08   # first 8% → blocked
+    build_end   = clip_duration * 0.50   # 8% – 50% → 1 cut, strict threshold
+    climax_end  = clip_duration * 0.85   # 50% – 85% → up to 2 cuts, loose threshold
+    # CTA zone  = 85% – 100% → blocked
 
-        asset = _pick_clip_for_category(candidate["category"], candidate["word"])
-        if asset is None:
-            log.warning("[SMART_BROLL] No asset found for category=%s word='%s'",
-                        candidate["category"], candidate["word"])
-            continue
+    ZONES = [
+        # (zone_name, t_start, t_end, max_cuts_in_zone, min_score)
+        ("BUILD",  hook_end,  build_end,  1,   0.90),
+        ("CLIMAX", build_end, climax_end, 2,   0.50),
+    ]
 
-        # Anti-repeat removed: We prefer to repeat a 100% precise asset 
-        # (e.g. showing the same trading chart if they say 'strategy' twice) 
-        # rather than randomly injecting an irrelevant video.
+    selected: List[Tuple[float, str, float]] = []
+    used_times: List[float] = []
+    used_assets: set = set()
 
-        selected.append((t, asset, cut_duration_s))
-        used_times.append(t)
-        used_assets.add(asset)
-        log.info(
-            "[SMART_BROLL] ✓ Cut @ t=%.2fs | word='%s' | category=%s | asset=%s",
-            t, candidate["word"], candidate["category"], os.path.basename(asset)
-        )
-
+    for zone_name, z_start, z_end, zone_max, z_min_score in ZONES:
         if len(selected) >= max_cuts:
             break
 
-    # Sort by ascending timestamp for FFmpeg overlay chain
+        # Gather candidates that fall inside this zone
+        zone_candidates = [
+            c for c in candidates
+            if z_start <= c["clip_rel_start"] < z_end
+            and c["score"] >= z_min_score
+        ]
+
+        # Sort within zone by score desc (best first)
+        zone_candidates.sort(key=lambda x: -x["score"])
+
+        zone_picked = 0
+        for c in zone_candidates:
+            if zone_picked >= zone_max:
+                break
+            if len(selected) >= max_cuts:
+                break
+
+            t = c["clip_rel_start"]
+
+            # Enforce global min-gap across all already-selected cuts
+            if any(abs(t - ut) < min_cut_gap_s for ut in used_times):
+                continue
+
+            asset = c["asset_path"]
+            if asset in used_assets:
+                asset = _pick_best_asset(c["context"], used_assets)
+                if asset is None:
+                    continue
+
+            selected.append((t, asset, cut_duration_s))
+            used_times.append(t)
+            used_assets.add(asset)
+            zone_picked += 1
+
+            log.info(
+                "[SMART_BROLL] [%s] CONFIRMED cut @ t=%.2fs score=%.2f asset=%s",
+                zone_name, t, c["score"], os.path.basename(asset),
+            )
+
+    # ── FALLBACK: if we still have room and zones produced < max_cuts, ────────
+    # fill from global candidates with min_gap enforced (no zone restriction)
+    if len(selected) < max_cuts:
+        remaining = [
+            c for c in candidates
+            if c["clip_rel_start"] >= hook_end                        # respect HOOK block
+            and c["clip_rel_start"] + cut_duration_s <= climax_end    # respect CTA block
+            and not any(abs(c["clip_rel_start"] - ut) < min_cut_gap_s for ut in used_times)
+        ]
+        remaining.sort(key=lambda x: -x["score"])
+        for c in remaining:
+            if len(selected) >= max_cuts:
+                break
+            t = c["clip_rel_start"]
+            if any(abs(t - ut) < min_cut_gap_s for ut in used_times):
+                continue
+            asset = c["asset_path"]
+            if asset in used_assets:
+                asset = _pick_best_asset(c["context"], used_assets)
+                if asset is None:
+                    continue
+            selected.append((t, asset, cut_duration_s))
+            used_times.append(t)
+            used_assets.add(asset)
+            log.info(
+                "[SMART_BROLL] [FALLBACK] CONFIRMED cut @ t=%.2fs score=%.2f asset=%s",
+                t, c["score"], os.path.basename(asset),
+            )
+
     selected.sort(key=lambda x: x[0])
+    log.info("[SMART_BROLL] Final: %d B-roll cuts.", len(selected))
     return selected

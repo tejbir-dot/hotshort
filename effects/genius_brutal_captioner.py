@@ -159,7 +159,7 @@ Transcript to base it on: "{clip_transcript}"
 
 
     # ─────────────────────────────────────────────────────────────────────────
-    def generate_viral_caption(self, clip_transcript: str, creator_name: str = "Daniel") -> str:
+    def generate_viral_caption(self, clip_transcript: str, creator_name: str = "TJR") -> str:
         fallback_caption = (
             "🔥 The secret they don't want you to know...\n\n"
             "Watch the full video to find out!\n\n"

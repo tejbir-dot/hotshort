@@ -107,8 +107,13 @@ def run_factory():
         campaign       = task['campaign']
         creator_intent = task.get('creator_intent', '') or ''
 
-        # Campaign specific folder banana
-        campaign_dir = os.path.join(FACTORY_OUTPUT_DIR, campaign)
+        # Extract Video ID for folder naming
+        import re as _re
+        vid_match = _re.search(r'(?:v=|youtu\.be/|shorts/)([a-zA-Z0-9_-]{11})', video_path)
+        vid_id = vid_match.group(1) if vid_match else f"vid_{int(time.time())}"
+
+        # Campaign and Video specific folder banana
+        campaign_dir = os.path.join(FACTORY_OUTPUT_DIR, campaign, vid_id)
         if not os.path.exists(campaign_dir):
             os.makedirs(campaign_dir)
 

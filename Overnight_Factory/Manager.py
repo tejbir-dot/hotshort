@@ -66,7 +66,7 @@ async def factory_manager():
 
     while True:
         ts = datetime.now().strftime('%H:%M:%S')
-        videos = sorted(PENDING_DIR.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
+        videos = sorted(PENDING_DIR.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
 
         if not videos:
             print(f"[{ts}] 😴 No fresh ammo. Scanning again in 10 minutes...")
