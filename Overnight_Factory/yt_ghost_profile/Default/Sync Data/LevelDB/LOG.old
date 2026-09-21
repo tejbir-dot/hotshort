@@ -1,2 +1,3 @@
-2026/09/21-13:25:12.133 67e8 Creating DB C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Sync Data\LevelDB since it was missing.
-2026/09/21-13:25:12.142 67e8 Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Sync Data\LevelDB/MANIFEST-000001
+2026/09/21-16:58:01.886 34e0 Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Sync Data\LevelDB/MANIFEST-000001
+2026/09/21-16:58:01.886 34e0 Recovering log #3
+2026/09/21-16:58:01.887 34e0 Reusing old log C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Sync Data\LevelDB/000003.log 

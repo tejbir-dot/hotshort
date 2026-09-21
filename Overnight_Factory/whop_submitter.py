@@ -133,19 +133,21 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
             print("      ℹ️  Profile session pe fallback...")
 
         try:
-            # ── 4. NAVIGATE TO CAMPAIGN (stay on whop.com!) ────────
-            print("[4/6] Loading TJR campaign page...")
-            await page.goto(WHOP_CAMPAIGN_URL, timeout=60000, wait_until="domcontentloaded")
-            await asyncio.sleep(random.uniform(5.0, 7.0))  # Let React + iframe fully hydrate
+            # ── 4. NAVIGATE TO CAMPAIGN ────────────────────────────
+            print("[4/6] Loading Whop Content Rewards campaign page...")
+            # Direct URL to the TJR campaign — this opens the detail page with the Submit button
+            CAMPAIGN_DIRECT_URL = "https://whop.com/reachclipping/exp_6DJh0DkDMhATvG/app/"
+            await page.goto(CAMPAIGN_DIRECT_URL, timeout=60000, wait_until="domcontentloaded")
+            await asyncio.sleep(random.uniform(5.0, 7.0))  # Let React + iframes fully hydrate
 
             cur_url = page.url
-            if "accounts.google" in cur_url or "login" in cur_url:
+            if "accounts.google" in cur_url or "login" in cur_url or "sign" in cur_url.lower():
                 raise Exception("Whop redirected to login! Refresh whop_cookie.json.")
-            print(f"      OK  Campaign loaded. URL: {cur_url[:80]}")
+            print(f"      OK  Campaign page loaded. URL: {cur_url[:80]}")
 
-            # ── 4b. CLICK CONTENT REWARDS IN SIDEBAR ─────────────
-            print("[4b] Clicking Content Rewards...")
-            clicked_cr = await page.evaluate("""
+            # ── 4b. CLICK 'Content Rewards' IN SIDEBAR (if not already there) ──
+            print("[4b] Ensuring Content Rewards section is active...")
+            await page.evaluate("""
                 () => {
                     const all = [...document.querySelectorAll('a, button, span, div, li')];
                     const el = all.find(e => {
@@ -156,57 +158,37 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
                     return false;
                 }
             """)
-            if clicked_cr:
-                print("      OK  Content Rewards clicked")
-                await asyncio.sleep(random.uniform(4.0, 5.0))
-            else:
-                print("      Warning: Content Rewards not found in sidebar")
+            await asyncio.sleep(random.uniform(3.0, 4.0))
 
-            # ── 4c. CLICK TJR CAMPAIGN CARD INSIDE THE IFRAME ────────
-            # The Reach Content Rewards app is in an apps.whop.com iframe.
-            # We must interact with the campaign card WITHIN that iframe,
-            # not by following anchor hrefs in the main DOM (which navigates away).
-            print("[4c] Clicking TJR campaign inside iframe...")
-            await asyncio.sleep(3.0)  # Let iframe render
-
-            # Find the Reach app iframe
+            # ── 4c. NAVIGATE DIRECTLY TO CAMPAIGN PAGE IN REACH IFRAME ──────────
+            # Instead of clicking a card (which is flaky), we navigate the iframe directly
+            print("[4c] Loading campaign detail page inside Reach iframe...")
+            REACH_CAMPAIGN_URL = "https://b4e0vdqv6zgqeqj4pfgm.apps.whop.com/c/exp_6DJh0DkDMhATvG/"
+            
+            # Find the apps.whop.com iframe and navigate it directly
             reach_frame = None
-            for frame in page.frames:
-                if 'apps.whop.com' in frame.url or 'contentrewards' in frame.url.lower():
-                    reach_frame = frame
-                    print(f"      Found Reach iframe: {frame.url[:80]}")
+            for _wait in range(15):  # Wait up to 15s for iframe to appear
+                for frame in page.frames:
+                    if 'apps.whop.com' in frame.url:
+                        reach_frame = frame
+                        break
+                if reach_frame:
                     break
+                await asyncio.sleep(1.0)
 
             if reach_frame:
-                # Click TJR campaign card inside iframe
-                clicked_tjr = await reach_frame.evaluate("""
-                    () => {
-                        const all = [...document.querySelectorAll('a, button, div[role="button"], [onclick]')];
-                        // Look for TJR / $23,100 text
-                        const card = all.find(e => e.innerText && (
-                            e.innerText.includes('TJR') ||
-                            e.innerText.includes('23,100') ||
-                            e.innerText.includes('23000')
-                        ));
-                        if (card) {
-                            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            card.click();
-                            return card.innerText.trim().substring(0, 60);
-                        }
-                        // Fallback: click first campaign card link
-                        const links = [...document.querySelectorAll('a[href]')];
-                        const first = links.find(a => a.href && a.href.includes('exp_'));
-                        if (first) { first.click(); return first.href.substring(0, 60); }
-                        return null;
-                    }
-                """)
-                if clicked_tjr:
-                    print(f"      OK  Clicked in iframe: {clicked_tjr}")
-                    await asyncio.sleep(random.uniform(4.0, 6.0))
-                else:
-                    print("      Warning: TJR card not found in iframe")
+                print(f"      Found Reach iframe: {reach_frame.url[:80]}")
+                # Navigate the iframe to the campaign detail page directly
+                await reach_frame.evaluate(f"() => {{ window.location.href = '{REACH_CAMPAIGN_URL}'; }}")
+                await asyncio.sleep(random.uniform(4.0, 6.0))
+                # Find the updated iframe after navigation
+                for frame in page.frames:
+                    if 'apps.whop.com' in frame.url:
+                        reach_frame = frame
+                        break
+                print(f"      Reach iframe after nav: {reach_frame.url[:80]}")
             else:
-                print("      Warning: Reach iframe not found — will search all frames for Submit button")
+                print("      ⚠️  Reach iframe not found — will search all frames for Submit button")
 
             # Scroll to trigger lazy-load rendering
             await human_scroll(page, times=2)
@@ -216,6 +198,8 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
             _ss_path = str(FACTORY_DIR / "whop_debug_screenshot.png")
             await page.screenshot(path=_ss_path, full_page=True)
             print(f"      Screenshot: {_ss_path}")
+
+
 
             # ── 5. FIND & CLICK SUBMIT BUTTON ─────────────────────
             # Button lives in an iframe embedded in whop.com - search both main + iframes

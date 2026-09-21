@@ -1,6 +1,6 @@
-2026/09/21-13:50:20.515 43f0 Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
-2026/09/21-13:50:20.517 43f0 Recovering log #4
-2026/09/21-13:50:20.518 43f0 Reusing old log C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\EdgeCoupons/coupons_data.db/000004.log 
-2026/09/21-13:50:20.909 6444 Level-0 table #8: started
-2026/09/21-13:50:20.913 6444 Level-0 table #8: 683444 bytes OK
-2026/09/21-13:50:20.916 6444 Delete type=0 #4
+2026/09/21-17:02:37.989 5074 Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/09/21-17:02:37.990 5074 Recovering log #13
+2026/09/21-17:02:37.990 5074 Reusing old log C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\EdgeCoupons/coupons_data.db/000013.log 
+2026/09/21-17:02:38.058 46b8 Level-0 table #17: started
+2026/09/21-17:02:38.063 46b8 Level-0 table #17: 683444 bytes OK
+2026/09/21-17:02:38.065 46b8 Delete type=0 #13

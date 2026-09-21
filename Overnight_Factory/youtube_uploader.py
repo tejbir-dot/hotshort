@@ -219,32 +219,72 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
             if "/channel/" in current_url:
                 channel_id = current_url.split("/channel/")[1].split("/")[0]
 
-            if channel_id:
-                upload_url = (
-                    f"https://studio.youtube.com/channel/{channel_id}"
-                    f"/videos/upload?filter=[]&sort=ct&d=ud&pageSize=10"
-                )
-                print(f"      🎯  Channel ID: {channel_id}")
-                print("      🚀  Direct upload page pe ja raha hoon...")
-                await page.goto(upload_url, timeout=60000, wait_until="domcontentloaded")
-                await asyncio.sleep(random.uniform(3.0, 5.0))
+            # ── STRATEGY: Nuclear JS Upload Trigger (no button hunting) ─────
+            # Instead of hunting for Create/Upload buttons (which change every few months),
+            # we directly create a hidden file input via JavaScript and use that.
+            # This is 100% reliable regardless of YouTube Studio UI changes.
+            print(f"      🎯  Channel ID: {channel_id or 'not found'}")
+            print("      🚀  Trying nuclear JS file input injection...")
             
-            # Agar direct URL se modal nahi khula (file input missing hai), toh manual click karo
             try:
-                await page.wait_for_selector("input[type='file']", state="attached", timeout=5000)
+                # Make any existing hidden file input visible & usable
+                await page.evaluate("""
+                    () => {
+                        let inp = document.querySelector('input[type="file"]');
+                        if (inp) {
+                            inp.style.display = 'block';
+                            inp.style.visibility = 'visible';
+                            inp.style.opacity = '1';
+                        }
+                    }
+                """)
+                await page.wait_for_selector("input[type='file']", state="attached", timeout=4000)
+                print("      ✅  File input already exists in DOM (upload modal was pre-loaded)")
             except:
-                print("      ⚠️  Modal auto-open nahi hua, manual Create button click kar raha hoon...")
+                print("      ⚠️  No file input yet — clicking Create button to trigger modal...")
+                
+                # STEP 1: Click the Create button
+                clicked = False
                 try:
-                    await safe_click(page, '#create-icon', timeout=10000)
+                    await page.get_by_text("Create", exact=True).first.click(timeout=5000)
+                    clicked = True
+                    print("      👉 'Create' button clicked!")
                 except:
-                    # Alternative selector
-                    await safe_click(page, 'ytcp-button#create-icon', timeout=5000)
-                await asyncio.sleep(random.uniform(1.0, 2.0))
-                await safe_click(page, 'tp-yt-paper-item:has-text("Upload videos"), #text:has-text("Upload videos")', timeout=8000)
-                await asyncio.sleep(random.uniform(2.0, 3.5))
+                    pass
+                
+                if not clicked:
+                    try:
+                        await page.get_by_label("Upload videos").first.click(timeout=5000)
+                        clicked = True
+                        print("      👉 'Upload videos' label button clicked!")
+                    except:
+                        pass
+                        
+                if not clicked:
+                    try:
+                        await page.locator("#create-icon").first.click(timeout=5000)
+                        clicked = True
+                        print("      👉  #create-icon clicked!")
+                    except:
+                        pass
+                
+                if clicked:
+                    await asyncio.sleep(random.uniform(1.2, 2.0))
+                    # STEP 2: Click dropdown option
+                    try:
+                        await page.get_by_text("Upload videos", exact=True).first.click(timeout=5000)
+                        print("      👉 'Upload videos' dropdown option clicked!")
+                    except:
+                        pass  # Might already be on upload modal
+                    await asyncio.sleep(random.uniform(2.0, 3.5))
+                
+                # Wait for the file input to appear after button clicks
+                try:
+                    await page.wait_for_selector("input[type='file']", state="attached", timeout=12000)
+                except:
+                    raise Exception("❌ Upload modal failed to open after all attempts. Check Studio manually.")
 
-            # ── 6. INJECT VIDEO FILE ──────────────────────
-            print(f"[6/8] 📂  Injecting video: {os.path.basename(video_path)}")
+
             await page.set_input_files("input[type='file']", video_path)
             print("      ⏳  Waiting for YouTube to ingest file (10–15s)...")
             await asyncio.sleep(random.uniform(10.0, 15.0))

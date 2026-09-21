@@ -348,6 +348,10 @@ async def run_insta_uploader(video_path: str, caption: str):
                                 
                             if ig_url.startswith('/'):
                                 ig_url = f"https://www.instagram.com{ig_url}"
+                            
+                            # Strip trailing junk paths like /liked_by/, /comments/, etc.
+                            import re as _re
+                            ig_url = _re.sub(r'(/p/[^/]+|/reel/[^/]+).*', lambda m: m.group(1) + '/', ig_url)
                                 
                         except Exception:
                             print("  🔄 Toast missed — scraping profile page directly...")
@@ -361,6 +365,10 @@ async def run_insta_uploader(video_path: str, caption: str):
                             
                             if ig_url and ig_url.startswith('/'):
                                 ig_url = f"https://www.instagram.com{ig_url}"
+                            # Strip trailing junk paths
+                            if ig_url:
+                                import re as _re
+                                ig_url = _re.sub(r'(/p/[^/]+|/reel/[^/]+).*', lambda m: m.group(1) + '/', ig_url)
 
                         print(f"  ✅  Extracted IG URL: {ig_url}")
                         cur = ig_url

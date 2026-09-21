@@ -1,5 +1,6 @@
-2026/09/21-13:25:15.584 2e0c Creating DB C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\EdgeCoupons/coupons_data.db since it was missing.
-2026/09/21-13:25:15.865 2e0c Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
-2026/09/21-13:25:36.028 67e8 Level-0 table #5: started
-2026/09/21-13:25:36.031 67e8 Level-0 table #5: 683284 bytes OK
-2026/09/21-13:25:36.033 67e8 Delete type=0 #3
+2026/09/21-16:58:08.093 5e60 Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/09/21-16:58:08.094 5e60 Recovering log #10
+2026/09/21-16:58:08.095 5e60 Reusing old log C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\EdgeCoupons/coupons_data.db/000010.log 
+2026/09/21-16:58:08.151 1fdc Level-0 table #14: started
+2026/09/21-16:58:08.157 1fdc Level-0 table #14: 683444 bytes OK
+2026/09/21-16:58:08.159 1fdc Delete type=0 #10
