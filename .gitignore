@@ -61,3 +61,8 @@ Overnight_Factory/tiktok_cookie.json
 # Output logs (optional — contains links)
 Overnight_Factory/uploaded_links.txt
 Overnight_Factory/whop_submissions.log
+
+# ⚠️  SECURITY: scratch/ is for local test scripts only.
+# These files often contain hardcoded keys for quick testing — NEVER commit them.
+# If you need to commit a scratch script, scrub all credentials first.
+scratch/
