@@ -160,14 +160,15 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
             """)
             await asyncio.sleep(random.uniform(3.0, 4.0))
 
-            # ── 4c. NAVIGATE DIRECTLY TO CAMPAIGN PAGE IN REACH IFRAME ──────────
-            # Instead of clicking a card (which is flaky), we navigate the iframe directly
-            print("[4c] Loading campaign detail page inside Reach iframe...")
-            REACH_CAMPAIGN_URL = "https://b4e0vdqv6zgqeqj4pfgm.apps.whop.com/c/exp_6DJh0DkDMhATvG/"
-            
-            # Find the apps.whop.com iframe and navigate it directly
+            # ── 4c. CLICK CAMPAIGN CARD VIA frame.evaluate() IN REACH FRAME ──────
+            # frame.evaluate() runs in the frame's OWN JS context — cross-origin safe!
+            # Unlike page.frame_locator() which needs the iframe src= attribute to match,
+            # we get the frame object by URL and inject JS directly inside it.
+            print("[4c] Injecting click into Reach frame JS context...")
+
+            # Find the Reach iframe frame object
             reach_frame = None
-            for _wait in range(15):  # Wait up to 15s for iframe to appear
+            for _wait in range(15):
                 for frame in page.frames:
                     if 'apps.whop.com' in frame.url:
                         reach_frame = frame
@@ -178,36 +179,121 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
 
             if reach_frame:
                 print(f"      Found Reach iframe: {reach_frame.url[:80]}")
-                # Navigate the iframe to the campaign detail page directly
-                await reach_frame.evaluate(f"() => {{ window.location.href = '{REACH_CAMPAIGN_URL}'; }}")
-                await asyncio.sleep(random.uniform(4.0, 6.0))
-                # Find the updated iframe after navigation
-                for frame in page.frames:
-                    if 'apps.whop.com' in frame.url:
-                        reach_frame = frame
-                        break
-                print(f"      Reach iframe after nav: {reach_frame.url[:80]}")
-            else:
-                print("      ⚠️  Reach iframe not found — will search all frames for Submit button")
 
-            # Scroll to trigger lazy-load rendering
-            await human_scroll(page, times=2)
+                # Dump all anchor hrefs for diagnostics
+                try:
+                    all_hrefs = await reach_frame.evaluate("""
+                        () => [...document.querySelectorAll('a[href]')]
+                              .map(a => a.getAttribute('href'))
+                              .filter(h => h && h.length > 1)
+                              .slice(0, 20)
+                    """)
+                    print(f"      All hrefs in frame: {all_hrefs}")
+                except Exception as e:
+                    print(f"      ⚠️  href dump failed: {e}")
+
+                # Click the campaign card using JS in the frame's own context
+                clicked_href = await reach_frame.evaluate("""
+                    () => {
+                        const NAV = ['home','discover','campaigns','analytics',
+                                     'submissions','drafts','earnings','support',
+                                     'discord','townhall','affiliates'];
+                        const anchors = [...document.querySelectorAll('a[href]')];
+
+                        // Priority 1: href contains 'campaigns/' or known campaign ID
+                        for (const a of anchors) {
+                            const h = a.getAttribute('href') || '';
+                            if (h.includes('campaigns/') || h.includes('0d9215')) {
+                                a.click();
+                                return 'campaigns-href:' + h;
+                            }
+                        }
+                        // Priority 2: first non-nav anchor (campaign card link)
+                        for (const a of anchors) {
+                            const text = (a.innerText || '').toLowerCase().trim();
+                            const h = a.getAttribute('href') || '';
+                            if (!NAV.includes(text) && h.length > 2) {
+                                a.click();
+                                return 'first-non-nav:' + h;
+                            }
+                        }
+                        // Priority 3: click anything
+                        if (anchors.length > 0) {
+                            anchors[0].click();
+                            return 'fallback:' + anchors[0].getAttribute('href');
+                        }
+                        return null;
+                    }
+                """)
+                if clicked_href:
+                    print(f"      ✅  JS click fired! ({clicked_href})")
+                    await asyncio.sleep(random.uniform(4.0, 6.0))
+                else:
+                    print("      ⚠️  No clickable anchor found in Reach frame")
+            else:
+                print("      ⚠️  Reach iframe not found")
+
+            # Wait for campaigns/ URL to confirm we're on detail page (max 20s)
+            print("      ⏳  Waiting for campaign detail page...")
+            for _cw in range(20):
+                for frame in page.frames:
+                    if 'campaigns/' in frame.url and 'apps.whop.com' in frame.url:
+                        print(f"      ✅  Campaign detail loaded: {frame.url[:80]}")
+                        break
+                else:
+                    await asyncio.sleep(1.0)
+                    continue
+                break
+            else:
+                print("      ⚠️  Campaign detail not confirmed — will still try Submit search")
+
             await asyncio.sleep(2.0)
 
             # Debug screenshot
             _ss_path = str(FACTORY_DIR / "whop_debug_screenshot.png")
-            await page.screenshot(path=_ss_path, full_page=True)
-            print(f"      Screenshot: {_ss_path}")
+            try:
+                await page.screenshot(path=_ss_path, full_page=True)
+                print(f"      Screenshot: {_ss_path}")
+            except Exception:
+                pass
+
+
 
 
 
             # ── 5. FIND & CLICK SUBMIT BUTTON ─────────────────────
-            # Button lives in an iframe embedded in whop.com - search both main + iframes
             print("[5/7] Looking for Submit button...")
-            # First: dump all frame URLs so we know what's loaded
-            all_frame_urls = [f.url[:80] for f in page.frames if f.url]
+            all_frame_urls = [f.url[:60] for f in page.frames if f.url]
             print(f"      Frames loaded ({len(page.frames)}): {all_frame_urls}")
 
+            # PRIORITY: Try FrameLocator on the campaign iframe first (fastest + most reliable)
+            clicked_via_frameloc = False
+            try:
+                campaign_iframe = page.frame_locator('iframe[src*="campaigns"]')
+                submit_btn = campaign_iframe.get_by_text("Submit clip", exact=False).first
+                await submit_btn.wait_for(state="visible", timeout=8000)
+                await submit_btn.click()
+                clicked_via_frameloc = True
+                print("      ✅  Submit button clicked via FrameLocator!")
+            except:
+                pass
+
+            if not clicked_via_frameloc:
+                # Fallback: try any apps.whop.com iframe using get_by_text
+                try:
+                    reach_iframe = page.frame_locator('iframe[src*="apps.whop.com"]')
+                    submit_btn = reach_iframe.get_by_text("Submit clip", exact=False).first
+                    await submit_btn.wait_for(state="visible", timeout=8000)
+                    await submit_btn.click()
+                    clicked_via_frameloc = True
+                    print("      ✅  Submit button clicked via apps.whop.com FrameLocator!")
+                except:
+                    pass
+
+            if clicked_via_frameloc:
+                clicked_main = "Submit clip"
+                active_frame = None
+            
             submit_keywords = ["submit clip", "submit a clip", "submit"]
             clicked_main = None
             active_frame = None
@@ -453,7 +539,7 @@ def submit_to_whop(video_url: str, video_filename: str = "",
 #  🧪 STANDALONE TEST
 # ============================================================
 if __name__ == "__main__":
-    # ← Real TikTok URL — just uploaded live!
-    _test_url = "https://www.tiktok.com/@eliteclipper.studios/video/7687480061590572319"
-    result = submit_to_whop(_test_url, "clip_0_914_987.mp4", platform="TikTok")
+    # ← Fresh YouTube Short — testing new iframe fix!
+    _test_url = "https://youtube.com/shorts/hHXr_wPDcQw"
+    result = submit_to_whop(_test_url, "clip_11_1271_1339.mp4", platform="YouTube")
     print(f"\nResult: {'SUCCESS ✅' if result else 'FAILED ❌'}")

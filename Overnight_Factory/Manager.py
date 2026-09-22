@@ -1,6 +1,7 @@
 import os
 import sys
 import shutil
+import random
 import asyncio
 import re
 from datetime import datetime
@@ -11,7 +12,8 @@ FACTORY_DIR  = Path(__file__).parent.resolve()
 PENDING_DIR  = FACTORY_DIR / "Pending_Videos"
 UPLOADED_DIR = FACTORY_DIR / "Uploaded_Videos"
 FAILED_DIR   = FACTORY_DIR / "Failed_Videos"
-WAIT_TIME    = 5 * 60 * 60   # 5 hours stealth sleep
+WAIT_TIME_MIN = 6 * 60 * 60   # 6 hours minimum stealth sleep
+WAIT_TIME_MAX = 6 * 60 * 60 + 30 * 60  # 6.5 hours maximum (random gap — bot-detection avoid)
 
 for _d in (PENDING_DIR, UPLOADED_DIR, FAILED_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -36,27 +38,47 @@ print("\n" + "="*50)
 print(" 👑 THE GHOST FACTORY: OVERLORD v3.0 BOOTING...")
 print("="*50)
 yt_upload     = load_engine("youtube_uploader")
-tiktok_upload = load_engine("tiktok_uploader")
-ig_upload     = load_engine("insta_uploader")
+tiktok_upload = None  # ⏸️  DISABLED — re-enable when TT cookies refreshed
+ig_upload     = None  # ⏸️  DISABLED — re-enable when IG cookies refreshed
 whop_submit   = load_engine("whop_submitter", func_name="submit_to_whop")
+print("  ⏸️  TIKTOK_UPLOADER    : DISABLED (manual override)")
+print("  ⏸️  INSTA_UPLOADER     : DISABLED (manual override)")
 print("="*50 + "\n")
 
 # ── 🧠 SMART CAPTION PARSER ──────────────────────────────────────────────────
 def parse_smart_captions(full_text):
-    """Tere specific text format se har platform ka caption alag nikalta hai."""
-    caps = {"youtube": full_text, "tiktok": full_text, "instagram": full_text} # Fallback
+    """
+    Splits the caption file into per-platform captions.
+
+    Strategy: Split on the dash-line separators FIRST, then identify which
+    platform each chunk belongs to.  This prevents any regex cross-
+    contamination where IG could accidentally capture TT/YT content
+    (the old (?:-{10,}|$) approach failed when IG was the last section
+    and earlier dash-lines were consumed by a previous match).
+    """
+    caps = {"youtube": full_text, "tiktok": full_text, "instagram": full_text}  # safe fallback
     try:
-        # Regex jaadu: Header se leker dashes '----' tak ka text extract karta hai
-        tt_match = re.search(r'TIKTOK CAPTION:(.*?)(?:-{10,}|$)', full_text, re.DOTALL)
-        if tt_match: caps['tiktok'] = tt_match.group(1).strip()
-        
-        yt_match = re.search(r'YOUTUBE SHORTS CAPTION:(.*?)(?:-{10,}|$)', full_text, re.DOTALL)
-        if yt_match: caps['youtube'] = yt_match.group(1).strip()
-        
-        ig_match = re.search(r'INSTAGRAM REELS CAPTION:(.*?)(?:-{10,}|$)', full_text, re.DOTALL)
-        if ig_match: caps['instagram'] = ig_match.group(1).strip()
+        # Split on lines that are entirely dashes (10+ dashes)
+        sections = re.split(r'\n-{10,}\n?', full_text)
+        for section in sections:
+            section = section.strip()
+            if not section:
+                continue
+            if "TIKTOK CAPTION:" in section:
+                after = section.split("TIKTOK CAPTION:", 1)[1].strip()
+                if after:
+                    caps['tiktok'] = after
+            elif "YOUTUBE SHORTS CAPTION:" in section:
+                after = section.split("YOUTUBE SHORTS CAPTION:", 1)[1].strip()
+                if after:
+                    caps['youtube'] = after
+            elif "INSTAGRAM REELS CAPTION:" in section:
+                after = section.split("INSTAGRAM REELS CAPTION:", 1)[1].strip()
+                if after:
+                    caps['instagram'] = after
+        print(f"  ✅ Caption parser: TT={len(caps['tiktok'])}c | YT={len(caps['youtube'])}c | IG={len(caps['instagram'])}c")
     except Exception as e:
-        print(f"⚠️ Parser Warning: {e}")
+        print(f"⚠️ Parser Warning: {e} — falling back to full text for all platforms")
     return caps
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -170,8 +192,10 @@ async def factory_manager():
         print(f"{dest_label} -> {dest_dir.name}/{current_clip}")
 
         if upload_success:
-            print(f"\n🛡️ GHOST MODE ACTIVATED. Radar off for {WAIT_TIME//3600} hours to avoid detection...\n")
-            await asyncio.sleep(WAIT_TIME)
+            wait_secs = random.randint(WAIT_TIME_MIN, WAIT_TIME_MAX)
+            wait_hrs  = wait_secs / 3600
+            print(f"\n🛡️ GHOST MODE ACTIVATED. Radar off for {wait_hrs:.1f} hours to avoid detection...\n")
+            await asyncio.sleep(wait_secs)
         else:
             print("\n⚠️ System encountered errors. Retrying next file in 5 minutes...\n")
             await asyncio.sleep(5 * 60)

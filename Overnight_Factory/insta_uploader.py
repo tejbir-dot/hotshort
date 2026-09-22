@@ -116,13 +116,11 @@ async def run_insta_uploader(video_path: str, caption: str):
     print("  🥷  GHOST FACTORY: INSTAGRAM STEALTH ENGINE v4.0")
     print("="*52)
 
-    # Parse platform-specific caption
-    ig_caption = caption
-    if "INSTAGRAM REELS CAPTION:" in caption:
-        block = caption.split("INSTAGRAM REELS CAPTION:")[1]
-        ig_caption = block.split("----")[0].strip()
-        # IG doesn't like dots-as-line-breaks — clean them
-        ig_caption = ig_caption.replace("\n.\n", "\n\n").replace("\n.", "\n")
+    # Caption is already platform-extracted by Manager.py's parse_smart_captions().
+    # No double-parsing needed — use it directly.
+    ig_caption = caption.strip()
+    # IG doesn't like dots-as-line-breaks — clean them
+    ig_caption = ig_caption.replace("\n.\n", "\n\n").replace("\n.", "\n")
 
     print(f"  📋  Caption : {ig_caption[:60]}...")
     print(f"  🎬  Video   : {os.path.basename(video_path)}")
@@ -141,7 +139,7 @@ async def run_insta_uploader(video_path: str, caption: str):
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0.0.0 Safari/537.36"
+                "Chrome/128.0.0.0 Safari/537.36"
             ),
             args=[
                 "--disable-blink-features=AutomationControlled",

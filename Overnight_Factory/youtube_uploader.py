@@ -119,14 +119,21 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
     print("  🥷  GHOST FACTORY: YOUTUBE STEALTH ENGINE v4.0")
     print("="*52)
 
-    # Parse platform-specific caption
-    yt_caption = caption
-    if "YOUTUBE SHORTS CAPTION:" in caption:
-        block = caption.split("YOUTUBE SHORTS CAPTION:")[1]
-        yt_caption = block.split("----")[0].strip()
+    # Caption is already platform-extracted by Manager.py's parse_smart_captions().
+    # No double-parsing needed — use it directly.
+    yt_caption = caption.strip()
 
-    # First line = title (max 90 chars), full = description
-    title_line  = yt_caption.split('\n')[0][:90]
+    # First non-empty line = title (max 90 chars), full caption = description.
+    # GUARD: if first line is blank (parse miss), walk down until we find real text.
+    # This prevents the "clip 1 182 243" raw-filename draft bug.
+    title_line = ""
+    for line in yt_caption.splitlines():
+        candidate = line.strip()
+        if candidate:            # first non-empty line wins
+            title_line = candidate[:90]
+            break
+    if not title_line:           # absolute fallback — should never happen
+        title_line = "New Short"
     description = yt_caption
 
     print(f"  📋  Title   : {title_line}")
@@ -146,7 +153,7 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0.0.0 Safari/537.36"
+                "Chrome/128.0.0.0 Safari/537.36"
             ),
             args=[
                 "--start-maximized",
@@ -354,29 +361,78 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
             print("[8/8] 🔍  Extracting live video link from success modal...")
             video_url = None
             try:
-                # 1. Dialog box open hone ka wait (max 15 sec)
-                await page.wait_for_selector('text="Video published"', timeout=15000)
-                
-                # 2. 'youtube.com/shorts/' ya 'youtu.be/' wala href dhoondho
-                link_loc = page.locator('a[href*="youtube.com/shorts/"], a[href*="youtu.be/"]').first
-                video_url = await link_loc.get_attribute('href')
-                
-                # 3. Agar a tag mein na mile, toh pure text mein dhoondho (Fallback)
+                # 1. Wait for "Video published" — YT processing can take 30-90s
+                print("      ⏳  Waiting for 'Video published' dialog (up to 90s)...")
+                await page.wait_for_selector(
+                    'text="Video published"',
+                    timeout=90000   # was 15000 — way too short
+                )
+                print("      ✅  'Video published' dialog detected!")
+                await asyncio.sleep(3.0)  # let the link element fully render
+
+                # 2. Try multiple selectors in order of reliability
+                selectors_tried = []
+
+                # Attempt A: anchor with youtu.be href (most reliable)
+                try:
+                    link_loc = page.locator('a[href*="youtu.be/"]').first
+                    video_url = await link_loc.get_attribute('href', timeout=5000)
+                    if video_url: selectors_tried.append("youtu.be anchor")
+                except Exception:
+                    pass
+
+                # Attempt B: youtube.com/shorts/ anchor
                 if not video_url:
-                    text_loc = page.locator('text=https://youtube.com/shorts/').first
-                    video_url = await text_loc.inner_text()
-                    
-                print(f"      ✅  Extracted URL: {video_url}")
-                
+                    try:
+                        link_loc = page.locator('a[href*="youtube.com/shorts/"]').first
+                        video_url = await link_loc.get_attribute('href', timeout=5000)
+                        if video_url: selectors_tried.append("shorts anchor")
+                    except Exception:
+                        pass
+
+                # Attempt C: any anchor containing /shorts/ in dialog
+                if not video_url:
+                    try:
+                        link_loc = page.locator('ytcp-video-info a[href*="/shorts/"]').first
+                        video_url = await link_loc.get_attribute('href', timeout=5000)
+                        if video_url: selectors_tried.append("ytcp-video-info anchor")
+                    except Exception:
+                        pass
+
+                # Attempt D: inner text of URL-looking element
+                if not video_url:
+                    try:
+                        text_loc = page.locator('[href*="youtu.be"], [href*="shorts/"]').first
+                        video_url = await text_loc.get_attribute('href', timeout=4000)
+                        if video_url: selectors_tried.append("generic href attr")
+                    except Exception:
+                        pass
+
+                # Attempt E: scrape current Studio URL to derive video ID
+                if not video_url:
+                    try:
+                        current = page.url
+                        # Studio URL format: .../video/VIDEO_ID/...
+                        import re as _re
+                        vid_match = _re.search(r'/video/([A-Za-z0-9_-]{8,15})/', current)
+                        if vid_match:
+                            video_url = f"https://youtube.com/shorts/{vid_match.group(1)}"
+                            selectors_tried.append("studio URL scrape")
+                    except Exception:
+                        pass
+
                 if video_url:
+                    print(f"      ✅  Extracted URL via [{', '.join(selectors_tried)}]: {video_url}")
                     links_file = FACTORY_DIR / "uploaded_links.txt"
                     with open(links_file, "a", encoding="utf-8") as f:
                         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                         f.write(f"{ts} | {os.path.basename(video_path)} | {video_url}\n")
                     print(f"      💾  Saved to uploaded_links.txt")
-                
+                else:
+                    print("      ⚠️  All URL selectors failed — upload succeeded but URL not captured.")
+
             except Exception as e:
-                print("      ⚠️  Could not extract URL — upload still succeeded.")
+                print(f"      ⚠️  Could not extract URL ({e}) — upload still succeeded.")
                 video_url = None
 
             # Human pause — like a person admiring their post

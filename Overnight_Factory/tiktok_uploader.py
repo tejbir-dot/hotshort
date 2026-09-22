@@ -103,11 +103,9 @@ async def run_tiktok_uploader(video_path: str, caption: str):
     print("  🥷  GHOST FACTORY: TIKTOK STEALTH ENGINE v4.0")
     print("="*52)
 
-    # Parse platform-specific caption
-    tt_caption = caption
-    if "TIKTOK CAPTION:" in caption:
-        block = caption.split("TIKTOK CAPTION:")[1]
-        tt_caption = block.split("----")[0].strip()
+    # Caption is already platform-extracted by Manager.py's parse_smart_captions().
+    # No double-parsing needed — use it directly.
+    tt_caption = caption.strip()
 
     print(f"  📋  Caption : {tt_caption[:60]}...")
     print(f"  🎬  Video   : {os.path.basename(video_path)}")
@@ -138,7 +136,7 @@ async def run_tiktok_uploader(video_path: str, caption: str):
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/126.0.0.0 Safari/537.36"
+                    "Chrome/128.0.0.0 Safari/537.36"
                 ),
             )
 
