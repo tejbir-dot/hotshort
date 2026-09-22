@@ -338,8 +338,24 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
                             () => {
                                 const allBtns = [...document.querySelectorAll('button, [role="button"], a, div, span')];
                                 const TARGETS = ['submit clip', 'submit a clip'];
-                                const btn = allBtns.find(b => TARGETS.includes((b.innerText||b.textContent||'').trim().toLowerCase()));
-                                if (!btn) return null;
+                                
+                                // 1. Sirf specific elements dhundho jo text match karein aur GIANT container na hon
+                                const matches = allBtns.filter(b => {
+                                    const t = (b.innerText||b.textContent||'').trim().toLowerCase();
+                                    return TARGETS.includes(t) && b.children.length <= 2;
+                                });
+                                
+                                // 2. Jo screen par visible hain unko filter karo
+                                const visibleBtns = matches.filter(b => {
+                                    const r = b.getBoundingClientRect();
+                                    return r.width > 0 && r.height > 0;
+                                });
+                                
+                                if (visibleBtns.length === 0) return null;
+
+                                // 3. SABSE BADI TRICK: Aakhiri button uthao! 
+                                // Popup (Modal) humesha DOM ke end mein add hota hai.
+                                const btn = visibleBtns[visibleBtns.length - 1];
 
                                 // Scroll into view
                                 btn.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -354,10 +370,10 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
                                 btn.dispatchEvent(new MouseEvent('mouseup', opts));
                                 btn.dispatchEvent(new MouseEvent('click', opts));
 
-                                // Also return bounding rect for coordinate fallback
+                                // Return coordinates for logs
                                 const r = btn.getBoundingClientRect();
                                 return {
-                                    text: btn.innerText.trim(),
+                                    text: (btn.innerText || btn.textContent).trim(),
                                     x: Math.round(r.left + r.width / 2),
                                     y: Math.round(r.top + r.height / 2),
                                     visible: r.width > 0 && r.height > 0
