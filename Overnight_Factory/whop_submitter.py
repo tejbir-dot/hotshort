@@ -160,11 +160,12 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
             """)
             await asyncio.sleep(random.uniform(3.0, 4.0))
 
-            # ── 4c. CLICK CAMPAIGN CARD VIA frame.evaluate() IN REACH FRAME ──────
-            # frame.evaluate() runs in the frame's OWN JS context — cross-origin safe!
-            # Unlike page.frame_locator() which needs the iframe src= attribute to match,
-            # we get the frame object by URL and inject JS directly inside it.
-            print("[4c] Injecting click into Reach frame JS context...")
+            # ── 4c. NAVIGATE REACH FRAME TO /campaigns PAGE ─────────────────────
+            # KEY INSIGHT from screenshots:
+            # - /discover → shows ALL campaigns as image banners (no submit button visible)
+            # - /campaigns → shows YOUR JOINED campaigns with "Submit clip" button DIRECTLY!
+            # So we navigate to /campaigns page, then Submit clip is right there.
+            print("[4c] Navigating Reach frame to Campaigns page...")
 
             # Find the Reach iframe frame object
             reach_frame = None
@@ -178,74 +179,42 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
                 await asyncio.sleep(1.0)
 
             if reach_frame:
-                print(f"      Found Reach iframe: {reach_frame.url[:80]}")
+                print(f"      Found Reach iframe at: {reach_frame.url[:80]}")
 
-                # Dump all anchor hrefs for diagnostics
-                try:
-                    all_hrefs = await reach_frame.evaluate("""
-                        () => [...document.querySelectorAll('a[href]')]
-                              .map(a => a.getAttribute('href'))
-                              .filter(h => h && h.length > 1)
-                              .slice(0, 20)
-                    """)
-                    print(f"      All hrefs in frame: {all_hrefs}")
-                except Exception as e:
-                    print(f"      ⚠️  href dump failed: {e}")
-
-                # Click the campaign card using JS in the frame's own context
-                clicked_href = await reach_frame.evaluate("""
+                # Navigate within the SPA to /campaigns page using the nav link
+                nav_result = await reach_frame.evaluate("""
                     () => {
-                        const NAV = ['home','discover','campaigns','analytics',
-                                     'submissions','drafts','earnings','support',
-                                     'discord','townhall','affiliates'];
-                        const anchors = [...document.querySelectorAll('a[href]')];
-
-                        // Priority 1: href contains 'campaigns/' or known campaign ID
-                        for (const a of anchors) {
+                        // Find the "Campaigns" nav link (NOT Discover)
+                        // href = '/c/exp_.../campaigns' (no trailing slash, no campaigns/)
+                        const links = [...document.querySelectorAll('a[href]')];
+                        for (const a of links) {
                             const h = a.getAttribute('href') || '';
-                            if (h.includes('campaigns/') || h.includes('0d9215')) {
+                            // Exact match: ends with /campaigns (not /campaigns/something)
+                            if (/\\/campaigns$/.test(h)) {
                                 a.click();
-                                return 'campaigns-href:' + h;
+                                return 'navigated-to:' + h;
                             }
-                        }
-                        // Priority 2: first non-nav anchor (campaign card link)
-                        for (const a of anchors) {
-                            const text = (a.innerText || '').toLowerCase().trim();
-                            const h = a.getAttribute('href') || '';
-                            if (!NAV.includes(text) && h.length > 2) {
-                                a.click();
-                                return 'first-non-nav:' + h;
-                            }
-                        }
-                        // Priority 3: click anything
-                        if (anchors.length > 0) {
-                            anchors[0].click();
-                            return 'fallback:' + anchors[0].getAttribute('href');
                         }
                         return null;
                     }
                 """)
-                if clicked_href:
-                    print(f"      ✅  JS click fired! ({clicked_href})")
-                    await asyncio.sleep(random.uniform(4.0, 6.0))
+                print(f"      Nav result: {nav_result}")
+                await asyncio.sleep(random.uniform(3.0, 5.0))
+
+                # Confirm we are now on /campaigns page
+                for _cw in range(10):
+                    cur_url = next((f.url for f in page.frames if 'apps.whop.com' in f.url), '')
+                    if '/campaigns' in cur_url and '/campaigns/' not in cur_url:
+                        print(f"      ✅  On Campaigns page: {cur_url[:80]}")
+                        # Update reach_frame reference
+                        reach_frame = next((f for f in page.frames if 'apps.whop.com' in f.url), reach_frame)
+                        break
+                    await asyncio.sleep(1.0)
                 else:
-                    print("      ⚠️  No clickable anchor found in Reach frame")
+                    print("      ⚠️  Campaigns page not confirmed — trying anyway")
+
             else:
                 print("      ⚠️  Reach iframe not found")
-
-            # Wait for campaigns/ URL to confirm we're on detail page (max 20s)
-            print("      ⏳  Waiting for campaign detail page...")
-            for _cw in range(20):
-                for frame in page.frames:
-                    if 'campaigns/' in frame.url and 'apps.whop.com' in frame.url:
-                        print(f"      ✅  Campaign detail loaded: {frame.url[:80]}")
-                        break
-                else:
-                    await asyncio.sleep(1.0)
-                    continue
-                break
-            else:
-                print("      ⚠️  Campaign detail not confirmed — will still try Submit search")
 
             await asyncio.sleep(2.0)
 
@@ -261,115 +230,180 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
 
 
 
-            # ── 5. FIND & CLICK SUBMIT BUTTON ─────────────────────
-            print("[5/7] Looking for Submit button...")
-            all_frame_urls = [f.url[:60] for f in page.frames if f.url]
-            print(f"      Frames loaded ({len(page.frames)}): {all_frame_urls}")
 
-            # PRIORITY: Try FrameLocator on the campaign iframe first (fastest + most reliable)
-            clicked_via_frameloc = False
-            try:
-                campaign_iframe = page.frame_locator('iframe[src*="campaigns"]')
-                submit_btn = campaign_iframe.get_by_text("Submit clip", exact=False).first
-                await submit_btn.wait_for(state="visible", timeout=8000)
-                await submit_btn.click()
-                clicked_via_frameloc = True
-                print("      ✅  Submit button clicked via FrameLocator!")
-            except:
-                pass
 
-            if not clicked_via_frameloc:
-                # Fallback: try any apps.whop.com iframe using get_by_text
+            # ── 5. SMART STATE-MACHINE: FIND & CLICK SUBMIT BUTTON ────────────────
+            # The bot can be in multiple states. This loop detects state and acts accordingly:
+            # STATE A: /discover         → navigate to /campaigns first
+            # STATE B: /campaigns        → click "Submit clip" BUTTON (exact match, small button)
+            # STATE C: /campaigns/0d9215 → click "Submit clip" BUTTON (big orange button)
+            # STATE D: modal open        → input box visible → proceed to fill
+            print("[5/7] State-machine: hunting Submit clip button...")
+
+            # JS: click ONLY a button whose FULL text is exactly "Submit clip" or "Submit a clip"
+            # This prevents clicking the campaign CARD which also CONTAINS that text
+            JS_EXACT_BTN = """
+                () => {
+                    const TARGETS = ['submit clip', 'submit a clip'];
+                    // Search ALL elements — the "Submit clip" element may be a div/a, not <button>
+                    const all = [...document.querySelectorAll(
+                        'button, [role="button"], a, div, span, p'
+                    )];
+                    for (const el of all) {
+                        // Exact text match — but only leaf-ish elements (not big containers)
+                        const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                        if (TARGETS.includes(t) && el.children.length <= 2) {
+                            el.scrollIntoView({ block: 'center' });
+                            el.click();
+                            return el.innerText.trim() || el.textContent.trim();
+                        }
+                    }
+                    return null;
+                }
+            """
+
+            # JS: navigate to /campaigns page within the SPA
+            JS_GO_CAMPAIGNS = """
+                () => {
+                    const links = [...document.querySelectorAll('a[href]')];
+                    for (const a of links) {
+                        if (/\\/campaigns$/.test(a.getAttribute('href') || '')) {
+                            a.click();
+                            return a.getAttribute('href');
+                        }
+                    }
+                    return null;
+                }
+            """
+
+            # JS: check if form input is visible
+            JS_HAS_INPUT = """
+                () => {
+                    const sels = [
+                        'input[placeholder*="link" i]', 'input[placeholder*="url" i]',
+                        'input[placeholder*="video" i]', 'input[placeholder*="paste" i]',
+                        'input[placeholder*="youtube" i]', 'input[placeholder*="tiktok" i]',
+                        'input[type="url"]', 'textarea',
+                    ];
+                    for (const s of sels) {
+                        const el = document.querySelector(s);
+                        if (el && el.offsetParent !== null) return s;
+                    }
+                    return null;
+                }
+            """
+
+            submit_clicked = False
+            modal_open = False
+            active_frame = None
+
+            for _tick in range(40):  # Up to 40 seconds
+                # Always get the freshest reach frame
+                rf = next((f for f in page.frames if 'apps.whop.com' in f.url), None)
+                if not rf:
+                    await asyncio.sleep(1.0)
+                    continue
+
+                url = rf.url
+                print(f"      [tick {_tick}] State: {url.split('apps.whop.com')[-1][:50]}")
+
+                # ── STATE D: Check if modal/form is already open (input visible) ──
                 try:
-                    reach_iframe = page.frame_locator('iframe[src*="apps.whop.com"]')
-                    submit_btn = reach_iframe.get_by_text("Submit clip", exact=False).first
-                    await submit_btn.wait_for(state="visible", timeout=8000)
-                    await submit_btn.click()
-                    clicked_via_frameloc = True
-                    print("      ✅  Submit button clicked via apps.whop.com FrameLocator!")
+                    input_sel = await rf.evaluate(JS_HAS_INPUT)
+                    if input_sel:
+                        print(f"      ✅  FORM OPEN! Input visible: {input_sel}")
+                        modal_open = True
+                        active_frame = rf
+                        break
                 except:
                     pass
 
-            if clicked_via_frameloc:
-                clicked_main = "Submit clip"
-                active_frame = None
-            
-            submit_keywords = ["submit clip", "submit a clip", "submit"]
-            clicked_main = None
-            active_frame = None
-
-            for _attempt in range(20):  # 20s total wait
-                # Check main page DOM
-                clicked_main = await page.evaluate(
-                    """(keywords) => {
-                        const btns = [...document.querySelectorAll('button, a, [role="button"]')];
-                        for (const kw of keywords) {
-                            const btn = btns.find(b => {
-                                const t = b.innerText && b.innerText.trim().toLowerCase();
-                                return t && t.includes(kw);
-                            });
-                            if (btn) {
-                                btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                btn.click();
-                                return btn.innerText.trim();
-                            }
-                        }
-                        return null;
-                    }""",
-                    submit_keywords
-                )
-                if clicked_main:
-                    active_frame = page.main_frame
-                    break
-
-                # Check all iframes
-                for frame in page.frames:
-                    if frame == page.main_frame:
-                        continue
+                # ── STATE A: Still on /discover → go to /campaigns ──
+                if '/discover' in url or '/home' in url:
                     try:
-                        clicked_main = await frame.evaluate(
-                            """(keywords) => {
-                                const btns = [...document.querySelectorAll('button, a, [role="button"]')];
-                                for (const kw of keywords) {
-                                    const btn = btns.find(b => {
-                                        const t = b.innerText && b.innerText.trim().toLowerCase();
-                                        return t && t.includes(kw);
-                                    });
-                                    if (btn) {
-                                        btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                        btn.click();
-                                        return btn.innerText.trim();
-                                    }
-                                }
-                                return null;
-                            }""",
-                            submit_keywords
-                        )
-                        if clicked_main:
-                            active_frame = frame
-                            print(f"      Found in iframe: {frame.url[:80]}")
-                            break
+                        nav = await rf.evaluate(JS_GO_CAMPAIGNS)
+                        print(f"      → Navigating to campaigns: {nav}")
+                        await asyncio.sleep(3.0)
+                        continue
                     except:
+                        pass
+
+                # ── STATES B & C: On /campaigns or /campaigns/XXXX ──
+                if '/campaigns' in url:
+                    # NUCLEAR: Full React-compatible event sequence via dispatchEvent
+                    # Regular el.click() doesn't trigger React synthetic events.
+                    # React listens to bubbled PointerEvent + MouseEvent sequence.
+                    try:
+                        btn_rect = await rf.evaluate("""
+                            () => {
+                                const allBtns = [...document.querySelectorAll('button, [role="button"], a, div, span')];
+                                const TARGETS = ['submit clip', 'submit a clip'];
+                                const btn = allBtns.find(b => TARGETS.includes((b.innerText||b.textContent||'').trim().toLowerCase()));
+                                if (!btn) return null;
+
+                                // Scroll into view
+                                btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+
+                                // Fire FULL React-compatible event sequence (bubbling)
+                                const opts = { bubbles: true, cancelable: true, view: window };
+                                btn.dispatchEvent(new PointerEvent('pointerover', opts));
+                                btn.dispatchEvent(new MouseEvent('mouseover', opts));
+                                btn.dispatchEvent(new PointerEvent('pointerdown', opts));
+                                btn.dispatchEvent(new MouseEvent('mousedown', opts));
+                                btn.dispatchEvent(new PointerEvent('pointerup', opts));
+                                btn.dispatchEvent(new MouseEvent('mouseup', opts));
+                                btn.dispatchEvent(new MouseEvent('click', opts));
+
+                                // Also return bounding rect for coordinate fallback
+                                const r = btn.getBoundingClientRect();
+                                return {
+                                    text: btn.innerText.trim(),
+                                    x: Math.round(r.left + r.width / 2),
+                                    y: Math.round(r.top + r.height / 2),
+                                    visible: r.width > 0 && r.height > 0
+                                };
+                            }
+                        """)
+
+                        if btn_rect:
+                            print(f"      ✅  React events dispatched! btn='{btn_rect['text']}' at ({btn_rect['x']},{btn_rect['y']}) visible={btn_rect['visible']}")
+                            submit_clicked = True
+                            await asyncio.sleep(2.5)
+                        else:
+                            print(f"      ⏳  Submit clip button not in DOM yet — waiting...")
+                            await asyncio.sleep(1.0)
+                            continue
+
+                    except Exception as e:
+                        print(f"      ⚠️  React dispatch failed: {e}")
+                        await asyncio.sleep(1.0)
                         continue
 
-                if clicked_main:
-                    break
+
                 await asyncio.sleep(1.0)
 
-            if clicked_main:
-                print(f"      OK  Clicked: '{clicked_main}'")
-            else:
-                await page.screenshot(path=_ss_path, full_page=True)
-                _all_btns = await page.evaluate(
-                    """() => [...document.querySelectorAll('button, a, [role="button"]')]
-                           .map(b => b.innerText.trim()).filter(t => t && t.length < 60).slice(0, 30)"""
-                )
-                print(f"      Buttons: {_all_btns}")
+            if not modal_open:
+                # Last chance: dump buttons for diagnostics
+                try:
+                    await page.screenshot(path=_ss_path, full_page=True)
+                    rf = next((f for f in page.frames if 'apps.whop.com' in f.url), None)
+                    if rf:
+                        all_btns = await rf.evaluate(
+                            """() => [...document.querySelectorAll('button, [role="button"]')]
+                                     .map(b => (b.innerText||'').trim()).filter(t => t && t.length < 80)"""
+                        )
+                        print(f"      Buttons in frame: {all_btns}")
+                except:
+                    pass
+                print("      ❌  Could not open submission form after 40s")
                 print(f"      Screenshot: {_ss_path}")
-                print("      No submit button found")
                 return False
 
+            clicked_main = "Submit clip"
+            print(f"      OK  Form is open — proceeding to fill!")
             await asyncio.sleep(random.uniform(1.5, 2.5))
+
+
 
             # ── 5. FILL VIDEO URL IN INPUT BOX ────────────────────
             print(f"[5/6] Pasting {platform} link...")
@@ -539,7 +573,8 @@ def submit_to_whop(video_url: str, video_filename: str = "",
 #  🧪 STANDALONE TEST
 # ============================================================
 if __name__ == "__main__":
-    # ← Fresh YouTube Short — testing new iframe fix!
-    _test_url = "https://youtube.com/shorts/hHXr_wPDcQw"
-    result = submit_to_whop(_test_url, "clip_11_1271_1339.mp4", platform="YouTube")
+    # ← Fresh YouTube Short — FULL AUTO test (no human help!)
+    _test_url = "https://youtube.com/shorts/5pugk2nH0ik"
+    result = submit_to_whop(_test_url, "clip_test_auto.mp4", platform="YouTube")
     print(f"\nResult: {'SUCCESS ✅' if result else 'FAILED ❌'}")
+
