@@ -40,6 +40,78 @@ CAMPAIGN_PENDING_MAP = {
     "default":                 "TJR_pending",
 }
 
+# ── 🎨 PER-CAMPAIGN BRANDING CONFIG ───────────────────────────────────────────
+# handle       = @tag that gets injected in caption (replaces generic @TJR etc.)
+# replace_tags = old @handles to find-and-replace in generated captions
+# hashtags     = campaign-specific hashtags (appended / replace generic ones)
+CAMPAIGN_BRANDING = {
+    "TJR_trader": {
+        "handle":       "@TJR",
+        "replace_tags": [],
+        "hashtags":     "#clipculture #thegeniusclipper #tjradmiral #daytrading #tradingmindset",
+    },
+    "TJR_trader_new": {
+        "handle":       "@TJR",
+        "replace_tags": [],
+        "hashtags":     "#clipculture #thegeniusclipper #tjradmiral #daytrading #tradingmindset",
+    },
+    "Double_Coverage_Podcast": {
+        "handle":       "@DoubleCoveragePodcast",
+        "replace_tags": ["@TJR", "@tjr"],   # remove TJR branding
+        "hashtags":     "#doublecoverage #doublecoveragepodcast #nfl #sports #podcast #football #sportspodcast",
+    },
+    "Double_Coverage_podcast": {
+        "handle":       "@DoubleCoveragePodcast",
+        "replace_tags": ["@TJR", "@tjr"],
+        "hashtags":     "#doublecoverage #doublecoveragepodcast #nfl #sports #podcast #football #sportspodcast",
+    },
+}
+
+def patch_captions(campaign_dir: str, campaign: str):
+    """
+    Post-process all _caption.txt files in campaign_dir:
+    - Replace wrong @handles with correct campaign handle
+    - Replace generic hashtag blocks with campaign-specific ones
+    """
+    branding = CAMPAIGN_BRANDING.get(campaign)
+    if not branding:
+        return  # No branding config — skip
+
+    handle      = branding["handle"]
+    replace_tags = branding["replace_tags"]
+    hashtags    = branding["hashtags"]
+
+    import re as _re
+    caption_files = [
+        os.path.join(root, f)
+        for root, _, files in os.walk(campaign_dir)
+        for f in files if f.endswith("_caption.txt")
+    ]
+
+    for cap_path in caption_files:
+        text = open(cap_path, encoding="utf-8").read()
+        original = text
+
+        # 1. Replace wrong handles
+        for wrong_tag in replace_tags:
+            text = text.replace(wrong_tag, handle)
+
+        # 2. Replace the entire "Hashtags: ..." line with campaign hashtags
+        text = _re.sub(
+            r'Hashtags:.*',
+            f'Hashtags: {hashtags}',
+            text
+        )
+
+        # 3. Make sure handle appears (add if not present)
+        if handle not in text:
+            text = text.replace("@TJR", handle)
+
+        if text != original:
+            open(cap_path, "w", encoding="utf-8").write(text)
+            print(f"    [BRAND] Patched: {os.path.basename(cap_path)}")
+
+
 def setup_factory():
     """Output + Pending subfolders banayega agar nahi hain"""
     if not os.path.exists(FACTORY_OUTPUT_DIR):
@@ -176,6 +248,10 @@ def run_factory():
                     }
                     meta_path.write_text(json.dumps(meta_data, indent=2), encoding="utf-8")
                     print(f"    🏷️ Meta stamped: {clip_file.name}.meta.json")
+
+            # 🎨 PATCH CAPTIONS: Wrong @handle aur hashtags swap karo
+            print(f"\n    [BRAND] Patching captions for campaign: {campaign}...")
+            patch_captions(campaign_dir, campaign)
 
             # 🔥 NEW: AUTOMATIC WATERMARK FOR DOUBLE COVERAGE
             if campaign.lower() == "double_coverage_podcast":
