@@ -66,3 +66,15 @@ Overnight_Factory/whop_submissions.log
 # These files often contain hardcoded keys for quick testing — NEVER commit them.
 # If you need to commit a scratch script, scrub all credentials first.
 scratch/
+
+# ── Browser Profiles (Chrome/Chromium cache — massive, never commit) ────────
+Overnight_Factory/yt_ghost_profile/
+Overnight_Factory/Ghost_Profile/
+
+# ── Cookies_Vault (sensitive credentials — NEVER commit) ────────────────────
+Overnight_Factory/Cookies_Vault/TJR_campaign/*.json
+Overnight_Factory/Cookies_Vault/Double_Coverage/*.json
+Overnight_Factory/Cookies_Vault/*/*.json
+
+# ── Screenshot debug files ───────────────────────────────────────────────────
+Overnight_Factory/whop_debug_screenshot.png
