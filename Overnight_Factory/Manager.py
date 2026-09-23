@@ -18,12 +18,17 @@ WAIT_TIME_MIN = 6 * 60 * 60   # 6 hours minimum stealth sleep
 WAIT_TIME_MAX = 6 * 60 * 60 + 30 * 60  # 6.5 hours maximum (random gap — bot-detection avoid)
 
 # ── 📁 CAMPAIGN → COOKIE FOLDER MAPPING ─────────────────────────────────────
-# Campaign name (as seen in caption files) → Cookies_Vault subfolder name
+# Pending subfolder name → Cookies_Vault subfolder name
+# Add new campaigns here when you create new Pending_Videos subfolders!
 COOKIE_CAMPAIGN_MAP = {
-    "TJR_trader":            "TJR_campaign",
-    "TJR_trader_new":        "TJR_campaign",
-    "Double_Coverage_Podcast": "Double_Coverage",
-    "Double_Coverage_podcast": "Double_Coverage",  # case variant
+    # Pending subfolder names (PRIMARY — folder name is source of truth)
+    "TJR_pending":               "TJR_campaign",
+    "Double_Coverage_pending":   "Double_Coverage",
+    # Legacy campaign name keys (fallback for caption scanning)
+    "TJR_trader":                "TJR_campaign",
+    "TJR_trader_new":            "TJR_campaign",
+    "Double_Coverage_Podcast":   "Double_Coverage",
+    "Double_Coverage_podcast":   "Double_Coverage",
 }
 DEFAULT_COOKIE_FOLDER = "TJR_campaign"  # fallback agar campaign map mein nahi mila
 
@@ -112,7 +117,13 @@ async def factory_manager():
 
     while True:
         ts = datetime.now().strftime('%H:%M:%S')
-        videos = sorted(PENDING_DIR.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
+        videos = sorted(
+            [p for p in PENDING_DIR.rglob("*.mp4") if p.parent != PENDING_DIR],  # only in subfolders
+            key=lambda p: p.stat().st_mtime
+        )
+        # Also pick up any stray clips in root Pending_Videos (legacy support)
+        root_vids = sorted(PENDING_DIR.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
+        videos = videos + root_vids
 
         if not videos:
             print(f"[{ts}] 😴 No fresh ammo. Scanning again in 10 minutes...")
@@ -134,30 +145,29 @@ async def factory_manager():
             full_caption_text = caption_path.read_text(encoding="utf-8").strip()
 
         # 🔐 COOKIE VAULT: 3-Layer Campaign Detection
-        # Layer 1 (BEST): .meta.json sidecar — stamped by auto_factory, 100% accurate
-        # Layer 2 (OK):   COOKIE_CAMPAIGN_MAP keys in caption text
+        # Layer 1 (BEST): Parent subfolder name (e.g. TJR_pending, Double_Coverage_pending)
+        # Layer 2 (OK):   .meta.json sidecar file stamped by auto_factory
         # Layer 3 (LAST): DEFAULT fallback (TJR_campaign)
         detected_campaign = None
 
-        # Layer 1: .meta.json sidecar file (most reliable)
-        meta_path = video_path.with_suffix(".meta.json")
-        if meta_path.exists():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                detected_campaign = meta.get("campaign")
-                print(f"  🏷️  Campaign from meta: '{detected_campaign}'")
-            except Exception:
-                pass
+        # Layer 1: Subfolder name — THE CLEANEST SIGNAL
+        parent_folder = video_path.parent.name  # e.g. 'TJR_pending'
+        if parent_folder in COOKIE_CAMPAIGN_MAP:
+            detected_campaign = parent_folder
+            print(f"  📁  Campaign from folder: '{parent_folder}' → vault: '{COOKIE_CAMPAIGN_MAP[parent_folder]}'")
 
-        # Layer 2: scan caption text for known campaign key names
+        # Layer 2: .meta.json sidecar (if no subfolder match)
         if not detected_campaign:
-            for cam_key in COOKIE_CAMPAIGN_MAP:
-                if cam_key.lower() in full_caption_text.lower() or cam_key.lower() in current_clip.lower():
-                    detected_campaign = cam_key
-                    print(f"  🔍  Campaign from caption scan: '{detected_campaign}'")
-                    break
+            meta_path = video_path.with_suffix(".meta.json")
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    detected_campaign = meta.get("campaign")
+                    print(f"  🏷️  Campaign from meta.json: '{detected_campaign}'")
+                except Exception:
+                    pass
 
-        # Layer 3: default fallback
+        # Layer 3: Default fallback
         if not detected_campaign:
             detected_campaign = DEFAULT_COOKIE_FOLDER
             print(f"  ⚠️  Campaign not detected — defaulting to '{detected_campaign}'")

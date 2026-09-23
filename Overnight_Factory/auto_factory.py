@@ -28,12 +28,29 @@ from local_worker import _process_job  # Engine entry function
 FACTORY_DIR = os.path.dirname(os.path.abspath(__file__))
 QUEUE_FILE = os.path.join(FACTORY_DIR, "queue.txt")
 FACTORY_OUTPUT_DIR = os.path.join(FACTORY_DIR, "Output")
+PENDING_DIR = os.path.join(FACTORY_DIR, "Pending_Videos")
+
+# Campaign name → which Pending_Videos subfolder to drop clips into
+CAMPAIGN_PENDING_MAP = {
+    "TJR_trader":              "TJR_pending",
+    "TJR_trader_new":          "TJR_pending",
+    "Double_Coverage_Podcast": "Double_Coverage_pending",
+    "Double_Coverage_podcast": "Double_Coverage_pending",
+    # Default for unknown campaigns:
+    "default":                 "TJR_pending",
+}
 
 def setup_factory():
-    """Output folder banayega agar nahi hai"""
+    """Output + Pending subfolders banayega agar nahi hain"""
     if not os.path.exists(FACTORY_OUTPUT_DIR):
         os.makedirs(FACTORY_OUTPUT_DIR)
         print(f"[FACTORY INIT] Created master output directory: {FACTORY_OUTPUT_DIR}")
+    # Auto-create all pending subfolders
+    for subfolder in set(CAMPAIGN_PENDING_MAP.values()):
+        path = os.path.join(PENDING_DIR, subfolder)
+        if not os.path.exists(path):
+            os.makedirs(path)
+            print(f"[FACTORY INIT] Created pending subfolder: {subfolder}/")
 
 def read_queue():
     """queue.txt se links aur campaign names padhega"""
@@ -166,10 +183,25 @@ def run_factory():
                 image_wp = r"C:\Users\n\Documents\hotshort\assets\broll_assets\money_assets\double_coverage_campaign watermark.webp"
                 print(f"\n💧 Triggering Double Coverage Watermark for {campaign_dir}...")
                 watermark.apply_watermarks(campaign_dir, image_path=image_wp)
+
+            # 📦 AUTO-ROUTE CLIPS TO CORRECT PENDING SUBFOLDER
+            # Manager.py reads the subfolder name to identify campaign + pick cookie vault!
+            pending_subfolder = CAMPAIGN_PENDING_MAP.get(campaign, CAMPAIGN_PENDING_MAP["default"])
+            pending_dest = os.path.join(PENDING_DIR, pending_subfolder)
+            os.makedirs(pending_dest, exist_ok=True)
+            moved_count = 0
+            for clip_file in Path(campaign_dir).rglob("*.mp4"):
+                caption_file = clip_file.with_name(f"{clip_file.stem}_caption.txt")
+                shutil.copy2(str(clip_file), os.path.join(pending_dest, clip_file.name))
+                if caption_file.exists():
+                    shutil.copy2(str(caption_file), os.path.join(pending_dest, caption_file.name))
+                moved_count += 1
+            print(f"\n  📦 AUTO-ROUTED {moved_count} clip(s) → Pending_Videos/{pending_subfolder}/")
             # ---------------------------------------------------------
-            
+
             elapsed = round(time.time() - start_time, 2)
             print(f"✅ [SUCCESS] Video {index} complete in {elapsed}s. Saved to {campaign}/")
+
 
         except Exception as e:
             print(f"❌ [CRITICAL FAILURE] Video {index} crashed!")
