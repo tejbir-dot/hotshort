@@ -111,3 +111,14 @@
 2026-09-22 13:53:36.363: [INFO] BookmarksLoadDropped droppedNodes=0
 2026-09-22 13:53:36.363: [INFO] BookmarksSnapshot Startup total=4 bar=0 other=4 mobile=0 showBar=0 showBarNTP=1
 2026-09-22 13:55:08.918: [INFO] BookmarksSnapshot Shutdown total=4 bar=0 other=4 mobile=0 showBar=0 showBarNTP=1
+2026-09-23 08:45:53.926: [INFO] CurrentProfilePath: C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default
+2026-09-23 08:45:53.926: [INFO] Profiles total count: 1
+2026-09-23 08:45:53.926: [INFO] Profile: name=Personal path=C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default lastActive=2026-09-22T13:53:36.330Z
+2026-09-23 08:45:53.926: [INFO] LastUsedProfileDir: C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default
+2026-09-23 08:45:53.926: [INFO] MostRecentlyActiveProfile: name=Personal path=C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default lastActive=2026-09-22T13:53:36.330Z
+2026-09-23 08:45:53.926: [INFO] VisibilityChanged: 0
+2026-09-23 08:45:53.973: [INFO] OnDoneLoading sync enabled: 0
+2026-09-23 08:45:53.973: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-23 08:45:53.973: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-23 08:45:53.973: [INFO] BookmarksSnapshot Startup total=4 bar=0 other=4 mobile=0 showBar=0 showBarNTP=1
+2026-09-23 08:47:17.408: [INFO] BookmarksSnapshot Shutdown total=4 bar=0 other=4 mobile=0 showBar=0 showBarNTP=1

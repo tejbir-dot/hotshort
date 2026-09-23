@@ -12,8 +12,19 @@ FACTORY_DIR  = Path(__file__).parent.resolve()
 PENDING_DIR  = FACTORY_DIR / "Pending_Videos"
 UPLOADED_DIR = FACTORY_DIR / "Uploaded_Videos"
 FAILED_DIR   = FACTORY_DIR / "Failed_Videos"
+COOKIES_VAULT = FACTORY_DIR / "Cookies_Vault"  # 🔐 Multi-campaign cookie vault
 WAIT_TIME_MIN = 6 * 60 * 60   # 6 hours minimum stealth sleep
 WAIT_TIME_MAX = 6 * 60 * 60 + 30 * 60  # 6.5 hours maximum (random gap — bot-detection avoid)
+
+# ── 📁 CAMPAIGN → COOKIE FOLDER MAPPING ─────────────────────────────────────
+# Campaign name (as seen in caption files) → Cookies_Vault subfolder name
+COOKIE_CAMPAIGN_MAP = {
+    "TJR_trader":            "TJR_campaign",
+    "TJR_trader_new":        "TJR_campaign",
+    "Double_Coverage_Podcast": "Double_Coverage",
+    "Double_Coverage_podcast": "Double_Coverage",  # case variant
+}
+DEFAULT_COOKIE_FOLDER = "TJR_campaign"  # fallback agar campaign map mein nahi mila
 
 for _d in (PENDING_DIR, UPLOADED_DIR, FAILED_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -33,6 +44,18 @@ def load_engine(module_name, func_name="upload_video"):
     except Exception as e:
         print(f"  🔴 {module_name.upper():<18} : OFFLINE — Error: {e}")
         return None
+
+def resolve_cookie_dir(campaign_name: str) -> Path:
+    """
+    Campaign name dekhke sahi Cookies_Vault subfolder return karta hai.
+    Uploaders is path se apne cookie files uthate hain.
+    """
+    folder_name = COOKIE_CAMPAIGN_MAP.get(campaign_name, DEFAULT_COOKIE_FOLDER)
+    cookie_dir  = COOKIES_VAULT / folder_name
+    if not cookie_dir.exists():
+        print(f"  ⚠️  Cookie folder '{folder_name}' not found! Falling back to default.")
+        cookie_dir = COOKIES_VAULT / DEFAULT_COOKIE_FOLDER
+    return cookie_dir
 
 print("\n" + "="*50)
 print(" 👑 THE GHOST FACTORY: OVERLORD v3.0 BOOTING...")
@@ -95,6 +118,12 @@ async def factory_manager():
             await asyncio.sleep(10 * 60)
             continue
 
+        # ── 👁️ QUEUE VISIBILITY ──
+        print(f"\n[{ts}] 📋 UPCOMING QUEUE (Next 5 clips):")
+        for i, v in enumerate(videos[:5]):
+            print(f"   {i+1}. {v.name}")
+        print("-" * 50)
+
         video_path   = videos[0]
         current_clip = video_path.name
         caption_path = video_path.with_name(f"{video_path.stem}_caption.txt")
@@ -102,6 +131,18 @@ async def factory_manager():
         full_caption_text = "Crazy facts! 🤯 #shorts #viral #mindset" # Backup
         if caption_path.exists():
             full_caption_text = caption_path.read_text(encoding="utf-8").strip()
+
+        # 🔐 COOKIE VAULT: Campaign name detect karke sahi cookies load karo
+        # Caption file mein campaign info se ya fallback default se
+        detected_campaign = DEFAULT_COOKIE_FOLDER
+        for cam_key in COOKIE_CAMPAIGN_MAP:
+            if cam_key.lower() in full_caption_text.lower() or cam_key.lower() in current_clip.lower():
+                detected_campaign = cam_key
+                break
+        active_cookie_dir = resolve_cookie_dir(detected_campaign)
+        # Inject cookie path into env — uploaders read this to find their cookie files
+        os.environ["HS_COOKIE_DIR"] = str(active_cookie_dir)
+        print(f"  🔐 Cookie Vault: '{active_cookie_dir.name}' (campaign: {detected_campaign})")
 
         # 🔥 CTO MAGIC: Yahan tere captions alag-alag bat jayenge!
         smart_caps = parse_smart_captions(full_caption_text)
@@ -194,8 +235,16 @@ async def factory_manager():
         if upload_success:
             wait_secs = random.randint(WAIT_TIME_MIN, WAIT_TIME_MAX)
             wait_hrs  = wait_secs / 3600
-            print(f"\n🛡️ GHOST MODE ACTIVATED. Radar off for {wait_hrs:.1f} hours to avoid detection...\n")
-            await asyncio.sleep(wait_secs)
+            print(f"\n🛡️ GHOST MODE ACTIVATED. Radar off for {wait_hrs:.1f} hours to avoid detection...")
+            
+            # Live countdown timer
+            for remaining in range(wait_secs, 0, -1):
+                hrs, rem = divmod(remaining, 3600)
+                mins, secs = divmod(rem, 60)
+                sys.stdout.write(f"\r⏳ Time until next strike: {hrs:02d}h {mins:02d}m {secs:02d}s ")
+                sys.stdout.flush()
+                await asyncio.sleep(1)
+            print("\n")
         else:
             print("\n⚠️ System encountered errors. Retrying next file in 5 minutes...\n")
             await asyncio.sleep(5 * 60)

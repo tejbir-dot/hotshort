@@ -145,6 +145,12 @@ def run_factory():
             os.environ["HS_CLIPS_DIR"] = os.path.abspath(campaign_dir)
 
             _process_job(job_dict, cloudinary_ok=False)
+            # 🔥 NEW: AUTOMATIC WATERMARK FOR DOUBLE COVERAGE
+            if campaign.lower() == "double_coverage_podcast":
+                import watermark
+                image_wp = r"C:\Users\n\Documents\hotshort\assets\broll_assets\money_assets\double_coverage_campaign watermark.webp"
+                print(f"\n💧 Triggering Double Coverage Watermark for {campaign_dir}...")
+                watermark.apply_watermarks(campaign_dir, image_path=image_wp)
             # ---------------------------------------------------------
             
             elapsed = round(time.time() - start_time, 2)

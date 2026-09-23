@@ -1,3 +1,6 @@
-2026/09/22-19:23:36.454 4878 Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Local Storage\leveldb/MANIFEST-000001
-2026/09/22-19:23:36.455 4878 Recovering log #7
-2026/09/22-19:23:36.465 4878 Reusing old log C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Local Storage\leveldb/000007.log 
+2026/09/23-14:15:54.098 3044 Reusing MANIFEST C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/09/23-14:15:54.100 3044 Recovering log #7
+2026/09/23-14:15:54.129 3044 Reusing old log C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile\Default\Local Storage\leveldb/000007.log 
+2026/09/23-14:16:54.150 4b0c Level-0 table #11: started
+2026/09/23-14:16:54.155 4b0c Level-0 table #11: 27202 bytes OK
+2026/09/23-14:16:54.156 4b0c Delete type=0 #7

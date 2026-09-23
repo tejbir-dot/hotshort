@@ -1,0 +1,728 @@
+[
+  {
+    "name": "X-AB",
+    "value": "fdd34b6cca4442abb1dd924e72de3cbe",
+    "domain": "sc-static.net",
+    "path": "/scevent.min.js",
+    "expires": 1789984738.007996,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "NEXT_LOCALE",
+    "value": "en",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821349163.350832,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "whop_sig_id",
+    "value": "b2a12bc7-a5e6-4515-accb-81cbfb1d2201",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821346143.550111,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_wuid",
+    "value": "wuid_6l1c1x1z580y4h0n2y1c",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1824472247.761555,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_gcl_au",
+    "value": "1.1.1590322120.1789810151",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1797586151,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_ttp",
+    "value": "3JXb2rYgQPXRW2dGOzP2ocPa0Gx.1789810155314",
+    "domain": ".tiktok.com",
+    "path": "/",
+    "expires": 1823594354.458605,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "_scid",
+    "value": "9JJGBMUdmZB5euehJQsb5BGnApyKSnWW",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1823938153,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_ga",
+    "value": "GA1.1.965071800.1789810156",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1824458351.545801,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "muc_ads",
+    "value": "fae9cb00-e08d-4733-a2fc-e9a6ced01a32",
+    "domain": ".t.co",
+    "path": "/",
+    "expires": 1824370155.821603,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "guest_id_marketing",
+    "value": "v1%3A178981015729578743",
+    "domain": ".twitter.com",
+    "path": "/",
+    "expires": 1824370155.846351,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "guest_id_ads",
+    "value": "v1%3A178981015729578743",
+    "domain": ".twitter.com",
+    "path": "/",
+    "expires": 1824370155.846434,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "personalization_id",
+    "value": "\"v1_Na4fIN5BtD5IpvRzOks9Mg==\"",
+    "domain": ".twitter.com",
+    "path": "/",
+    "expires": 1824370155.846455,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "guest_id",
+    "value": "v1%3A178981015729578743",
+    "domain": ".twitter.com",
+    "path": "/",
+    "expires": 1824370155.846475,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "hubspotutk",
+    "value": "8f7266acb97ce084eb01e13f052e9995",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1805450338,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_tt_enable_cookie",
+    "value": "1",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1823594354,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_ttp",
+    "value": "01M2WFZ8SKV85504E2SQ3BT2EM_.tt.1.1789810156339",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1823594354,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "li_sugr",
+    "value": "878d8ec0-74cd-46c5-a750-78f9f0bb4baa",
+    "domain": ".linkedin.com",
+    "path": "/",
+    "expires": 1797674345.130544,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "bcookie",
+    "value": "\"v=2&0ad16faa-de4f-400b-88f6-04af12dd9e81\"",
+    "domain": ".linkedin.com",
+    "path": "/",
+    "expires": 1821434345.130691,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "TapAd_TS",
+    "value": "1789810158998",
+    "domain": ".tapad.com",
+    "path": "/",
+    "expires": 1794994158.044623,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "TapAd_DID",
+    "value": "6b657a50-831c-40c1-af1c-83244c4f8ed9",
+    "domain": ".tapad.com",
+    "path": "/",
+    "expires": 1794994158.044755,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "TapAd_3WAY_SYNCS",
+    "value": "",
+    "domain": ".tapad.com",
+    "path": "/",
+    "expires": 1794994158.044799,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "sc_at",
+    "value": "v2|H4sIAAAAAAAA/03GuRHAMAgEwIqY4RBInLvBeqpQ8U690VazrHQTC5/inpR3ty41Dvaa7Dxx4fpgJBOK4P1VP5vzHpNAAAAA",
+    "domain": ".snapchat.com",
+    "path": "/",
+    "expires": 1823506158.179328,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "_sctr",
+    "value": "1%7C1789756200000",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1823938158,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_fbp",
+    "value": "fb.1.1789810158787.466946486972183166",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1797674352,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "bscookie",
+    "value": "\"v=1&202609190929204f13534a-b927-4948-8e9d-457d10292d2aAQHac0vkBjbC-yS0CERUGD99I3mGIDjp\"",
+    "domain": ".www.linkedin.com",
+    "path": "/",
+    "expires": 1821346159.311486,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "fr",
+    "value": "0TELllcjkSqsKv51X..BqrlXx...1.0.BqrlXx.AWeRNnQa3lhj7xTZ9dfaMoInqdY",
+    "domain": ".facebook.com",
+    "path": "/",
+    "expires": 1797586159.569502,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "ajs_anonymous_id",
+    "value": "132b06a2-ffba-4f68-a700-a84a3b24cc18",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1821434350,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "m",
+    "value": "94f95947-3d0e-426a-965e-e96ff5b8cab7d9b7ed",
+    "domain": "m.stripe.com",
+    "path": "/",
+    "expires": 1824442451.979619,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "_immortal|deviceToken",
+    "value": "eyJhbGciOiJkaXIiLCJjdHkiOiJKV1QiLCJlbmMiOiJBMTI4R0NNIiwidHlwIjoiSldUIn0..GGvo9cPlIQIe3JZ_.Rsq4L3uW8ZmvWAxn7rY7b9wYUxeNSQbdVllZ_m307hEYY0FB_QES1DAlBvcnNzthIyI-nWuL-wL2E2Nr5QZVzzH6C1vzRPhiAw3kZdHta3G2cv29dGOfiG8Y2k477mONLh-a0GBoBizf6xHi7eytNsDYbI9b-aCLU9UoSyME1UYNGBvZX7IS_QcyGQY1zYEOfsBb_B4sAFvhAraOd3zVDLwDq4eJ97KfVSSODdefCMBYdNNqwWtmZW-YEimVMUx7dJEHtLqmSWeNNIrKg5v95hR6pgZnVQ2HXw.7riggAmOQHMOtkTZJawRBA",
+    "domain": "api.sardine.ai",
+    "path": "/",
+    "expires": 1821418454,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "_pxvid",
+    "value": "9a8bf72d-b40c-11f1-a1ad-1dbb62e134e4",
+    "domain": ".stripecdn.com",
+    "path": "/",
+    "expires": 1821346163.640133,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None",
+    "partitionKey": "https://whop.com",
+    "_crHasCrossSiteAncestor": true
+  },
+  {
+    "name": "hmt_id",
+    "value": "c7c2ef87-05b5-46cf-97f1-d25d7c659fe9",
+    "domain": "api.hcaptcha.com",
+    "path": "/",
+    "expires": 1792402165.353191,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None",
+    "partitionKey": "https://whop.com",
+    "_crHasCrossSiteAncestor": true
+  },
+  {
+    "name": "IDE",
+    "value": "AHWqTUlRQc4oNyKzzLxtEURqPSp8oUVsmoW3QSuLuaM4vRQKv4cniHWt7ilJn2Zo",
+    "domain": ".doubleclick.net",
+    "path": "/",
+    "expires": 1824370167.018042,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "__Host-GAPS",
+    "value": "1:lbMu3yVNEUdSDkYwqS6yaVjCvbBWwg:Gml_uJTjeMOP_Ifd",
+    "domain": "accounts.google.com",
+    "path": "/",
+    "expires": 1824370184.095034,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "OTZ",
+    "value": "8791770_34_34__34_",
+    "domain": "accounts.google.com",
+    "path": "/",
+    "expires": 1792402185,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_wuid_link",
+    "value": "wuid_2273285d4u6y3o4x2b4a",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1824472247.774691,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "whop-core.refresh-token",
+    "value": "f37686151caf7250216e1e07ddc3f0e90913ed31f1031d9c76310dfa3d634735",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821448185.670703,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "__stripe_mid",
+    "value": "a6fbfc1e-3e3f-4baf-a2ec-14571fd953cdcb96ed",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1821448251,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Strict"
+  },
+  {
+    "name": "_twpid",
+    "value": "tw.1789813175084.586400980601649328",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1823509200.817597,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "ajs_anonymous_id",
+    "value": "8a0297f3-2f32-4016-b852-b121c5716ef0",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821349163.350971,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "whop-core.device-token",
+    "value": "861bbb1f35a3042f77bea270b2b8163e658c7d19bf9fbb7dd1849cdab8e4372c",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1824472185.670929,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "whop-core.user-id",
+    "value": "user_6rqICXypuFLyb",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821448190.500932,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "whop-core.user-id",
+    "value": "user_6rqICXypuFLyb",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1821349912.554195,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "whop_anonymous_id",
+    "value": "b6f21686-9a73-4207-a196-8aba2ff5c214",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821349219.535258,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "whop-theme-resolved",
+    "value": "light",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821448249.702603,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "whop-docked-businesses",
+    "value": "%7B%22ids%22%3A%5B%22biz_vXW2CeXHBhyrRt%22%5D%2C%22visitedAt%22%3A%7B%7D%7D",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821417805.802651,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "whop-global-header-last-balance-user_6rqICXypuFLyb",
+    "value": "0",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1821434349.458869,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ajs_user_id",
+    "value": "user_6rqICXypuFLyb",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1821434350,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "web-personal-view-welcome-dismissed",
+    "value": "1",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1824442107.322418,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ph_phc_wu7iKjxnL9ax9z497vFBbfnTfSAwfjmDZar6lDggVpO_posthog",
+    "value": "%7B%22%24device_id%22%3A%2201a0b8ff-daeb-7bea-8968-0511eefe8bf2%22%2C%22distinct_id%22%3A%22user_6rqICXypuFLyb%22%2C%22%24sesid%22%3A%5B1789882151222%2C%2201a0bd45-14b8-7c57-8cde-cdd8b8d0a65b%22%2C1789881816246%5D%2C%22%24epp%22%3Atrue%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22https%3A%2F%2Fwhop.com%2F%22%2C%22u%22%3A%22https%3A%2F%2Fethwprld0yipxgzfr1nv.apps.whop.com%2Fexp_fdLvSSKgXdoThE%2Fcustomer%22%7D%2C%22%24user_state%22%3A%22identified%22%7D",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1821418151,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "__Host-cr-session",
+    "value": "GNIZ8Zohv65Q5bOrwu736AmkjiPW2BxU",
+    "domain": "b4e0vdqv6zgqeqj4pfgm.apps.whop.com",
+    "path": "/",
+    "expires": 1792474387.779938,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "__Host-cr-access-token",
+    "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJjb250ZW50LXJld2FyZHMiLCJleHAiOjE3ODk5Njg4NDcsImlhdCI6MTc4OTg4MjQ0NywiaXNzIjoiYXV0aC1zZXJ2aWNlIiwic3ViIjoiYzBmODAxOWUtYzQ3NS00MDRlLThmYzEtODlhYmEwZmRjNjk0Iiwid2lkIjoidXNlcl82cnFJQ1h5cHVGTHliIn0.k7vfVqFoltG4RqO7jwhH4Y-TB4e3SyZKuynhL8EmiLg",
+    "domain": "b4e0vdqv6zgqeqj4pfgm.apps.whop.com",
+    "path": "/",
+    "expires": 1789968787.780047,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "__Host-cr-access-token-refresh-at",
+    "value": "1789883347000",
+    "domain": "b4e0vdqv6zgqeqj4pfgm.apps.whop.com",
+    "path": "/",
+    "expires": 1789968787.780081,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "__Host-cr-whop-id",
+    "value": "user_6rqICXypuFLyb",
+    "domain": "b4e0vdqv6zgqeqj4pfgm.apps.whop.com",
+    "path": "/",
+    "expires": 1789968787.78011,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "cr-surface",
+    "value": "c",
+    "domain": "b4e0vdqv6zgqeqj4pfgm.apps.whop.com",
+    "path": "/",
+    "expires": 1792474448.780134,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_ga_JBCN43Y2HQ",
+    "value": "GS2.1.s1789882454$o1$g0$t1789882454$j60$l0$h0",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1824442454.266485,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ph_phc_W5B1QjgYAcOoEVL5yCmuexzRQvZWfLBZ96USAiMeI49_posthog",
+    "value": "%7B%22%24device_id%22%3A%2201a0b92e-c765-7fb9-81d1-73615a512104%22%2C%22distinct_id%22%3A%22c0f8019e-c475-404e-8fc1-89aba0fdc694%22%2C%22%24sesid%22%3A%5B1789814234166%2C%2201a0b92e-c77e-79dc-8c38-bbc603036a47%22%2C1789813245820%5D%2C%22%24epp%22%3Atrue%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22https%3A%2F%2Fwhop.com%2F%22%2C%22u%22%3A%22https%3A%2F%2Fb4e0vdqv6zgqeqj4pfgm.apps.whop.com%2Fdiscover%22%7D%2C%22%24user_state%22%3A%22identified%22%7D",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1821350243,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "UserMatchHistory",
+    "value": "AQI1H6pQkoPWWQAAAaC-QSx0cjbqF6oDy_6mD8_KuxSA9acWlCT282qyBJj6xYFUhGKi3eei6bsD-Q",
+    "domain": ".linkedin.com",
+    "path": "/",
+    "expires": 1792490337.924892,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "AnalyticsSyncHistory",
+    "value": "AQJ2-OXCdIO8-gAAAaC-QSx0B7kstktOjyazMBek0SC8EDWFvOqJkCbgDDKeOXZHSC9nfL_gLTwc19h5K7AoLw",
+    "domain": ".linkedin.com",
+    "path": "/",
+    "expires": 1792490337.925009,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "lidc",
+    "value": "\"b=VGST05:s=V:r=V:a=V:p=V:g=3677:u=1:x=1:i=1789898337:t=1789984737:v=2:sig=AQHTytlEANJTp0fwEobhzHAGkMdd8H5M\"",
+    "domain": ".linkedin.com",
+    "path": "/",
+    "expires": 1789984737.925102,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "__hstc",
+    "value": "37712383.8f7266acb97ce084eb01e13f052e9995.1789810156062.1789882376201.1789898338837.7",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1805450338,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_twsid",
+    "value": "1789898338482-498558709.2.1789898346293",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1823594346.293341,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Strict"
+  },
+  {
+    "name": "_scid_r",
+    "value": "BBJGBMUdmZB5euehJQsb5BGnApyKSnWW4PMoKg",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1824026351,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ttcsid",
+    "value": "1789898345524::cEsJcCcx1sRqSVAAoIam.3.1789898354910.0::1.-5894.9183::0.0.0.0::14.1.332",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1823594354,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ttcsid_D93DANRC77UB3EFMUUR0",
+    "value": "1789898345520::LpBtjiMsxzzj1z9uDRQC.3.1789898354910.1",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1823594354,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_ga_NGD3HKQGSV",
+    "value": "GS2.1.s1789898338$o3$g1$t1789898356$j42$l0$h0",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1824458356.259915,
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "NID",
+    "value": "CuQBCAESlgEBp2sxrpJzZLE4TUGhAZR_woOaQw72l4cBL_eVEAtCtbsZDBvb6TmpiCK9Fud0xVz2Soex34JHhkur8tHs2p2bmuxfEfOwwkbZAc6gXZvyHMiPHq4roIxn2cO8ibMlOmncIfVcWZMS8LPa2re0u-taNFONSZ2TOv9MF0f0CwuUj5Td7plzpb1yzIOBtbnzdcBUZGimHjAoATJFAQ4r3hEWI1ycqmrXSlOlAFlZTP4S2YrAVL1DXFsRkOfKXGxYpTfIFq0CIqihsdzOOtQkI725-ngq_rSvg76Frhk1QGsJ",
+    "domain": ".google.com",
+    "path": "/",
+    "expires": 1805709533.075183,
+    "httpOnly": true,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "whop-core.access-token",
+    "value": "eyJraWQiOiJkZWZhdWx0LWtleS1pZC1lczI1Ni1wcm9kIiwiYWxnIjoiRVMyNTYifQ.eyJleHAiOjE3ODk5MTU4NDUsInN1YiI6InVzZXJfNnJxSUNYeXB1Rkx5YiIsImlhdCI6MTc4OTkxMjI0NSwiaXNzIjoid2hvcC1yYWlscy1wcm9kIiwidHlwIjoiYWNjZXNzIiwidiI6MSwicm9sZXMiOltdLCJlbWFpbCI6ImVsaXRlY2xpcHBlci5zdHVkaW9zQGdtYWlsLmNvbSIsImNyZWF0ZWRfYXQiOjE3ODk0ODA2MjEsInNnIjowLCJzaWQiOiI2MzcxZWRkOC1hOWZlLTRhODMtOGE3YS1kYTVkNmY1YjdkYzkifQ.vQUBVorsACmHQvbWYGjSkmqYfwJIY-fV-KXHTHq1FOzpIDXZ1t4P_LIZp4_LlhsVpgUOsk18kNiQ6qrBm9HDvQ",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1789915785.670528,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "whop-core.uid-token",
+    "value": "eyJraWQiOiJkZWZhdWx0LWtleS1pZC1lczI1Ni1wcm9kIiwiYWxnIjoiRVMyNTYifQ.eyJleHAiOjE3ODk5MTU4NDUsInN1YiI6InVzZXJfNnJxSUNYeXB1Rkx5YiIsImlhdCI6MTc4OTkxMjI0NSwiaXNzIjoid2hvcC1yYWlscy1wcm9kIiwidHlwIjoidWlkIiwic2ciOjB9.IguEJF7bILwfGcHLXhORgGtIsYw1VsQUBmYgR95iRf6vQkXMYfoli62s1jiakboTIBJefWGOdIDwYoSFuRyNRA",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1789915785.670794,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "__cf_bm",
+    "value": "Hh81O0LwYlO9UlYfL9UE.YYiL7rdZKiaYsY5wHaE21g-1789912247.273338-1.0.1.1-estr7TbqfK0Ck_KW45L.WeOo6JLhJRi3o9AExEYUwbYaGCu7Uu9TTfycVluFrExiRTS8jj5ZJMUBK7zYZ5ci1t_wyx1hJJyl2gitpwJneAVGaifimCxuqvvXIQBtMC1P",
+    "domain": ".whop.tw",
+    "path": "/",
+    "expires": 1789914047.741279,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "cf_clearance",
+    "value": "aVwjUI3LzwhC2WAcc20M_EhSEygqFR9E9xTT6uC1u7U-1789912247-1.2.1.1-2wuuaImtXwwTbwywB6BJoGi1UyzysBOjS33p2lPdcoWP1SMAOrpQgT03W4zqQ1np_jZOH2mUknc6eu3I7i.wRDf7yn1Mpie0hl2kZBqNcuGaKuIGpklu7ylsMfHfcNxZfzFF1TxLXs43EHoVQ5DlIOVgIH8bsYrkSzCbndXPnq0lgd98807u27PFtgEtjOf3XL5ptCs86oS9.QJ8sj7kLvApR1B5m2OXnbkrVr6.wGxSSlWrasfgwSGi0N8CU.pnGd5gWdeyDTFdFtTr8DcdvOMXiu7n0UHCgOnZ92Afm3uaos3R6PqpeVE2V.4u6IgCmFIfOYRBX.t2aJGL01qjlB.HSTwgpXzmNbYJgLXZBUs",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1821448248.206019,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None",
+    "partitionKey": "https://whop.com",
+    "_crHasCrossSiteAncestor": false
+  },
+  {
+    "name": "__cf_bm",
+    "value": "zVo0i6YLzvHSHT09bGj0nGZrfckQwCV4ziHX_9r4D5g-1789912247.8957427-1.0.1.1-1uUyEN20YR_tnJUP0PxFNUmKUCg02D3sKiyJ1Xk7HKJy4FhU1uBgt42772Wu4e7fTRoPLNw8ZPefVR9XvL83TA6.27sBJEmFBLN0dPVrfNyJNu5TRDpti2E2t46SWNHD",
+    "domain": ".whop.com",
+    "path": "/",
+    "expires": 1789914048.206406,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "_whop_ssk",
+    "value": "28d4fdb5-0355-416a-bc42-49495ea0a272",
+    "domain": "whop.com",
+    "path": "/",
+    "expires": 1789913449.695032,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  }
+]
