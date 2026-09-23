@@ -572,9 +572,9 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
             await asyncio.sleep(random.uniform(2.0, 3.0))  # Wait for submission to process
 
             # ── 8. CONFIRM ────────────────────────────────
-            print("      ⏳  Waiting for confirmation (20s max)...")
+            print("      ⏳  Waiting for confirmation (30s max)...")
 
-            for attempt in range(4):
+            for attempt in range(6):
                 await asyncio.sleep(5.0)
                 for txt in ["Thank you", "submitted", "Submitted", "received",
                             "success", "Clip submitted", "under review"]:
@@ -587,7 +587,7 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
                         pass
                 if submitted:
                     break
-                print(f"      ⏳  Checking... ({(attempt+1)*5}s / 20s)")
+                print(f"      ⏳  Checking... ({(attempt+1)*5}s / 30s)")
 
             if not submitted:
                 print(f"      ⚠️  No confirm text. URL: {page.url[:60]}")
@@ -638,8 +638,8 @@ def submit_to_whop(video_url: str, video_filename: str = "",
 #  🧪 STANDALONE TEST
 # ============================================================
 if __name__ == "__main__":
-    # ← Fresh YouTube Short — FULL AUTO test (no human help!)
-    _test_url = "https://youtube.com/shorts/5pugk2nH0ik"
-    result = submit_to_whop(_test_url, "clip_test_auto.mp4", platform="YouTube")
+    # ← Actual uploaded clip from last Manager run — testing Step 7 fix!
+    _test_url = "https://youtube.com/shorts/aMSzm0Y0j_o"
+    result = submit_to_whop(_test_url, "clip_1_301_347.mp4", platform="YouTube")
     print(f"\nResult: {'SUCCESS ✅' if result else 'FAILED ❌'}")
 
