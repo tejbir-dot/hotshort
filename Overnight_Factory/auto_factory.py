@@ -1,6 +1,7 @@
 import sys
 import os
 import io
+import json
 import time
 import traceback
 from datetime import datetime
@@ -145,6 +146,20 @@ def run_factory():
             os.environ["HS_CLIPS_DIR"] = os.path.abspath(campaign_dir)
 
             _process_job(job_dict, cloudinary_ok=False)
+
+            # 🏷️ STAMP META FILES: Har clip ke sath .meta.json sidecar file banao
+            # Manager.py yahi file padhke campaign identify karega — no guessing!
+            for clip_file in Path(campaign_dir).rglob("*.mp4"):
+                meta_path = clip_file.with_suffix(".meta.json")
+                if not meta_path.exists():  # already stamped? skip
+                    meta_data = {
+                        "campaign": campaign,
+                        "source_url": video_path,
+                        "generated_at": datetime.now().isoformat(),
+                    }
+                    meta_path.write_text(json.dumps(meta_data, indent=2), encoding="utf-8")
+                    print(f"    🏷️ Meta stamped: {clip_file.name}.meta.json")
+
             # 🔥 NEW: AUTOMATIC WATERMARK FOR DOUBLE COVERAGE
             if campaign.lower() == "double_coverage_podcast":
                 import watermark

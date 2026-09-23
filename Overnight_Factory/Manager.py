@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import shutil
 import random
 import asyncio
@@ -132,15 +133,36 @@ async def factory_manager():
         if caption_path.exists():
             full_caption_text = caption_path.read_text(encoding="utf-8").strip()
 
-        # 🔐 COOKIE VAULT: Campaign name detect karke sahi cookies load karo
-        # Caption file mein campaign info se ya fallback default se
-        detected_campaign = DEFAULT_COOKIE_FOLDER
-        for cam_key in COOKIE_CAMPAIGN_MAP:
-            if cam_key.lower() in full_caption_text.lower() or cam_key.lower() in current_clip.lower():
-                detected_campaign = cam_key
-                break
+        # 🔐 COOKIE VAULT: 3-Layer Campaign Detection
+        # Layer 1 (BEST): .meta.json sidecar — stamped by auto_factory, 100% accurate
+        # Layer 2 (OK):   COOKIE_CAMPAIGN_MAP keys in caption text
+        # Layer 3 (LAST): DEFAULT fallback (TJR_campaign)
+        detected_campaign = None
+
+        # Layer 1: .meta.json sidecar file (most reliable)
+        meta_path = video_path.with_suffix(".meta.json")
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                detected_campaign = meta.get("campaign")
+                print(f"  🏷️  Campaign from meta: '{detected_campaign}'")
+            except Exception:
+                pass
+
+        # Layer 2: scan caption text for known campaign key names
+        if not detected_campaign:
+            for cam_key in COOKIE_CAMPAIGN_MAP:
+                if cam_key.lower() in full_caption_text.lower() or cam_key.lower() in current_clip.lower():
+                    detected_campaign = cam_key
+                    print(f"  🔍  Campaign from caption scan: '{detected_campaign}'")
+                    break
+
+        # Layer 3: default fallback
+        if not detected_campaign:
+            detected_campaign = DEFAULT_COOKIE_FOLDER
+            print(f"  ⚠️  Campaign not detected — defaulting to '{detected_campaign}'")
+
         active_cookie_dir = resolve_cookie_dir(detected_campaign)
-        # Inject cookie path into env — uploaders read this to find their cookie files
         os.environ["HS_COOKIE_DIR"] = str(active_cookie_dir)
         print(f"  🔐 Cookie Vault: '{active_cookie_dir.name}' (campaign: {detected_campaign})")
 
