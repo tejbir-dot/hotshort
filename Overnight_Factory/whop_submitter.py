@@ -523,8 +523,57 @@ async def run_whop_submitter(video_url: str, video_filename: str = "",
             if not ticked:
                 print("      Warning: Checkbox not found — submitting anyway...")
 
+            # ── 7. CLICK FINAL "SUBMIT CLIP" BUTTON INSIDE MODAL ──
+            # CRITICAL: Checkbox tick karna kaafi nahi — yeh orange button bhi dabaana padega!
+            print("[7/7] Clicking final Submit button inside modal...")
+            await asyncio.sleep(random.uniform(0.8, 1.5))  # Let checkbox state settle
+
+            final_submitted = False
+            for search_frame in frames_to_search:
+                try:
+                    # Look for the orange Submit clip button INSIDE the modal
+                    # It's different from the campaign-page "Submit clip" button
+                    result = await search_frame.evaluate("""
+                        () => {
+                            const allBtns = [...document.querySelectorAll('button, [role="button"], div, span, a')];
+                            const TARGETS = ['submit clip', 'submit a clip'];
+                            const matches = allBtns.filter(b => {
+                                const t = (b.innerText||b.textContent||'').trim().toLowerCase();
+                                return TARGETS.includes(t) && b.children.length <= 2;
+                            });
+                            const visibleBtns = matches.filter(b => {
+                                const r = b.getBoundingClientRect();
+                                return r.width > 0 && r.height > 0;
+                            });
+                            if (visibleBtns.length === 0) return null;
+                            // Pick LAST visible button — modal button is always last in DOM
+                            const btn = visibleBtns[visibleBtns.length - 1];
+                            btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+                            const opts = { bubbles: true, cancelable: true, view: window };
+                            btn.dispatchEvent(new PointerEvent('pointerdown', opts));
+                            btn.dispatchEvent(new MouseEvent('mousedown', opts));
+                            btn.dispatchEvent(new PointerEvent('pointerup', opts));
+                            btn.dispatchEvent(new MouseEvent('mouseup', opts));
+                            btn.dispatchEvent(new MouseEvent('click', opts));
+                            const r = btn.getBoundingClientRect();
+                            return { text: btn.innerText.trim(), x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) };
+                        }
+                    """)
+                    if result:
+                        print(f"      OK  Final Submit btn clicked: '{result['text']}' at ({result['x']},{result['y']})")
+                        final_submitted = True
+                        break
+                except Exception as e:
+                    continue
+
+            if not final_submitted:
+                print("      Warning: Final Submit button not found — may have auto-submitted or already clicked")
+
+            await asyncio.sleep(random.uniform(2.0, 3.0))  # Wait for submission to process
+
             # ── 8. CONFIRM ────────────────────────────────
             print("      ⏳  Waiting for confirmation (20s max)...")
+
             for attempt in range(4):
                 await asyncio.sleep(5.0)
                 for txt in ["Thank you", "submitted", "Submitted", "received",
