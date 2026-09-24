@@ -3932,6 +3932,7 @@ class ClipEditor:
             hashtags_line=hashtags_line,
             subtitle_style=subtitle_style,
             speaker_side="center",
+            is_podcast=("podcast" in str(input_path).lower()),
         )
         return ass_path
 
@@ -4538,6 +4539,7 @@ class ClipEditor:
 
             video_fmt = None
             _disable_crop = os.getenv("HS_DISABLE_CROP", "0") == "1"
+            _force_fmt = os.getenv("HS_FORCE_FORMAT", "").strip().lower()  # e.g. "podcast"
             if _disable_crop:
                 log.info("[WCE] HS_DISABLE_CROP=1 -> Skipping FaceCache and active speaker detection completely.")
                 video_fmt = None
@@ -4569,6 +4571,22 @@ class ClipEditor:
                 t0 = time.perf_counter()
                 video_fmt = self._analyze_video_format(work_b)
                 t_face += time.perf_counter() - t0
+
+            # ── HS_FORCE_FORMAT override ─────────────────────────────────────────
+            # e.g. HS_FORCE_FORMAT=podcast forces split-screen centered captions
+            # regardless of face detection outcome (use for podcast campaigns).
+            if _force_fmt == "podcast" and (video_fmt is None or video_fmt.format_type != "podcast"):
+                from effects.format_analyzer import VideoFormat
+                from effects.director_strategy import DirectorMode
+                video_fmt = VideoFormat(
+                    format_type="podcast",
+                    director_mode=DirectorMode.PODCAST,
+                    face_count_avg=2.0,
+                    speaker_positions=[0.25, 0.75],
+                    face_switch_rate=0.5,
+                )
+                metadata["video_format"] = "podcast (forced)"
+                log.info("[WCE-FORMAT] HS_FORCE_FORMAT=podcast -> forced podcast mode (centered subtitles).")
 
             # --- START CAPTION THREAD (Parallel Processing) ---
             import threading

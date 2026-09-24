@@ -59,3 +59,19 @@ Traceback (most recent call last):
     raise RuntimeError(f"Orchestrator failed before producing clips: {orch_state['error']}") from orch_state["error"]
 RuntimeError: Orchestrator failed before producing clips: max_workers must be greater than 0
 
+
+[2026-09-24 11:05:03.097972] Failed: https://youtu.be/tTpr_-DWvek
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\Overnight_Factory\auto_factory.py", line 241, in run_factory
+    for clip_file in Path(campaign_dir).rglob("*.mp4"):
+                     ^^^^
+NameError: name 'Path' is not defined
+
+
+[2026-09-24 12:16:32.426129] Failed: https://youtu.be/JdtyQDvriso
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\Overnight_Factory\auto_factory.py", line 241, in run_factory
+    for clip_file in Path(campaign_dir).rglob("*.mp4"):
+                     ^^^^
+NameError: name 'Path' is not defined
+
