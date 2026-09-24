@@ -1,0 +1,68 @@
+We need to output exactly in given format, no markdown asterisks. Use plain text with sections separated by lines of dashes.
+
+We need three separate captions: for TikTok, YouTube Shorts, Instagram Reels. Based on transcript: content about Mike Tyson talking about amateur boxing, helping kids, legacy, etc.
+
+We need to incorporate @TJR tagging the creator (the video features TJR talking about making money, tech, or business - but the transcript is Mike Tyson? Might be mismatch, but we follow instruction: include @TJR.
+
+We must not use markdown asterisks, so just plain lines.
+
+TikTok caption format:
+
+Line 1: Extreme clickbait hook with an emoji
+Line 2-3: Insane curiosity based on the transcript
+Line 4: Hard CTA to click the link in bio
+Line 5: Must include @TJR (tagging the creator)
+Line 6: Hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags
+
+We need line breaks as per lines.
+
+Similarly YouTube Shorts:
+
+Line 1: High SEO-value title/hook
+Line 2: Brief summary creating loop-curiosity
+Line 3: CTA to pinned comment or related video
+Line 4: Must include @TJR in the description
+Line 5: Hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags
+
+Instagram Reels:
+
+Line 1: Aesthetic/Value-driven hook with emoji
+Line 2-4: Micro-blog style value drop based on the transcript
+Line 5: CTA to DM a keyword or check the link in bio
+Line 6: Must include @TJR to tag the creator
+Line 7: Hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags
+
+We need to ensure each section separated by a line of dashes (like "--------------------------------------------------").
+
+We must not include extra explanation.
+
+Let's craft.
+
+TikTok:
+
+Line1: 💥 Mike Tyson just dropped a SECRET that could 10X your income! (emoji)
+But need clickbait hook. Use 🚀 maybe.
+
+Line2-3: Insane curiosity based on transcript: talk about Tyson saying boxing is about self-value, kids can become champions in life, not just ring. Provide curiosity.
+
+Line4: Hard CTA to click the link in bio: "Tap the link in bio to unlock the full blueprint!"
+
+Line5: Must include @TJR
+
+Line6: Hashtags: #clipculture #thegeniusclipper plus TikTok tags like #fyp #viral #boxingmindset #makemoneyonline #entrepreneur
+
+Make sure each line separate.
+
+YouTube Shorts:
+
+Line1: High SEO-value title/hook: "Mike Tyson Reveals How Boxing Builds Real-World Wealth – Full Breakdown"
+
+Line2: Brief summary creating loop-curiosity: "He explains why the discipline learned in the ring translates to money, mindset, and legacy – stay till the end for the actionable tip."
+
+Line3: CTA to pinned comment or related video: "Comment ‘BOX’ below for the free checklist we mentioned!"
+
+Line4: Must include @TJR in the description: include "@TJR"
+
+Line5: Hashtags: #clipculture #thegeniusclipper plus YouTube tags like #BoxingMotivation #MoneyMindset #SelfImprovement #AmateurBoxing #WealthBuilding #Shorts #Motivation
+
+We need 5-7 tags total besides the two? Actually line says: Hashtags: #clipculture #the

@@ -1,0 +1,43 @@
+We need to write 3 separate captions: TikTok, YouTube Shorts, Instagram Reels.
+
+We must follow exact format: No markdown asterisks, no formatting like . Just plain text with lines as described.
+
+We need to include certain parts: TikTok caption: line1 extreme clickbait hook with emoji, line2-3 insane curiosity based on transcript, line4 hard CTA to click link in bio, line5 must include @TJR (tagging the creator), line6 hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags.
+
+Similarly for YouTube Shorts: line1 high SEO-value title/hook, line2 brief summary creating loop-curiosity, line3 CTA to pinned comment or related video, line4 must include @TJR in the description, line5 hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags.
+
+Instagram Reels: line1 aesthetic/value-driven hook with emoji, line2-4 micro-blog style value drop based on transcript, line5 CTA to DM a keyword or check link in bio, line6 must include @TJR to tag creator, line7 hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags.
+
+We need to base it on the transcript: Many topics: Mike Tyson talking about amateur boxing, giving back, kids, making champion in life, etc. Also mentions price fix app, prize picks, etc. There's some promotional content at the end (price fix app, prize picks) that might be irrelevant. The video is TJR talking about making money, tech, or business. But transcript is about Mike Tyson and boxing. However we need to adapt captions accordingly, perhaps focusing on the business lessons: making champion in life, building legacy, giving back, community, self-value, etc. We can incorporate money making aspects: building a brand, using discipline to make money, investing in kids, etc.
+
+We need to be hyper-viral, high-retention. Use emojis, curiosity gaps.
+
+Make sure each line is separated by newline.
+
+We must not use markdown asterisks. So just plain text.
+
+Let's craft TikTok caption:
+
+Line1: Extreme clickbait hook with emoji. Something like "💥 Mike Tyson just revealed the REAL secret to making MILLIONS 💰". Include emoji.
+
+Line2-3: Insane curiosity based on transcript. Maybe: "He says it’s not about trophies… it’s about building a champion mindset that prints cash." Next line: "Find out how a kid from Brownsville turned discipline into a legacy that pays."
+
+Line4: Hard CTA to click the link in bio. "👉 Tap the link in bio to get the FREE blueprint!"
+
+Line5: Must include @TJR. "@TJR"
+
+Line6: Hashtags: #clipculture #thegeniusclipper plus 3-5 TikTok specific tags: #businessmindset #motivation #selfmade #fyp #viral
+
+Make sure each line separate line.
+
+Now YouTube Shorts caption:
+
+Line1: High SEO-value title/hook. Something like "How Mike Tyson’s Boxing Discipline Can 10x Your Income (2024)". Probably include keywords.
+
+Line2: Brief summary creating loop-curiosity. "He explains why the same grit that built champions also builds wealth – and you can start today."
+
+Line3: CTA to pinned comment or related video. "💬 Comment ‘CHAMPION’ for the full breakdown in the pinned comment!"
+
+Line4: Must include @TJR in the description. "@TJR"
+
+Line5: Hashtags: #clipculture
