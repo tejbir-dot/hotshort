@@ -3932,7 +3932,10 @@ class ClipEditor:
             hashtags_line=hashtags_line,
             subtitle_style=subtitle_style,
             speaker_side="center",
-            is_podcast=("podcast" in str(input_path).lower()),
+            is_podcast=(
+                os.environ.get("HS_FORCE_FORMAT", "").strip().lower() == "podcast"
+                or "podcast" in str(input_path).lower()
+            ),
         )
         return ass_path
 

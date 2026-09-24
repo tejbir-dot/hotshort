@@ -4,7 +4,9 @@ import io
 import json
 import time
 import traceback
+import shutil
 from datetime import datetime
+from pathlib import Path
 
 # Force UTF-8 on Windows — prevents emoji crash in face scanner threads
 if sys.platform == "win32":
@@ -276,7 +278,7 @@ def run_factory():
 
             # 🔥 NEW: AUTOMATIC WATERMARK FOR DOUBLE COVERAGE
             if campaign.lower() == "double_coverage_podcast":
-                import watermark
+                from Overnight_Factory import watermark
                 image_wp = r"C:\Users\n\Documents\hotshort\assets\broll_assets\money_assets\double_coverage_campaign watermark.webp"
                 print(f"\n💧 Triggering Double Coverage Watermark for {campaign_dir}...")
                 watermark.apply_watermarks(campaign_dir, image_path=image_wp)
