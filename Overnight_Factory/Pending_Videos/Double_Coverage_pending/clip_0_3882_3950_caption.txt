@@ -1,0 +1,46 @@
+We need to produce 3 separate captions for TikTok, YouTube Shorts, Instagram Reels based on transcript. The video features TJR talking about making money, tech, or business. The transcript is a long mess but mentions making money, AI investing, boxing, etc. We need to follow format exactly, no markdown asterisks. Provide lines exactly as specified.
+
+We need to extract a core hook from transcript: perhaps about AI, investing, making money with AI, becoming world champion, etc. Use extreme clickbait.
+
+TikTok caption: line1: extreme clickbait hook with emoji. line2-3: insane curiosity based on transcript. line4: hard CTA to click the link in bio. line5: Must include @DoubleCoveragePodcast (tagging creator). line6: hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags.
+
+We need to produce lines separated by newline? Probably each line as separate line. No extra formatting. No markdown asterisks. Provide exactly as described.
+
+We need to ensure we include @DoubleCoveragePodcast in caption lines (maybe preceded by @). We'll include @DoubleCoveragePodcast.
+
+Now TikTok:
+
+Line1: 💸 "AI just made me a millionaire overnight – here's how" (emoji start). Could use 🚀 or 💰.
+
+Line2-3: Insane curiosity based on transcript. Maybe: "TJR reveals how he consulted Sora, got his NIL used in a viral AI app that hit 1B views in 7 days, and turned it into a cash‑flow machine." That's two lines? Actually line2 and line3 separate. So line2: "He consulted the Sora team for months, becoming the first celebrity to lend his name & likeness." line3: "The result? A meme explosion that’s still raking in passive income while he sleeps."
+
+Line4: Hard CTA to click the link in bio: "👉 Tap the link in my bio to unlock the exact AI side‑hustle blueprint!"
+
+Line5: Must include @DoubleCoveragePodcast: "@DoubleCoveragePodcast"
+
+Line6: Hashtags: #doublecoverage #doublecoveragepodcast #clipculture #thegeniusclipper + 3-5 TikTok specific tags: e.g., #AIMoney #SideHustle #ViralTips #FinTok #MoneyMindset
+
+Make sure line6 starts with Hashtags: #doublecoverage #doublecoveragepodcast maybe just list hashtags.
+
+Now YouTube Shorts caption: format:
+
+🟥 YOUTUBE SHORTS CAPTION:
+[Line 1: High SEO-value title/hook]
+[Line 2: Brief summary creating loop-curiosity]
+[Line 3: CTA to pinned comment or related video]
+[Line 4: Must include @DoubleCoveragePodcast in the description]
+[Line 5: Hashtags: #doublecoverage #doublecoveragepodcast #clipculture #thegeniusclipper + 5-7 YouTube specific tags]
+
+We'll produce lines.
+
+Line1: "How TJR turned AI consulting into a $1M passive income stream – full breakdown"
+
+Line2: "He shares the behind‑the‑scenes deal with Sora, why he gave his NIL for free, and the exact steps to replicate the model."
+
+Line3: "💬 Drop your biggest AI question in the pinned comment – I’ll answer the top 3!"
+
+Line4: Must include @DoubleCoveragePodcast in the description: "@DoubleCoveragePodcast"
+
+Line5: Hashtags: #doublecoverage #doublecoveragepodcast #clipculture #thegeniusclipper + 5-7 YouTube specific tags: e.g., #AIIncome #PassiveIncome #Entrepreneurship #TechInvesting #SideHustle #MakeMoneyOnline #WealthHacks
+
+Now Instagram Reels caption:

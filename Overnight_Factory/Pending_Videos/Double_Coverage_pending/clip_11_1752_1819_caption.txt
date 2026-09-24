@@ -1,0 +1,31 @@
+We need to produce three separate captions, each formatted exactly as described, with no markdown asterisks, no bullet points other than the lines specified. Use plain text, with lines separated by newline. Must include exact sections and headers: "📱 TIKTOK CAPTION:", then lines 1-6 as described. Then a separator line "--------------------------------------------------". Then "🟥 YOUTUBE SHORTS CAPTION:" with lines 1-5. Then separator again. Then "📸 INSTAGRAM REELS CAPTION:" with lines 1-7. Then likely no extra trailing text.
+
+We need to base content on the transcript: TJR talking about making money, tech, or business. The transcript includes talk about AI, OpenAI, Sora, investing, making money, boxing, fitness, etc. So we can craft captions around making money via AI, investing in AI, boxing, etc.
+
+Need extreme clickbait hook with emoji for TikTok line 1. Then lines 2-3: insane curiosity based on transcript. Line 4: hard CTA to click link in bio. Line 5: must include @DoubleCoveragePodcast (tagging creator). Line 6: hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags.
+
+For YouTube Shorts: line 1: high SEO-value title/hook. line 2: brief summary creating loop-curiosity. line 3: CTA to pinned comment or related video. line 4: must include @DoubleCoveragePodcast. line 5: hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags.
+
+For Instagram Reels: line 1: aesthetic/value-driven hook with emoji. line 2-4: micro-blog style value drop based on transcript. line 5: CTA to DM a keyword or check link in bio. line 6: must include @DoubleCoveragePodcast. line 7: hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags.
+
+We must not use markdown asterisks (like ). Just plain text.
+
+Let's craft.
+
+TikTok:
+
+Line1: 🚨 "AI just made me $10K in 24hrs – here’s the secret!" (emoji at start maybe 🚨). Need extreme clickbait hook with emoji. Could be "💥 AI side‑hack that prints cash while you sleep". Let's do: "💸 AI turned my phone into a money printer – watch how!"
+
+Line2-3: Insane curiosity based on transcript: talk about investing in OpenAI, Sora, AI-generated videos, billion views, making money from AI, etc. So: "TJR reveals how he got early access to Sora, helped build the app, and watched his AI‑generated clip hit 1B views in a week." Then: "He shares the exact steps to monetize AI content without being a tech wizard."
+
+Line4: Hard CTA to click link in bio: "👉 Tap the link in bio for the free AI‑money checklist!"
+
+Line5: Must include @DoubleCoveragePodcast: "@DoubleCoveragePodcast"
+
+Line6: Hashtags: #doublecoverage #doublecoveragepodcast #clipculture #thegeniusclipper + 3-5 TikTok specific tags: e.g., #AIHack #MakeMoneyOnline #SideHustleTok #ViralAI #FinanceTok
+
+Make sure each line is separate.
+
+YouTube Shorts:
+
+Line1: High SEO-value title/hook: maybe "How to Profit from AI: TJR’s OpenAI Investment Strategy Explained". Use emojis? Not required but
