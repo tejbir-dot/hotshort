@@ -25,8 +25,15 @@ from playwright_stealth import Stealth
 #  ⚙️ FACTORY CONFIG — Edit only here
 # ============================================================
 FACTORY_DIR   = Path(__file__).parent
-PROFILE_DIR   = r"C:\Users\n\Documents\hotshort\Overnight_Factory\yt_ghost_profile"
-COOKIE_FILE   = str(FACTORY_DIR / "youtube_cookie.json")
+
+# Fetch campaign-specific cookie vault from environment (set by Manager.py)
+active_vault  = os.environ.get("HS_COOKIE_DIR", str(FACTORY_DIR / "Cookies_Vault" / "TJR_campaign"))
+active_vault_path = Path(active_vault)
+
+# Each campaign gets its own persistent browser profile and cookie json
+PROFILE_DIR   = str(active_vault_path / "yt_ghost_profile")
+COOKIE_FILE   = str(active_vault_path / "youtube_cookie.json")
+
 
 # 🔌 Set USE_PROXY = False to test without proxy (uses your real IP)
 USE_PROXY     = False   # ← DIRECT — proxy blocks YouTube Studio
@@ -175,15 +182,15 @@ async def run_youtube_uploader(video_path: str, caption: str) -> str | None:
         print("[2/8] 🕵️  Applying Stealth Mask (anti-fingerprint)...")
         await Stealth().apply_stealth_async(page)
 
-        # ── 3. (REMOVED) INJECT COOKIES ───────────────────
-        # Cookies are now permanently saved in the yt_ghost_profile persistent context!
-        print("[3/8] 🍪  Cookie Injection Disabled (Using Persistent Session)...")
-        # cookies = load_cookies(COOKIE_FILE)
-        # if cookies:
-        #     await context.add_cookies(cookies)
-        #     print(f"      ✅  {len(cookies)} cookies injected — login bypassed!")
-        # else:
-        #     print("      ⚠️  No cookies found. Will rely on saved profile session.")
+        # ── 3. INJECT COOKIES ───────────────────
+        # We inject cookies from JSON. Since we use a persistent context, they will save automatically!
+        print(f"[3/8] 🍪  Checking for cookies in {active_vault_path.name}...")
+        cookies = load_cookies(COOKIE_FILE)
+        if cookies:
+            await context.add_cookies(cookies)
+            print(f"      ✅  {len(cookies)} cookies injected — login bypassed!")
+        else:
+            print("      ⚠️  No JSON cookies found. Will rely on saved profile session.")
 
         try:
             # ── 4. WARM-UP: YouTube Homepage (human-like) ──
