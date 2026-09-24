@@ -4575,21 +4575,27 @@ class ClipEditor:
                 video_fmt = self._analyze_video_format(work_b)
                 t_face += time.perf_counter() - t0
 
-            # ── HS_FORCE_FORMAT override ─────────────────────────────────────────
-            # e.g. HS_FORCE_FORMAT=podcast forces split-screen centered captions
-            # regardless of face detection outcome (use for podcast campaigns).
+            # ── HS_FORCE_FORMAT=podcast: smart override ────────────────────────
+            # Only force podcast mode when format_analyzer did NOT detect a clear
+            # monologue (single face). If avg_faces < 1.2, this clip shows one
+            # person -> keep bottom subtitles. If avg_faces >= 1.2, it's likely
+            # a dual-speaker clip where single-cam switching confused the detector.
             if _force_fmt == "podcast" and (video_fmt is None or video_fmt.format_type != "podcast"):
-                from effects.format_analyzer import VideoFormat
-                from effects.director_strategy import DirectorMode
-                video_fmt = VideoFormat(
-                    format_type="podcast",
-                    director_mode=DirectorMode.PODCAST,
-                    face_count_avg=2.0,
-                    speaker_positions=[0.25, 0.75],
-                    face_switch_rate=0.5,
-                )
-                metadata["video_format"] = "podcast (forced)"
-                log.info("[WCE-FORMAT] HS_FORCE_FORMAT=podcast -> forced podcast mode (centered subtitles).")
+                _avg = video_fmt.face_count_avg if video_fmt is not None else 0.0
+                if _avg >= 1.2:  # dual-speaker clip misclassified -> force podcast
+                    from effects.format_analyzer import VideoFormat
+                    from effects.director_strategy import DirectorMode
+                    video_fmt = VideoFormat(
+                        format_type="podcast",
+                        director_mode=DirectorMode.PODCAST,
+                        face_count_avg=_avg,
+                        speaker_positions=[0.25, 0.75],
+                        face_switch_rate=0.5,
+                    )
+                    metadata["video_format"] = "podcast (forced by avg_faces)"
+                    log.info("[WCE-FORMAT] HS_FORCE_FORMAT=podcast + avg_faces=%.2f >= 1.2 -> podcast mode.", _avg)
+                else:
+                    log.info("[WCE-FORMAT] HS_FORCE_FORMAT=podcast but avg_faces=%.2f < 1.2 -> monologue, bottom subtitles.", _avg)
 
             # --- START CAPTION THREAD (Parallel Processing) ---
             import threading
