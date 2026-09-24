@@ -96,11 +96,20 @@ def patch_captions(campaign_dir: str, campaign: str):
         for wrong_tag in replace_tags:
             text = text.replace(wrong_tag, handle)
 
-        # 2. Replace the entire "Hashtags: ..." line with campaign hashtags
+        # 2a. Replace "Hashtags: ..." lines (with prefix)
         text = _re.sub(
             r'Hashtags:.*',
             f'Hashtags: {hashtags}',
             text
+        )
+
+        # 2b. Replace bare hashtag-only lines (e.g. "#clipculture #foo ...")
+        # Matches lines where every space-separated token starts with #
+        text = _re.sub(
+            r'^(#\w+(?:\s+#\w+)+)\s*$',
+            hashtags,
+            text,
+            flags=_re.MULTILINE
         )
 
         # 3. Make sure handle appears (add if not present)
