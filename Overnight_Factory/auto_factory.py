@@ -306,7 +306,7 @@ def run_factory():
             print(f"❌ [CRITICAL FAILURE] Video {index} crashed!")
             print(f"⚠️ Error: {str(e)}")
             # Error log save karega taaki subah tu padh sake kyu fail hua
-            with open("factory_errors.log", "a") as err_log:
+            with open("factory_errors.log", "a", encoding="utf-8") as err_log:
                 err_log.write(f"\n[{datetime.now()}] Failed: {video_path}\n{traceback.format_exc()}\n")
             print("[FACTORY RECOVERY] Skipping to the next video...\n")
             
