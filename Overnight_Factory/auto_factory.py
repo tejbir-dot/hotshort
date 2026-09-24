@@ -245,19 +245,7 @@ def run_factory():
             # Temporarily override OS env to output in campaign dir
             os.environ["HS_CLIPS_DIR"] = os.path.abspath(campaign_dir)
 
-            # 🎙️ PODCAST MODE: Force centered subtitles for podcast campaigns
-            # This bypasses face-detection which sometimes misses dual-speaker format.
-            _PODCAST_CAMPAIGNS = {"Double_Coverage_Podcast", "double_coverage_podcast"}
-            if campaign in _PODCAST_CAMPAIGNS:
-                os.environ["HS_FORCE_FORMAT"] = "podcast"
-                print(f"    [PODCAST] Forced podcast subtitle mode for '{campaign}'")
-            else:
-                os.environ.pop("HS_FORCE_FORMAT", None)
-
             _process_job(job_dict, cloudinary_ok=False)
-
-            # Reset podcast force after job
-            os.environ.pop("HS_FORCE_FORMAT", None)
 
             # 🏷️ STAMP META FILES: Har clip ke sath .meta.json sidecar file banao
             # Manager.py yahi file padhke campaign identify karega — no guessing!
