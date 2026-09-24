@@ -60,12 +60,12 @@ CAMPAIGN_BRANDING = {
     "Double_Coverage_Podcast": {
         "handle":       "@DoubleCoveragePodcast",
         "replace_tags": ["@TJR", "@tjr"],   # remove TJR branding
-        "hashtags":     "#doublecoverage #doublecoveragepodcast #nfl #sports #podcast #football #sportspodcast",
+        "hashtags":     "#doublecoverage #doublecoveragepodcast",
     },
     "Double_Coverage_podcast": {
         "handle":       "@DoubleCoveragePodcast",
         "replace_tags": ["@TJR", "@tjr"],
-        "hashtags":     "#doublecoverage #doublecoveragepodcast #nfl #sports #podcast #football #sportspodcast",
+        "hashtags":     "#doublecoverage #doublecoveragepodcast",
     },
 }
 
@@ -98,18 +98,17 @@ def patch_captions(campaign_dir: str, campaign: str):
         for wrong_tag in replace_tags:
             text = text.replace(wrong_tag, handle)
 
-        # 2a. Replace "Hashtags: ..." lines (with prefix)
+        # 2a. Replace "Hashtags: ..." lines (append campaign tags)
         text = _re.sub(
-            r'Hashtags:.*',
-            f'Hashtags: {hashtags}',
+            r'Hashtags:\s*(.*)',
+            lambda m: f'Hashtags: {hashtags} {m.group(1)}',
             text
         )
 
-        # 2b. Replace bare hashtag-only lines (e.g. "#clipculture #foo ...")
-        # Matches lines where every space-separated token starts with #
+        # 2b. Replace bare hashtag-only lines (append campaign tags)
         text = _re.sub(
-            r'^(#\w+(?:\s+#\w+)+)\s*$',
-            hashtags,
+            r'^((?:#\w+\s*)+)$',
+            lambda m: f'{hashtags} {m.group(1).strip()}',
             text,
             flags=_re.MULTILINE
         )
