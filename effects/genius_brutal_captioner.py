@@ -62,41 +62,49 @@ class BrutalCaptioner:
             self.openrouter_base = or_base
             print(f"[CAPTIONER] OpenRouter fallback ready ({_OPENROUTER_CAPTION_MODELS[0]}, +{len(_OPENROUTER_CAPTION_MODELS)-1} fallbacks).", flush=True)
 
-    # ─────────────────────────────────────────────────────────────────────────
     def _build_prompt(self, clip_transcript: str, creator_name: str) -> str:
-        return f"""You are a god-tier social media growth hacker.
+        return f"""You are a god-tier social media growth hacker who has studied every viral short-form clip from 2020-2025.
 Write 3 SEPARATE, hyper-viral, high-retention captions for the same video, optimized specifically for TikTok, YouTube Shorts, and Instagram Reels.
 The video features {creator_name} talking about making money, tech, or business.
 
-Format your response EXACTLY like this (NO markdown asterisks):
+CRITICAL HOOK RULES (apply to Line 1 of every caption):
+- Use PROVEN viral openers like: "POV:", "WAIT.", "Nobody talks about this...", "He admitted...", "The moment I realized...", "Stop scrolling if..."
+- Use CAPITAL LETTERS on the single most shocking word or number (e.g. "This man made $2M at 21 and NOBODY talks about it")
+- The hook must create a CURIOSITY GAP — do NOT give away the payoff in Line 1
+- Make it feel like a secret being revealed, not a summary
+- NEVER start with a boring declarative like "TJR explains..." or "In this clip..."
+- The hook should feel like something a real person would say, not a news headline
+
+Format your response EXACTLY like this (NO markdown asterisks, NO bold formatting):
 
 📱 TIKTOK CAPTION:
-[Line 1: Extreme clickbait hook with an emoji]
-[Line 2-3: Insane curiosity based on the transcript]
+[Line 1: Shocking hook using CAPS trigger + curiosity gap + emoji]
+[Line 2-3: Insane curiosity/stakes based on the transcript — make them NEED to watch]
 [Line 4: Hard CTA to click the link in bio]
 [Line 5: Must include @{creator_name} (tagging the creator)]
-[Line 6: Hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags]
+[Line 6: Hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags based on clip topic]
 
 --------------------------------------------------
 
 🟥 YOUTUBE SHORTS CAPTION:
-[Line 1: High SEO-value title/hook]
-[Line 2: Brief summary creating loop-curiosity]
+[Line 1: High SEO-value title — must include the most shocking FACT or NUMBER from the clip]
+[Line 2: Brief summary creating loop-curiosity — end with an open question]
 [Line 3: CTA to pinned comment or related video]
 [Line 4: Must include @{creator_name} in the description]
-[Line 5: Hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags]
+[Line 5: Hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags based on clip topic]
 
 --------------------------------------------------
 
 📸 INSTAGRAM REELS CAPTION:
-[Line 1: Aesthetic/Value-driven hook with emoji]
-[Line 2-4: Micro-blog style value drop based on the transcript]
+[Line 1: Aesthetic hook that stops the scroll — use "POV:" or "The truth about..." style]
+[Line 2-4: Micro-blog style value drop based on the transcript — 2-3 punchy insights]
 [Line 5: CTA to DM a keyword or check the link in bio]
 [Line 6: Must include @{creator_name} to tag the creator]
-[Line 7: Hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags]
+[Line 7: Hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags based on clip topic]
 
 Transcript to base it on: "{clip_transcript}"
 """
+
 
     # ─────────────────────────────────────────────────────────────────────────
     def _try_gemini(self, prompt: str) -> str | None:
