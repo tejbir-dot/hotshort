@@ -2215,9 +2215,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             # Extract raw text from transcript dictionaries if necessary
                             _clip_transcript = clip.get("transcript") or clip.get("captions") or []
                             if isinstance(_clip_transcript, list):
-                                _clip_text = " ".join([str(w.get("word") or w.get("text") or "").strip() for w in _clip_transcript if isinstance(w, dict)])
-                                if not _clip_text.strip():
-                                    _clip_text = " ".join([str(w) for w in _clip_transcript if isinstance(w, str)])
+                                # Filter words that fall within this clip's timestamps
+                                _sliced_words = []
+                                for w in _clip_transcript:
+                                    if isinstance(w, dict):
+                                        w_start = float(w.get("start", 0))
+                                        w_end = float(w.get("end", w_start))
+                                        # Include if it overlaps with the clip window
+                                        if w_end >= start and w_start <= end:
+                                            _sliced_words.append(str(w.get("word") or w.get("text") or "").strip())
+                                    elif isinstance(w, str):
+                                        _sliced_words.append(w)
+                                _clip_text = " ".join([w for w in _sliced_words if w])
                             else:
                                 _clip_text = str(_clip_transcript)
                             

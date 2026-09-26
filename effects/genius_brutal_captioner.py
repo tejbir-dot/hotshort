@@ -142,6 +142,7 @@ Transcript to base it on: "{clip_transcript}"
             payload = {
                 "model": model,
                 "max_tokens": 800,
+                "temperature": 0.8,
                 "messages": [{"role": "user", "content": prompt}]
             }
             try:
