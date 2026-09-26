@@ -191,6 +191,8 @@ def _ask_format(n_videos: int) -> str:
 
 def run_factory():
     print(f"\n🚀 [OVERNIGHT FACTORY STARTED] Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    # Disable B-roll globally because it's generating trash/unrelated cuts
+    os.environ["HS_BROLL_ENABLED"] = "0"
     setup_factory()
     tasks = read_queue()
 
