@@ -899,174 +899,8 @@ class ClipEditor:
             return (0.0, clip_duration)
         return (trim_in, trim_out)
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    #  🎬 TRADING LAYOUT — Face top / Chart bottom  (9:16 Shorts/Reels format)
-    #  Target: TJR Trades style — screen-share chart + talking-head face cam
-    #
-    #  Source (16:9):  Chart fills most of frame; face cam PiP in bottom-left
-    #  Output (9:16):  1080 × 1920
-    #    ┌───────────────┐
-    #    │  FACE centered│  ← top    42%  (1080 × 806px)
-    #    ├───────────────┤
-    #    │  CHART        │  ← bottom 58%  (1080 × 1114px)
-    #    └───────────────┘
-    # ═══════════════════════════════════════════════════════════════════════════
-    def build_trading_layout(
-        self,
-        input_path: str,
-        output_path: str,
-        *,
-        # Face-cam PiP region in source (pixels, 16:9 frame)
-        # Default assumes face cam in bottom-left ~25% of 1920×1080 source
-        face_x: int = 0,
-        face_y: int = 580,
-        face_w: int = 480,
-        face_h: int = 500,
-        # Output dimensions
-        out_w: int = 1080,
-        out_h: int = 1920,
-        # Split ratio: how much vertical space face gets (0.0–1.0)
-        face_ratio: float = 0.42,
-        # Chart region in source (0,0,0,0 = auto-detect = whole frame minus face pip)
-        chart_x: int = 0,
-        chart_y: int = 0,
-        chart_w: int = 0,   # 0 = full source width
-        chart_h: int = 0,   # 0 = full source height
-        # Appearance
-        gap_px: int = 8,            # pixel gap between face and chart panels
-        face_bg_color: str = "black",
-        chart_bg_color: str = "black",
-        timeout_s: int = 180,
-    ) -> bool:
-        """
-        Compose a 9:16 trading layout from a 16:9 source video.
-
-        PANEL 1 (top) — Face:
-          Crops face_x/y/w/h from source, scales to fill top panel (out_w × face_panel_h),
-          centered with letterbox if needed. Subtle gaussian blur on bg.
-
-        PANEL 2 (bottom) — Chart:
-          Crops chart region from source, scales to fill bottom panel (out_w × chart_panel_h),
-          zoomed/cropped to maximize chart area (no black bars if possible).
-
-        Returns True on success, False on failure.
-        """
-        import math
-
-        face_panel_h  = int(out_h * face_ratio) - gap_px // 2
-        chart_panel_h = out_h - face_panel_h - gap_px
-
-        # Probe source dimensions
-        try:
-            probe = self._probe_video(input_path)
-            src_w = int(probe.get("width",  1920))
-            src_h = int(probe.get("height", 1080))
-        except Exception:
-            src_w, src_h = 1920, 1080
-
-        # Auto chart region = full frame (chart fills entire source for TJR)
-        if chart_w == 0:
-            chart_w = src_w
-        if chart_h == 0:
-            chart_h = src_h
-
-        log.info(
-            f"[TRADING_LAYOUT] src={src_w}x{src_h} | "
-            f"face_crop=({face_x},{face_y},{face_w},{face_h}) | "
-            f"chart_crop=({chart_x},{chart_y},{chart_w},{chart_h}) | "
-            f"out={out_w}x{out_h} face_panel={out_w}x{face_panel_h} "
-            f"chart_panel={out_w}x{chart_panel_h}"
-        )
-
-        # ── FFmpeg filtergraph ──────────────────────────────────────────────────
-        # [0:v] → split into face stream and chart stream
-        # Face:  crop → scale-to-fit (pad with blurred bg) → place top
-        # Chart: crop → scale-to-fill (zoom crop, no bars) → place bottom
-        # Stack: vstack both panels separated by gap
-
-        # Face panel: scale keeping aspect ratio, pad/center on dark bg
-        face_scale   = f"scale={out_w}:{face_panel_h}:force_original_aspect_ratio=decrease"
-        face_pad     = f"pad={out_w}:{face_panel_h}:(ow-iw)/2:(oh-ih)/2:color={face_bg_color}"
-
-        # Chart panel: scale-to-fill (crop to avoid black bars)
-        # Compute scale that fills out_w × chart_panel_h with minimal crop
-        scale_x = out_w  / chart_w
-        scale_y = chart_panel_h / chart_h
-        chart_scale_factor = max(scale_x, scale_y)
-        scaled_chart_w = int(math.ceil(chart_w * chart_scale_factor))
-        scaled_chart_h = int(math.ceil(chart_h * chart_scale_factor))
-        chart_crop_x   = max(0, (scaled_chart_w - out_w) // 2)
-        chart_crop_y   = max(0, (scaled_chart_h - chart_panel_h) // 2)
-
-        chart_scale = f"scale={scaled_chart_w}:{scaled_chart_h}"
-        chart_crop  = f"crop={out_w}:{chart_panel_h}:{chart_crop_x}:{chart_crop_y}"
-
-        # Gap strip: a tiny colored bar between panels
-        gap_filter = (
-            f"color=c={face_bg_color}:size={out_w}x{gap_px}:rate=30[gap];"
-            if gap_px > 0 else ""
-        )
-
-        # Full filtergraph
-        vf = (
-            f"[0:v]split=2[face_raw][chart_raw];"
-            # Face panel
-            f"[face_raw]crop={face_w}:{face_h}:{face_x}:{face_y},"
-            f"{face_scale},{face_pad}[face_panel];"
-            # Chart panel
-            f"[chart_raw]crop={chart_w}:{chart_h}:{chart_x}:{chart_y},"
-            f"{chart_scale},{chart_crop}[chart_panel];"
-        )
-
-        if gap_px > 0:
-            vf += (
-                f"color=c={face_bg_color}:size={out_w}x{gap_px}:rate=30[gap];"
-                f"[face_panel][gap][chart_panel]vstack=inputs=3[out]"
-            )
-        else:
-            vf += f"[face_panel][chart_panel]vstack=inputs=2[out]"
-
-        cmd = [
-            "ffmpeg", "-y", "-nostdin",
-            "-i", input_path,
-            "-filter_complex", vf,
-            "-map", "[out]",
-            "-map", "0:a",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "20",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-movflags", "+faststart",
-            output_path,
-        ]
-
-        # Try NVENC first
-        if _nvenc_available():
-            nvenc_cmd = list(cmd)
-            for i, v in enumerate(nvenc_cmd):
-                if v == "libx264":
-                    nvenc_cmd[i] = "h264_nvenc"
-                if v == "-crf":
-                    nvenc_cmd[i] = "-cq"
-            try:
-                self._run(nvenc_cmd, timeout_s=timeout_s)
-                log.info(f"[TRADING_LAYOUT] ✅ NVENC render done → {output_path}")
-                return True
-            except Exception as _nvenc_err:
-                log.warning(f"[TRADING_LAYOUT] NVENC failed ({_nvenc_err}), falling back to libx264")
-
-        try:
-            self._run(cmd, timeout_s=timeout_s)
-            log.info(f"[TRADING_LAYOUT] ✅ CPU render done → {output_path}")
-            return True
-        except Exception as err:
-            log.error(f"[TRADING_LAYOUT] ❌ Render failed: {err}")
-            return False
-
     def _cut_with_fade(self, input_path: str, output_path: str, start_s: float, end_s: float, timeout_s: int = 120) -> None:
         duration = max(0.25, end_s - start_s)
-
         # Clean hard cut (No fades). This ensures seamless looping for Shorts.
         # Added a micro 0.05s audio fade-out just to prevent speaker popping/clicking at the cut.
         af = f"afade=t=out:st={max(0.0, duration - 0.05):.3f}:d=0.05"
@@ -1580,14 +1414,8 @@ class ClipEditor:
                     return "SOLO_LEFT" if ema_mouth_left >= ema_mouth_right else "SOLO_RIGHT"
 
                 # Both well-separated -> VISUAL PODCAST FORMAT DETECTED
-                # Normally keep SPLIT mode active to show both. 
-                # HOWEVER: For dramatic emphasis, if one speaker is energetically talking 
-                # while the other is quiet, punch-in to SOLO!
-                if left_talking and ema_mouth_left > ema_mouth_right * 5 and ema_mouth_left > 50:
-                    return "SOLO_LEFT"
-                if right_talking and ema_mouth_right > ema_mouth_left * 5 and ema_mouth_right > 50:
-                    return "SOLO_RIGHT"
-                    
+                # Since they are visually separated by a large margin, keep SPLIT mode active 
+                # continuously. This captures both the active speaker and the listener's reactions.
                 return "SPLIT"
 
             def get_mouth_roi(face):
@@ -1609,37 +1437,21 @@ class ClipEditor:
             _seed_x = float(statistics.median(_spk)) if _spk else 0.5
 
             # Seed last_mode from format_analyzer dominant speaker side.
-            # IMPORTANT: Only use SOLO_LEFT/SOLO_RIGHT seeding when FaceCache
-            # detected a SINGLE real speaker. If 2 speakers are in face_cache
-            # (podcast), the median falls between them — not a real face position.
-            # Seeding SOLO_RIGHT from that midpoint causes the director to start
-            # cropped to the wrong side when only one face is live at t=0.
-            # Fix: podcast with 2 speakers → always seed ACTIVE_CENTER and let
-            # the live director pick SOLO_LEFT/SOLO_RIGHT from frame-0 detection.
-            if len(_spk) >= 2:
-                # Two speaker slots from FaceCache — real ghost suppression needed.
-                # ACTIVE_CENTER is safe: first live Haar hit (frame 0 or 5) will
-                # immediately override to the correct SOLO_LEFT/SOLO_RIGHT.
-                last_mode = "ACTIVE_CENTER"
-                log.info(
-                    f"[INIT] last_mode seeded=ACTIVE_CENTER (podcast: {len(_spk)} speakers, "
-                    f"skipping median-bias seed to avoid ghost-slot SOLO_RIGHT lock)"
-                )
-            elif _seed_x < 0.38:
+            # If median speaker position is far left (<0.38) → SOLO_LEFT,
+            # far right (>0.62) → SOLO_RIGHT, otherwise ACTIVE_CENTER.
+            # ACTIVE_CENTER is safer: it keeps the full frame visible until
+            # the first real Haar detection fires (frame 0 or frame 5).
+            if _seed_x < 0.38:
                 last_mode = "SOLO_LEFT"
-                log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
             elif _seed_x > 0.62:
                 last_mode = "SOLO_RIGHT"
-                log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
             else:
                 last_mode = "ACTIVE_CENTER"  # safe fallback — no face bias at start
-                log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
+            log.info(f"[INIT] last_mode seeded={last_mode} speaker_positions={_spk} median={_seed_x:.3f}")
 
 
             ema_mouth_left = 0.0
             ema_mouth_right = 0.0
-            fake_face_frames_left = 0
-            fake_face_frames_right = 0
             smoothed_left_x = frame_width * 0.25
             smoothed_right_x = frame_width * 0.75
 
@@ -2292,28 +2104,6 @@ class ClipEditor:
                         f"(tracked={ENABLE_CONTINUOUS_TRACKING}, live_haar_hits={len(valid_faces)})"
                     )
 
-                # ── GHOST KILLER (Fake Face Expiry) ──────────────────────────────
-                # If a face lacks landmarks (nose_y is None) AND has zero mouth motion
-                # (ema < 0.05), it's probably a statue, poster, or background noise.
-                # If this persists for 60 frames (2s), nuke the slot.
-                if left_slot is not None and left_slot.get('nose_y') is None and ema_mouth_left < 0.05:
-                    fake_face_frames_left += 1
-                    if fake_face_frames_left > 60:
-                        log.warning(f"[GHOST_KILLER] t={t:.2f}s LEFT face is a fake/poster (no nose, no motion for 60 frames). Nuking slot!")
-                        left_slot = None
-                        left_tracker.consecutive_low_confidence = 999
-                else:
-                    fake_face_frames_left = 0
-
-                if right_slot is not None and right_slot.get('nose_y') is None and ema_mouth_right < 0.05:
-                    fake_face_frames_right += 1
-                    if fake_face_frames_right > 60:
-                        log.warning(f"[GHOST_KILLER] t={t:.2f}s RIGHT face is a fake/poster (no nose, no motion for 60 frames). Nuking slot!")
-                        right_slot = None
-                        right_tracker.consecutive_low_confidence = 999
-                else:
-                    fake_face_frames_right = 0
-
                 # ── PODCAST GHOST SUPPLEMENT (Healing #1: Ghost Expiry) ──────────
                 # When format_classify confirms 2 speakers but only 1 is live-detected,
                 # synthesize the missing slot from video_fmt.speaker_positions.
@@ -2539,10 +2329,12 @@ class ClipEditor:
                 if raw_mode == "HOLD":
                     mode = last_mode
                 else:
-                    _MIN_SWITCH_FRAMES = int(float(os.environ.get("HS_MIN_SWITCH_FRAMES", "12")))
-                    
-                    # Universal Mode Switch Gating (applies to ALL modes, including SPLIT)
-                    if raw_mode != last_mode:
+                    # ── Mode Switch Gating ──────────────────────────────────────
+                    # Require the new SOLO mode to be sustained for MIN_SWITCH_FRAMES
+                    # before committing. This prevents one-frame FP detections from
+                    # flipping the camera to the wrong speaker.
+                    _MIN_SWITCH_FRAMES = int(os.environ.get("HS_MIN_SWITCH_FRAMES", "12"))
+                    if raw_mode != last_mode and raw_mode in ("SOLO_LEFT", "SOLO_RIGHT"):
                         _pending_mode = getattr(_decide_mode_state, "pending_mode", None)
                         _pending_count = getattr(_decide_mode_state, "pending_count", 0)
                         if _pending_mode == raw_mode:
@@ -2552,12 +2344,6 @@ class ClipEditor:
                             _pending_count = 1
                         _decide_mode_state.pending_mode = _pending_mode
                         _decide_mode_state.pending_count = _pending_count
-                        
-                        if frame_idx % 5 == 0:
-                            log.debug(f"[MODE_DEBUG] frame={frame_idx} raw_mode={raw_mode} "
-                                      f"gap_used={face_gap_ratio:.3f} "
-                                      f"solo_candidate_counter={_pending_count} required={_MIN_SWITCH_FRAMES}")
-
                         if _pending_count >= _MIN_SWITCH_FRAMES:
                             mode = raw_mode
                             last_mode = mode
@@ -3664,96 +3450,21 @@ class ClipEditor:
         if not words:
             return text
 
-                # Semantic color routing — priority: Danger > Success > HookWord > Highlight
-        # ── RED: danger / loss / failure ──────────────────────────────────────────
+                # Semantic color routing - priority: Danger > Success > HookWord > Highlight
         _danger_keywords = {
-            "wrong", "mistake", "fail", "failing", "failed", "failure", "failing",
-            "lose", "losing", "loss", "losses", "lost", "bad", "never", "stop",
-            "quit", "risk", "trap", "scam", "fake", "lie", "lies", "lied", "lying",
-            "warning", "danger", "dangerous", "worst", "worse", "broke", "broken",
-            "debt", "debts", "crash", "crashed", "crashing", "kill", "dead", "dying",
-            "die", "death", "problem", "problems", "hard", "fear", "scared",
-            "terrified", "bankrupt", "bankruptcy", "poverty", "poor", "struggle",
-            "struggling", "failed", "disaster", "collapse", "crisis",
-            "mistake", "error", "blunder", "regret", "wrong", "terrible", "awful",
-            "horrible", "devastating", "damage", "damaged", "hurt", "pain", "suffer",
-            # Trading/Finance danger words
-            "unprofitable", "negative", "bleed", "bleeding", "wipeout", "wiped",
-            "liquidated", "liquidation", "overtrade", "overtraded", "overtrading",
-            "emotional", "revenge", "hopping", "hopscotch", "gamble", "gambling",
-            "margin", "margin call", "drawdown", "underwater", "trapped", "stuck",
-            "red", "dump", "dumping", "selloff", "correction", "bear", "bearish",
+            "wrong", "mistake", "fail", "failing", "failed", "failure", "lose", "losing", "loss",
+            "bad", "never", "stop", "quit", "risk", "trap", "scam", "fake", "lie", "lies",
+            "warning", "danger", "worst", "broke", "debt", "crash", "kill", "dead", "dying",
         }
-        # ── GREEN: money / success / growth ──────────────────────────────────────
         _success_keywords = {
-            # Core wins
-            "win", "winning", "winner", "won", "grow", "growth", "growing",
-            "profit", "profits", "profitable", "revenue", "revenues", "sale", "sales",
-            "best", "top", "success", "successful", "succeed", "succeeded", "succeeding",
-            "rich", "wealth", "wealthy", "power", "powerful", "strong", "strength",
-            "fast", "quick", "instant", "instantly", "viral", "launch", "launched",
-            "unlock", "unlocked", "proven", "proof", "results", "result",
-            # Money / finance
-            "money", "income", "earn", "earning", "earnings", "earned",
-            "passive", "invest", "investing", "investment", "returns", "return",
-            "salary", "million", "millions", "billion", "billions", "dollar", "dollars",
-            "cashflow", "financial", "free", "freedom", "independent", "independence",
-            "abundance", "thrive", "thriving", "flourish", "capitalize", "leverage",
-            "compound", "compounding", "roi", "dividend", "dividends", "portfolio",
-            "crypto", "bitcoin", "bull", "bullish", "rally", "breakout", "pump",
-            "gains", "gain", "profitable", "payout", "paid", "cash", "bank",
-            "six", "seven", "figures",
-            # Business / creator
-            "scale", "scaling", "build", "building", "empire", "achieve", "achievement",
-            "goal", "goals", "dream", "dreams", "value", "opportunity", "opportunities",
-            "reward", "rewards", "bonus", "equity", "asset", "assets", "productive",
-            "monetized", "monetize", "brand", "collab", "collaboration", "deal",
-            "subscribers", "followers", "views", "viral", "trending",
-            "promote", "promotion", "sponsor", "sponsored", "partnership",
-            "hire", "hired", "team", "expand", "expanding", "automate", "automated",
-            "system", "leverage", "outsource", "delegate", "consistent", "consistency",
-            # Life success
-            "king", "boss", "ceo", "elite", "champion", "greatest", "unstoppable",
-            "discipline", "disciplined", "hustle", "grind", "dedicated", "commitment",
-            "focused", "obsessed", "driven", "motivated", "unstoppable", "relentless",
-            "conquered", "conquer", "dominate", "dominating", "domination",
-            "level", "levelup", "upgraded", "upgrade", "transformed", "transformation",
-            "mastered", "master", "mastery", "skill", "skilled", "expert", "expertise",
-            "confidence", "confident", "clarity", "clear", "smart", "intelligent",
+            "win", "winning", "winner", "grow", "growth", "profit", "revenue", "sale", "sales",
+            "free", "best", "top", "success", "succeed", "rich", "wealth", "power", "strong",
+            "fast", "quick", "instant", "instantly", "viral", "launch", "unlock", "proven",
         }
-        # ── PURPLE: curiosity / hook / pattern interrupt ─────────────────────────────
         _hook_keywords = {
-            # Classic hooks
-            "interesting", "look", "attention", "listen", "wait", "secret", "secrets",
-            "truth", "nobody", "why", "how", "ai", "tool", "tools", "automation",
-            "always", "real", "really", "hack", "exposed", "hidden", "shocking",
-            "insane", "crazy", "unbelievable", "incredible", "discovered", "discover",
-            "fact", "facts", "actually", "literally", "honest", "honestly", "know",
-            "unknown", "untold", "reveal", "revealed", "revealing", "mystery",
-            "mysterious", "surprising", "surprised", "unexpected", "rare", "unique",
-            "genius", "mind", "mindset", "never", "everyone", "anyone", "nobody",
-            "imagine", "believe", "believed", "thought", "think", "realize",
-            "realized", "suddenly", "game", "gamechanger", "breakthrough", "forever",
-            # Pattern interrupts & viral triggers
-            "notice", "noticed", "watch", "wrong", "mistake", "plot", "twist",
-            "plottwist", "hear", "admit", "admitted", "confession", "confess",
-            "warning", "alert", "stop", "pause", "question", "answer", "proof",
-            "works", "working", "tested", "experiment", "experiment", "studied",
-            "study", "research", "data", "science", "proven", "evidence",
-            "changed", "changes", "changing", "different", "difference",
-            "everything", "nothing", "something", "anything", "someone", "nobody",
-            # Curiosity / FOMO
-            "banned", "deleted", "censored", "forbidden", "illegal", "underground",
-            "classified", "private", "exclusive", "limited", "inside", "access",
-            "behind", "scenes", "leaked", "leak", "real", "reality", "actually",
-            "viral", "trending", "everyone", "talking", "blew", "blowing",
-            # Question words that drive engagement
-            "what", "when", "where", "which", "who", "whose", "whom",
-            "this", "that", "these", "here", "notice", "spot", "see",
-            # Psychology / persuasion
-            "if", "because", "since", "unless", "until", "whenever", "wherever",
-            "exactly", "precisely", "specific", "specifically", "certain",
-            "guarantee", "guaranteed", "promise", "promised", "swear",
+            "interesting", "look", "attention", "listen", "wait", "secret", "truth", 
+            "nobody", "why", "how", "money", "ai", "tool", "automation", "always", "real", 
+            "hack", "exposed", "hidden",
         }
         _highlight_keywords = {
             "must", "important", "crucial", "key", "remember", "focus",
@@ -3932,10 +3643,6 @@ class ClipEditor:
             hashtags_line=hashtags_line,
             subtitle_style=subtitle_style,
             speaker_side="center",
-            is_podcast=(
-                os.environ.get("HS_FORCE_FORMAT", "").strip().lower() == "podcast"
-                or "podcast" in str(input_path).lower()
-            ),
         )
         return ass_path
 
@@ -3961,7 +3668,7 @@ class ClipEditor:
         highlight_color = "&H0000D4FF"   # Brighter Gold/Yellow
         border_size = "5"                # Increased for 3D Pop
         shadow_size = "8"                # Increased for deep 3D shadow
-        bold_val = "0"              # Non-bold for caption body (Impact is already heavy)
+        bold_val = "-1"
         italic_val = "0"
         
         if style_val == "neon":
@@ -4013,124 +3720,20 @@ class ClipEditor:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            # ── MASTERPIECE CAPTIONS ───────────────────────────────────────────────
-            # Font  : Impact — condensed, punchy, viral
-            # Ghost words: &H55FFFFFF (55 alpha ≈ 67% opacity) so active word pops
-            # Color routing: RED=danger/loss | GREEN=money/success | PURPLE=curiosity
-            f"Style: Caption,Impact,95,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Hook,Rockwell,65,{hook_color},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,20,20,80,1",
-            f"Style: Highlight,Impact,95,{highlight_color},&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            # PURPLE — curiosity / hook / secret words
-            f"Style: HookWord,Impact,95,&H00FF22CC,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            # RED — danger / loss / failure words
-            f"Style: Danger,Impact,95,&H000000FF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            # GREEN — money / success / growth words
-            f"Style: Success,Impact,95,&H0044FF00,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: CTA,Rockwell,50,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
-            # KaraokeGhost: 55% alpha so inactive words recede behind the active word
-            f"Style: KaraokeGhost,Impact,95,&H55FFFFFF,&H000000FF,&H00000000,&HAA000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Caption,Montserrat Black,95,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Hook,Outfit,65,{hook_color},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,20,20,80,1",
+            f"Style: Highlight,Montserrat Black,95,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: HookWord,Montserrat Black,95,&H00FFAAFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Danger,Montserrat Black,95,&H006666FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Success,Montserrat Black,95,&H00AAFF88,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: CTA,Montserrat Black,50,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
+            # KaraokeWord: slightly smaller, used for the inactive (ghost) state of karaoke
+            f"Style: KaraokeGhost,Montserrat Black,95,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
         ]
-        # ── Per-word semantic style resolver ─────────────────────────────────────
-        # Returns the ASS style name for the ACTIVE word in the karaoke highlight.
-        # Priority: Danger (RED) > Success (GREEN) > HookWord (PURPLE) > Highlight (gold)
-        _KW_DANGER = {
-            "wrong", "mistake", "fail", "failing", "failed", "failure",
-            "lose", "losing", "loss", "losses", "lost", "bad", "stop",
-            "quit", "risk", "trap", "scam", "fake", "lie", "lies", "lied",
-            "warning", "danger", "dangerous", "worst", "worse", "broke",
-            "broken", "debt", "debts", "crash", "crashed", "crashing",
-            "kill", "dead", "dying", "die", "death", "problem", "problems",
-            "fear", "scared", "bankrupt", "bankruptcy", "poverty", "poor",
-            "struggle", "struggling", "disaster", "collapse", "crisis",
-            "error", "regret", "terrible", "awful", "horrible", "devastating",
-            "damage", "hurt", "pain", "suffer",
-            # Trading/Finance danger words
-            "unprofitable", "negative", "bleed", "bleeding", "wipeout", "wiped",
-            "liquidated", "liquidation", "overtrade", "overtraded", "overtrading",
-            "emotional", "revenge", "hopping", "hopscotch", "gamble", "gambling",
-            "margin", "drawdown", "underwater", "trapped", "red",
-            "dump", "dumping", "selloff", "correction", "bearish",
-        }
-        _KW_SUCCESS = {
-            # Core wins
-            "win", "winning", "winner", "won", "grow", "growth", "growing",
-            "profit", "profits", "profitable", "revenue", "revenues",
-            "sale", "sales", "best", "top", "success", "successful",
-            "succeed", "succeeded", "succeeding", "rich", "wealth", "wealthy",
-            "power", "powerful", "strong", "strength", "fast", "quick",
-            "instant", "instantly", "viral", "launch", "launched",
-            "unlock", "unlocked", "proven", "proof", "results", "result",
-            # Money / finance
-            "money", "income", "earn", "earning", "earnings", "earned",
-            "passive", "invest", "investing", "investment", "returns", "return",
-            "salary", "million", "millions", "billion", "billions",
-            "dollar", "dollars", "cashflow", "financial", "free", "freedom",
-            "independent", "independence", "abundance", "thrive", "thriving",
-            "compound", "compounding", "roi", "dividend", "dividends",
-            "portfolio", "crypto", "bitcoin", "bull", "bullish", "rally",
-            "breakout", "gains", "gain", "payout", "paid", "cash", "bank",
-            # Business / creator economy
-            "scale", "scaling", "build", "building", "empire", "achieve",
-            "achievement", "goal", "goals", "dream", "dreams", "value",
-            "opportunity", "opportunities", "reward", "rewards", "bonus",
-            "equity", "asset", "assets", "productive", "monetized", "monetize",
-            "brand", "collab", "collaboration", "deal", "subscribers",
-            "followers", "trending", "promote", "sponsor", "sponsored",
-            "partnership", "hired", "team", "expand", "automate", "automated",
-            "outsource", "consistent", "consistency", "leverage",
-            # Life wins
-            "king", "boss", "ceo", "elite", "champion", "unstoppable",
-            "discipline", "disciplined", "hustle", "grind", "dedicated",
-            "commitment", "focused", "obsessed", "driven", "relentless",
-            "conquer", "dominate", "dominating", "domination",
-            "levelup", "upgrade", "upgraded", "transformed", "transformation",
-            "mastered", "master", "mastery", "skill", "skilled", "expert",
-            "confidence", "confident", "clarity", "smart", "intelligent",
-        }
-        _KW_HOOK = {
-            # Classic hooks
-            "secret", "secrets", "truth", "nobody", "why", "how", "ai",
-            "tool", "tools", "automation", "always", "real", "really",
-            "hack", "exposed", "hidden", "shocking", "insane", "crazy",
-            "unbelievable", "incredible", "discovered", "discover",
-            "fact", "facts", "actually", "literally", "honest", "honestly",
-            "unknown", "untold", "reveal", "revealed", "revealing",
-            "mystery", "mysterious", "surprising", "unexpected", "rare",
-            "unique", "genius", "mind", "mindset", "everyone", "anyone",
-            "believe", "realized", "suddenly", "gamechanger", "breakthrough",
-            # Pattern interrupts & viral triggers
-            "notice", "noticed", "watch", "plot", "twist",
-            "hear", "admit", "admitted", "confession", "confess",
-            "alert", "question", "answer", "works", "working",
-            "tested", "studied", "study", "research", "evidence",
-            "changed", "changes", "changing", "different", "difference",
-            "everything", "nothing", "something", "someone",
-            # Curiosity / FOMO
-            "banned", "deleted", "censored", "forbidden", "underground",
-            "classified", "private", "exclusive", "inside", "access",
-            "behind", "scenes", "leaked", "leak", "reality",
-            "trending", "talking", "blew", "blowing",
-            # Psychology triggers
-            "exactly", "precisely", "specific", "specifically",
-            "guarantee", "guaranteed", "promise", "promised",
-            "imagine", "what", "never",
-        }
-
-        def _word_style(raw_word: str) -> str:
-            """Return the ASS style tag for this word (drives RED/GREEN/PURPLE)."""
-            clean = re.sub(r"[^\w]", "", raw_word).lower()
-            if clean in _KW_DANGER:
-                return "Danger"
-            if clean in _KW_SUCCESS:
-                return "Success"
-            if clean in _KW_HOOK:
-                return "HookWord"
-            return "Highlight"
-
-        log.info("[WCE-VISUAL] caption_safe_zone=speaker_aware | semantic_colors=ACTIVE")
+        log.info("[WCE-VISUAL] caption_safe_zone=speaker_aware")
         events = []
         for seg in captions:
             if seg.end <= seg.start:
@@ -4148,21 +3751,14 @@ class ClipEditor:
                     w_start = w_dict["start"]
                     w_end = w_dict["end"]
                     
-                    # Resolve semantic color for this active word
-                    active_style = _word_style(word_text)
-
                     parts = []
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            # Active word: semantic color (RED/GREEN/PURPLE/gold) + pop animation
-                            parts.append(
-                                "{\\r" + active_style + "\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}"
-                                + w_esc + "{\\r}"
-                            )
+                            parts.append("{\\rHighlight\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}" + w_esc + "{\\r}")
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
-
+                            
                     line_text = " ".join(parts)
                     if is_podcast:
                         an_tag = "{\\an5\\blur1.5}"
@@ -4174,21 +3770,15 @@ class ClipEditor:
                 for wi, word in enumerate(words):
                     w_start = seg.start + wi * word_dur
                     w_end   = seg.start + (wi + 1) * word_dur
-                    # Resolve semantic color for this active word
-                    active_style = _word_style(word)
-
-                    # Build line: ghost words + semantic-colored active word + ghost words
+                    # Build line: ghost words + {\rHighlight}active_word{\r} + ghost words
                     parts = []
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            parts.append(
-                                "{\\r" + active_style + "\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}"
-                                + w_esc + "{\\r}"
-                            )
+                            parts.append("{\\rHighlight\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}" + w_esc + "{\\r}")
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
-
+                            
                     line_text = " ".join(parts)
                     if is_podcast:
                         an_tag = "{\\an5\\blur1.5}"
@@ -4542,7 +4132,6 @@ class ClipEditor:
 
             video_fmt = None
             _disable_crop = os.getenv("HS_DISABLE_CROP", "0") == "1"
-            _force_fmt = os.getenv("HS_FORCE_FORMAT", "").strip().lower()  # e.g. "podcast"
             if _disable_crop:
                 log.info("[WCE] HS_DISABLE_CROP=1 -> Skipping FaceCache and active speaker detection completely.")
                 video_fmt = None
@@ -4574,7 +4163,6 @@ class ClipEditor:
                 t0 = time.perf_counter()
                 video_fmt = self._analyze_video_format(work_b)
                 t_face += time.perf_counter() - t0
-
 
             # --- START CAPTION THREAD (Parallel Processing) ---
             import threading
@@ -4932,8 +4520,7 @@ class ClipEditor:
                         f"crop={_tw}:{_th},"
                         f"fps=30,format=yuv420p,"
                         f"fade=t=in:st=0:d={_fd:.3f},"
-                        f"fade=t=out:st={_fade_out_start:.3f}:d={_fd:.3f},"
-                        f"setpts=PTS+{_b_start:.3f}/TB"
+                        f"fade=t=out:st={_fade_out_start:.3f}:d={_fd:.3f}"
                     )
                     _broll_filter_parts.append(f"[{_idx}:v]{_clip_filter}[broll_v_{i}]")
 

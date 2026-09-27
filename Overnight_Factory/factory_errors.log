@@ -75,3 +75,44 @@ Traceback (most recent call last):
                      ^^^^
 NameError: name 'Path' is not defined
 
+
+[2026-09-27 16:18:31.461844] Failed: https://youtu.be/eriWimHSMwE?si=Nd5Y9QKMJPBRDZR5
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\local_worker.py", line 2285, in _process_job
+    producer.join()
+  File "C:\Program Files\Python311\Lib\threading.py", line 1119, in join
+    self._wait_for_tstate_lock()
+  File "C:\Program Files\Python311\Lib\threading.py", line 1139, in _wait_for_tstate_lock
+    if lock.acquire(block, timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Program Files\Python311\Lib\shutil.py", line 632, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\n\\AppData\\Local\\Temp\\tmp1w0xiase\\clip_13_3267_3338.mp4'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\n\Documents\hotshort\Overnight_Factory\auto_factory.py", line 249, in run_factory
+    _process_job(job_dict, cloudinary_ok=False)
+  File "C:\Users\n\Documents\hotshort\local_worker.py", line 1788, in _process_job
+    with tempfile.TemporaryDirectory() as tmp:
+  File "C:\Program Files\Python311\Lib\tempfile.py", line 943, in __exit__
+    self.cleanup()
+  File "C:\Program Files\Python311\Lib\tempfile.py", line 947, in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+  File "C:\Program Files\Python311\Lib\tempfile.py", line 929, in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+  File "C:\Program Files\Python311\Lib\shutil.py", line 787, in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\shutil.py", line 634, in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "C:\Program Files\Python311\Lib\tempfile.py", line 893, in onerror
+    _os.unlink(path)
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\n\\AppData\\Local\\Temp\\tmp1w0xiase\\clip_13_3267_3338.mp4'
+
