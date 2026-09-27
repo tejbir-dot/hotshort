@@ -802,7 +802,7 @@ Transcript:
                             "model": _get_groq_model(),
                             "messages": [{"role": "user", "content": prompt}],
                             "temperature": 0.1,
-                            "max_tokens": 4096,
+                            "max_tokens": 2000,
                             "response_format": {"type": "json_object"}
                         },
                         timeout=_get_timeout(),

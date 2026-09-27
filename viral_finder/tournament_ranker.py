@@ -89,7 +89,7 @@ Return ONLY a JSON object in this exact format:
             payload={
                 "model": _get_groq_model(),
                 "temperature": 0.1,
-                "max_tokens": 4096,
+                "max_tokens": 2000,
                 "response_format": {"type": "json_object"},
                 "messages": [
                     {

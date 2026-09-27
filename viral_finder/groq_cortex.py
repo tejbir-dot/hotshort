@@ -833,7 +833,7 @@ Return JSON ONLY in this exact format:
         groq_payload = {
             "model": _get_groq_model(),
             "temperature": 0.1,
-            "max_tokens": 4096,
+            "max_tokens": 2000,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -1602,7 +1602,7 @@ Now review these transcript segments:
                 payload={
                     "model": _get_groq_model(),
                     "temperature": 0.2,
-                    "max_tokens": 4096,
+                    "max_tokens": 2000,
                     "response_format": {"type": "json_object"},
                     "messages": [
                         {
@@ -1833,7 +1833,7 @@ Transcript:
         payload = {
             "model": _get_groq_model(),
             "temperature": 0.1,
-            "max_tokens": 4096,
+            "max_tokens": 2000,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "user", "content": system_prompt}
@@ -1957,7 +1957,7 @@ Return a JSON array of objects, one per clip, with:
         payload = {
             "model": _get_groq_model(),
             "temperature": 0.1,
-            "max_tokens": 4096,
+            "max_tokens": 2000,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},
