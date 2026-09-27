@@ -29,8 +29,7 @@ _GEMINI_MODELS = [
 # These are the ACTUALLY available free models on OpenRouter (verified Sep 2026)
 _OPENROUTER_CAPTION_MODELS = [
     os.environ.get("HS_CAPTION_MODEL", ""),            # User override from .env
-    "nvidia/llama-3.1-nemotron-70b-instruct:free",     # BEST NEMOTRON - Top Tier
-    "nvidia/nemotron-4-340b-instruct:free",            # NVIDIA 340B - heavy but good
+    "nvidia/nemotron-3.5-lightning:free",              # Fast & highly capable Nemotron 3.5
     "nvidia/nemotron-3-ultra-550b-a55b:free",          # NVIDIA 550B — highest quality
     "nvidia/nemotron-3-super-120b-a12b:free",          # NVIDIA 120B — fast & smart
     "nex-agi/nex-n2.5-pro:free",                       # Nex Pro — good reasoning
