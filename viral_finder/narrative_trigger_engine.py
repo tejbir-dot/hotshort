@@ -720,6 +720,18 @@ These are the patterns top creators use to hijack attention:
 10. "social_proof_hook": Uses contrast between successful and unsuccessful people to trigger identity anxiety.
     Examples: "every successful person does this one thing", "rich people know X, poor people think Y", "what winners do vs what losers do", "the common thread among all self-made millionaires"
 
+CATEGORY C — ELITE WEALTH/FLEX (Trading, Sigma, Luxury content):
+These are deep, psychological triggers that farm hate, envy, or admiration.
+
+11. "matrix_glitch_hook": Calmly exposing a harsh truth about the 9-to-5 system or college to ego-check the viewer.
+    Examples: "you're spending 4 years to make 60k", "the reason you're poor is", "nobody wants to admit this"
+
+12. "broke_mindset_reality_check": Brutally advising viewers to cut off fake/broke friends. Ego-triggering.
+    Examples: "your friends are broke so you are broke", "you need to cut off losers", "if you do this, you'll never make money"
+
+13. "impossible_flex_drop": Casually dropping massive numbers or showing off extreme luxury without hype.
+    Examples: "I just dropped 500k on a car", "I made your yearly salary this morning", "I bought a Mansory Cullinan"
+
 CATEGORY B — CHAOS / ENTERTAINMENT (streaming, gaming, variety content):
 These are NOT educational. They go viral purely because they are bizarre, cursed, or absurd:
 
