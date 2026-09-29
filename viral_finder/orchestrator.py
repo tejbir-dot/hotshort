@@ -4543,9 +4543,20 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
         from viral_finder.groq_cortex import is_groq_enabled, review_candidates_with_groq, _get_groq_api_key
         _groq_api_key = _get_groq_api_key()
         if is_groq_enabled() and _groq_api_key:
-            if has_tf_moments:
-                log.info("[GROQ_CORTEX] Skipping candidate-review Cortex because transcript-first Moment Director already discovered moments.")
-            else:
+            # Bug #6 fix: Per-candidate groq_moment exclusion.
+            # Do NOT skip the entire Surgeon just because one candidate has groq_moment.
+            # Only exclude the specific candidates that already have a validated groq_moment.
+            _groq_moment_ids = {
+                str(c.get("id") or c.get("cid") or "")
+                for c in final_candidates
+                if c.get("groq_moment")
+            }
+            if _groq_moment_ids:
+                log.info(
+                    "[GROQ_CORTEX] %d candidate(s) have groq_moment — skipping Surgeon for those only.",
+                    len(_groq_moment_ids),
+                )
+            if True:  # always run Surgeon (groq_moment filtering happens on pool below)
                 _experiment_mode = os.environ.get("HS_EXPERIMENT_MODE", "0") == "1"
                 if _experiment_mode:
                     # [EXPERIMENT FIX] Send arc-assembled final_candidates to Surgeon
@@ -4556,46 +4567,24 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
                 else:
                     _pool = _groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates
                 
-                # ── SURGEON GATING: Emergency-Only ────────────────────────────────────────
-                # Only send candidates to Surgeon that NEED it:
-                #   (a) clip duration < 35s  -> likely cut short, no payoff yet
-                #   (b) no payoff signal     -> missing arc resolution
-                # Healthy long clips skip Surgeon entirely -> saves TPM + latency.
-                _SURGEON_MIN_DUR = 35.0
-                _payoff_trigger_types = {"payoff", "complete_thought"}
-
-                def _has_payoff_signal(cand: dict) -> bool:
-                    """Check if a candidate already has a payoff trigger overlapping it."""
-                    cs = float(cand.get("start", 0.0) or 0.0)
-                    ce = float(cand.get("end", cs) or cs)
-                    for tr in (ctx.narrative_triggers or []):
-                        if tr.get("type") in _payoff_trigger_types:
-                            ts = float(tr.get("start", 0.0) or 0.0)
-                            te = float(tr.get("end", ts) or ts)
-                            # Overlaps the candidate window?
-                            if ts < ce and te > cs:
-                                return True
-                    return False
-
-                _all_pool = list(_pool)
-                _needs_surgeon = []
-                _skipped_surgeon = []
-                for _c in _all_pool:
-                    _dur = float(_c.get("end", 0.0) or 0.0) - float(_c.get("start", 0.0) or 0.0)
-                    _short = _dur < _SURGEON_MIN_DUR
-                    _no_payoff = not _has_payoff_signal(_c)
-                    if _short or _no_payoff:
-                        _needs_surgeon.append(_c)
-                    else:
-                        _skipped_surgeon.append(_c)
-
+                # Bug #5 fix: Remove the duration/payoff pre-gate.
+                # Previously, clips >35s with a payoff trigger were skipped as "healthy".
+                # But Surgeon also validates NARRATIVE ARC (TOPIC_DRIFT, ZERO_DEVELOPMENT).
+                # A 60s clip with topic drift escaped review under the old gate.
+                # Fix: send ALL candidates to Surgeon. KEEP/REJECT/EXTEND_RIGHT handles it.
+                #
+                # Bug #6 fix (continued): Exclude groq_moment candidates from pool.
+                _pool = [
+                    _c for _c in _pool
+                    if str(_c.get("id") or _c.get("cid") or "") not in _groq_moment_ids
+                ]
                 log.info(
-                    f"[GROQ_SURGEON_GATE] pool={len(_all_pool)}"
-                    f" -> surgeon_queue={len(_needs_surgeon)} (short_or_no_payoff)"
-                    f" | skipped={len(_skipped_surgeon)} (healthy long clips)"
+                    "[GROQ_SURGEON_GATE] pool=%d -> surgeon_queue=%d (full arc validation, %d groq_moment excluded)",
+                    len(list((_groq_pool if len(_groq_pool) > len(final_candidates) else final_candidates))),
+                    len(_pool),
+                    len(_groq_moment_ids),
                 )
-                _pool = _needs_surgeon
-                pool_before_len = len(_all_pool)
+                pool_before_len = len(_pool)
 
                 if not _pool:
                     log.info("[GROQ_CORTEX] Skipping — empty candidate pool.")

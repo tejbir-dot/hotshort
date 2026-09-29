@@ -4570,7 +4570,7 @@ class ClipEditor:
                         target_h=target_wh[1],
                         dopamine_window_s=10.0,
                         cut_dur_s=1.2,
-                        music_volume=0.65,
+                        music_volume=0.0,
                         fade_in_s=3.0,
                     )
                     if len(_dp_result) == 4:
@@ -4643,6 +4643,23 @@ class ClipEditor:
                 _main_audio_pad = "hs_main_a_mixed"
                 complex_audio_merged = True
                 log.info(f"[WCE] Swoosh + Camera Click mixed for {len(_transitions_to_apply)} transitions")
+
+            # Mix dopamine music if present (must happen before outro concat)
+            if _dopamine_has_music and _dopamine_music_idx is not None:
+                _dp_af_base = af_base if (af_base and af_base != "anull") else "anull"
+                if complex_audio_merged:
+                    vf_render += f";[{_main_audio_pad}]anull[dp_main_a]"
+                else:
+                    vf_render += f";[{_main_audio_pad}]{_dp_af_base},aresample=44100,aformat=channel_layouts=stereo[dp_main_a]"
+                
+                vf_render += (
+                    f";[dp_music_a]aresample=44100,aformat=channel_layouts=stereo[dp_phonk_a]"
+                    f";[dp_main_a][dp_phonk_a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[dp_mixed_a]"
+                )
+                _main_audio_pad = "dp_mixed_a"
+                complex_audio_merged = True
+                af_base = "anull"  # Mark as consumed
+                log.info("[DOPAMINE] 🎵 Phonk music mixed into main audio pipeline")
 
             # Apply outro concatenation if needed
             if _has_outro:
@@ -4718,18 +4735,7 @@ class ClipEditor:
             _out_video_pad = "hs_final_v" if (branding_merged or _has_outro or enable_transitions) else ("dp_final_v" if (_dopamine_filter_ext and not _broll_active) else ("out_v_broll" if _broll_active else ("out_v" if (is_watermarked or is_complex_graph) else None)))
             _use_filter_complex = is_watermarked or is_complex_graph or branding_merged or _broll_active or _use_complex_audio or enable_transitions or bool(_dopamine_filter_ext)
 
-            # Dopamine music mixing into the main audio output
-            if _dopamine_has_music and _dopamine_music_idx is not None and not branding_outro_merged:
-                _dp_af_base = af_base if (af_base and af_base != "anull") else "anull"
-                # Mix: original speech audio + phonk music (at dopamine_music volume)
-                vf_render += (
-                    f";[0:a]{_dp_af_base},aresample=44100,aformat=channel_layouts=stereo[dp_main_a]"
-                    f";[dp_music_a]aresample=44100,aformat=channel_layouts=stereo[dp_phonk_a]"
-                    f";[dp_main_a][dp_phonk_a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[hs_final_a]"
-                )
-                _use_complex_audio = True
-                complex_audio_merged = True
-                log.info("[DOPAMINE] 🎵 Phonk music mixed into final audio output")
+            # (Dopamine music is now mixed earlier in the pipeline)
 
             cmd.extend([
                 "-filter_complex" if _use_filter_complex else "-vf",

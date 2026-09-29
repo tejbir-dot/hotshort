@@ -165,9 +165,9 @@ def read_queue():
 
 FORMATS = {
     "1": "center_crop",
-    "2": "9_16_blur",
+    "2": "blur_background",
     "3": "square",
-    "4": "original",
+    "4": "original_with_black_bars",
 }
 
 def _ask_format(n_videos: int) -> str:

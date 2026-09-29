@@ -570,7 +570,15 @@ def review_candidates_with_groq(candidates: List[Dict], full_transcript: List[Di
     except ValueError:
         max_candidates = 20
 
-    top_candidates = candidates[:max_candidates]
+    # Sort by strongest score first so that high-quality moments late in the video
+    # always reach the Surgeon — not just the first N by chronological order.
+    # AGENTS.md rule: never use first-acceptable-wins; compare all candidates
+    # by strength before committing. Score fallback chain: viral_score → score → impact_score.
+    top_candidates = sorted(
+        candidates,
+        key=lambda c: float(c.get("viral_score") or c.get("score") or c.get("impact_score") or 0.0),
+        reverse=True,
+    )[:max_candidates]
 
     def _find_seg_idx(ts: float) -> int:
         target = float(ts or 0.0)
