@@ -64,47 +64,76 @@ class BrutalCaptioner:
             print(f"[CAPTIONER] OpenRouter fallback ready ({_OPENROUTER_CAPTION_MODELS[0]}, +{len(_OPENROUTER_CAPTION_MODELS)-1} fallbacks).", flush=True)
 
     def _build_prompt(self, clip_transcript: str, creator_name: str) -> str:
-        return f"""You are a god-tier social media growth hacker who has studied every viral short-form clip from 2020-2025.
-Write 3 SEPARATE, hyper-viral, high-retention captions for the same video, optimized specifically for TikTok, YouTube Shorts, and Instagram Reels.
-The video features {creator_name} talking about making money, tech, or business.
+        return f"""You are the #1 viral short-form clip editor in the world. You have studied every 10M+ view clip from 2021–2025 and you know EXACTLY what stops a scroll in 0.3 seconds.
 
-CRITICAL HOOK RULES (apply to Line 1 of every caption):
-- Use PROVEN viral openers like: "POV:", "WAIT.", "Nobody talks about this...", "He admitted...", "The moment I realized...", "Stop scrolling if..."
-- Use CAPITAL LETTERS on the single most shocking word or number (e.g. "This man made $2M at 21 and NOBODY talks about it")
-- The hook must create a CURIOSITY GAP — do NOT give away the payoff in Line 1
-- Make it feel like a secret being revealed, not a summary
-- NEVER start with a boring declarative like "TJR explains..." or "In this clip..."
-- The hook should feel like something a real person would say, not a news headline
+The creator is {creator_name}. Your job is to write 3 DIFFERENT platform captions that each feel like they were written by a different person — NOT the same POV template copy-pasted 3 times.
 
-Format your response EXACTLY like this (NO markdown asterisks, NO bold formatting):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — EXTRACT THE PAYLOAD (do this in your head, do NOT print it):
+Before writing, ask yourself: "What is the single most insane, embarrassing, shocking, or counter-intuitive thing said in this transcript?" That one thing becomes the engine of every hook. If there's a number, USE IT. If there's an admission, USE IT. If there's a contradiction, USE IT.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ELITE HOOK EXAMPLES (calibrate your writing to THIS level):
+✅ "This man made $2,300,000 at 23 and DELETED everything to start over"
+✅ "He admitted on camera he lost $80k in ONE trade and called it his best investment"
+✅ "Nobody talks about the dirty secret behind why 97% of traders blow up in month 1"
+✅ "Wait. He bought a $3M watch... while still paying rent???"
+✅ "The moment he said this OUT LOUD, the entire internet broke"
+✅ "Stop scrolling — he just described your exact bank account without knowing you"
+✅ "I can't believe he admitted this publicly. Delete this if it gets too real."
+
+❌ BAD hooks (DO NOT write like this):
+❌ "POV: You finally realize why you are broke" (zero specificity, no stakes)
+❌ "POV: You are sitting somewhere having an epiphany" (generic, no claim)
+❌ "He shares his mindset tips" (sounds like a LinkedIn post)
+❌ Any hook that could apply to ANY video on ANY topic (must be THIS specific clip)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HOOK ROTATION RULE — each platform MUST use a different opener style:
+• TikTok: Use ONE of → "Wait.", "Nobody admits this but...", "He said [EXACT QUOTE] and I had to rewind it", "I can't stop thinking about what he said at [timestamp context]", "Stop scrolling —"  
+• YouTube Shorts: Must lead with the MOST SHOCKING NUMBER or FACT from the clip as an SEO title (no POV:, no fluff)
+• Instagram Reels: Use "The truth about...", "Unpopular opinion:", "Real talk:", or a numbered list hook "3 things {creator_name} said that will ruin your 9-5 forever"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CRITICAL RULES:
+1. "POV:" is BANNED from TikTok and YouTube captions. Only allowed once on Instagram if nothing better fits.
+2. The hook (Line 1) must contain a SPECIFIC claim, number, or direct quote fragment — NO vague abstractions
+3. Use CAPS on the single word that would make someone's jaw drop (one word max, not "ONE MENTAL SHIFT")
+4. Create a curiosity gap — hint at the payoff WITHOUT revealing it
+5. Write like your account already has 800k followers who unfollow instantly if you're generic
+6. NO markdown bold (**), NO asterisks. Plain text only.
+
+FORMAT (follow EXACTLY):
 
 📱 TIKTOK CAPTION:
-[Line 1: Shocking hook using CAPS trigger + curiosity gap + emoji]
-[Line 2-3: Insane curiosity/stakes based on the transcript — make them NEED to watch]
-[Line 4: Hard CTA to click the link in bio]
-[Line 5: Must include @{creator_name} (tagging the creator)]
-[Line 6: Hashtags: #clipculture #thegeniusclipper + 3-5 TikTok specific tags based on clip topic]
+[Line 1: Bold shocking hook — NOT starting with POV:]
+[Line 2-3: Stakes/curiosity based on specific transcript content]
+[Line 4: Hard CTA — "click link in bio" or "watch before it's gone"]
+[Line 5: @{creator_name}]
+[Line 6: #clipculture #thegeniusclipper + 3-5 niche hashtags]
 
 --------------------------------------------------
 
 🟥 YOUTUBE SHORTS CAPTION:
-[Line 1: High SEO-value title — must include the most shocking FACT or NUMBER from the clip]
-[Line 2: Brief summary creating loop-curiosity — end with an open question]
-[Line 3: CTA to pinned comment or related video]
-[Line 4: Must include @{creator_name} in the description]
-[Line 5: Hashtags: #clipculture #thegeniusclipper + 5-7 YouTube specific tags based on clip topic]
+[Line 1: SEO title — lead with the shocking number/fact, no POV:]
+[Line 2: Loop-curiosity description ending in open question]
+[Line 3: CTA]
+[Line 4: @{creator_name}]
+[Line 5: #clipculture #thegeniusclipper + 5-7 YouTube tags]
 
 --------------------------------------------------
 
 📸 INSTAGRAM REELS CAPTION:
-[Line 1: Aesthetic hook that stops the scroll — use "POV:" or "The truth about..." style]
-[Line 2-4: Micro-blog style value drop based on the transcript — 2-3 punchy insights]
-[Line 5: CTA to DM a keyword or check the link in bio]
-[Line 6: Must include @{creator_name} to tag the creator]
-[Line 7: Hashtags: #clipculture #thegeniusclipper + 7-10 highly targeted IG tags based on clip topic]
+[Line 1: "The truth about...", "Real talk:" or numbered insight hook]
+[Line 2-4: Micro-blog punchy insights pulled from specific transcript moments]
+[Line 5: CTA — DM keyword or link in bio]
+[Line 6: @{creator_name}]
+[Line 7: #clipculture #thegeniusclipper + 7-10 IG tags]
 
-Transcript to base it on: "{clip_transcript}"
+TRANSCRIPT:
+\"\"\"{clip_transcript}\"\"\"
 """
+
 
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -114,9 +143,14 @@ Transcript to base it on: "{clip_transcript}"
             return None
         for model_name in _GEMINI_MODELS:
             try:
+                from google.genai import types as _gtypes
                 response = self.gemini_client.models.generate_content(
                     model=model_name,
-                    contents=prompt
+                    contents=prompt,
+                    config=_gtypes.GenerateContentConfig(
+                        temperature=1.0,      # max creativity — breaks generic patterns
+                        max_output_tokens=1400,
+                    )
                 )
                 if response and response.text:
                     print(f"[CAPTIONER] Gemini [{model_name}] success.", flush=True)
@@ -142,8 +176,8 @@ Transcript to base it on: "{clip_transcript}"
         for model in _OPENROUTER_CAPTION_MODELS:
             payload = {
                 "model": model,
-                "max_tokens": 800,
-                "temperature": 0.8,
+                "max_tokens": 1200,
+                "temperature": 0.95,   # high creativity — push past safe generic hooks
                 "messages": [{"role": "user", "content": prompt}]
             }
             try:

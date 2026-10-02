@@ -3662,40 +3662,56 @@ class ClipEditor:
     ) -> None:
         style_val = str(subtitle_style or "classic").lower().strip()
         
-        # Default style tokens
-        caption_color = "&H00FFFFFF"     # White
-        hook_color = "&H00FFAA00"        # Orange-yellow
-        highlight_color = "&H0000D4FF"   # Brighter Gold/Yellow
-        border_size = "5"                # Increased for 3D Pop
-        shadow_size = "8"                # Increased for deep 3D shadow
-        bold_val = "-1"
-        italic_val = "0"
-        
+        # ── ASS COLOUR FORMAT: &HAABBGGRR  (Alpha=00 → fully opaque) ─────────────
+        # Premium default — crisp white body, electric mint highlight, deep 3D shadow
+        caption_color   = "&H00FFFFFF"    # Pure white body text
+        ghost_color     = "&H00C8C8C8"    # Soft grey — inactive karaoke words (so active word POPS)
+        highlight_color = "&H00D4FF00"    # Electric Mint  (#00FFD4 in RGB) — vivid, not flat yellow
+        hook_color      = "&H000099FF"    # Warm amber-orange hook title
+        border_size     = "5"
+        shadow_size     = "8"             # Deep shadow for cinematic 3D depth
+        bold_val        = "-1"
+        italic_val      = "0"
+
         if style_val == "neon":
-            caption_color = "&H00FFFF00"     # Neon Cyan
-            highlight_color = "&H00FF00FF"   # Neon Pink / Magenta
-            hook_color = "&H0000FFFF"        # Neon Yellow
-            border_size = "3.5"
-            shadow_size = "3"
+            # Electric TikTok neon — cyan body, hot magenta pop
+            caption_color   = "&H00FFFF00"    # Cyan
+            ghost_color     = "&H00CC8800"    # Dimmed cyan ghost
+            highlight_color = "&H00FF00FF"    # Hot magenta pop
+            hook_color      = "&H0000FF88"    # Electric lime hook
+            border_size     = "4"
+            shadow_size     = "5"
         elif style_val == "beast":
-            caption_color = "&H0000FFFF"     # Bright Yellow
-            highlight_color = "&H00FFFF00"   # Cyan
-            hook_color = "&H000088FF"        # Bright Orange
-            border_size = "4"
-            shadow_size = "2"
+            # MrBeast energy — vivid yellow body, electric blue pop
+            caption_color   = "&H0000FFFF"    # Yellow
+            ghost_color     = "&H0000AAAA"    # Dimmed yellow ghost
+            highlight_color = "&H00FF6600"    # Electric blue pop
+            hook_color      = "&H000088FF"    # Orange hook
+            border_size     = "4.5"
+            shadow_size     = "6"
         elif style_val == "minimal":
-            caption_color = "&H00FFFFFF"     # White
-            highlight_color = "&H0000FF00"   # Pure Green
-            hook_color = "&H00FFFFFF"
-            border_size = "1"                # Thin border
-            shadow_size = "0"                # No shadow
+            caption_color   = "&H00FFFFFF"
+            ghost_color     = "&H00AAAAAA"
+            highlight_color = "&H00AAFFAA"    # Soft mint
+            hook_color      = "&H00FFFFFF"
+            border_size     = "2"
+            shadow_size     = "3"
         elif style_val == "retro":
-            caption_color = "&H0000FFFF"     # Yellow text
-            highlight_color = "&H003300FF"   # Red Highlight
-            hook_color = "&H00FFFFFF"
-            italic_val = "-1"                # Italic
-            border_size = "3"
-            shadow_size = "3"
+            caption_color   = "&H0000FFFF"    # Yellow
+            ghost_color     = "&H0000AAAA"
+            highlight_color = "&H003300FF"    # Red
+            hook_color      = "&H00FFFFFF"
+            italic_val      = "-1"
+            border_size     = "3"
+            shadow_size     = "3"
+        elif style_val == "viral":
+            # Purple / mint / gold — pro short-form creator aesthetic
+            caption_color   = "&H00FFFFFF"
+            ghost_color     = "&H00999999"    # Darker ghost for max contrast
+            highlight_color = "&H00FF44DD"    # Vivid purple-pink pop
+            hook_color      = "&H0000D7FF"    # Gold hook
+            border_size     = "5"
+            shadow_size     = "8"
 
         # ── Speaker-aware caption positioning ──────────────────────────────
         # Global style baseline = bottom-center (alignment=2). Per-event \an tags
@@ -3705,9 +3721,13 @@ class ClipEditor:
         margin_l, margin_r, margin_v = 40, 40, 450
         
         if is_podcast:
-            caption_alignment = 5  # Middle-center
+            caption_alignment = 5  # Middle-center (style default)
             margin_v = 0
-            log.info("[WCE-CAPTION] Podcast mode detected: centering captions vertically.")
+            # \pos(540,960) = exact pixel center of 1080×1920 canvas — sits precisely
+            # at the divider line between the two SPLIT panels. Using absolute \pos
+            # instead of \an5 to bypass any libass margin calculation differences.
+            podcast_an_tag = "{\\pos(540,960)\\an5\\blur1.5}"
+            log.info("[WCE-CAPTION] Podcast/split mode: captions pinned to \\pos(540,960)")
             
         log.info("[WCE-CAPTION] per-event speaker-side \\an alignment: ACTIVE")
 
@@ -3720,15 +3740,15 @@ class ClipEditor:
             "",
             "[V4+ Styles]",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-            f"Style: Caption,Montserrat Black,95,{caption_color},&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Hook,Outfit,65,{hook_color},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,20,20,80,1",
-            f"Style: Highlight,Montserrat Black,95,{highlight_color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: HookWord,Montserrat Black,95,&H00FFAAFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Danger,Montserrat Black,95,&H006666FF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: Success,Montserrat Black,95,&H00AAFF88,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
-            f"Style: CTA,Montserrat Black,50,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
-            # KaraokeWord: slightly smaller, used for the inactive (ghost) state of karaoke
-            f"Style: KaraokeGhost,Montserrat Black,95,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Caption,Montserrat Black,95,{caption_color},&H000000FF,&H00000000,&H90000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Hook,Outfit,65,{hook_color},&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,3,8,20,20,80,1",
+            f"Style: Highlight,Montserrat Black,100,{highlight_color},&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: HookWord,Montserrat Black,95,&H00FF44DD,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Danger,Montserrat Black,95,&H006666FF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: Success,Montserrat Black,95,&H00AAFFAA,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
+            f"Style: CTA,Montserrat Black,50,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,100,1",
+            # KaraokeGhost: dimmed grey so the active mint word truly stands out
+            f"Style: KaraokeGhost,Montserrat Black,95,{ghost_color},&H000000FF,&H00000000,&H90000000,{bold_val},{italic_val},0,0,100,100,0,0,1,{border_size},{shadow_size},{caption_alignment},{margin_l},{margin_r},{margin_v},1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -3755,13 +3775,14 @@ class ClipEditor:
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            parts.append("{\\rHighlight\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}" + w_esc + "{\\r}")
+                            # blur pop: blurry→sharp + scale 125→100 in 80ms (smooth settle)
+                            parts.append("{\\rHighlight\\blur3\\fscx125\\fscy125\\t(0,80,\\blur0\\fscx100\\fscy100)}" + w_esc + "{\\r}")
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
                             
                     line_text = " ".join(parts)
                     if is_podcast:
-                        an_tag = "{\\an5\\blur1.5}"
+                        an_tag = podcast_an_tag
                     else:
                         an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                     events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
@@ -3781,7 +3802,7 @@ class ClipEditor:
                             
                     line_text = " ".join(parts)
                     if is_podcast:
-                        an_tag = "{\\an5\\blur1.5}"
+                        an_tag = podcast_an_tag
                     else:
                         an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                     events.append(f"Dialogue: 0,{_ass_time(w_start)},{_ass_time(w_end)},Caption,,0,0,0,,{an_tag}{line_text}")
@@ -3789,7 +3810,7 @@ class ClipEditor:
                 # Single-word segment — just highlight it
                 highlighted_text = self._highlight_text(escaped_text)
                 if is_podcast:
-                    an_tag = "{\\an5\\blur1.5}"
+                    an_tag = podcast_an_tag
                 else:
                     an_tag = {"left": "{\\an1\\blur1.5}", "right": "{\\an3\\blur1.5}"}.get(getattr(seg, "speaker_side", "center"), "{\\blur1.5}")
                 events.append(f"Dialogue: 0,{_ass_time(seg.start)},{_ass_time(seg.end)},Caption,,0,0,0,,{an_tag}{highlighted_text}")
@@ -4317,6 +4338,20 @@ class ClipEditor:
                 else:
                     vf_render = f"{vf_render},{hook_zoom_filter}"
 
+            _is_podcast_clip = (
+                (video_fmt is not None and video_fmt.format_type == "podcast")
+                or isinstance(focus_x, list)
+            )
+            # If a precomputed ASS exists but the clip is podcast/SPLIT mode,
+            # the precomputed file was built before video analysis (without is_podcast).
+            # Discard it so we regenerate below with correct \pos(540,960) centering.
+            if precomputed_ass_path and _is_podcast_clip:
+                log.info(
+                    "[WCE-CAPTION] Podcast/split clip detected — discarding precomputed ASS "
+                    "(was built without is_podcast). Regenerating with \\pos(540,960)."
+                )
+                precomputed_ass_path = None
+
             if has_any_overlay or precomputed_ass_path:
                 ass_path = precomputed_ass_path
                 if not ass_path:
@@ -4333,7 +4368,9 @@ class ClipEditor:
                         hashtags_line=hashtags_line,
                         subtitle_style=subtitle_style,
                         speaker_side=speaker_side,
-                        is_podcast=(video_fmt is not None and video_fmt.format_type == "podcast"),
+                        # is_podcast: true if format says podcast OR if director built a SPLIT graph
+                        # (focus_x is a list of segments = complex split/stacked output)
+                        is_podcast=_is_podcast_clip,
                     )
                 fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
                 ass_esc = _ffmpeg_filter_path(ass_path)
