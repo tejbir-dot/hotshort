@@ -4101,30 +4101,32 @@ class ClipEditor:
 
             if _broll_hs_enabled:
                 try:
-                    from effects.smart_broll_matcher import find_broll_cuts
-                    cortex_kw = cortex_hints.get("b_roll_keywords", []) if cortex_hints else []
-                    _broll_cuts = find_broll_cuts(
+                    from effects.cinematic_broll_agent import find_cinematic_broll_cuts
+                    cortex_ctx = cortex_hints.get("narrative_context", "") if cortex_hints else ""
+                    _broll_cuts = find_cinematic_broll_cuts(
                         transcript_window=transcript_window,
-                        source_start=source_start,
+                        clip_path=video_path,
                         clip_duration=ramped_duration,
+                        clip_context=cortex_ctx,
                         max_cuts=3,
                         min_cut_gap_s=4.5,
                         cut_duration_s=2.5,
-                        cortex_keywords=cortex_kw,
+                        output_width=out_width,
+                        output_height=out_height,
                     )
                     if _broll_cuts:
                         _broll_paths     = [c[1] for c in _broll_cuts]
                         _broll_start_sec = _broll_cuts[0][0]
                         _broll_duration  = sum(c[2] for c in _broll_cuts)
                         log.info(
-                            "[WCE-BROLL] 🎬 Smart Local B-Roll: %d cuts | "
+                            "[WCE-BROLL] 🎬 CINEMATIC B-ROLL AGENT: %d cuts | "
                             "total_dur=%.1fs | first_cut=%.2fs",
                             len(_broll_cuts), _broll_duration, _broll_start_sec
                         )
                     else:
-                        log.info("[WCE-BROLL] No keyword matches — B-Roll skipped for this clip.")
+                        log.info("[WCE-BROLL] Agent returned no B-Roll cuts.")
                 except Exception as _be:
-                    log.error("[WCE-BROLL] Smart matcher failed: %s", _be)
+                    log.error("[WCE-BROLL] Cinematic Agent failed: %s", _be)
             # ── END B-ROLL INJECTION ──────────────────────────────────────────────
 
 
