@@ -2214,7 +2214,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         try:
                             # Extract raw text from transcript dictionaries if necessary
                             _clip_transcript = clip.get("transcript") or clip.get("captions") or []
-                            if isinstance(_clip_transcript, list):
+                            _clip_text = ""
+                            if isinstance(_clip_transcript, list) and len(_clip_transcript) > 0:
                                 # Filter words that fall within this clip's timestamps
                                 _sliced_words = []
                                 for w in _clip_transcript:
@@ -2227,12 +2228,33 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                     elif isinstance(w, str):
                                         _sliced_words.append(w)
                                 _clip_text = " ".join([w for w in _sliced_words if w])
-                            else:
-                                _clip_text = str(_clip_transcript)
+                            
+                            if not _clip_text:
+                                _hook = clip.get("hook_text", "")
+                                _payoff = clip.get("payoff_text", "")
+                                _exact_text = f"{_hook} {_payoff}".strip()
+                                _clip_text = _exact_text if _exact_text else str(clip.get("transcript_window", ""))
+                                
+                            # Append metadata
+                            _cortex = clip.get("cortex_hints", {})
+                            if _cortex:
+                                _h_type = _cortex.get("hook_type", "")
+                                _why = _cortex.get("why_this_clip_works", "")
+                                _ls = _cortex.get("learning_signal_for_hotshort", {})
+                                _meaning = _ls.get("meaning_pattern", "") if isinstance(_ls, dict) else ""
+                                _clip_text += f"\n\n--- METADATA ---\nHook Type: {_h_type}\nWhy it works: {_why}\nKeywords: {_meaning}"
                             
                             # Extract creator name from job details if available
-                            _creator = job.get("creator_name", "TJR")
-                            
+                            _creator = job.get("creator_name") or job.get("channel_name")
+                            if not _creator:
+                                # Try to extract from output path/folder
+                                _out_path = job.get("output_dir", "")
+                                if "Double_Coverage" in _out_path:
+                                    _creator = "Double Coverage"
+                                elif "Crypto" in _out_path:
+                                    _creator = "Crypto Bros"
+                                else:
+                                    _creator = "Creator"
                             _cap_text = captioner.generate_viral_caption(_clip_text, creator_name=_creator)
                             if _cap_text:
                                 _cap_path = saved.replace(".mp4", "_caption.txt")

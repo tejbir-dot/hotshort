@@ -2931,21 +2931,11 @@ class ClipEditor:
                     r_cx = int(round(_clamp(seg.right_x - crop_w / 2.0, 0.0, src_w - crop_w))) & ~1
                     is_left = (seg.active_speaker == "left")
                     
-                    top_chain = f"crop={crop_w}:{crop_h}:{l_cx}:0,scale={dst_w}:{int(dst_h//2)}:flags=lanczos"
-                    bot_chain = f"crop={crop_w}:{crop_h}:{r_cx}:0,scale={dst_w}:{int(dst_h//2)}:flags=lanczos"
+                    active_cx = l_cx if is_left else r_cx
+                    inactive_cx = r_cx if is_left else l_cx
                     
-                    # Premium double-layer glow border for active speaker slot
-                    glow = (
-                        "drawbox=x=0:y=0:w=iw:h=ih:color=#FF8C00:thickness=5,"
-                        "drawbox=x=5:y=5:w=iw-10:h=ih-10:color=#FFAA44:thickness=2"
-                    )
-                    dim = "colorchannelmixer=rr=0.6:gg=0.6:bb=0.6"
-                    if is_left:
-                        top_chain += f",{glow}"
-                        bot_chain += f",{dim}"
-                    else:
-                        top_chain += f",{dim}"
-                        bot_chain += f",{glow}"
+                    top_chain = f"crop={crop_w}:{crop_h}:{active_cx}:0,scale={dst_w}:{int(dst_h//2)}:flags=lanczos"
+                    bot_chain = f"crop={crop_w}:{crop_h}:{inactive_cx}:0,scale={dst_w}:{int(dst_h//2)}:flags=lanczos"
                     
                     split_chain = (
                         f"[v_{idx}_raw]split=2[t_raw_{idx}][b_raw_{idx}];"
@@ -2983,18 +2973,13 @@ class ClipEditor:
             r_cx = str(int(round(_clamp(src_w * right_x - crop_w / 2.0, 0.0, src_w - crop_w))))
             is_top = f"lt({expr}\\,{left_x + 0.02})"
             is_bot = f"gt({expr}\\,{right_x - 0.02})"
-            dot = "drawbox=x=40:y=40:w=35:h=35:color=0xFF6B00:t=fill"
             top_chain = (
                 f"crop={crop_w}:{crop_h}:{l_cx}:0,"
-                f"scale={dst_w}:{int(dst_h//2)}:flags=lanczos,"
-                f"colorchannelmixer=rr=0.6:gg=0.6:bb=0.6:enable='not({is_top})',"
-                f"{dot}:enable='{is_top}'"
+                f"scale={dst_w}:{int(dst_h//2)}:flags=lanczos"
             )
             bot_chain = (
                 f"crop={crop_w}:{crop_h}:{r_cx}:0,"
-                f"scale={dst_w}:{int(dst_h//2)}:flags=lanczos,"
-                f"colorchannelmixer=rr=0.6:gg=0.6:bb=0.6:enable='not({is_bot})',"
-                f"{dot}:enable='{is_bot}'"
+                f"scale={dst_w}:{int(dst_h//2)}:flags=lanczos"
             )
             vf_str = (
                 f"split=2[t_raw][b_raw];"
@@ -3445,12 +3430,8 @@ class ClipEditor:
             return "#podcast #viralclips"
         return " ".join(f"#{w}" for w, _ in top)
 
-    def _highlight_text(self, text: str) -> str:
-        words = text.split()
-        if not words:
-            return text
-
-                # Semantic color routing - priority: Danger > Success > HookWord > Highlight
+    def _get_semantic_style(self, word: str) -> str:
+        import re
         _danger_keywords = {
             "wrong", "mistake", "fail", "failing", "failed", "failure", "lose", "losing", "loss",
             "bad", "never", "stop", "quit", "risk", "trap", "scam", "fake", "lie", "lies",
@@ -3469,23 +3450,23 @@ class ClipEditor:
         _highlight_keywords = {
             "must", "important", "crucial", "key", "remember", "focus",
         }
+        clean = re.sub(r"[^\w]", "", word).lower()
+        if clean in _danger_keywords: return "Danger"
+        if clean in _success_keywords: return "Success"
+        if clean in _hook_keywords: return "HookWord"
+        if clean in _highlight_keywords: return "Highlight"
+        return ""
 
-        def _style_for(word: str) -> str:
-            clean = re.sub(r"[^\w]", "", word).lower()
-            if clean in _danger_keywords:
-                return "Danger"
-            if clean in _success_keywords:
-                return "Success"
-            if clean in _hook_keywords:
-                return "HookWord"
-            if clean in _highlight_keywords:
-                return "Highlight"
-            return ""
+    def _highlight_text(self, text: str) -> str:
+        import re
+        words = text.split()
+        if not words:
+            return text
 
         # First pass: find up to 2 semantically tagged words
         tagged: list[tuple[int, str]] = []
         for idx, w in enumerate(words):
-            style = _style_for(w)
+            style = self._get_semantic_style(w)
             if style:
                 tagged.append((idx, style))
             if len(tagged) >= 2:
@@ -3665,11 +3646,11 @@ class ClipEditor:
         # ── ASS COLOUR FORMAT: &HAABBGGRR  (Alpha=00 → fully opaque) ─────────────
         # Premium default — crisp white body, electric mint highlight, deep 3D shadow
         caption_color   = "&H00FFFFFF"    # Pure white body text
-        ghost_color     = "&H00C8C8C8"    # Soft grey — inactive karaoke words (so active word POPS)
-        highlight_color = "&H00D4FF00"    # Electric Mint  (#00FFD4 in RGB) — vivid, not flat yellow
-        hook_color      = "&H000099FF"    # Warm amber-orange hook title
-        border_size     = "5"
-        shadow_size     = "8"             # Deep shadow for cinematic 3D depth
+        ghost_color     = "&H00999999"    # Professional dark grey
+        highlight_color = "&H00D4FF00"    # Fallback Electric Mint
+        hook_color      = "&H0000D7FF"    # Vibrant Yellow/Gold (#FFD700)
+        border_size     = "4.5"
+        shadow_size     = "6"             # Crisp shadow for readability
         bold_val        = "-1"
         italic_val      = "0"
 
@@ -3723,11 +3704,9 @@ class ClipEditor:
         if is_podcast:
             caption_alignment = 5  # Middle-center (style default)
             margin_v = 0
-            # \pos(540,960) = exact pixel center of 1080×1920 canvas — sits precisely
-            # at the divider line between the two SPLIT panels. Using absolute \pos
-            # instead of \an5 to bypass any libass margin calculation differences.
-            podcast_an_tag = "{\\pos(540,960)\\an5\\blur1.5}"
-            log.info("[WCE-CAPTION] Podcast/split mode: captions pinned to \\pos(540,960)")
+            # Removed \\pos(540,960) because \\r style resets in the words erase it
+            podcast_an_tag = "{\\an5\\blur1.5}"
+            log.info("[WCE-CAPTION] Podcast/split mode: captions pinned to center")
             
         log.info("[WCE-CAPTION] per-event speaker-side \\an alignment: ACTIVE")
 
@@ -3772,11 +3751,17 @@ class ClipEditor:
                     w_end = w_dict["end"]
                     
                     parts = []
+                    # Mint, Purple, Electric Blue, Gold
+                    _colors = ["&H00D4FF00&", "&H00FF44DD&", "&H00FF8800&", "&H0000D7FF&"]
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            # blur pop: blurry→sharp + scale 125→100 in 80ms (smooth settle)
-                            parts.append("{\\rHighlight\\blur3\\fscx125\\fscy125\\t(0,80,\\blur0\\fscx100\\fscy100)}" + w_esc + "{\\r}")
+                            sem_style = self._get_semantic_style(w)
+                            if sem_style:
+                                parts.append(f"{{\\r{sem_style}\\fscx115\\fscy115\\t(0,70,\\fscx100\\fscy100)}}" + w_esc + "{\\r}")
+                            else:
+                                c_tag = _colors[wi % len(_colors)]
+                                parts.append(f"{{\\rHighlight\\c{c_tag}\\fscx115\\fscy115\\t(0,70,\\fscx100\\fscy100)}}" + w_esc + "{\\r}")
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
                             
@@ -3793,10 +3778,16 @@ class ClipEditor:
                     w_end   = seg.start + (wi + 1) * word_dur
                     # Build line: ghost words + {\rHighlight}active_word{\r} + ghost words
                     parts = []
+                    _colors = ["&H00D4FF00&", "&H00FF44DD&", "&H00FF8800&", "&H0000D7FF&"]
                     for i, w in enumerate(words):
                         w_esc = _ass_escape(w)
                         if i == wi:
-                            parts.append("{\\rHighlight\\fscx125\\fscy125\\t(0,120,\\fscx100\\fscy100)}" + w_esc + "{\\r}")
+                            sem_style = self._get_semantic_style(w)
+                            if sem_style:
+                                parts.append(f"{{\\r{sem_style}\\fscx115\\fscy115\\t(0,70,\\fscx100\\fscy100)}}" + w_esc + "{\\r}")
+                            else:
+                                c_tag = _colors[wi % len(_colors)]
+                                parts.append(f"{{\\rHighlight\\c{c_tag}\\fscx115\\fscy115\\t(0,70,\\fscx100\\fscy100)}}" + w_esc + "{\\r}")
                         else:
                             parts.append("{\\rKaraokeGhost}" + w_esc + "{\\r}")
                             
@@ -4204,6 +4195,11 @@ class ClipEditor:
                         video_fmt=self.vf,
                     )
             
+            _is_podcast_early = (video_fmt is not None and video_fmt.format_type == "podcast")
+            if precomputed_ass_path and _is_podcast_early:
+                log.info("[WCE-CAPTION] Podcast clip detected early — discarding precomputed ASS to trigger thread regeneration.")
+                precomputed_ass_path = None
+
             cap_thread = None
             if cfg.add_captions and precomputed_ass_path is None:
                 cap_thread = CaptionThread(self, transcript_window, source_start, trim_in, trim_out, cfg, ramp_window, video_fmt)
@@ -4342,15 +4338,27 @@ class ClipEditor:
                 (video_fmt is not None and video_fmt.format_type == "podcast")
                 or isinstance(focus_x, list)
             )
-            # If a precomputed ASS exists but the clip is podcast/SPLIT mode,
-            # the precomputed file was built before video analysis (without is_podcast).
-            # Discard it so we regenerate below with correct \pos(540,960) centering.
-            if precomputed_ass_path and _is_podcast_clip:
-                log.info(
-                    "[WCE-CAPTION] Podcast/split clip detected — discarding precomputed ASS "
-                    "(was built without is_podcast). Regenerating with \\pos(540,960)."
-                )
-                precomputed_ass_path = None
+
+            _brainrot_active = False
+            _brainrot_dir = r"c:\Users\n\Documents\hotshort\assets\brain_rot"
+            _brainrot_path = None
+            if os.path.exists(_brainrot_dir):
+                import random
+                _br_files = [os.path.join(_brainrot_dir, f) for f in os.listdir(_brainrot_dir) if f.endswith(('.mp4', '.mov', '.webm'))]
+                if _br_files:
+                    _brainrot_path = random.choice(_br_files)
+
+            if _is_podcast_clip and cfg.podcast_crop_mode == "stacked":
+                if _brainrot_path and os.path.exists(_brainrot_path):
+                    _brainrot_active = True
+                    if is_complex_graph:
+                        vf_render = f"{vf_render};[{{BR_IDX}}:v]setpts=PTS-STARTPTS,scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,fps=30[br_v];[{graph_video_pad}][br_v]overlay=x=0:y=960:eof_action=pass[v_br]"
+                        graph_video_pad = "v_br"
+                    else:
+                        vf_render = f"{vf_render},[{{BR_IDX}}:v]setpts=PTS-STARTPTS,scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,fps=30[br_v];[0:v][br_v]overlay=x=0:y=960:eof_action=pass"
+                        is_complex_graph = True
+
+
 
             if has_any_overlay or precomputed_ass_path:
                 ass_path = precomputed_ass_path
@@ -4443,6 +4451,11 @@ class ClipEditor:
                 if _has_outro:
                     _outro_input_idx = next_idx
                     next_idx += 1
+                    
+            if _brainrot_active:
+                _brainrot_input_idx = next_idx
+                next_idx += 1
+                vf_render = vf_render.replace("{BR_IDX}", str(_brainrot_input_idx))
             
             _transitions_to_apply = [] # List of dicts: {"t": float, "leak": idx, "swoosh": idx, "click": idx}
             if _trans_assets:
@@ -4737,6 +4750,8 @@ class ClipEditor:
                 exact_seek = render_trim_in - fast_seek
                 cmd.extend(["-ss", f"{fast_seek:.3f}"])
             cmd.extend(["-i", work_b])
+            if _brainrot_active:
+                cmd.extend(["-stream_loop", "-1", "-i", _brainrot_path])
             if exact_seek > 0.001:
                 cmd.extend(["-ss", f"{exact_seek:.3f}"])
             if render_trim_out > render_trim_in and render_trim_out < float((work_meta.get("duration") or render_trim_out) or render_trim_out) - 0.001:

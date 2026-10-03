@@ -856,32 +856,17 @@ Return JSON ONLY in this exact format:
 
         for _retry_attempt in range(len(_SURGEON_RETRY_DELAYS) + 1):  # 1 initial + 3 retries
             try:
+                from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
                 start_t = time.time()
-                try:
-                    # ── PRIMARY: GPT API Surgeon ───────────────────────────────────────
-                    log.info(f"[GPT_API_SURGEON] 🚀 Batch {batch_idx+1}: Routing to GPT API (primary). JAB BHI YEH LOG AAYE SAMAJH LENA GPT API USE HO RAHI HAI!")
-                    response = post_groq_completions(payload=groq_payload, timeout=60, max_retries=4)
+                if is_gemini_enabled():
+                    log.info(f"[GEMINI_SURGEON] 🚀 Batch {batch_idx+1}: Routing to Gemini (primary).")
+                    raw_text = post_gemini_completions(prompt=gemini_prompt, response_format_schema={"type": "json_object"})
+                    parsed = parse_gemini_json_safely(raw_text)
                     latency = time.time() - start_t
                     audit_data["total_latency_ms"] += (latency * 1000)
-                    response.raise_for_status()
-                    data = response.json()
-                    content = data["choices"][0]["message"]["content"]
-                    parsed = json.loads(content)
-                    usage = data.get("usage", {})
-                    audit_data["input_tokens"] += usage.get("prompt_tokens", 0)
-                    audit_data["output_tokens"] += usage.get("completion_tokens", 0)
-                except Exception as e_gpt:
-                    # ── FALLBACK: Gemini Surgeon ─────────────────────────────────────────
-                    log.warning(f"[GPT_API_SURGEON] ⚠️ Batch {batch_idx+1}: GPT API failed: {e_gpt}. FALLING BACK TO GEMINI!")
-                    from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
-                    if is_gemini_enabled():
-                        log.info(f"[GEMINI_SURGEON] Batch {batch_idx+1}: Routing to Gemini (fallback).")
-                        raw_text = post_gemini_completions(prompt=gemini_prompt, response_format_schema={"type": "json_object"})
-                        latency = time.time() - start_t
-                        audit_data["total_latency_ms"] += (latency * 1000)
-                        parsed = parse_gemini_json_safely(raw_text)
-                    else:
-                        raise e_gpt
+                    # We don't get token counts from gemini currently in this helper
+                else:
+                    raise Exception("Gemini API is not enabled! Cannot run surgeon.")
 
                 pt_per_cand = 0  # Gemini doesn't expose token count the same way
 

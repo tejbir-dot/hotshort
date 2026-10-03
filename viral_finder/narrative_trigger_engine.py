@@ -807,30 +807,12 @@ Transcript:
 
         for attempt in range(1, MAX_CHUNK_RETRIES + 1):
             try:
-                try:
-                    log.info(f"[TRIGGER_FORENSIC_LLM] 🚀 Attempting request with GPT API (primary). JAB BHI YEH LOG AAYE SAMAJH LENA GPT API USE HO RAHI HAI!")
-                    resp = post_groq_completions(
-                        payload={
-                            "model": _get_groq_model(),
-                            "messages": [{"role": "user", "content": prompt}],
-                            "temperature": 0.1,
-                            "max_tokens": 2000,
-                            "response_format": {"type": "json_object"}
-                        },
-                        timeout=_get_timeout(),
-                        max_retries=3
-                    )
-                    if not resp.ok:
-                        raise requests.exceptions.HTTPError(f"{resp.status_code} Client Error: {resp.text}")
-                    data = parse_groq_json_safely(resp.json()["choices"][0]["message"]["content"])
-                except Exception as e_gpt:
-                    log.warning(f"[TRIGGER_FORENSIC_LLM] ⚠️ GPT API failed: {e_gpt}. FALLING BACK TO GEMINI!")
-                    if gemini_enabled:
-                        log.info(f"[TRIGGER_FORENSIC_LLM] Attempting request with model: gemini (fallback)")
-                        raw_resp_text = post_gemini_completions(prompt=prompt, response_format_schema={"type": "json_object"})
-                        data = parse_gemini_json_safely(raw_resp_text)
-                    else:
-                        raise e_gpt
+                if gemini_enabled:
+                    log.info(f"[TRIGGER_FORENSIC_LLM] 🚀 Attempting request with model: gemini (primary)")
+                    raw_resp_text = post_gemini_completions(prompt=prompt, response_format_schema={"type": "json_object"})
+                    data = parse_gemini_json_safely(raw_resp_text)
+                else:
+                    raise Exception("Gemini API is not enabled! Cannot run forensic trigger extraction.")
                     
                 raw_triggers = data.get("triggers", [])
                 found_in_chunk = 0
