@@ -26,17 +26,32 @@ _GEMINI_MODELS = [
 ]
 
 # ── OpenRouter caption model chain (tries in order) ──────────────────────────
-# These are the ACTUALLY available free models on OpenRouter (verified Sep 2026)
+# Audit 2026-10-03: tested all free models live on https://youtu.be/Xdu6j2E1DEI
+# qwen/qwen3.8-27b:free → 85.3/100 avg, 7-10s, 0 format failures → PRIMARY
+# nemotron-3.5-lightning  → 20% success (thinking chain overflow), 30-90s → FALLBACK
 _OPENROUTER_CAPTION_MODELS = [
     os.environ.get("HS_CAPTION_MODEL", ""),            # User override from .env
-    "nvidia/nemotron-3.5-lightning:free",              # Fast & highly capable Nemotron 3.5
-    "nvidia/nemotron-3-ultra-550b-a55b:free",          # NVIDIA 550B — highest quality
-    "nvidia/nemotron-3-super-120b-a12b:free",          # NVIDIA 120B — fast & smart
-    "nex-agi/nex-n2.5-pro:free",                       # Nex Pro — good reasoning
-    "google/gemma-4-31b-it:free",                      # Google Gemma 31B
-    "inclusionai/ling-3.0-flash-vl:free",              # InclusionAI — last resort
+    "qwen/qwen3.8-27b:free",                           # BEST: 85.3/100, 7-10s
+    "nvidia/nemotron-3.5-lightning:free",              # Fallback: slower, thinking chain
+    "liquid/lfm-2.5-2.6b:free",                       # Last resort: fast but small
+    "inclusionai/ling-3.0-flash-sante:free",          # Emergency fallback
 ]
 _OPENROUTER_CAPTION_MODELS = [m for m in _OPENROUTER_CAPTION_MODELS if m]  # remove empties
+
+# Per-model token budgets — thinking models need extra room to finish their chain
+_MODEL_MAX_TOKENS = {
+    "qwen/qwen3.8-27b:free":              1800,   # 7-10s, needs ~1600 tokens total
+    "nvidia/nemotron-3.5-lightning:free": 2500,   # thinking chain can be 1500+ tokens
+    "liquid/lfm-2.5-2.6b:free":           1200,   # small model, less thinking
+    "default":                            1800,
+}
+# Per-model timeouts (seconds)
+_MODEL_TIMEOUT = {
+    "qwen/qwen3.8-27b:free":              25,
+    "nvidia/nemotron-3.5-lightning:free": 50,
+    "liquid/lfm-2.5-2.6b:free":           15,
+    "default":                            30,
+}
 
 
 class BrutalCaptioner:
@@ -163,6 +178,30 @@ TRANSCRIPT:
         return None
 
     # ─────────────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _strip_thinking(raw: str) -> str:
+        """Strip reasoning/thinking chains from models like Nemotron/Qwen.
+        
+        These models output their chain-of-thought BEFORE the structured answer.
+        We find the LAST occurrence of our output markers to skip the thinking.
+        """
+        # Try to find final structured output after reasoning
+        markers = [
+            'TIKTOK CAPTION', '1. TIKTOK', 'TIKTOK:',
+            '1.TIKTOK', 'TIKTOK CAPTION:', '## TIKTOK',
+        ]
+        best_idx = -1
+        for marker in markers:
+            idx = raw.rfind(marker)   # rfind = LAST occurrence = after thinking chain
+            if idx > best_idx:
+                best_idx = idx
+        if best_idx > 0 and best_idx > len(raw) * 0.3:  # only strip if significant thinking
+            stripped = raw[best_idx:].strip()
+            if len(stripped) > 50:  # sanity check: result must be substantial
+                return stripped
+        return raw
+
+    # ─────────────────────────────────────────────────────────────────────────
     def _try_openrouter(self, prompt: str) -> str | None:
         """OpenRouter fallback — tries each model in _OPENROUTER_CAPTION_MODELS."""
         if not self.openrouter_key:
@@ -174,16 +213,18 @@ TRANSCRIPT:
             "X-Title": "HotShort Captioner",
         }
         for model in _OPENROUTER_CAPTION_MODELS:
+            max_tok = _MODEL_MAX_TOKENS.get(model, _MODEL_MAX_TOKENS["default"])
+            timeout = _MODEL_TIMEOUT.get(model, _MODEL_TIMEOUT["default"])
             payload = {
                 "model": model,
-                "max_tokens": 1200,
+                "max_tokens": max_tok,
                 "temperature": 0.95,   # high creativity — push past safe generic hooks
                 "messages": [{"role": "user", "content": prompt}]
             }
             try:
                 r = requests.post(
                     f"{self.openrouter_base}/chat/completions",
-                    headers=headers, json=payload, timeout=30
+                    headers=headers, json=payload, timeout=timeout
                 )
                 if r.status_code == 200:
                     data = r.json()
@@ -192,6 +233,8 @@ TRANSCRIPT:
                         or data["choices"][0]["message"].get("reasoning", "")
                     )
                     if content:
+                        # Strip thinking chains before returning
+                        content = self._strip_thinking(content)
                         print(f"[CAPTIONER] OpenRouter [{model}] success.", flush=True)
                         return content.replace("**", "").replace("*", "").strip()
                     print(f"[CAPTIONER] {model} empty. Trying next.", flush=True)
