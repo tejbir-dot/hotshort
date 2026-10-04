@@ -36,10 +36,18 @@ log = logging.getLogger("cinematic_broll_agent")
 _CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "broll_agent_cache")
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
-_MAX_BROLL       = 3
-_CUT_DURATION    = 2.5
+_MAX_BROLL       = 8
+_CUT_DURATION    = 4.0   # Increased from 3s to 4s — prevents rapid-fire glitch feel
 _DL_TIMEOUT      = 45
-_YT_SEARCH_PREFIX = "ytsearch2:"
+_YT_SEARCH_PREFIX = "ytsearch5:"
+
+# Blocklist: titles containing these words will be skipped (meme/reaction junk)
+_BROLL_TITLE_BLOCKLIST = [
+    "meme", "reaction", "reacts", "responds", "tiktok", "trending",
+    "pov:", "when you", "nobody:", "me when", "fr fr", "ngl",
+    "compilation", "moments", "try not to laugh", "caught on camera"
+]
+
 
 
 # -- Gemini --------------------------------------------------------------------
@@ -51,11 +59,11 @@ def _ask_llm(prompt: str) -> Optional[str]:
     """
     import requests as _req
 
-    # --- OpenRouter FIRST (same API as captioner — always works) ---
-    or_key  = os.getenv("OPENROUTER_API_KEY") or os.getenv("GPT_API", "")
-    or_base = os.getenv("HS_GROQ_API_BASE", "https://openrouter.ai/api/v1").rstrip("/")
-    if or_key and "openrouter" in or_base:
-        for model in ["qwen/qwen3.8-27b:free", "liquid/lfm-2.5-2.6b:free", "inclusionai/ling-3.0-flash-sante:free"]:
+    # --- Groq / OpenRouter FIRST ---
+    or_key  = os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY") or os.getenv("GPT_API", "")
+    or_base = os.getenv("HS_GROQ_API_BASE", "https://api.groq.com/openai/v1").rstrip("/")
+    if or_key:
+        for model in ["llama-3.1-70b-versatile", "qwen/qwen3.8-27b:free", "liquid/lfm-2.5-2.6b:free"]:
             try:
                 r = _req.post(
                     f"{or_base}/chat/completions",
@@ -106,47 +114,74 @@ _ask_gemini = _ask_llm
 
 # -- Scene Intelligence --------------------------------------------------------
 
-_DIRECTOR_PROMPT = '''You are the world's greatest B-Roll director for viral short-form videos.
-You understand that B-Roll must be the EXACT visual proof of what the speaker is saying.
+_DIRECTOR_PROMPT = '''You are a world-class B-Roll director for viral short-form videos.
 
-SPEAKER IS SAYING (exact transcript):
-"""{segment_text}"""
+FULL CLIP TRANSCRIPT (read the ENTIRE story before deciding anything):
+"{clip_context}"
 
-FULL CLIP CONTEXT:
-"""{clip_context}"""
+THE SPECIFIC MOMENT TO FIND B-ROLL FOR (this sentence is playing right now):
+"{segment_text}"
 
-YOUR TASK:
-Generate 2 YouTube search queries for the most visually PRECISE footage.
+Your job: pick the 2 MOST VISUALLY SPECIFIC search queries that will find EXACT real-world footage matching what the speaker is saying in THIS SPECIFIC MOMENT.
 
-Rules:
-- Think like a Netflix documentary director. What real footage would you CUT TO?
-- BE SPECIFIC: Not "car driving" but "Lamborghini Urus acceleration slow motion 4K"
-- Not "money" but "Federal Reserve money printing machine close up"
-- Not "people talking" but "NBA locker room heated argument postgame"
-- Prefer: news clips, documentaries, sports highlights, product reveals, nature footage
-- NEVER suggest animations, text overlays, or generic stock footage
-- The footage must make the viewer FEEL what the speaker is describing
+CRITICAL RULES — FOLLOW IN EXACT ORDER:
+1. READ THE FULL TRANSCRIPT above to understand the overall story topic and major themes.
+2. PROPER NOUNS FROM THE CURRENT MOMENT WIN. If the CURRENT SENTENCE (marked above) mentions a NAMED LOCATION, NAMED PERSON, or NAMED EVENT — that MUST be the primary subject of your query.
+   - WRONG: Speaker current moment says "your mom's got to be nervous" → you pick "White House" (that was from a DIFFERENT moment in the transcript)
+   - RIGHT: Speaker current moment says "your mom's got to be nervous" → you pick "MMA fighter mother watching fight anxiously in arena crowd"
+   - RIGHT: Speaker current moment says "White House lawn" → you pick "White House South Lawn sports event"
+3. Match the B-roll to the EMOTION or SCENE of the CURRENT SENTENCE — not the overall story topic.
+4. NO meme footage. NO reaction clips. NO TikTok trend videos. Real documentary/news/sports footage ONLY.
+5. Include the specific person name, place name, or event name from the CURRENT SENTENCE in your query if present.
+6. ALWAYS INJECT THE OVERALL NICHE/SPORT (e.g. MMA, UFC, basketball, politics) into EVERY query to avoid generic results.
+   - WRONG: "parents watching son sports match"
+    - RIGHT: "parents watching son UFC MMA fight nervously"
+7. RESOLVE PRONOUNS ('he', 'she', 'they') by using the ORIGINAL VIDEO TITLE context. Always use the actual person's name (e.g. Justin Gaethje, Khabib) in your queries instead of generic pronouns or terms like 'MMA fighter'.
+8. If no proper noun exists in the current sentence, describe the EXACT visual scene being implied.
+- Format: ONLY a valid JSON array. Nothing else. No explanation.
+- Output EXACTLY: ["query one", "query two"]'''
 
-RESPOND with ONLY a JSON array of exactly 2 search queries:
-["search query 1 here", "search query 2 here"]'''
 
-
-def _get_broll_queries(segment_text: str, clip_context: str) -> List[str]:
+def _get_broll_queries(segment_text: str, clip_context: str, original_title: str = None) -> List[str]:
+    title_str = f"ORIGINAL VIDEO TITLE: {original_title}\n\n" if original_title else ""
     prompt = _DIRECTOR_PROMPT.format(
         segment_text=segment_text[:600],
-        clip_context=clip_context[:800],
+        clip_context=title_str + clip_context[:2000],  # Full transcript, not just 800 chars
     )
     raw = _ask_gemini(prompt)
     if not raw:
         return []
+
+    # Strip markdown code fences (LLM sometimes wraps output in ```json ... ```)
+    raw_clean = re.sub(r'```(?:json)?\s*', '', raw).strip().rstrip('`').strip()
+
+    def _is_valid_query(q: str) -> bool:
+        """Reject garbage: backticks, too-short, pure punctuation, code artifacts."""
+        q = q.strip()
+        if len(q) < 6:
+            return False
+        # Reject if mostly non-alphanumeric (code fences, brackets, etc.)
+        alnum = sum(1 for c in q if c.isalnum())
+        if alnum < 4:
+            return False
+        # Reject obvious code artifacts
+        bad = ['```', 'json', 'null', 'undefined', '{{', '}}', 'query one', 'query two']
+        if any(b in q.lower() for b in bad):
+            return False
+        return True
+
     try:
-        match = re.search(r'\[.*?\]', raw, re.DOTALL)
+        match = re.search(r'\[.*?\]', raw_clean, re.DOTALL)
         if match:
             queries = json.loads(match.group())
-            return [q.strip() for q in queries if isinstance(q, str) and q.strip()]
+            valid = [q.strip() for q in queries if isinstance(q, str) and _is_valid_query(q)]
+            if valid:
+                return valid
     except Exception:
         pass
-    lines = [l.strip().strip('"').strip("'") for l in raw.splitlines() if l.strip() and not l.strip().startswith("[")]
+    # Fallback: parse line by line
+    lines = [l.strip().strip('"').strip("'") for l in raw_clean.splitlines()
+             if l.strip() and not l.strip().startswith('[') and _is_valid_query(l.strip())]
     return lines[:2]
 
 
@@ -156,8 +191,132 @@ def _safe_filename(q: str) -> str:
     return re.sub(r'[^\w\-_]', '_', q)[:80]
 
 
+def _wikipedia_image_url(query: str) -> Optional[str]:
+    """Try to get a direct image URL from Wikipedia's REST summary API."""
+    import requests as _req, urllib.parse
+    # Try progressively simpler search terms (e.g. "Leonardo DiCaprio US Open" -> "Leonardo DiCaprio")
+    candidates = [query]
+    # If query has multiple words, also try just the first 2-3 (likely the name)
+    words = query.split()
+    if len(words) > 3:
+        candidates.append(" ".join(words[:2]))
+    if len(words) > 2:
+        candidates.append(" ".join(words[:3]))
+
+    headers = {"User-Agent": "HotShortBrollAgent/1.0 (hotshort.app)"}
+    for term in candidates:
+        try:
+            r = _req.get(
+                "https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(term),
+                headers=headers, timeout=6
+            )
+            if r.status_code == 200:
+                thumb = r.json().get("thumbnail", {}).get("source")
+                if thumb and "svg" not in thumb.lower():
+                    return thumb
+        except Exception:
+            continue
+    return None
+
+
+def _download_image_broll(query: str, duration: float = 3.0, width: int = 1080, broll_height: int = 960) -> Optional[str]:
+    """
+    Download an image and render it as a cinematic Ken Burns animated clip.
+    PRIMARY source: Wikipedia API (exact celebrity/brand/event photos, always correct).
+    FALLBACK: Bing Images murl extraction.
+    """
+    import requests as _req
+    cache_key = f"{_safe_filename(query)}_img_{width}x{broll_height}_{int(duration*10)}.mp4"
+    cache_path = os.path.join(_CACHE_DIR, cache_key)
+    if os.path.exists(cache_path) and os.path.getsize(cache_path) > 10_000:
+        log.info("[BROLL_AGENT] Image cache hit: %s", cache_key)
+        return cache_path
+
+    tmpdir = tempfile.mkdtemp()
+    try:
+        import urllib.parse, urllib.request
+
+        img_url = None
+
+        # --- STRATEGY 1: Wikipedia API (exact, reliable for names/brands/events) ---
+        img_url = _wikipedia_image_url(query)
+        if img_url:
+            log.info("[BROLL_AGENT] Wikipedia image: %s", img_url[:80])
+
+        # --- STRATEGY 2: Bing Images murl (general fallback) ---
+        if not img_url:
+            try:
+                bing_query = query + " real high quality photo -clipart -drawing -cartoon"
+                search_url = "https://www.bing.com/images/search?q=" + urllib.parse.quote(bing_query) + "&form=HDRSC3&first=1"
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                resp = _req.get(search_url, headers=headers, timeout=10)
+                # Use the correct JSON murl pattern
+                bing_urls = re.findall(r'"murl":"(https?://[^"]+)"', resp.text)
+                # Filter out SVG, GIF, logos, icons, clipart
+                bad = ["logo", "icon", ".svg", ".gif", "clipart", "clip-art", "vector"]
+                bing_urls = [u for u in bing_urls if not any(b in u.lower() for b in bad)]
+                if bing_urls:
+                    img_url = bing_urls[0]
+                    log.info("[BROLL_AGENT] Bing image: %s", img_url[:80])
+            except Exception as e:
+                log.warning("[BROLL_AGENT] Bing fallback error: %s", e)
+
+        if not img_url:
+            log.warning("[BROLL_AGENT] No image found for: %s", query)
+            return None
+
+        # Download the image
+        ext = ".jpg"
+        for candidate_ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            if candidate_ext in img_url.lower():
+                ext = candidate_ext
+                break
+        img_path = os.path.join(tmpdir, f"img{ext}")
+        headers_dl = {"User-Agent": "HotShortBrollAgent/1.0 (hotshort.app)"}
+        req = urllib.request.Request(img_url, headers=headers_dl)
+        with urllib.request.urlopen(req, timeout=8) as resp_img:
+            with open(img_path, "wb") as f:
+                f.write(resp_img.read())
+
+        if not os.path.exists(img_path) or os.path.getsize(img_path) < 5_000:
+            log.warning("[BROLL_AGENT] Image too small or missing: %s", query)
+            return None
+
+        fps = 30
+        total_frames = int(duration * fps)
+        zoom_expr = "min(zoom+0.0005,1.06)"
+        kenburns_filter = (
+            f"scale=8000:-1,"
+            f"zoompan=z='{zoom_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={total_frames}:s={width}x{broll_height}:fps={fps},"
+            f"format=yuv420p,"
+            f"fade=t=in:st=0:d=0.25,fade=t=out:st={max(duration-0.3, 0):.3f}:d=0.25"
+        )
+
+        ffmpeg_cmd = [
+            "ffmpeg", "-y", "-nostdin",
+            "-loop", "1", "-i", img_path,
+            "-t", str(duration + 0.1),
+            "-vf", kenburns_filter,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-an",
+            cache_path
+        ]
+        r = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=60)
+        if r.returncode == 0 and os.path.exists(cache_path) and os.path.getsize(cache_path) > 5_000:
+            log.info("[BROLL_AGENT] Image B-Roll ready: %s", cache_key)
+            return cache_path
+        else:
+            log.warning("[BROLL_AGENT] Ken Burns render failed: %s", r.stderr[-300:].decode("utf-8", errors="ignore"))
+            return None
+    except Exception as e:
+        log.warning("[BROLL_AGENT] Image download error: %s", e)
+        return None
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: float = 5.0, width: int = 1080, height: int = 1920) -> Optional[str]:
-    cache_key = f"{_safe_filename(query)}_{int(start_offset)}_{int(duration)}_{width}x{height}.mp4"
+    cache_key = f"{_safe_filename(query)}_shorts_{int(start_offset)}_{int(duration)}_{width}x{height}.mp4"
     cache_path = os.path.join(_CACHE_DIR, cache_key)
     if os.path.exists(cache_path) and os.path.getsize(cache_path) > 50_000:
         log.info("[BROLL_AGENT] Cache hit: %s", cache_key)
@@ -166,16 +325,23 @@ def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: flo
     tmpdir = tempfile.mkdtemp()
     try:
         dl_template = os.path.join(tmpdir, "raw.%(ext)s")
+        short_query = f"{query} #shorts"
+        # Reject meme/reaction junk before downloading — check title against blocklist
+        blocklist_filter = " & ".join(
+            f"title !*= '{word}'" for word in _BROLL_TITLE_BLOCKLIST
+        )
+        match_filter = f"duration < 45 & {blocklist_filter}"
         yt_cmd = [
             sys.executable, "-m", "yt_dlp", "--no-playlist", "--max-downloads", "1",
             "--js-runtimes", "node",
-            "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]",
+            "--match-filter", match_filter,
+            "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
             "--merge-output-format", "mp4",
             "--no-warnings",
             "-o", dl_template,
-            f"{_YT_SEARCH_PREFIX}{query}",
+            f"ytsearch5:{short_query}",
         ]
-        log.info("[BROLL_AGENT] Downloading: %s", query)
+        log.info("[BROLL_AGENT] Downloading Short: %s", short_query)
         yt_run = subprocess.run(yt_cmd, capture_output=True, timeout=_DL_TIMEOUT)
         if yt_run.returncode != 0:
             log.warning("[BROLL_AGENT] yt-dlp failed: %s", yt_run.stderr.decode("utf-8", errors="ignore"))
@@ -190,9 +356,27 @@ def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: flo
             log.warning("[BROLL_AGENT] Download failed: %s", query)
             return None
 
+        # --- EXACT MOMENT EXTRACTION (Deep Thinking Fix) ---
+        # Instead of a random offset, we find the exact center of the short.
+        # Short-form content (reactions/memes) peaks in the middle.
+        try:
+            ffprobe_cmd = [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", raw_path
+            ]
+            dur_out = subprocess.check_output(ffprobe_cmd, timeout=10).decode("utf-8").strip()
+            raw_duration_sec = float(dur_out) if dur_out else 15.0
+        except Exception:
+            raw_duration_sec = 15.0
+
+        # Calculate perfect center cut for the requested duration
+        center_offset = max(0.0, (raw_duration_sec / 2.0) - (duration / 2.0))
+        # If it's a very long clip, don't go deeper than 15s to avoid boring filler
+        smart_offset = min(center_offset, 15.0)
+
         trim_cmd = [
             "ffmpeg", "-y", "-nostdin",
-            "-ss", str(start_offset),
+            "-ss", str(smart_offset),
             "-i", raw_path,
             "-t", str(duration + 1.0),
             "-c:v", "libx264", "-preset", "fast", "-crf", "23",
@@ -202,7 +386,7 @@ def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: flo
         ]
         r = subprocess.run(trim_cmd, capture_output=True, timeout=60)
         if r.returncode == 0 and os.path.exists(cache_path) and os.path.getsize(cache_path) > 10_000:
-            log.info("[BROLL_AGENT] Saved: %s", cache_key)
+            log.info("[BROLL_AGENT] Saved: %s (Smart Center Cut @ %.1fs)", cache_key, smart_offset)
             return cache_path
         else:
             log.warning("[BROLL_AGENT] ffmpeg trim failed: %s", r.stderr[-300:].decode("utf-8", errors="ignore"))
@@ -246,9 +430,26 @@ def find_cinematic_broll_cuts(
     sample_starts = [float(s.get("start", 0)) for s in transcript_window if s.get("text")]
     _is_relative  = bool(sample_starts) and (max(sample_starts) < clip_duration * 2)
 
+    # Attempt to extract original YouTube video title from folder name (11-char ID)
+    original_title = None
+    try:
+        parent_dir = os.path.basename(os.path.dirname(os.path.abspath(clip_path)))
+        if len(parent_dir) == 11 and re.match(r'^[A-Za-z0-9_-]+$', parent_dir):
+            log.info("[BROLL_AGENT] Detected YouTube ID %s in path. Fetching title...", parent_dir)
+            yt_cmd = [sys.executable, "-m", "yt_dlp", "--get-title", f"https://youtube.com/watch?v={parent_dir}"]
+            r = subprocess.run(yt_cmd, capture_output=True, text=True, timeout=10)
+            if r.returncode == 0 and r.stdout.strip():
+                original_title = r.stdout.strip()
+                log.info("[BROLL_AGENT] Original Video Title: %s", original_title)
+    except Exception as e:
+        log.warning("[BROLL_AGENT] Failed to fetch original video title: %s", e)
+
+
+
     candidates = []
     for i, seg in enumerate(transcript_window):
         t_rel = float(seg.get("start", 0)) if _is_relative else (float(seg.get("start", 0)))
+        t_rel = max(0.0, t_rel - 0.5)  # Shift B-Roll backward by 0.5s to lead the word
         text  = seg.get("text", "").strip()
         if not text or t_rel < hook_end or t_rel + cut_duration_s > cta_start:
             continue
@@ -261,18 +462,32 @@ def find_cinematic_broll_cuts(
             ctx_parts.append(transcript_window[i+1].get("text", ""))
         rich_text = " ".join(ctx_parts).strip()
 
-        candidates.append({"t": t_rel, "text": rich_text, "word_count": len(rich_text.split())})
+        score = len(rich_text.split())
+        # Boost score heavily for capitalized words (names, brands, places)
+        words = rich_text.split()
+        proper_nouns = [w for i, w in enumerate(words) if i > 0 and w and w[0].isupper()]
+        score += len(proper_nouns) * 10
+        # Boost for strong emotion/impact
+        if "!" in rich_text or "?" in rich_text:
+            score += 5
+
+        candidates.append({"t": t_rel, "text": rich_text, "score": score, "idx": i})
 
     if not candidates:
         return []
 
-    candidates.sort(key=lambda x: -x["word_count"])
+    # Sort by our new intelligence score
+    candidates.sort(key=lambda x: -x["score"])
+
+    # Dynamically calculate gap to force B-rolls to spread evenly across the video
+    valid_duration = cta_start - hook_end
+    dynamic_gap = max(min_cut_gap_s, valid_duration / (max_cuts + 1.5))
 
     selected_moments, selected_times = [], []
     for c in candidates:
         if len(selected_moments) >= max_cuts:
             break
-        if any(abs(c["t"] - st) < min_cut_gap_s for st in selected_times):
+        if any(abs(c["t"] - st) < dynamic_gap for st in selected_times):
             continue
         selected_moments.append(c)
         selected_times.append(c["t"])
@@ -281,25 +496,72 @@ def find_cinematic_broll_cuts(
         return []
 
     results: List[Tuple[float, str, float]] = []
+    broll_region_h = output_height // 2  # B-Roll target height = bottom half
+    used_assets: set = set()       # Track committed cache file paths
+    used_wiki_urls: set = set()    # Track committed Wikipedia source URLs (prevents same image with different query names)
+
     for moment in selected_moments:
-        queries = _get_broll_queries(moment["text"], context)
+        # Build LOCAL context: ±2 segments around this moment (prevents cross-moment proper noun bleeding)
+        seg_idx = moment.get("idx", 0)
+        local_segs = transcript_window[max(0, seg_idx - 2): seg_idx + 3]
+        local_text = " | ".join(s.get("text", "") for s in local_segs if s.get("text")).strip()
+        # Full story is background context; local_text is what the LLM must match B-roll to
+        combined_context = f"[STORY BACKGROUND]: {context[:600]}\n\n[NEARBY SENTENCES at this moment]: {local_text}"
+        queries = _get_broll_queries(moment["text"], combined_context, original_title=original_title)
         log.info("[BROLL_AGENT] t=%.2fs | LLM queries: %s", moment["t"], queries)
 
         asset_path = None
         for q in queries:
             if not q:
                 continue
-            start_offset = random.uniform(5, 25)
-            asset_path = _download_youtube_clip(q, duration=cut_duration_s + 1.0,
-                                                start_offset=start_offset,
-                                                width=output_width, height=output_height)
-            if asset_path:
+
+            # PRE-CHECK: Resolve Wikipedia URL BEFORE downloading.
+            # If the same Wikipedia image was already committed, skip image and go straight to video.
+            wiki_url = _wikipedia_image_url(q)
+            wiki_key = wiki_url[:80] if wiki_url else None
+            if wiki_url and wiki_key in used_wiki_urls:
+                log.warning("[BROLL_AGENT] Wikipedia image already used (different query, same photo) for: %s — skipping to video", q)
+                # Go directly to video fallback for this query
+                log.info("[BROLL_AGENT] Trying Short instead: %s", q)
+                start_offset = random.uniform(2, 8)
+                candidate = _download_youtube_clip(q, duration=cut_duration_s + 1.0,
+                                                   start_offset=start_offset,
+                                                   width=output_width, height=output_height)
+                if candidate and candidate not in used_assets:
+                    asset_path = candidate
+                    break
+                continue
+
+            # PRIMARY: Google Images + Ken Burns (fast, exact scene)
+            log.info("[BROLL_AGENT] Trying image for: %s", q)
+            candidate = _download_image_broll(q, duration=cut_duration_s, width=output_width, broll_height=broll_region_h)
+            if candidate and candidate not in used_assets:
+                asset_path = candidate
+                log.info("[BROLL_AGENT] Got image B-Roll for: %s", q)
+                if wiki_key:
+                    used_wiki_urls.add(wiki_key)
                 break
+            elif candidate and candidate in used_assets:
+                log.warning("[BROLL_AGENT] Skipping duplicate cached file for: %s — trying next query", q)
+                continue
+
+            # FALLBACK: YouTube Short
+            log.info("[BROLL_AGENT] Image failed, trying Short: %s", q)
+            start_offset = random.uniform(2, 8)
+            candidate = _download_youtube_clip(q, duration=cut_duration_s + 1.0,
+                                               start_offset=start_offset,
+                                               width=output_width, height=output_height)
+            if candidate and candidate not in used_assets:
+                asset_path = candidate
+                break
+            elif candidate and candidate in used_assets:
+                log.warning("[BROLL_AGENT] Skipping duplicate short for: %s — trying next query", q)
 
         if not asset_path:
-            log.warning("[BROLL_AGENT] No download for: %s", moment["text"][:60])
+            log.warning("[BROLL_AGENT] No unique download for: %s", moment["text"][:60])
             continue
 
+        used_assets.add(asset_path)
         results.append((moment["t"], asset_path, cut_duration_s))
         print(f"  [BROLL_AGENT] t={moment['t']:.1f}s -> {os.path.basename(asset_path)}", flush=True)
         time.sleep(0.5)
@@ -350,8 +612,6 @@ def _transcribe_clip(clip_path: str) -> List[dict]:
                 t += chunk
             log.info("[BROLL_AGENT] Used caption.txt (%d pseudo-segments)", len(segs))
             return segs
-
-    # --- Strategy 2: Gemini Audio API ---
     try:
         from google import genai
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -406,6 +666,23 @@ def _transcribe_clip(clip_path: str) -> List[dict]:
 
 # -- Overlay Engine ------------------------------------------------------------
 
+def get_cinematic_broll_filter(width: int, height: int, fade_dur: float = 0.0, total_dur: float = 0.0, target_height: int = 0) -> str:
+    """
+    Concrete resizing function to fit B-roll into a sub-region of the vertical screen.
+    target_height: the region height (e.g. height//2 for bottom half). Defaults to full height.
+    Uses letterboxing (decrease + pad) so no extreme zoom/crop.
+    """
+    th = target_height if target_height > 0 else height
+    f_str = (
+        f"scale={width}:{th}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{th}:(ow-iw)/2:(oh-ih)/2:black,"
+        f"fps=30"
+    )
+    if fade_dur > 0 and total_dur > 0:
+        f_out = total_dur - fade_dur
+        f_str += f",format=yuv420p,fade=t=in:st=0:d={fade_dur:.3f},fade=t=out:st={f_out:.3f}:d={fade_dur:.3f}"
+    return f_str
+
 def _overlay_broll_on_clip(clip_path: str, broll_cuts: List[Tuple[float, str, float]], output_path: str) -> bool:
     if not broll_cuts:
         shutil.copy2(clip_path, output_path)
@@ -425,6 +702,10 @@ def _overlay_broll_on_clip(clip_path: str, broll_cuts: List[Tuple[float, str, fl
     except Exception:
         pass
 
+    # B-roll goes in the BOTTOM half only — speaker face stays on top
+    broll_region_h = height // 2
+    broll_y_offset  = height - broll_region_h  # = height//2
+
     inputs = ["ffmpeg", "-y", "-nostdin", "-i", clip_path]
     for _, asset_path, dur in broll_cuts:
         inputs.extend(["-ss", "0", "-t", str(dur + 0.3), "-i", asset_path])
@@ -434,13 +715,12 @@ def _overlay_broll_on_clip(clip_path: str, broll_cuts: List[Tuple[float, str, fl
     for idx, (t_start, _, dur) in enumerate(broll_cuts):
         br = f"br{idx}"
         ov = f"ov{idx}"
-        fc_parts.append(
-            f"[{idx+1}:v]setpts=PTS-STARTPTS+{t_start}/TB,scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},fps=30[{br}]"
-        )
+        # Scale asset to fill ONLY the bottom half region
+        base_f = get_cinematic_broll_filter(width, height, target_height=broll_region_h)
+        fc_parts.append(f"[{idx+1}:v]setpts=PTS-STARTPTS+{t_start}/TB,{base_f}[{br}]")
         t_end = t_start + dur
         fc_parts.append(
-            f"[{prev_pad}][{br}]overlay=x=0:y=0:enable='between(t,{t_start:.3f},{t_end:.3f})':eof_action=pass[{ov}]"
+            f"[{prev_pad}][{br}]overlay=x=0:y={broll_y_offset}:enable='between(t,{t_start:.3f},{t_end:.3f})':eof_action=pass[{ov}]"
         )
         prev_pad = ov
 
