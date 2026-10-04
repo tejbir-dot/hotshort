@@ -137,16 +137,18 @@ CRITICAL RULES — FOLLOW IN EXACT ORDER:
    - WRONG: "parents watching son sports match"
     - RIGHT: "parents watching son UFC MMA fight nervously"
 7. RESOLVE PRONOUNS ('he', 'she', 'they') by using the ORIGINAL VIDEO TITLE context. Always use the actual person's name (e.g. Justin Gaethje, Khabib) in your queries instead of generic pronouns or terms like 'MMA fighter'.
-8. If no proper noun exists in the current sentence, describe the EXACT visual scene being implied.
+8. If a CAMPAIGN/PODCAST NAME is provided, use it to understand the general context (e.g. if Campaign is "Double_coverage_Podcast", it is an NFL American Football podcast).
+9. If no proper noun exists in the current sentence, describe the EXACT visual scene being implied.
 - Format: ONLY a valid JSON array. Nothing else. No explanation.
 - Output EXACTLY: ["query one", "query two"]'''
 
 
-def _get_broll_queries(segment_text: str, clip_context: str, original_title: str = None) -> List[str]:
-    title_str = f"ORIGINAL VIDEO TITLE: {original_title}\n\n" if original_title else ""
+def _get_broll_queries(segment_text: str, clip_context: str, original_title: str = None, campaign_name: str = None) -> List[str]:
+    title_str = f"ORIGINAL VIDEO TITLE: {original_title}\n" if original_title else ""
+    campaign_str = f"CAMPAIGN/PODCAST NAME: {campaign_name}\n\n" if campaign_name else "\n"
     prompt = _DIRECTOR_PROMPT.format(
         segment_text=segment_text[:600],
-        clip_context=title_str + clip_context[:2000],  # Full transcript, not just 800 chars
+        clip_context=title_str + campaign_str + clip_context[:2000],  # Full transcript, not just 800 chars
     )
     raw = _ask_gemini(prompt)
     if not raw:
@@ -444,6 +446,19 @@ def find_cinematic_broll_cuts(
     except Exception as e:
         log.warning("[BROLL_AGENT] Failed to fetch original video title: %s", e)
 
+    # Attempt to read campaign/metadata from clip's .meta.json file
+    campaign_name = None
+    try:
+        meta_path = clip_path.replace(".mp4", ".meta.json")
+        if os.path.exists(meta_path):
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta_data = json.load(f)
+                campaign_name = meta_data.get("campaign")
+                if campaign_name:
+                    log.info("[BROLL_AGENT] Loaded Campaign Context: %s", campaign_name)
+    except Exception as e:
+        log.warning("[BROLL_AGENT] Failed to load meta.json: %s", e)
+
 
 
     candidates = []
@@ -507,7 +522,7 @@ def find_cinematic_broll_cuts(
         local_text = " | ".join(s.get("text", "") for s in local_segs if s.get("text")).strip()
         # Full story is background context; local_text is what the LLM must match B-roll to
         combined_context = f"[STORY BACKGROUND]: {context[:600]}\n\n[NEARBY SENTENCES at this moment]: {local_text}"
-        queries = _get_broll_queries(moment["text"], combined_context, original_title=original_title)
+        queries = _get_broll_queries(moment["text"], combined_context, original_title=original_title, campaign_name=campaign_name)
         log.info("[BROLL_AGENT] t=%.2fs | LLM queries: %s", moment["t"], queries)
 
         asset_path = None
