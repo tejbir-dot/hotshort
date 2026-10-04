@@ -139,6 +139,8 @@ CRITICAL RULES — FOLLOW IN EXACT ORDER:
 7. RESOLVE PRONOUNS ('he', 'she', 'they') by using the ORIGINAL VIDEO TITLE context. Always use the actual person's name (e.g. Justin Gaethje, Khabib) in your queries instead of generic pronouns or terms like 'MMA fighter'.
 8. If a CAMPAIGN/PODCAST NAME is provided, use it to understand the general context (e.g. if Campaign is "Double_coverage_Podcast", it is an NFL American Football podcast).
 9. If no proper noun exists in the current sentence, describe the EXACT visual scene being implied.
+10. FIGHT MOMENT PRECISION: If the speaker is discussing a specific FIGHT or EVENT, YOU MUST include the exact name of the event, the opponent (if mentioned), and the year (if known). DO NOT use generic terms like 'UFC fight'. Use specific terms like 'Jon Jones vs Shamil Abdurakhimov UFC 285 walkout'.
+11. ACTION VERB RULE: For video queries, prioritize action verbs described in the transcript. If the speaker says 'he knocked him out', the query should be '[Guest Name] knockout [Opponent Name] exact moment'.
 - Format: ONLY a valid JSON array. Nothing else. No explanation.
 - Output EXACTLY: ["query one", "query two"]'''
 
@@ -327,7 +329,7 @@ def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: flo
     tmpdir = tempfile.mkdtemp()
     try:
         dl_template = os.path.join(tmpdir, "raw.%(ext)s")
-        short_query = f"{query} #shorts"
+        short_query = f"{query} -edit -meme -tiktok -sigma -reaction"
         # Reject meme/reaction junk before downloading — check title against blocklist
         blocklist_filter = " & ".join(
             f"title !*= '{word}'" for word in _BROLL_TITLE_BLOCKLIST
