@@ -332,16 +332,17 @@ def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: flo
         blocklist_filter = " & ".join(
             f"title !*= '{word}'" for word in _BROLL_TITLE_BLOCKLIST
         )
-        match_filter = f"duration < 45 & {blocklist_filter}"
+        match_filter = f"duration < 300 & {blocklist_filter}"
         yt_cmd = [
             sys.executable, "-m", "yt_dlp", "--no-playlist", "--max-downloads", "1",
             "--js-runtimes", "node",
+            "--cookies", r"c:\Users\n\Documents\hotshort\cookies.txt",
             "--match-filter", match_filter,
             "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
             "--merge-output-format", "mp4",
             "--no-warnings",
             "-o", dl_template,
-            f"ytsearch5:{short_query}",
+            f"ytsearch10:{short_query}",
         ]
         log.info("[BROLL_AGENT] Downloading Short: %s", short_query)
         yt_run = subprocess.run(yt_cmd, capture_output=True, timeout=_DL_TIMEOUT)
@@ -438,7 +439,7 @@ def find_cinematic_broll_cuts(
         parent_dir = os.path.basename(os.path.dirname(os.path.abspath(clip_path)))
         if len(parent_dir) == 11 and re.match(r'^[A-Za-z0-9_-]+$', parent_dir):
             log.info("[BROLL_AGENT] Detected YouTube ID %s in path. Fetching title...", parent_dir)
-            yt_cmd = [sys.executable, "-m", "yt_dlp", "--get-title", f"https://youtube.com/watch?v={parent_dir}"]
+            yt_cmd = [sys.executable, "-m", "yt_dlp", "--cookies", r"c:\Users\n\Documents\hotshort\cookies.txt", "--get-title", f"https://youtube.com/watch?v={parent_dir}"]
             r = subprocess.run(yt_cmd, capture_output=True, text=True, timeout=10)
             if r.returncode == 0 and r.stdout.strip():
                 original_title = r.stdout.strip()
@@ -638,7 +639,7 @@ def _transcribe_clip(clip_path: str) -> List[dict]:
                 capture_output=True, timeout=30
             )
             if os.path.exists(tmp_wav):
-                audio_file = client.files.upload(path=tmp_wav)
+                audio_file = client.files.upload(file=tmp_wav)
                 resp = client.models.generate_content(
                     model="gemini-1.5-flash",
                     contents=["Transcribe exactly what is spoken. Return only the spoken words as plain text.", audio_file]
