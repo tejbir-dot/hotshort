@@ -2808,9 +2808,15 @@ class ClipEditor:
         if config.enable_vignette:
             parts.append("vignette=angle=PI/5:mode=forward")
 
+        # ── Subtle Sharpening (pop the details for social media compression) ──
+        parts.append("unsharp=3:3:0.5")
+
+        # ── Cinematic Film Grain (organic temporal noise) ───────────────
+        parts.append("noise=alls=2:allf=t+u")
+
         grade_chain = ",".join(parts)
         log.info(
-            "[COLOR_GRADE] preset=%s vignette=%s",
+            "[COLOR_GRADE] preset=%s vignette=%s sharpened=True grain=True",
             preset, config.enable_vignette,
         )
         return grade_chain
@@ -4101,18 +4107,16 @@ class ClipEditor:
 
             if _broll_hs_enabled:
                 try:
-                    from effects.cinematic_broll_agent import find_cinematic_broll_cuts
-                    cortex_ctx = cortex_hints.get("narrative_context", "") if cortex_hints else ""
-                    _broll_cuts = find_cinematic_broll_cuts(
+                    from effects.smart_broll_matcher import find_broll_cuts
+                    cortex_kw = cortex_hints.get("broll_keywords", []) if cortex_hints else []
+                    _broll_cuts = find_broll_cuts(
                         transcript_window=transcript_window,
-                        clip_path=video_path,
+                        source_start=0.0,
                         clip_duration=ramped_duration,
-                        clip_context=cortex_ctx,
                         max_cuts=3,
-                        min_cut_gap_s=4.5,
+                        min_cut_gap_s=5.0,
                         cut_duration_s=2.5,
-                        output_width=out_width,
-                        output_height=out_height,
+                        cortex_keywords=cortex_kw,
                     )
                     if _broll_cuts:
                         _broll_paths     = [c[1] for c in _broll_cuts]
@@ -4566,14 +4570,10 @@ class ClipEditor:
                     #   setpts=PTS-STARTPTS  → reset pts after seek
                     #   scale+crop           → fit to target resolution (portrait 9:16)
                     #   fade in + fade out   → cinematic burn-on effect
-                    _clip_filter = (
-                        f"setpts=PTS-STARTPTS,"
-                        f"scale={_tw}:{_th}:force_original_aspect_ratio=increase,"
-                        f"crop={_tw}:{_th},"
-                        f"fps=30,format=yuv420p,"
-                        f"fade=t=in:st=0:d={_fd:.3f},"
-                        f"fade=t=out:st={_fade_out_start:.3f}:d={_fd:.3f}"
-                    )
+                    #   setpts=PTS+offset/TB → delay PTS to match the main video insertion time
+                    from effects.cinematic_broll_agent import get_cinematic_broll_filter
+                    _base_f = get_cinematic_broll_filter(_tw, _th, fade_dur=_fd, total_dur=_b_dur)
+                    _clip_filter = f"setpts=PTS-STARTPTS,{_base_f},setpts=PTS+{_b_start:.3f}/TB"
                     _broll_filter_parts.append(f"[{_idx}:v]{_clip_filter}[broll_v_{i}]")
 
                     _out_pad = "out_v_broll" if i == len(_broll_input_indices) - 1 else f"out_v_broll_tmp_{i}"
@@ -4661,7 +4661,8 @@ class ClipEditor:
                 for i, t_obj in enumerate(_transitions_to_apply):
                     vf_render += (
                         f";[{t_obj['leak']}:v]scale={trans_w}:{trans_h}:force_original_aspect_ratio=decrease,"
-                        f"pad={trans_w}:{trans_h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuva420p,colorchannelmixer=aa=0.85[hs_leak_v_{i}]"
+                        f"pad={trans_w}:{trans_h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuva420p,colorchannelmixer=aa=0.85,"
+                        f"setpts=PTS+{t_obj['t']:.3f}/TB[hs_leak_v_{i}]"
                         f";[{_post_trans_pad}][hs_leak_v_{i}]overlay=enable='between(t,{t_obj['t']:.3f},{t_obj['t']+1.0:.3f})':x=0:y=0:eof_action=pass[hs_v_trans_{i}]"
                     )
                     _post_trans_pad = f"hs_v_trans_{i}"

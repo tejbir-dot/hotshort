@@ -445,7 +445,7 @@ def analyze_curiosity_and_detect_punches(segments, aud=None, vis=None, brain=Non
             payoff_time, payoff_conf = None, 0.0
             try:
                 if "detect_payoff_end" in globals():
-                    payoff_time, payoff_conf = detect_payoff_end(feats, curiosity, s_idx, end_idx=e_idx_local)
+                    payoff_time, payoff_conf, _meta = detect_payoff_end(feats, curiosity, s_idx, end_idx=e_idx_local)
                 else:
                     payoff_time, payoff_conf = None, 0.0
             except Exception:
@@ -721,6 +721,13 @@ def same_thought(current_text_window: str,
 
     if closure_hit:
         return False
+        
+    # FIX: Never break an arc in the middle of a sentence!
+    # If the previous text does NOT end with a period, question mark, or exclamation point,
+    # force the arc to stay open so we don't chop sentences in half.
+    if prev_low and not prev_low.endswith(('.', '?', '!', '...')):
+        return True
+        
     if gap_seconds > max_gap and sim < (sim_threshold + 0.12):
         return False
     if contrast and sim < (sim_threshold + 0.15):
@@ -760,21 +767,76 @@ def sentence_complete_extend(start_t: float,
                              transcript: List[Dict],
                              max_extend: float = 6.0) -> float:
     """
-    Extend clip end to complete the current sentence if end_t cuts mid-sentence.
-    Human-like polish layer.
+    Extend clip end to complete the current sentence by finding the next punctuation mark.
     """
     if not transcript:
         return end_t
 
-    for seg in transcript:
+    for i, seg in enumerate(transcript):
+        ts = float(seg.get("start", 0.0))
+        te = float(seg.get("end", ts))
+        txt = str(seg.get("text", "")).strip()
+
+        if te >= end_t:
+            # Check if this segment ends with punctuation
+            if txt.endswith(('.', '?', '!', '...')):
+                return min(round(te, 2), end_t + max_extend)
+            
+            # If not, look ahead at the next few segments
+            for j in range(i + 1, min(len(transcript), i + 4)):
+                next_te = float(transcript[j].get("end", transcript[j].get("start", 0.0)))
+                next_txt = str(transcript[j].get("text", "")).strip()
+                if next_txt.endswith(('.', '?', '!', '...')):
+                    return min(round(next_te, 2), end_t + max_extend)
+
+            # If no punctuation found nearby, just return the current segment end
+            return min(round(te, 2), end_t + max_extend)
+
+    return end_t
+
+def sentence_start_snap(start_t: float,
+                        transcript: List[Dict],
+                        max_rewind: float = 6.0) -> float:
+    """
+    Rewind clip start to the beginning of the sentence by finding the previous punctuation mark.
+    """
+    if not transcript:
+        return start_t
+
+    best_start = start_t
+    for i, seg in enumerate(transcript):
         ts = float(seg.get("start", 0.0))
         te = float(seg.get("end", ts))
 
-        if ts < end_t < te:
-            extra = min(te - end_t, max_extend)
-            return round(end_t + extra, 2)
+        # We found the segment where the clip starts
+        if ts <= start_t <= te + 0.5:
+            # Check if the PREVIOUS segment ended a sentence
+            if i > 0:
+                prev_txt = str(transcript[i-1].get("text", "")).strip()
+                prev_te = float(transcript[i-1].get("end", 0.0))
+                # If the previous segment ended a sentence, then THIS segment (ts) is a valid start
+                if prev_txt.endswith(('.', '?', '!', '...')):
+                    return max(0.0, round(ts, 2))
+                
+                # If not, walk backward to find the last valid sentence boundary
+                # Allow a deeper lookback (e.g. 15 segments) to handle long run-on sentences without punctuation
+                for j in range(i - 1, max(-1, i - 15), -1):
+                    walk_txt = str(transcript[j].get("text", "")).strip()
+                    walk_ts = float(transcript[j+1].get("start", 0.0)) if (j+1 < len(transcript)) else ts
+                    
+                    if walk_txt.endswith(('.', '?', '!', '...')):
+                        # If the sentence boundary is further back than max_rewind, cap it at max_rewind
+                        return max(round(walk_ts, 2), start_t - max_rewind)
+                        
+                    # Stop looking if we've already exceeded the max rewind limit by a lot
+                    if (start_t - walk_ts) > (max_rewind + 5.0):
+                        break
+                        
+            # If we are at the very first segment, it's a valid start
+            if i == 0:
+                return max(0.0, round(ts, 2))
 
-    return end_t
+    return start_t
 
 def opens_new_obligation(text: str) -> bool:
     if not text:
@@ -2063,17 +2125,21 @@ def build_idea_graph(
         # Dense transcripts often have low overlap between micro-segments while still staying on one idea.
         max_gap = min(2.0, max(0.8, avg_seg_dur * 2.0))
         if sem_drift < SEM_DRIFT_BREAK and gap > max_gap:
-            # semantic drift -> close arc
-            log.debug("[IDEA] drift break at seg=%d overlap=%.2f gap=%.2f", i, sem_drift, gap)
-            segs = transcript[cur_s:cur_e + 1]
-            txt = " ".join(s.get("text", "") for s in segs).strip()
-            start_t = float(transcript[cur_s].get("start", 0.0))
-            end_t = float(transcript[cur_e].get("end", start_t + 0.01))
-            arcs.append((cur_s, cur_e, start_t, end_t, txt, segs))
-            cur_s = i
-            cur_e = i
-            cur_text_window = texts[i]
-            continue
+            # FIX: Never break an arc in the middle of a sentence!
+            if cur_text_window and not cur_text_window.strip().endswith(('.', '?', '!', '...')):
+                pass  # Let it fall through to same_thought logic
+            else:
+                # semantic drift -> close arc
+                log.debug("[IDEA] drift break at seg=%d overlap=%.2f gap=%.2f", i, sem_drift, gap)
+                segs = transcript[cur_s:cur_e + 1]
+                txt = " ".join(s.get("text", "") for s in segs).strip()
+                start_t = float(transcript[cur_s].get("start", 0.0))
+                end_t = float(transcript[cur_e].get("end", start_t + 0.01))
+                arcs.append((cur_s, cur_e, start_t, end_t, txt, segs))
+                cur_s = i
+                cur_e = i
+                cur_text_window = texts[i]
+                continue
 
         if same_thought(cur_text_window, texts[i], gap, avg_seg_dur, N):
             cur_e = i
@@ -3074,6 +3140,7 @@ def _select_candidate_clips_v2(
     if ensure_sentence_complete and transcript_items:
         for cand in final:
             try:
+                cand["start"] = float(sentence_start_snap(cand["start"], transcript_items))
                 cand["end"] = float(sentence_complete_extend(cand["start"], cand["end"], transcript_items))
             except Exception:
                 pass
@@ -3193,6 +3260,9 @@ def _apply_final_filtering(
         transcript_items = transcript or []
         for cand in final:
             try:
+                cand["start"] = float(sentence_start_snap(
+                    cand["start"], transcript_items
+                ))
                 cand["end"] = float(sentence_complete_extend(
                     cand["start"], cand["end"], transcript_items
                 ))
