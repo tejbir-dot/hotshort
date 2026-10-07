@@ -480,6 +480,8 @@ for _a in ASSET_INTENTS:
 # CORE: Direct Asset Scorer
 # -----------------------------------------------------------------------------
 
+import random
+
 def _score_asset_for_text(text: str, asset: dict) -> float:
     """
     Score relevance between spoken text and a single asset.
@@ -551,6 +553,83 @@ def find_broll_cuts(
         "RELATIVE" if _is_relative else "ABSOLUTE",
         len(transcript_window), source_start, clip_duration, len(_RESOLVED_INTENTS)
     )
+
+    # --- AI B-ROLL AGENT (SEMANTIC INTENT MATCHING) ---
+    try:
+        import json
+        from effects.cinematic_broll_agent import _ask_llm
+        
+        ts_lines = []
+        for seg in transcript_window:
+            t_start = float(seg.get("start", 0))
+            text = seg.get("text", "").strip()
+            if text:
+                clip_rel_start = t_start if _is_relative else (t_start - source_start)
+                if 3.0 <= clip_rel_start <= clip_duration - cut_duration_s - 1.0:
+                    ts_lines.append(f"[{clip_rel_start:.1f}] {text}")
+        
+        if ts_lines:
+            transcript_text = "\n".join(ts_lines)
+            catalog_lines = [f"Path: \"{a['path']}\" | Visuals: {', '.join(a['intent'])}" for a in ASSET_INTENTS]
+            catalog_text = "\n".join(catalog_lines)
+            
+            prompt = f"""You are a professional B-Roll video editor.
+Select the {max_cuts} BEST moments to insert B-Roll into this video transcript.
+The B-Roll MUST accurately match the exact semantic meaning and intent of the speaker's sentence.
+
+AVAILABLE LOCAL ASSETS:
+{catalog_text}
+
+TRANSCRIPT (with timestamps in seconds):
+{transcript_text}
+
+RULES:
+1. Return ONLY a valid JSON array of objects, nothing else.
+2. Ensure cuts are spaced at least {min_cut_gap_s} seconds apart.
+3. Use the exact 'Path' from the available assets list.
+
+Example Output format:
+[
+  {{"time": 15.2, "path": "money_assets/win.mp4"}},
+  {{"time": 25.5, "path": "money_assets/deep work.mp4"}}
+]"""
+            log.info("[SMART_BROLL] Asking LLM Agent for semantic B-Roll selection...")
+            llm_resp = _ask_llm(prompt)
+            if llm_resp:
+                llm_resp = llm_resp.strip()
+                if llm_resp.startswith("```json"): llm_resp = llm_resp[7:]
+                if llm_resp.startswith("```"): llm_resp = llm_resp[3:]
+                if llm_resp.endswith("```"): llm_resp = llm_resp[:-3]
+                
+                data = json.loads(llm_resp.strip())
+                selected = []
+                for item in data:
+                    t = float(item["time"])
+                    rel_path = item["path"]
+                    
+                    full_path = None
+                    for a in _RESOLVED_INTENTS:
+                        if a["path"] == rel_path or a["full_path"].endswith(rel_path.replace("/", os.sep)):
+                            full_path = a["full_path"]
+                            break
+                            
+                    if full_path:
+                        selected.append((t, full_path, cut_duration_s))
+                
+                if selected:
+                    selected.sort(key=lambda x: x[0])
+                    final_sel = []
+                    last_t = -999
+                    for t, path, dur in selected:
+                        if t - last_t >= min_cut_gap_s:
+                            final_sel.append((t, path, dur))
+                            last_t = t
+                    if final_sel:
+                        log.info("[SMART_BROLL] LLM Agent successfully selected %d cuts!", len(final_sel))
+                        return final_sel[:max_cuts]
+    except Exception as e:
+        log.warning("[SMART_BROLL] LLM Agent failed: %s. Falling back to keyword matcher.", e)
+    # -------------------------------------------------
 
     candidates = []
     for i, seg in enumerate(transcript_window):
