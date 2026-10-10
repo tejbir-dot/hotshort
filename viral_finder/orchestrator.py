@@ -1136,6 +1136,8 @@ def _record_stage(ctx: PipelineContext, stage: str, **stats: Any) -> None:
     ctx.stage_stats[stage] = stats
     compact = " ".join([f"{k}={v}" for k, v in stats.items()])
     log.info("[ORCH][%s] %s", stage, compact)
+    if "wall_s" in stats:
+        print(f"[L1_{stage}] wall_s={stats['wall_s']}", flush=True)
 
 
 def _rank_score(candidate: Dict[str, Any], *keys: str) -> float:
@@ -1925,42 +1927,23 @@ def _inject_unmatched_trigger_candidates(ctx: "PipelineContext") -> None:
             earliest_start = float(best_trigger.get("start", 0.0))
             latest_end = float(best_trigger.get("end", 0.0))
             
-            target_dur = float(getattr(ctx, "target_min", 30.0))
-            back_target = max(8.0, target_dur * 0.3)
-            fwd_target = max(12.0, target_dur * 0.7)
+            # Use robust sentence boundary snapping from idea_graph.py
+            from viral_finder.idea_graph import sentence_start_snap, sentence_complete_extend
             
-            # Sentence-aware START: walk backward
-            best_start = earliest_start
-            for seg in reversed(transcript):
-                seg_end = float(seg.get("end", 0.0) or 0.0)
-                seg_start = float(seg.get("start", 0.0) or 0.0)
-                if seg_end > earliest_start:
-                    continue
-                seg_text = str(seg.get("text", "") or "").strip()
-                # Break ONLY if we reached the target duration AND a sentence boundary, or hard stop
-                if (earliest_start - seg_start) >= back_target and seg_text.endswith(('.', '!', '?', '...')):
-                    best_start = seg_start
-                    break
-                elif (earliest_start - seg_start) > back_target + 10.0:
-                    best_start = seg_start
-                    break
+            # Snap start to a true sentence boundary
+            # Pass the trigger start time. It will rewind to find the beginning of that sentence.
+            # Give it a wide rewind window to catch long sentences.
+            clip_start = float(sentence_start_snap(earliest_start, transcript, max_rewind=20.0))
             
-            # Sentence-aware END: walk forward
-            best_end = latest_end
-            for seg in transcript:
-                seg_start = float(seg.get("start", 0.0) or 0.0)
-                seg_end = float(seg.get("end", 0.0) or 0.0)
-                if seg_start < latest_end:
-                    continue
-                seg_text = str(seg.get("text", "") or "").strip()
-                best_end = seg_end
-                if (seg_end - latest_end) >= fwd_target and seg_text.endswith(('.', '!', '?', '...')):
-                    break
-                elif (seg_end - latest_end) > fwd_target + 10.0:
-                    break
+            # For the end, first calculate a reasonable target end
+            target_dur_s = max(35.0, min(90.0, float(getattr(ctx, "target_dur", 60.0))))
+            target_end = min(media_end, clip_start + target_dur_s)
             
-            clip_start = max(0.0, best_start)
-            clip_end = min(media_end, best_end)
+            # Snap end to complete the sentence at the target end
+            clip_end = float(sentence_complete_extend(clip_start, target_end, transcript))
+            
+            clip_start = max(0.0, clip_start)
+            clip_end = min(media_end, clip_end)
             
             clip_text = " ".join(
                 str(s.get("text", "")).strip()
@@ -4657,10 +4640,9 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
                             except ValueError:
                                 conf = 0.0
                                 
-                            # A surgeon may critique an anchor, but it cannot
-                            # mutate the hook selected by L6C.  Keep the legacy
-                            # repair path opt-in for forensic experiments only.
-                            if dec == "MOVE_HOOK" and _env_bool("HS_ENABLE_LEGACY_SURGEON_HOOK_MUTATION", False):
+                            # We are allowing the Surgeon to mutate the hook timestamp because 
+                            # the base L6C engine frequently breaks sentences in half.
+                            if dec == "MOVE_HOOK":
                                 try:
                                     hook_idx = int(surgeon.get("hook_segment_index", -1))
                                 except ValueError:

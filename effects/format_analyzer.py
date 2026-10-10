@@ -107,8 +107,14 @@ def detect_faces_multi_haar(gray, cv2_mod, scale_factor=1.1, min_neighbors=2, mi
     return merged
 
 def analyze_video_format(clip_path: str, start_s: float = 0.0, end_s: float = 0.0) -> VideoFormat:
-    """Single-pass video format classifier. 15 frame samples, multi-cascade scan.
-    Returns VideoFormat. Speed: ~0.3s on a typical 30s clip.
+    """Single-pass video format classifier.
+    Adaptive sampling: 20 frames for clips ≤30s, 30 frames for longer.
+    Returns VideoFormat. Speed: ~0.3-0.6s on a typical clip.
+
+    Decision signals used (in priority order):
+    1. co_occurrence   — 2 faces simultaneously on screen (hard proof)
+    2. alternating     — single face rapidly switching L↔R (strong podcast signal)
+    3. bimodal_spread  — face positions cluster on both sides (soft corroboration)
     """
     _null = VideoFormat(
         format_type="monologue", director_mode=DirectorMode.SINGLE_CENTERED, face_count_avg=1.0,
@@ -122,14 +128,22 @@ def analyze_video_format(clip_path: str, start_s: float = 0.0, end_s: float = 0.
         return _null
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    
+
     start_frame = int(start_s * fps)
     end_frame = int(end_s * fps) if end_s > start_s else int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1000.0)
-    total_frames = max(15, end_frame - start_frame)
-    step = max(1, int(total_frames / 15))
+    total_frames = max(20, end_frame - start_frame)
+
+    # ── Adaptive sample count: more frames = more accurate detection ──────────
+    clip_dur_s = total_frames / fps
+    n_samples = 30 if clip_dur_s > 30 else 20   # was hardcoded 15
+    step = max(1, int(total_frames / n_samples))
 
     samples = []
-    sample_indices = [start_frame + int(i * step) for i in range(15)]
+    # CTO Fix: Interleave samples so the first 6 cover the entire clip duration evenly
+    base_indices = [start_frame + int(i * step) for i in range(n_samples)]
+    first_pass = base_indices[0::max(1, n_samples // 6)][:6]
+    rest = [idx for idx in base_indices if idx not in first_pass]
+    sample_indices = first_pass + rest
 
     try:
         for target_frame in sample_indices:
@@ -143,15 +157,25 @@ def analyze_video_format(clip_path: str, start_s: float = 0.0, end_s: float = 0.
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             face_xs = []
-            
+
             if _INSIGHTFACE_ENABLED or _MEDIAPIPE_ENABLED:
                 faces = _detect_faces_best(frame, conf_threshold=0.40, min_size=(40, 40))
             else:
                 faces = detect_faces_multi_haar(gray, cv2, scale_factor=1.1, min_neighbors=2, min_size=(40, 40))
-                
+
             for (x, y, fw, fh) in faces:
                 face_xs.append((x + fw / 2.0) / float(w))
             samples.append((target_frame / fps, face_xs))
+            
+            # CTO Fix: Early exit for monologue (1 face, low variance) to save ~20 seeks
+            if len(samples) >= 6:
+                recent_samples = samples[-6:]
+                if all(len(s[1]) == 1 for s in recent_samples):
+                    recent_xs = [s[1][0] for s in recent_samples]
+                    mean_x = sum(recent_xs) / 6.0
+                    variance = sum((x - mean_x) ** 2 for x in recent_xs) / 6.0
+                    if variance < 0.002:
+                        break
     finally:
         cap.release()
 
@@ -169,45 +193,75 @@ def analyze_video_format(clip_path: str, start_s: float = 0.0, end_s: float = 0.
             speaker_positions=[0.5], face_switch_rate=0.0, samples=samples,
         )
 
-    frames_with_two_faces = 0
     total_sampled = len(samples)
+
+    # ── SIGNAL 1: Co-occurrence — 2+ faces simultaneously on screen ──────────
+    frames_with_two_faces = 0
     for _, faces in samples:
         if len(faces) >= 2:
-            faces.sort()
-            # check the gap between the two most prominent faces or just the first two
-            gap = abs(faces[1] - faces[0])
-            if gap > 0.15:
+            faces_sorted = sorted(faces)
+            gap = abs(faces_sorted[1] - faces_sorted[0])
+            if gap > 0.15:   # must be spatially separated (not one face detected twice)
                 frames_with_two_faces += 1
 
     co_occurrence_rate = frames_with_two_faces / total_sampled if total_sampled else 0
-    log.info(f"[CLASSIFY_DEBUG] clip={clip_path} avg_faces={avg_faces:.2f} "
-             f"co_occurrence_rate={co_occurrence_rate:.2f} "
-             f"frames_with_two_faces={frames_with_two_faces}/{total_sampled}")
 
+    # ── SIGNAL 2: Alternating speaker — single face rapidly switching L↔R ────
+    # This is the KEY missed signal: podcast editors cut between speakers,
+    # so you rarely see both faces at once — but positions alternate L/R fast.
+    single_face_sides = []
+    for _, faces in samples:
+        if len(faces) == 1:
+            single_face_sides.append("L" if faces[0] < 0.45 else ("R" if faces[0] > 0.55 else "C"))
+
+    alternating_switches = sum(
+        1 for i in range(1, len(single_face_sides))
+        if single_face_sides[i] != single_face_sides[i - 1]
+        and single_face_sides[i] != "C"
+        and single_face_sides[i - 1] != "C"
+    )
+    alternating_rate = alternating_switches / max(1, len(single_face_sides) - 1)
+
+    # ── SIGNAL 3: Bimodal spread — faces cluster on both halves ──────────────
     left_xs  = [x for x in all_xs if x < 0.45]
     right_xs = [x for x in all_xs if x > 0.55]
-    # is_bimodal alone is NOT sufficient — a single speaker turning head creates bimodal
-    # positions with low co_occurrence. Require BOTH signals to confirm two real speakers.
-    is_bimodal = len(left_xs) >= 2 and len(right_xs) >= 2  # raised from >=1 to >=2
+    is_bimodal = len(left_xs) >= 2 and len(right_xs) >= 2
 
-    # If we see 2 faces simultaneously in at least 2 frames (out of 15), it is 100% a podcast.
-    if (is_bimodal and co_occurrence_rate >= 0.10) or co_occurrence_rate >= 0.13:
+    log.info(
+        f"[CLASSIFY_DEBUG] clip={clip_path} avg_faces={avg_faces:.2f} "
+        f"co_occ={co_occurrence_rate:.2f} ({frames_with_two_faces}/{total_sampled}) "
+        f"alt_rate={alternating_rate:.2f} ({alternating_switches}/{max(1,len(single_face_sides)-1)}) "
+        f"bimodal={is_bimodal} left={len(left_xs)} right={len(right_xs)}"
+    )
+
+    # ── DECISION: podcast if any strong combination of signals fires ──────────
+    #
+    # Thresholds explained:
+    #   co_occ >= 0.07   → 2/30 or 1/15 frames show dual face = enough hard proof
+    #   bimodal + co_occ >= 0.07 → confirmed (was 0.10, too strict)
+    #   bimodal + alt_rate >= 0.35 → cut-to-cut podcast where faces are rarely simultaneous
+    #   alt_rate >= 0.50 + is_bimodal → very strong alternating signal alone
+    is_podcast = (
+        co_occurrence_rate >= 0.13                              # strong dual-face proof alone
+        or (is_bimodal and co_occurrence_rate >= 0.07)          # bimodal + soft dual-face
+        or (is_bimodal and alternating_rate >= 0.35)            # bimodal + fast L↔R switching
+        or (is_bimodal and alternating_rate >= 0.25 and co_occurrence_rate >= 0.04)  # both weak but agree
+    )
+
+    if is_podcast:
         lc = (sum(left_xs) / len(left_xs)) if left_xs else 0.30
         rc = (sum(right_xs) / len(right_xs)) if right_xs else 0.70
         spk_positions = [round(lc, 3), round(rc, 3)]
-        single_sides = [
-            "L" if faces[0] < 0.5 else "R"
-            for _, faces in samples if len(faces) == 1
-        ]
-        switches = sum(1 for i in range(1, len(single_sides)) if single_sides[i] != single_sides[i - 1])
         clip_dur = max(1.0, samples[-1][0] - samples[0][0])
+        switches_ps = alternating_switches / clip_dur
         log.info(
-            "[WCE-FORMAT] classified=podcast left=%.2f right=%.2f switches/s=%.2f avg_faces=%.2f co_occ=%.2f"
-            % (lc, rc, switches / clip_dur, avg_faces, co_occurrence_rate)
+            "[WCE-FORMAT] classified=podcast left=%.2f right=%.2f switches/s=%.2f avg_faces=%.2f "
+            "co_occ=%.2f alt_rate=%.2f"
+            % (lc, rc, switches_ps, avg_faces, co_occurrence_rate, alternating_rate)
         )
         return VideoFormat(
             format_type="podcast", director_mode=DirectorMode.PODCAST, face_count_avg=avg_faces,
-            speaker_positions=spk_positions, face_switch_rate=switches / clip_dur, samples=samples,
+            speaker_positions=spk_positions, face_switch_rate=switches_ps, samples=samples,
         )
 
     single_xs = [faces[0] for _, faces in samples if len(faces) == 1]
@@ -230,3 +284,5 @@ def analyze_video_format(clip_path: str, start_s: float = 0.0, end_s: float = 0.
         format_type="monologue", director_mode=DirectorMode.SINGLE_CENTERED, face_count_avg=avg_faces,
         speaker_positions=[median_x], face_switch_rate=0.0, samples=samples,
     )
+
+

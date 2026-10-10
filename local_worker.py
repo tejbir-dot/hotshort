@@ -1263,6 +1263,12 @@ class FaceCache:
 
                 start_frame = int(start * local_fps)
                 end_frame = int(end * local_fps)
+                
+                # CTO Fix: Monologue only needs 1 seek + 1 detect to init tracker.
+                # Do not decode the whole clip, preventing a 600s AV1 software decode bottleneck.
+                if fmt_type == "monologue":
+                    end_frame = start_frame + 1
+                    stride = 1
                 abs_results = {}
                 rel_results = {}
                 sampled = []
@@ -1475,6 +1481,17 @@ class FaceCache:
                                         best_raw_faces   = r_faces
                                     if best_valid_count >= 1:
                                         break
+                                        
+                            # CTO Fix: Synthetic entry if monologue detection completely fails
+                            if best_valid_count == 0 and fmt_type == "monologue" and clip_fmt and clip_fmt.speaker_positions:
+                                median_x = clip_fmt.speaker_positions[0]
+                                print(f"[FACE_CACHE] Monologue detect failed, using synthetic median_x={median_x:.3f}", flush=True)
+                                best_raw_faces = [{"x": median_x * ref_frame_w - 0.15 * ref_frame_w, 
+                                                   "y": 0.2 * ref_frame_h, 
+                                                   "w": 0.3 * ref_frame_w, 
+                                                   "h": 0.4 * ref_frame_h, 
+                                                   "score": 1.0}]
+                                best_valid_count = 1
 
                         t_face += time.perf_counter() - t0
 
@@ -1785,7 +1802,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
 
     print(f"[LOCAL_WORKER] dYZ Processing job {job_id}: {youtube_url[:80]}", flush=True)
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         video_path = os.path.join(tmp, "video.mp4")
 
         # "?"? Step 1: Handle Local Files vs Download "?"?
@@ -1908,6 +1925,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         c["focus_x"] = 0.5
                 else:
                     def _classify_one(clip):
+                        import time
+                        t_start = time.perf_counter()
                         s = float(clip.get("start", 0.0) or 0.0)
                         e = float(clip.get("end", s) or s)
                         fmt = analyze_video_format(video_path, s, e)
@@ -1928,9 +1947,10 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 fmt.speaker_positions = [0.25, 0.75]
                                 
                         clip["_fmt"] = fmt  # attach result so editor doesn't re-run
+                        clip["_stage3_time"] = time.perf_counter() - t_start
                         return clip, fmt
 
-                    _classify_workers = min(len(clips), 4)
+                    _classify_workers = max(1, min(len(clips), 4))
                     with ThreadPoolExecutor(max_workers=_classify_workers) as _pool:
                         _fmt_futures = {_pool.submit(_classify_one, c): c for c in clips}
                         for _fut in _fmt_futures:
@@ -1940,7 +1960,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             spk = _fmt.speaker_positions if _fmt else []
                             print(
                                 f"[FORMAT_CLASSIFY] {_clip.get('start',0):.0f}s-{_clip.get('end',0):.0f}s "
-                                f"mode={mode_name} avg_faces={faces_avg:.2f} speakers={spk}",
+                                f"mode={mode_name} avg_faces={faces_avg:.2f} speakers={spk} wall_s={_clip.get('_stage3_time', 0.0):.1f}",
                                 flush=True,
                             )
                             haar_clips.append(_clip)

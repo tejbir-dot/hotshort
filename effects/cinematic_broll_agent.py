@@ -60,41 +60,20 @@ def _ask_llm(prompt: str) -> Optional[str]:
     import requests as _req
 
     # --- Groq / OpenRouter FIRST ---
-    or_key  = os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY") or os.getenv("GPT_API", "")
-    or_base = os.getenv("HS_GROQ_API_BASE", "https://api.groq.com/openai/v1").rstrip("/")
-    if or_key:
-        for model in ["llama-3.1-70b-versatile", "qwen/qwen3.8-27b:free", "liquid/lfm-2.5-2.6b:free"]:
-            try:
-                r = _req.post(
-                    f"{or_base}/chat/completions",
-                    headers={"Authorization": f"Bearer {or_key}", "Content-Type": "application/json",
-                             "HTTP-Referer": "https://hotshort.app", "X-Title": "HotShort BRoll Agent"},
-                    json={"model": model, "max_tokens": 256, "temperature": 0.7,
-                          "messages": [{"role": "user", "content": prompt}]},
-                    timeout=25,
-                )
-                if r.status_code == 200:
-                    text = (r.json()["choices"][0]["message"].get("content") or "").strip()
-                    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
-                    if text and len(text) > 5:
-                        log.info("[BROLL_AGENT] LLM success via OpenRouter %s", model)
-                        return text
-                else:
-                    log.warning("[BROLL_AGENT] OpenRouter %s -> %s", model, r.status_code)
-            except Exception as e:
-                log.warning("[BROLL_AGENT] OpenRouter %s error: %s", model, e)
-
+    # Disabled: Keys were returning 401. Falling back to Gemini directly.
+    # or_key  = os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY") or os.getenv("GPT_API", "")
+    # ...
     # --- Gemini SDK FALLBACK ---
     try:
         from google import genai as _genai
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if api_key:
             _client = _genai.Client(api_key=api_key)
-            for model_name in ["gemini-3.8-flash", "gemini-3.5-flash-lite"]:
+            for model_name in ["gemini-3.5-flash", "gemini-3.5-flash-lite"]:
                 try:
                     resp = _client.models.generate_content(
                         model=model_name, contents=prompt,
-                        config={"temperature": 0.7, "max_output_tokens": 256},
+                        config={"temperature": 0.7, "max_output_tokens": 256, "response_mime_type": "application/json"},
                     )
                     text = (resp.text or "").strip()
                     if text:
@@ -340,6 +319,7 @@ def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: flo
             "--js-runtimes", "node",
             "--cookies", r"c:\Users\n\Documents\hotshort\cookies.txt",
             "--match-filter", match_filter,
+            "--write-auto-subs", "--sub-format", "vtt", "--sub-langs", "en",
             "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
             "--merge-output-format", "mp4",
             "--no-warnings",
@@ -374,10 +354,37 @@ def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: flo
         except Exception:
             raw_duration_sec = 15.0
 
-        # Calculate perfect center cut for the requested duration
-        center_offset = max(0.0, (raw_duration_sec / 2.0) - (duration / 2.0))
-        # If it's a very long clip, don't go deeper than 15s to avoid boring filler
-        smart_offset = min(center_offset, 15.0)
+        # --- THE SUBTITLE SNIPER & HOOK CUT FIX ---
+        smart_offset = 0.5 if raw_duration_sec > 2.0 else 0.0
+        try:
+            vtt_path = None
+            for f in os.listdir(tmpdir):
+                if f.endswith(".vtt"):
+                    vtt_path = os.path.join(tmpdir, f)
+                    break
+            
+            if vtt_path:
+                with open(vtt_path, "r", encoding="utf-8") as f:
+                    vtt_content = f.read()
+                
+                # High-impact action keywords
+                action_words = ["knockout", "sleep", "taps", "submission", "submits", "choke", "crank", "over", "wow", "hurt", "cold", "unbelievable", "crazy", "boom", "bam", "win"]
+                
+                # Match VTT blocks: 00:00:15.000 --> 00:00:17.000\nText
+                blocks = re.findall(r'(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}.*?\n(.*?)(?=\n\n|\Z)', vtt_content, re.DOTALL)
+                
+                for h, m, s, ms, text in blocks:
+                    text_lower = text.lower()
+                    if any(w in text_lower for w in action_words):
+                        sec = int(h) * 3600 + int(m) * 60 + int(s) + float(ms)/1000.0
+                        # Cut 1.5 seconds before the word is spoken to capture the wind-up
+                        new_offset = max(0.0, sec - 1.5)
+                        if new_offset + duration < raw_duration_sec:
+                            smart_offset = new_offset
+                            log.info("[BROLL_AGENT] Subtitle Sniper hit! Found '%s' at %.1fs", text.strip().replace('\n', ' '), sec)
+                            break
+        except Exception as e:
+            log.warning("[BROLL_AGENT] Subtitle parse failed: %s", e)
 
         trim_cmd = [
             "ffmpeg", "-y", "-nostdin",
@@ -391,7 +398,7 @@ def _download_youtube_clip(query: str, duration: float = 10.0, start_offset: flo
         ]
         r = subprocess.run(trim_cmd, capture_output=True, timeout=60)
         if r.returncode == 0 and os.path.exists(cache_path) and os.path.getsize(cache_path) > 10_000:
-            log.info("[BROLL_AGENT] Saved: %s (Smart Center Cut @ %.1fs)", cache_key, smart_offset)
+            log.info("[BROLL_AGENT] Saved: %s (Hook Cut @ %.1fs)", cache_key, smart_offset)
             return cache_path
         else:
             log.warning("[BROLL_AGENT] ffmpeg trim failed: %s", r.stderr[-300:].decode("utf-8", errors="ignore"))
@@ -430,8 +437,8 @@ def find_cinematic_broll_cuts(
     full_text = " ".join(seg.get("text", "") for seg in transcript_window if seg.get("text")).strip()
     context   = clip_context or full_text[:800]
 
-    hook_end  = clip_duration * 0.10
-    cta_start = clip_duration * 0.85
+    hook_end  = float(os.environ.get("HS_BROLL_START_SEC", clip_duration * 0.10))
+    cta_start = float(os.environ.get("HS_BROLL_END_SEC", clip_duration * 0.85))
     sample_starts = [float(s.get("start", 0)) for s in transcript_window if s.get("text")]
     _is_relative  = bool(sample_starts) and (max(sample_starts) < clip_duration * 2)
 
@@ -544,7 +551,7 @@ def find_cinematic_broll_cuts(
                 start_offset = random.uniform(2, 8)
                 candidate = _download_youtube_clip(q, duration=cut_duration_s + 1.0,
                                                    start_offset=start_offset,
-                                                   width=output_width, height=output_height)
+                                                   width=output_width, height=broll_region_h)
                 if candidate and candidate not in used_assets:
                     asset_path = candidate
                     break
@@ -568,7 +575,7 @@ def find_cinematic_broll_cuts(
             start_offset = random.uniform(2, 8)
             candidate = _download_youtube_clip(q, duration=cut_duration_s + 1.0,
                                                start_offset=start_offset,
-                                               width=output_width, height=output_height)
+                                               width=output_width, height=broll_region_h)
             if candidate and candidate not in used_assets:
                 asset_path = candidate
                 break
@@ -759,7 +766,7 @@ def _overlay_broll_on_clip(clip_path: str, broll_cuts: List[Tuple[float, str, fl
 
 # -- Full Pipeline -------------------------------------------------------------
 
-def run_on_clip(clip_path: str, output_path: str, max_cuts: int = 3) -> bool:
+def run_on_clip(clip_path: str, output_path: str, max_cuts: int = 5) -> bool:
     print(f"\n{'='*60}")
     print(f"  Cinematic B-Roll Agent - HotShort")
     print(f"{'='*60}")
