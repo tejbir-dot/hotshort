@@ -5411,6 +5411,17 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     from viral_finder.system_observer import get_observer
     try:
         xray_report = get_observer().render_report()
+        
+        # Inject Stage Wall Timers into the report so they are guaranteed to print
+        wall_lines = ["\n============================================================",
+                      "  STAGE WALL TIMERS",
+                      "============================================================"]
+        for s_name, s_vals in ctx.stage_stats.items():
+            if "wall_s" in s_vals:
+                wall_lines.append(f"  {s_name:<30} {s_vals['wall_s']:>8}s")
+        wall_lines.append("============================================================\n")
+        xray_report += "\n".join(wall_lines)
+        
         log.info(xray_report)
         try:
             print(xray_report)
