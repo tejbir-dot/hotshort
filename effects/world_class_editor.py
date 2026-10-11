@@ -40,33 +40,51 @@ try:
 except ImportError:
     pass
 
+WCE_PERF_STATS = {
+    "detect_calls": 0,
+    "detect_time_s": 0.0,
+    "clahe_retries": 0,
+    "tracker_update_time_s": 0.0,
+    "haar_redetects": 0,
+}
+
 def _detect_faces_best(frame_bgr, conf_threshold=0.45, min_size=(40, 40)):
     """
     Unified face detection: InsightFace GPU → MediaPipe CPU → empty list.
     Drop-in for all detect_faces_mediapipe call sites.
     """
-    if _INSIGHTFACE_ENABLED and detect_faces_insightface is not None:
-        result = detect_faces_insightface(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
-        if result:
-            return result
-        # If InsightFace returns nothing, try MediaPipe (handles edge cases)
-    if _MEDIAPIPE_ENABLED and detect_faces_mediapipe is not None:
-        faces = detect_faces_mediapipe(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
-        
-        # Adjustment scan if score is low or no faces found
-        if not faces or any(getattr(f, 'score', 1.0) < 0.65 for f in faces):
-            import cv2
-            gray_for_clahe = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            enhanced_gray = clahe.apply(gray_for_clahe)
-            enhanced_bgr = cv2.cvtColor(enhanced_gray, cv2.COLOR_GRAY2BGR)
+    global WCE_PERF_STATS
+    import time
+    t0 = time.perf_counter()
+    WCE_PERF_STATS["detect_calls"] += 1
+    
+    try:
+        if _INSIGHTFACE_ENABLED and detect_faces_insightface is not None:
+            result = detect_faces_insightface(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
+            if result:
+                return result
+            # If InsightFace returns nothing, try MediaPipe (handles edge cases)
+        if _MEDIAPIPE_ENABLED and detect_faces_mediapipe is not None:
+            faces = detect_faces_mediapipe(frame_bgr, conf_threshold=conf_threshold, min_size=min_size)
             
-            faces_retry = detect_faces_mediapipe(enhanced_bgr, conf_threshold=conf_threshold, min_size=min_size)
-            if faces_retry and (not faces or max(getattr(f, 'score', 0) for f in faces_retry) > max(getattr(f, 'score', 0) for f in faces)):
-                faces = faces_retry
+            # Adjustment scan if no faces found (limited per clip to avoid CPU storms)
+            if not faces and WCE_PERF_STATS.get("clahe_retries", 0) < 50:
+                WCE_PERF_STATS["clahe_retries"] += 1
+                import cv2
+                gray_for_clahe = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                enhanced_gray = clahe.apply(gray_for_clahe)
+                enhanced_bgr = cv2.cvtColor(enhanced_gray, cv2.COLOR_GRAY2BGR)
                 
-        return faces
-    return []
+                faces_retry = detect_faces_mediapipe(enhanced_bgr, conf_threshold=conf_threshold, min_size=min_size)
+                if faces_retry and (not faces or max(getattr(f, 'score', 0) for f in faces_retry) > max(getattr(f, 'score', 0) for f in faces)):
+                    faces = faces_retry
+                    
+            return faces
+        return []
+    finally:
+        WCE_PERF_STATS["detect_time_s"] += (time.perf_counter() - t0)
+
 from effects.face_tracker import FaceTracker, SmoothedPosition
 from effects import debug_visualizer
 from effects.broll_engine import fetch_broll_asset
@@ -1572,12 +1590,18 @@ class ClipEditor:
             # Default stride=3 → ~3x speedup on director loop, ~40s saved per 70s clip.
             _DIRECTOR_STRIDE = max(1, int(os.environ.get("HS_DIRECTOR_FRAME_STRIDE", "3") or "3"))
             log.info("[WCE_PERF] director_frame_stride=%d (1=every frame, 3=every 3rd)", _DIRECTOR_STRIDE)
-            _LIVE_DETECT_INTERVAL = max(1, int(os.environ.get("HS_LIVE_DETECT_INTERVAL_FRAMES", str(max(5, round(fps / 3.0)))) or max(5, round(fps / 3.0))))
+            
+            # CTO Opt: Monologue — speaker never moves, so live detect every ~5s is enough.
+            # Podcast/multi-speaker keeps tight interval (every ~0.3s) for active-speaker switching.
+            _is_monologue_mode = (video_fmt is not None and video_fmt.format_type in ("monologue", "SINGLE_CENTERED"))
+            _default_interval = max(5, round(fps * 5)) if _is_monologue_mode else max(5, round(fps / 3.0))
+            _LIVE_DETECT_INTERVAL = max(1, int(os.environ.get("HS_LIVE_DETECT_INTERVAL_FRAMES", str(_default_interval)) or _default_interval))
             log.info(
-                "[WCE-LIVE] live_detection=ON interval=%d frames (~%.2fs at %.1ffps)",
+                "[WCE-LIVE] live_detection=ON interval=%d frames (~%.2fs at %.1ffps) monologue_opt=%s",
                 _LIVE_DETECT_INTERVAL,
                 _LIVE_DETECT_INTERVAL / max(1.0, float(fps)),
                 fps,
+                _is_monologue_mode,
             )
 
             # ── WebRTC VAD Pre-compute ──────────────────────────────────
@@ -1708,7 +1732,31 @@ class ClipEditor:
             _DIRECTOR_STRIDE = max(1, int(os.environ.get("HS_DIRECTOR_FRAME_STRIDE", "3") or "3"))
             log.info("[WCE_PERF] director_frame_stride=%d (1=every frame, 3=every 3rd)", _DIRECTOR_STRIDE)
 
+            global WCE_PERF_STATS
+            WCE_PERF_STATS["detect_calls"] = 0
+            WCE_PERF_STATS["detect_time_s"] = 0.0
+            WCE_PERF_STATS["clahe_retries"] = 0
+            WCE_PERF_STATS["tracker_update_time_s"] = 0.0
+            WCE_PERF_STATS["haar_redetects"] = 0
+            
+            _loop_start_time = time.perf_counter()
+            _timeout_fallback = False
+            _WCE_HARD_TIMEOUT_S = 300
+
+            consecutive_redetect_fails = 0
+            next_redetect_frame = 0
+
             while True:
+                if frame_idx % 100 == 0 and frame_idx > 0:
+                    log.info(f"[WCE_PROGRESS] frame_idx={frame_idx} t={frame_idx/fps:.1f}s "
+                             f"detect_calls={WCE_PERF_STATS['detect_calls']} "
+                             f"detect_time={WCE_PERF_STATS['detect_time_s']:.1f}s "
+                             f"clahe={WCE_PERF_STATS['clahe_retries']} "
+                             f"track_time={WCE_PERF_STATS['tracker_update_time_s']:.1f}s")
+                             
+                if not _timeout_fallback and (time.perf_counter() - _loop_start_time > _WCE_HARD_TIMEOUT_S):
+                    log.warning(f"[WCE_TIMEOUT] 🚨 Hard timeout {_WCE_HARD_TIMEOUT_S}s hit at frame {frame_idx}. Dropping to cheap fallback path (tracking/redetect OFF)!")
+                    _timeout_fallback = True
                 if _DIRECTOR_STRIDE > 1 and frame_idx > 0:
                     # Skip _DIRECTOR_STRIDE-1 frames cheaply (grab reads but doesn't decode)
                     for _skip in range(_DIRECTOR_STRIDE - 1):
@@ -1728,63 +1776,65 @@ class ClipEditor:
                 need_motion = (prev_gray is not None) and bool(last_raw_faces)
 
                 # ── Scene-Cut Detection (Healing #2: Gradient-Magnitude) ─────────
-                # Uses Sobel gradient maps instead of raw pixel diff.
-                # Brightness flashes (exposure pops, light-leaks) change pixel
-                # values but NOT edge structure → gradient diff stays LOW.
-                # Genuine composition changes (new room, new angle) alter edges
-                # → gradient diff spikes. This prevents false tracker wipes.
+                # CTO Opt: Skip entirely for monologue. Monologue clips are single
+                # continuous takes — no hard cuts ever happen. Sobel on every frame
+                # is pure CPU waste for this format.
                 _is_scene_cut = False
-                _frame_gray_small = cv2.resize(
-                    cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 64),
-                    interpolation=cv2.INTER_AREA
-                )
-                _sobel_x = cv2.Sobel(_frame_gray_small, cv2.CV_32F, 1, 0, ksize=3)
-                _sobel_y = cv2.Sobel(_frame_gray_small, cv2.CV_32F, 0, 1, ksize=3)
-                _frame_small = np.sqrt(_sobel_x ** 2 + _sobel_y ** 2)  # gradient magnitude map
-                if _prev_frame_small is not None:
-                    _diff_val = float(np.mean(np.abs(_frame_small - _prev_frame_small)))
-                    if _diff_val > SCENE_CUT_DIFF_THRESHOLD:
-                        _is_scene_cut = True
-                        log.info(
-                            f"[SCENE_CUT] t={t:.2f}s grad_diff={_diff_val:.1f} > {SCENE_CUT_DIFF_THRESHOLD} "
-                            f"→ HARD CUT detected (gradient-magnitude) — wiping trackers + resetting EMA"
-                        )
-                        # ── Tracker Wipe ────────────────────────────────────────
-                        left_tracker.initialized  = False
-                        right_tracker.initialized = False
-                        left_tracker.consecutive_low_confidence  = 999
-                        right_tracker.consecutive_low_confidence = 999
-                        left_tracker.last_bbox  = None
-                        right_tracker.last_bbox = None
-                        # ── EMA Reset (no momentum bleed into new scene) ─────────
-                        ema_mouth_left  = 0.0
-                        ema_mouth_right = 0.0
-                        # ── Mode Switch State Reset ──────────────────────────────
-                        _decide_mode_state.pending_mode  = None
-                        _decide_mode_state.pending_count = 0
-                        # prev_gray reset so mouth diff doesn't fire false on first frame
-                        prev_gray = None
-                        last_raw_faces = []
-                _prev_frame_small = _frame_small
+                if not _is_monologue_mode:
+                    _frame_gray_small = cv2.resize(
+                        cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 64),
+                        interpolation=cv2.INTER_AREA
+                    )
+                    _sobel_x = cv2.Sobel(_frame_gray_small, cv2.CV_32F, 1, 0, ksize=3)
+                    _sobel_y = cv2.Sobel(_frame_gray_small, cv2.CV_32F, 0, 1, ksize=3)
+                    _frame_small = np.sqrt(_sobel_x ** 2 + _sobel_y ** 2)  # gradient magnitude map
+                    if _prev_frame_small is not None:
+                        _diff_val = float(np.mean(np.abs(_frame_small - _prev_frame_small)))
+                        if _diff_val > SCENE_CUT_DIFF_THRESHOLD:
+                            _is_scene_cut = True
+                            log.info(
+                                f"[SCENE_CUT] t={t:.2f}s grad_diff={_diff_val:.1f} > {SCENE_CUT_DIFF_THRESHOLD} "
+                                f"→ HARD CUT detected (gradient-magnitude) — wiping trackers + resetting EMA"
+                            )
+                            # ── Tracker Wipe ────────────────────────────────────────
+                            left_tracker.initialized  = False
+                            right_tracker.initialized = False
+                            left_tracker.consecutive_low_confidence  = 999
+                            right_tracker.consecutive_low_confidence = 999
+                            left_tracker.last_bbox  = None
+                            right_tracker.last_bbox = None
+                            # ── EMA Reset (no momentum bleed into new scene) ─────────
+                            ema_mouth_left  = 0.0
+                            ema_mouth_right = 0.0
+                            # ── Mode Switch State Reset ──────────────────────────────
+                            _decide_mode_state.pending_mode  = None
+                            _decide_mode_state.pending_count = 0
+                            # prev_gray reset so mouth diff doesn't fire false on first frame
+                            prev_gray = None
+                            last_raw_faces = []
+                    _prev_frame_small = _frame_small
 
                 # Lazy gray: only convert when we actually need the grayscale pixels.
+                # CTO Opt: Monologue has single always-talking speaker → skip mouth gray.
                 gray = None
-                if need_debug or need_motion:
+                if need_debug or (need_motion and not _is_monologue_mode):
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
 
                 # 0. Update trackers if enabled
-                if ENABLE_CONTINUOUS_TRACKING:
+                if ENABLE_CONTINUOUS_TRACKING and not _timeout_fallback:
                     t_start = time.perf_counter()
                     left_tracker.update(frame)
                     right_tracker.update(frame)
-                    tracking_time += (time.perf_counter() - t_start)
+                    _t_upd = (time.perf_counter() - t_start)
+                    tracking_time += _t_upd
+                    WCE_PERF_STATS["tracker_update_time_s"] += _t_upd
                     tracking_frames += 1
 
                 # 1. Live detection is the source of truth. FaceCache is only a
                 # fallback between live samples so stale cache cannot lock framing.
                 raw_faces = []
-                if frame_idx % _LIVE_DETECT_INTERVAL == 0:
+                if not _timeout_fallback and frame_idx % _LIVE_DETECT_INTERVAL == 0:
                     _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
                     _faces_raw = []
                     if _INSIGHTFACE_ENABLED or _MEDIAPIPE_ENABLED:
@@ -1817,7 +1867,7 @@ class ClipEditor:
                     last_raw_faces = raw_faces
                 
                 # If cache was empty or unavailable, run an extra detector fallback.
-                if not raw_faces and frame_idx % 5 == 0:
+                if not _timeout_fallback and not raw_faces and frame_idx % 5 == 0:
                     _min_face_px = max(40, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
 
                     # ── GPU/CPU Face Detection (InsightFace → MediaPipe fallback) ──
@@ -1860,7 +1910,7 @@ class ClipEditor:
                         )
 
                 # 2. If Tracking is ENABLED, handle scene-cut + tracker loss
-                if ENABLE_CONTINUOUS_TRACKING:
+                if ENABLE_CONTINUOUS_TRACKING and not _timeout_fallback:
                     # On a detected hard scene cut, force cluster_changed so the
                     # redetect path runs SYNCHRONOUSLY on this exact frame.
                     cluster_changed = _is_scene_cut or (
@@ -1871,14 +1921,13 @@ class ClipEditor:
                         left_tracker.consecutive_low_confidence  = 999
                         right_tracker.consecutive_low_confidence = 999
 
-                    # Run MediaPipe redetection if we're lost OR if we're currently coasting (ghost tracking)
+                    # Run MediaPipe redetection if we're lost
                     _needs_redetect = (
-                        left_tracker.is_lost() or right_tracker.is_lost() or 
-                        left_tracker.consecutive_low_confidence > 0 or right_tracker.consecutive_low_confidence > 0
+                        left_tracker.is_lost() or right_tracker.is_lost()
                     )
                     
                     if _needs_redetect:
-                        if frame_idx % 15 == 0 or cluster_changed:
+                        if frame_idx >= next_redetect_frame or cluster_changed:
                             _min_face_px_strict = max(60, int(frame_height * MIN_VALID_FACE_HEIGHT_RATIO))
 
                             # ── PRIMARY: MediaPipe re-detect ────────────────────────────────────
@@ -1914,13 +1963,20 @@ class ClipEditor:
                                 raw_faces = live_faces
                                 last_raw_faces = raw_faces
                                 haar_redetects += 1
+                                consecutive_redetect_fails = 0
+                                next_redetect_frame = frame_idx + 15
                             else:
                                 raw_faces = []
                                 last_raw_faces = raw_faces
+                                consecutive_redetect_fails += 1
+                                backoff_interval = 15 * (2 ** min(3, consecutive_redetect_fails))
+                                next_redetect_frame = frame_idx + backoff_interval
                     else:
                         # Tracker is healthy, clear raw_faces to prevent spurious init
                         raw_faces = []
                         last_raw_faces = raw_faces
+                        consecutive_redetect_fails = 0
+                        next_redetect_frame = frame_idx + 15
 
                 # ── [FACE_DEBUG] Step-1 diagnostic ──────────────────────────────
                 if frame_idx % 25 == 0 and len(raw_faces) > 0:
@@ -4354,7 +4410,7 @@ class ClipEditor:
                 if _br_files:
                     _brainrot_path = random.choice(_br_files)
 
-            if _is_podcast_clip and cfg.podcast_crop_mode == "stacked":
+            if (_is_podcast_clip or os.getenv("HS_FORCE_GTA") == "1") and cfg.podcast_crop_mode == "stacked":
                 if _brainrot_path and os.path.exists(_brainrot_path):
                     _brainrot_active = True
                     if is_complex_graph:
