@@ -4141,6 +4141,12 @@ def init_db():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+
+            try:
+                db.session.execute(text("ALTER TABLE job ADD COLUMN creator_intent TEXT"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
     except (OperationalError, Exception) as e:
         # Ignore "table already exists" or "locked" errors during multi-worker boot
         msg = str(e).lower()

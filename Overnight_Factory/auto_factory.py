@@ -11,8 +11,8 @@ from pathlib import Path
 # Force UTF-8 on Windows — prevents emoji crash in face scanner threads
 if sys.platform == "win32":
     try:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
     except Exception:
         pass
     os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -141,7 +141,7 @@ def read_queue():
         return []
     
     tasks = []
-    with open(QUEUE_FILE, "r", encoding="utf-8") as f:
+    with open(QUEUE_FILE, "r", encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             # Ignore empty lines or comments
@@ -179,20 +179,20 @@ def _ask_format(n_videos: int) -> str:
     print("  2 → 9_16_blur     (9:16 blurred sides)")
     print("  3 → square        (1:1)")
     print("  4 → original      (no crop)")
-    print("═" * 50)
+    print("═" * 50, flush=True)
     try:
         choice = input("  Choice [1/2/3/4] (Enter = 1): ").strip()
     except (EOFError, KeyboardInterrupt):
         choice = "1"
     fmt = FORMATS.get(choice, "center_crop")
     print(f"  ✅ Format locked: {fmt}  (saare {n_videos} videos pe yahi lagega)")
-    print("═" * 50 + "\n")
+    print("═" * 50 + "\n", flush=True)
     return fmt
 
 def run_factory():
     print(f"\n🚀 [OVERNIGHT FACTORY STARTED] Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    # Disable B-roll globally because it's generating trash/unrelated cuts
-    os.environ["HS_BROLL_ENABLED"] = "0"
+    # Re-enable B-roll globally because it's now perfectly accurate with Subtitle Sniper
+    os.environ["HS_BROLL_ENABLED"] = "1"
     setup_factory()
     tasks = read_queue()
 
@@ -202,7 +202,7 @@ def run_factory():
 
     # ── Ek baar format poochh lo ──────────────────────────────────────
     chosen_format = _ask_format(len(tasks))
-    print(f"[FACTORY STATUS] Found {len(tasks)} videos in queue. Format: {chosen_format}. Starting mass production...\n")
+    print(f"[FACTORY STATUS] Found {len(tasks)} videos in queue. Format: {chosen_format}. Starting mass production...\n", flush=True)
 
     for index, task in enumerate(tasks, 1):
         video_path     = task['path']
@@ -227,7 +227,7 @@ def run_factory():
             print(f"🎯 Creator Intent: {creator_intent}")
         else:
             print(f"🎯 Creator Intent: (none — generic viral mode)")
-        print(f"{'='*60}")
+        print(f"{'='*60}", flush=True)
 
         # THE BULLETPROOF TRY-CATCH (Zero Crash Guarantee)
         try:
@@ -235,11 +235,34 @@ def run_factory():
 
             # ---------------------------------------------------------
             # ⚙️ TERA HOTSHORT ENGINE YAHAN FIRE HOGA
-            # creator_intent local_worker → orchestrator → groq_cortex tak
-            # already wired hai (local_worker.py line 1777)
+            
+            ENABLE_HUNTER = False
+            
+            if ENABLE_HUNTER:
+                # STEP 1: Viral Source Hunter
+                import viral_source_hunter.hunter as vsh
+                print(f"🕵️‍♂️ [HUNTER] Starting Viral Source Hunt for: {video_path}")
+                hunt_res = vsh.hunt(input_path=video_path, speaker_hint=campaign)
+
+                if hunt_res.get("status") == "success" and hunt_res.get("output_path"):
+                    print(f"🎯 [HUNTER] SUCCESS! Exact cut saved to: {hunt_res['output_path']}")
+                    source_for_engine = hunt_res["output_path"]
+                else:
+                    print(f"❌ [HUNTER] FAILED: {hunt_res.get('error')}")
+                    # FAILSAFE QUEUE: Append to failed_queue.txt and skip
+                    with open(os.path.join(FACTORY_DIR, "failed_queue.txt"), "a", encoding="utf-8") as fq:
+                        fq.write(f"{video_path} | {campaign} | {creator_intent} | ERROR: {hunt_res.get('error')}\n")
+                    print("⏭️ Moving to next video in queue...")
+                    continue
+            else:
+                # Direct passthrough to the editor
+                print(f"⏭️ [HUNTER] Skipped (ENABLE_HUNTER=False). Sending direct to editor.")
+                source_for_engine = video_path
+
+            # STEP 2: HotShort Core Engine (Editor)
             job_dict = {
                 "job_id": f"factory_{int(time.time())}_{index}",
-                "youtube_url": video_path,
+                "youtube_url": source_for_engine,  # Using the local cut!
                 "video_format": chosen_format,
                 "creator_intent": creator_intent if creator_intent else None,
             }

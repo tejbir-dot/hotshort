@@ -146,9 +146,9 @@ def find_punch_start(feats, curiosity, ignition_idx, max_lookback_secs=HOOK_LOOK
         # curiosity markers and short punchy sentence
         if any(cm in txt for cm in ("did you know", "what if", "have you ever", "guess what", "you won't believe", "here's the thing", "most people")):
             score += 0.28
-        # contrast words
-        if any(w in txt for w in ("but ", "however", "instead", "actually", "on the other hand", "yet ")):
-            score += 0.16
+        # contrast words (reduced to avoid snapping to filler words like "but" mid-thought)
+        if any(w in txt for w in ("however", "instead", "on the other hand")):
+            score += 0.08
         # short punch bonus
         if 2 <= wc <= 10:
             score += 0.12
@@ -174,6 +174,22 @@ def find_punch_start(feats, curiosity, ignition_idx, max_lookback_secs=HOOK_LOOK
 
     # only accept if above HOOK_MIN_SCORE; else keep original ignition
     if best_score >= HOOK_MIN_SCORE and best_idx < ignition_idx:
+        FILLER_START_WORDS = {"and", "but", "or", "because", "so", "like", "well", "um", "uh"}
+        while best_idx < ignition_idx:
+            txt = (feats[best_idx].get("text", "") or "").strip().lower()
+            words = txt.split()
+            if not words:
+                best_idx += 1
+                continue
+            if words[0] in FILLER_START_WORDS:
+                print(f"[PUNCH_START] skipping filler-start segment {best_idx}: '{txt}'")
+                best_idx += 1
+            else:
+                break
+                
+        if best_idx == ignition_idx:
+            return ignition_idx, 0.0
+            
         return best_idx, round(min(1.0, best_score), 3)
     return ignition_idx, 0.0
 

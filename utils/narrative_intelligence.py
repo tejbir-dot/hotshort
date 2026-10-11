@@ -1354,14 +1354,14 @@ def compute_quality_scores(transcript: list, clip_start: float, clip_end: float,
     reliability = _clamp01((0.65 * min(1.0, wc / 36.0)) + (0.35 * min(1.0, seg_n / 4.0)))
 
     final = (
-        (0.25 * hook)
-        + (0.18 * open_loop)
-        + (0.12 * pattern_break)
+        (0.35 * hook)          # 🔥 BOOSTED: Hook is king — virality starts in first 3s
+        + (0.13 * open_loop)
+        + (0.10 * pattern_break)
         + (0.14 * ending)
         + (0.12 * payoff_resolution)
-        + (0.08 * rewatch)
-        + (0.03 * info_density)
-        + (0.08 * dur_score)
+        + (0.05 * rewatch)
+        + (0.02 * info_density)
+        + (0.09 * dur_score)
     )
     final = final * (0.88 + (0.12 * reliability))
     final = _clamp01(final)

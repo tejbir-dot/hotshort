@@ -92,11 +92,15 @@ def resolve_device(prefer_gpu: bool = DEFAULT_PRETEND_GPU) -> str:
         if env_device in ("cuda", "cpu"):
             return env_device
 
-        # 2. Check ctranslate2 CUDA devices
+        # 2. Check ctranslate2 CUDA devices — but ALSO verify torch agrees
+        #    ctranslate2 can report cuda available even when torch cannot use it
         try:
             import ctranslate2
             if ctranslate2.get_cuda_device_count() > 0:
-                return "cuda"
+                # Double-check with torch before trusting ctranslate2
+                if torch is not None and torch.cuda.is_available():
+                    return "cuda"
+                # ctranslate2 says cuda but torch disagrees — fall through to CPU
         except Exception:
             pass
 
@@ -789,17 +793,26 @@ def transcribe_file_turbo(path: str, model_name: str, prefer_gpu: bool) -> List[
 
     else:
         # OPENAI WHISPER PATH (Slower but reliable fallback)
-        result = model.transcribe(path, fp16=(device=="cuda"), verbose=False)
+        result = model.transcribe(path, fp16=(device=="cuda"), verbose=False, word_timestamps=True)
         for s in result.get("segments", []):
             text = s.get("text", "").strip()
+            
+            # Extract words if available
+            words = []
+            raw_words = s.get("words", [])
+            for w in raw_words:
+                w_start = w.get("start", 0)
+                w_end = w.get("end", 0)
+                w_text = w.get("word", w.get("text", ""))
+                words.append({"start": round(w_start, 2), "end": round(w_end, 2), "word": w_text.strip()})
+                
             if text:
                 results.append({
                     "start": round(s["start"], 2),
                     "end":   round(s["end"], 2),
                     "text":  text,
-                    "words": s.get("words", []),  # ← preserve word timestamps for subtitle sync
+                    "words": words,  # ← preserve word timestamps for subtitle sync
                 })
-
 
     return results
 
@@ -946,10 +959,10 @@ def simple_transcribe(path: str, model_name: str = DEFAULT_MODEL, prefer_gpu: bo
     
     results = []
     if typ == "whisper":
-        res = model.transcribe(path, fp16=(device=="cuda"))
+        res = model.transcribe(path, fp16=(device=="cuda"), word_timestamps=True)
         segs = res.get("segments", [])
     else:
-        _res = model.transcribe(path, beam_size=5, vad_filter=False)
+        _res = model.transcribe(path, beam_size=5, vad_filter=False, word_timestamps=True)
         segs_gen, _info = _unpack_transcribe_result(_res)
         segs = list(segs_gen) # consumes generator
 
@@ -959,8 +972,18 @@ def simple_transcribe(path: str, model_name: str = DEFAULT_MODEL, prefer_gpu: bo
         end = getattr(s, 'end', s.get('end') if isinstance(s, dict) else 0)
         text = getattr(s, 'text', s.get('text') if isinstance(s, dict) else "").strip()
         
+        # Extract words if available
+        words = []
+        raw_words = getattr(s, 'words', s.get('words') if isinstance(s, dict) else [])
+        if raw_words:
+            for w in raw_words:
+                w_start = getattr(w, 'start', w.get('start') if isinstance(w, dict) else 0)
+                w_end = getattr(w, 'end', w.get('end') if isinstance(w, dict) else 0)
+                w_text = getattr(w, 'word', w.get('word', getattr(w, 'text', w.get('text', ''))) if isinstance(w, dict) else getattr(w, 'text', ''))
+                words.append({"start": round(w_start, 2), "end": round(w_end, 2), "word": w_text.strip()})
+        
         if text:
-            results.append({"start": round(start, 2), "end": round(end, 2), "text": text})
+            results.append({"start": round(start, 2), "end": round(end, 2), "text": text, "words": words})
             
     return results
 

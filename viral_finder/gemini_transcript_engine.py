@@ -113,11 +113,14 @@ def resolve_device(prefer_gpu: bool = DEFAULT_PRETEND_GPU) -> str:
         if env_device in ("cuda", "cpu"):
             return env_device
 
-        # 2. Check ctranslate2 CUDA devices
+        # 2. Check ctranslate2 CUDA devices — but ALSO verify torch agrees
+        #    ctranslate2 can report cuda available even when torch cannot use it
         try:
             import ctranslate2
             if ctranslate2.get_cuda_device_count() > 0:
-                return "cuda"
+                if torch is not None and torch.cuda.is_available():
+                    return "cuda"
+                # ctranslate2 says cuda but torch disagrees — fall through to CPU
         except Exception:
             pass
 

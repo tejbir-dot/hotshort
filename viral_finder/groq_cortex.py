@@ -652,7 +652,7 @@ Only REJECT when:
 
 Available Actions:
 - KEEP: The candidate is perfect. The idea is complete with development and resolution.
-- MOVE_HOOK: The candidate started too early with filler, or missed the true hook just before it. Move the hook. The new `hook_segment_index` MUST point to the segment that begins at a sentence boundary — never mid-sentence.
+- MOVE_HOOK: The candidate started too early with weak filler words (e.g., "And", "But", "So", "Because", "Like") or missed the true hook. YOU ARE THE ULTIMATE SEMANTIC ARBITER. Do not blindly accept grammatically valid sentences if they sound like weak, mid-thought continuations. Move `hook_segment_index` to the EXACT segment that serves as the strongest possible psychological and semantic entry point. Exception: You may start on a conjunction ONLY IF it creates intense dramatic tension (e.g., "And that is how I lost everything.").
 - EXTEND_RIGHT: The idea resolves, but the resolution is located later in ZONE B.
 
 CRITICAL EMERGENCY OVERRIDE:

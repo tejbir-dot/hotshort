@@ -763,6 +763,7 @@ For CHAOS triggers (types 11-16), score INSTEAD:
 
 CRITICAL RULE FOR CREATOR HOOKS: The strongest clips have a hook that creates TENSION (the viewer doesn't have the answer yet) and a payoff that RESOLVES it. Flag both. Don't just find hooks — find the matching payoff too.
 CRITICAL RULE FOR CHAOS: The chaos IS the payoff. No educational value needed.
+CRITICAL RULE FOR START TIMES: Do NOT start the trigger during the "build up" or normal conversation. The "start" timestamp MUST be the EXACT split-second the psychological tension, strong claim, or chaos begins. Cut out any boring context that happens before the hook!
 CRITICAL INSTRUCTION: Provide a "reason" — 1 sentence explaining exactly why this is a powerful trigger.
 
 Return ONLY valid JSON:
