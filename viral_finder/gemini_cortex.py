@@ -11,10 +11,10 @@ def is_gemini_enabled() -> bool:
 
 def _get_gemini_fallback_chain() -> List[str]:
     return [
-        "gemini-3.8-flash",       # Newest — Sep 2026
-        "gemini-3.5-flash",       # Stable
-        "gemini-3.1-flash",       # Reliable
-        "gemini-3.5-flash-lite",  # Lite fallback
+        "gemini-3.8-flash",       # Newest — Sep 2026 (may timeout under load)
+        "gemini-3.5-flash",       # Stable workhorse
+        "gemini-3.5-flash-lite",  # Always available, fast — primary reliable
+        # gemini-1.5-flash removed: returns 404 (deprecated in v1beta)
     ]
 
 def post_gemini_completions(prompt: str, response_format_schema: Dict = None) -> str:
@@ -58,14 +58,18 @@ def post_gemini_completions(prompt: str, response_format_schema: Dict = None) ->
             except Exception as e:
                 last_error = e
                 # If it's a 400 (Bad Request), it's likely a prompt issue, no point retrying same model
-                # If it's 503 or 429, we should immediately failover to the NEXT model in the chain
+                # If it's 503 or 429, immediately failover to the NEXT model in the chain
+                # If it's 404, model doesn't exist — instant break, don't waste retry sleep
                 err_str = str(e).upper()
                 if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    log.warning(f"[GEMINI_CORTEX] Model {model} overloaded ({err_str}). Falling back to next model...")
-                    break # Break the attempt loop to shift to the next model in models_to_try
+                    log.warning(f"[GEMINI_CORTEX] Model {model} overloaded ({e}). Falling back to next model...")
+                    break  # shift to next model immediately
+                if "404" in err_str or "NOT_FOUND" in err_str:
+                    log.warning(f"[GEMINI_CORTEX] Model {model} not found (404) — removing from session chain")
+                    break  # dead model, no retry
                     
                 log.warning(f"[GEMINI_CORTEX] Attempt {attempt+1} with {model} failed: {e}. Retrying...")
-                time.sleep(2)
+                time.sleep(1)  # reduced from 2s → 1s
                 
     log.error(f"[GEMINI_CORTEX] All models in fallback chain exhausted! Last error: {last_error}")
     return "{}"
