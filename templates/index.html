@@ -105,6 +105,11 @@
       100% { box-shadow: 0 0 8px rgba(255, 190, 80, 0.3); }
     }
 
+    @keyframes partnersGlow {
+      0%,100% { box-shadow: 0 0 10px rgba(255,190,60,0.4), 0 4px 16px rgba(255,190,60,0.3); }
+      50%      { box-shadow: 0 0 20px rgba(255,210,80,0.7), 0 6px 24px rgba(255,190,60,0.5); }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       nav .hotshort-logo,
       .hero-logo,
@@ -1006,6 +1011,28 @@
         <li><a href="/pricing">Pricing</a></li>
         <li><a href="https://github.com" target="_blank">GitHub</a></li>
         <li><a href="#" data-backend-link="/auth/login">Login</a></li>
+        <li>
+          <a href="/partners/"
+             id="partnersNavBtn"
+             style="
+               display: inline-flex;
+               align-items: center;
+               gap: 6px;
+               padding: 7px 16px;
+               background: linear-gradient(135deg, rgba(255,210,90,0.9) 0%, rgba(255,165,40,0.9) 100%);
+               color: #07031a;
+               font-weight: 800;
+               font-size: 13px;
+               border-radius: 10px;
+               text-decoration: none;
+               letter-spacing: 0.3px;
+               animation: partnersGlow 2.2s ease-in-out infinite;
+               transition: transform .2s;
+             "
+             onmouseover="this.style.transform='translateY(-2px)'"
+             onmouseout="this.style.transform=''"
+          >💸 Partners $</a>
+        </li>
       </ul>
     </div>
   </nav>

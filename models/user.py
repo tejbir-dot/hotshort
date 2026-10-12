@@ -2,6 +2,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
 from sqlalchemy import UniqueConstraint
+import secrets
+import string
 
 db = SQLAlchemy()
 
@@ -113,3 +115,53 @@ class UserExport(db.Model):
     file_path = db.Column(db.String(300), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+
+
+def _generate_referral_code(length=8):
+    """Generate a unique-ish alphanumeric referral code."""
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+class Partner(db.Model):
+    """Partner/Affiliate account — one per User."""
+    __tablename__ = "partner"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True, index=True)
+    referral_code = db.Column(db.String(20), unique=True, nullable=False, default=_generate_referral_code)
+    social_handle = db.Column(db.String(120), nullable=True)  # Raw handle or channel URL
+    channel_url   = db.Column(db.String(300), nullable=True)  # Full channel link pasted by user
+    platform      = db.Column(db.String(50),  nullable=True)  # YouTube / TikTok / Instagram etc.
+    wallet_usd = db.Column(db.Float, default=0.0, nullable=False)  # Accumulated earnings in USD
+    total_clicks = db.Column(db.Integer, default=0, nullable=False)
+    total_signups = db.Column(db.Integer, default=0, nullable=False)
+    total_conversions = db.Column(db.Integer, default=0, nullable=False)  # Paid subscriptions
+    total_earned_usd = db.Column(db.Float, default=0.0, nullable=False)  # All-time earned
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Relationship back to user
+    user = db.relationship('User', backref=db.backref('partner', uselist=False))
+    # Conversions list
+    conversions = db.relationship('PartnerConversion', backref='partner', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Partner code={self.referral_code} wallet=${self.wallet_usd:.2f}>'
+
+
+class PartnerConversion(db.Model):
+    """Records each paid subscription that came through a partner link."""
+    __tablename__ = "partner_conversion"
+
+    id = db.Column(db.Integer, primary_key=True)
+    partner_id = db.Column(db.Integer, db.ForeignKey('partner.id'), nullable=False, index=True)
+    # The new user who subscribed via this partner
+    converted_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    plan_name = db.Column(db.String(50), nullable=False, default='starter')
+    amount_usd = db.Column(db.Float, nullable=False)  # What partner earns for this conversion
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    stripe_session_id = db.Column(db.String(200), nullable=True)  # Audit trail
+
+    def __repr__(self):
+        return f'<PartnerConversion partner={self.partner_id} +${self.amount_usd}>'

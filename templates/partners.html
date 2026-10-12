@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HotShort Partners – Earn While You Create</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='branding/logo_icon.png') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --gold:     #FFD580;
+      --gold-mid: #FFB347;
+      --gold-deep:#E88A00;
+      --bg-deep:  #07031a;
+      --bg-card:  rgba(255,255,255,0.04);
+      --border:   rgba(255,200,100,0.15);
+      --text:     #f0f0f0;
+      --muted:    #888;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 50% 20%, rgba(255,180,60,0.12), transparent 55%),
+        radial-gradient(circle at top, #1a0f3b 0%, #0c0624 55%, #07031a 100%);
+      color: var(--text);
+      font-family: 'Poppins', -apple-system, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Ambient glow spin ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: -1;
+      width: 250%; height: 250%; left: -75%; top: -75%;
+      filter: blur(160px);
+      mix-blend-mode: screen;
+      opacity: 0.45;
+      background: conic-gradient(
+        from 0deg,
+        rgba(255,200,100,0.14),
+        rgba(255,240,190,0.18),
+        rgba(255,210,120,0.12),
+        rgba(255,225,150,0.12)
+      );
+      animation: ambientSpin 18s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes ambientSpin { to { transform: rotate(360deg); } }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; width: 100%; z-index: 100;
+      background: linear-gradient(180deg, rgba(10,14,39,0.96) 0%, rgba(10,14,39,0.75) 100%);
+      backdrop-filter: blur(15px);
+      border-bottom: 1px solid rgba(255,179,71,0.2);
+      padding: 18px 40px;
+    }
+    .nav-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .brand img { height: 34px; filter: drop-shadow(0 0 6px rgba(255,170,70,0.4)); }
+    .brand-text {
+      font-weight: 700; font-size: 18px;
+      background: linear-gradient(90deg, #FFD580, #FFB347, #e3e3e3);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .nav-back {
+      color: rgba(255,255,255,0.55); font-size: 13px; text-decoration: none;
+      display: flex; align-items: center; gap: 6px;
+      transition: color .25s;
+    }
+    .nav-back:hover { color: var(--gold); }
+
+    /* ── Page wrapper ── */
+    .page { max-width: 860px; margin: 0 auto; padding: 110px 24px 80px; }
+
+    /* ── Hero badge ── */
+    .partner-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: linear-gradient(135deg, rgba(255,200,80,0.15), rgba(255,160,40,0.08));
+      border: 1px solid rgba(255,200,80,0.35);
+      border-radius: 100px; padding: 6px 18px; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.8px; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 22px;
+    }
+    .dot-pulse {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #4dff91;
+      box-shadow: 0 0 6px #4dff91;
+      animation: dotPulse 1.4s ease-in-out infinite;
+    }
+    @keyframes dotPulse {
+      0%,100% { transform: scale(1); opacity: 1; }
+      50%      { transform: scale(1.4); opacity: 0.6; }
+    }
+
+    h1 { font-size: clamp(32px,6vw,54px); font-weight: 900; line-height: 1.18; margin-bottom: 18px; }
+    h1 .gold { background: linear-gradient(90deg,#FFD580,#FFB347,#FFA500); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+    .subtitle { color: var(--muted); font-size: 16px; line-height: 1.65; margin-bottom: 40px; max-width: 600px; }
+
+    /* ── Math pill ── */
+    .math-row {
+      display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 52px;
+    }
+    .math-pill {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px 22px;
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 120px; gap: 4px;
+    }
+    .math-pill .big { font-size: 26px; font-weight: 800; color: var(--gold); }
+    .math-pill .label { font-size: 11px; color: var(--muted); text-align: center; }
+
+    /* ── 3-Step cards ── */
+    .steps { display: flex; flex-direction: column; gap: 16px; margin-bottom: 52px; }
+    .step-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px; padding: 28px 28px 28px 24px;
+      display: flex; gap: 22px; align-items: flex-start;
+      transition: border-color .3s, transform .3s, box-shadow .3s;
+      position: relative; overflow: hidden;
+    }
+    .step-card::before {
+      content: ''; position: absolute; inset: 0; border-radius: 20px;
+      background: linear-gradient(135deg, rgba(255,200,80,0.06) 0%, transparent 70%);
+      opacity: 0; transition: opacity .35s; pointer-events: none;
+    }
+    .step-card:hover { transform: translateY(-3px); border-color: rgba(255,200,80,0.4); box-shadow: 0 16px 40px rgba(0,0,0,0.35); }
+    .step-card:hover::before { opacity: 1; }
+    .step-num {
+      flex: 0 0 52px; height: 52px; border-radius: 16px;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-mid) 100%);
+      color: #07031a; font-size: 22px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(255,180,60,0.45);
+    }
+    .step-body h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+    .step-body p  { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+    /* ── Divider ── */
+    .divider {
+      border: none; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,200,80,0.25), transparent);
+      margin: 52px 0;
+    }
+
+    /* ── Dashboard card ── */
+    .dash-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 24px; padding: 36px;
+    }
+    .dash-card h2 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+    .dash-card .sub { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
+
+    /* Stats grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 14px; margin-bottom: 32px; }
+    .stat-box {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 20px 18px;
+      display: flex; flex-direction: column; gap: 6px;
+      transition: border-color .3s, transform .25s;
+    }
+    .stat-box:hover { border-color: rgba(255,200,80,0.4); transform: translateY(-2px); }
+    .stat-icon { font-size: 20px; }
+    .stat-val { font-size: 28px; font-weight: 900; color: var(--gold); }
+    .stat-lbl { font-size: 12px; color: var(--muted); font-weight: 500; }
+
+    /* Link box */
+    .link-section { margin-bottom: 28px; }
+    .link-section label { font-size: 13px; color: var(--muted); font-weight: 600; display: block; margin-bottom: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+    .link-row { display: flex; gap: 10px; }
+    .link-input {
+      flex: 1; background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,200,80,0.25); border-radius: 14px;
+      padding: 14px 18px; font-size: 14px; color: #e0e0e0; font-family: inherit;
+      letter-spacing: 0.3px;
+    }
+    .btn-copy {
+      padding: 14px 22px; border-radius: 14px; border: none; cursor: pointer; font-weight: 700;
+      font-size: 14px; font-family: inherit;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-mid) 100%);
+      color: #07031a; transition: transform .2s, box-shadow .2s;
+      box-shadow: 0 6px 22px rgba(255,180,60,0.4);
+      white-space: nowrap;
+    }
+    .btn-copy:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,180,60,0.55); }
+    .btn-copy.copied { background: linear-gradient(135deg, #4dff91, #00d4aa); }
+
+    /* Join CTA (not yet a partner) */
+    .join-section { text-align: left; padding: 8px 0; }
+
+    /* Channel connect box */
+    .channel-connect-label {
+      font-size: 12px; color: var(--muted); font-weight: 700;
+      letter-spacing: 0.7px; text-transform: uppercase;
+      margin-bottom: 10px; display: block;
+    }
+    .channel-input-wrap {
+      position: relative; margin-bottom: 14px;
+    }
+    .channel-platform-badge {
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      display: flex; align-items: center; gap: 7px;
+      font-size: 18px; pointer-events: none;
+      transition: all .25s;
+    }
+    .channel-url-input {
+      width: 100%;
+      background: rgba(255,255,255,0.06);
+      border: 1.5px solid rgba(255,200,80,0.25); border-radius: 16px;
+      padding: 16px 18px 16px 52px;
+      font-size: 15px; color: #e8e8e8; font-family: inherit;
+      transition: border-color .3s, background .3s, box-shadow .3s;
+    }
+    .channel-url-input:focus {
+      outline: none;
+      border-color: rgba(255,180,60,0.65);
+      background: rgba(255,255,255,0.09);
+      box-shadow: 0 0 0 3px rgba(255,180,60,0.12);
+    }
+    .channel-url-input.detected {
+      border-color: rgba(77,255,145,0.5);
+      box-shadow: 0 0 0 3px rgba(77,255,145,0.08);
+    }
+    .channel-url-input::placeholder { color: #555; }
+
+    /* Channel preview card */
+    .channel-preview {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(77,255,145,0.25);
+      border-radius: 14px; padding: 14px 18px;
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 18px;
+      animation: slideIn .35s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .channel-preview.hidden { display: none; }
+    .channel-preview-icon { font-size: 30px; flex: 0 0 auto; }
+    .channel-preview-info { flex: 1; min-width: 0; }
+    .channel-preview-platform {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.7px; color: #4dff91; margin-bottom: 3px;
+    }
+    .channel-preview-url {
+      font-size: 13px; color: #ccc;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .channel-preview-check { font-size: 20px; color: #4dff91; flex: 0 0 auto; }
+
+    .btn-join {
+      width: 100%;
+      padding: 18px 40px; border-radius: 16px; border: none; cursor: pointer;
+      font-size: 17px; font-weight: 800; font-family: inherit;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-mid) 50%, #fff 100%);
+      color: #07031a;
+      box-shadow: 0 10px 40px rgba(255,179,71,0.45), inset 0 1px 0 rgba(255,255,255,0.5);
+      animation: joinPulse 2.4s ease-in-out infinite;
+      transition: transform .25s;
+    }
+    .btn-join:hover { transform: translateY(-3px); }
+    .btn-join:disabled { opacity: 0.65; cursor: not-allowed; animation: none; }
+    @keyframes joinPulse {
+      0%,100% { box-shadow: 0 8px 24px rgba(255,180,60,0.35), inset 0 1px 0 rgba(255,255,255,0.4); }
+      50%      { box-shadow: 0 14px 40px rgba(255,180,60,0.65), inset 0 1px 0 rgba(255,255,255,0.5); }
+    }
+    .join-helper { font-size: 12px; color: var(--muted); margin-top: 12px; text-align: center; }
+
+    /* Verifying state */
+    .channel-url-input.verifying {
+      border-color: rgba(255,200,80,0.5);
+      box-shadow: 0 0 0 3px rgba(255,200,80,0.08);
+    }
+    /* Error state */
+    .channel-url-input.error {
+      border-color: rgba(255,80,80,0.55);
+      box-shadow: 0 0 0 3px rgba(255,80,80,0.08);
+    }
+    .channel-preview.error-card {
+      background: rgba(255,80,80,0.06);
+      border-color: rgba(255,80,80,0.3);
+    }
+    .channel-preview-platform.err { color: #ff6b6b; }
+
+    /* Verifying spinner inside preview */
+    .spin {
+      display: inline-block;
+      animation: spinIt .7s linear infinite;
+    }
+    @keyframes spinIt { to { transform: rotate(360deg); } }
+
+    /* Channel thumb */
+    .channel-thumb {
+      width: 40px; height: 40px; border-radius: 50%;
+      object-fit: cover; flex: 0 0 40px;
+      border: 2px solid rgba(77,255,145,0.4);
+    }
+    .channel-thumb.hidden { display: none; }
+
+    /* Conversion feed */
+    .feed-title { font-size: 15px; font-weight: 700; color: var(--gold); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .conversion-list { display: flex; flex-direction: column; gap: 10px; }
+    .conversion-item {
+      background: rgba(77,255,145,0.06); border: 1px solid rgba(77,255,145,0.18);
+      border-radius: 12px; padding: 14px 18px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .conversion-item .plan-badge {
+      background: rgba(255,200,80,0.15); border: 1px solid rgba(255,200,80,0.3);
+      border-radius: 8px; padding: 3px 10px; font-size: 11px; color: var(--gold); font-weight: 700;
+    }
+    .conversion-item .earned { font-size: 15px; font-weight: 800; color: #4dff91; }
+    .conversion-item .when { font-size: 11px; color: var(--muted); }
+
+    /* Cha-ching toast */
+    #ching-toast {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(60px);
+      background: linear-gradient(135deg, #1a2e20, #0f2217);
+      border: 1px solid rgba(77,255,145,0.4);
+      border-radius: 18px; padding: 16px 28px;
+      display: flex; align-items: center; gap: 12px;
+      font-size: 16px; font-weight: 700; color: #4dff91;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 30px rgba(77,255,145,0.15);
+      opacity: 0; transition: all 0.45s cubic-bezier(0.34,1.56,0.64,1);
+      z-index: 9999; white-space: nowrap;
+    }
+    #ching-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Login gate */
+    .login-gate {
+      text-align: center; padding: 40px 24px;
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+      border-radius: 20px; margin-top: 0;
+    }
+    .login-gate .lock { font-size: 48px; margin-bottom: 16px; }
+    .login-gate h3 { font-size: 20px; font-weight: 800; margin-bottom: 10px; }
+    .login-gate p { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+    .btn-login {
+      display: inline-block; padding: 14px 36px; border-radius: 14px;
+      background: linear-gradient(135deg, var(--gold), var(--gold-mid));
+      color: #07031a; font-weight: 800; font-size: 15px; text-decoration: none;
+      box-shadow: 0 8px 28px rgba(255,180,60,0.4);
+      transition: transform .2s, box-shadow .2s;
+    }
+    .btn-login:hover { transform: translateY(-2px); box-shadow: 0 12px 36px rgba(255,180,60,0.6); }
+
+    /* Loading skeleton */
+    .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.06) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    @media (max-width: 600px) {
+      nav { padding: 16px 18px; }
+      .page { padding: 96px 16px 60px; }
+      .link-row { flex-direction: column; }
+      .math-row { gap: 8px; }
+      .math-pill .big { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <img src="{{ url_for('static', filename='branding/logo_icon.png') }}" alt="HotShort">
+      <span class="brand-text">HotShort</span>
+    </a>
+    <a class="nav-back" href="/">← Back to home</a>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- Hero -->
+  <div class="partner-eyebrow">
+    <div class="dot-pulse"></div>
+    Partners Program · Zero CAC Flywheel
+  </div>
+  <h1>Earn <span class="gold">Real Money</span><br>Just by Sharing</h1>
+  <p class="subtitle">
+    Share your HotShort link. Every user who subscribes through you puts
+    <strong style="color:var(--gold)">${{ commission }}</strong> straight into your wallet.
+    No limits. No minimums. Cha-ching. 💸
+  </p>
+
+  <!-- Math pills -->
+  <div class="math-row">
+    <div class="math-pill">
+      <span class="big">${{ commission }}</span>
+      <span class="label">per conversion</span>
+    </div>
+    <div class="math-pill">
+      <span class="big">∞</span>
+      <span class="label">no cap</span>
+    </div>
+    <div class="math-pill">
+      <span class="big">30d</span>
+      <span class="label">cookie window</span>
+    </div>
+    <div class="math-pill">
+      <span class="big">0</span>
+      <span class="label">minimum payout</span>
+    </div>
+  </div>
+
+  <!-- 3 Steps -->
+  <div class="steps">
+    <div class="step-card">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>🔗 Get Your Magic Link</h3>
+        <p>Join below to get a personalised link like <code style="color:var(--gold);background:rgba(255,200,80,0.1);padding:2px 8px;border-radius:6px">hotshort.ai/vip/YOURCODE</code>. Paste it anywhere — bio, reel, story, thread.</p>
+      </div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>📊 Watch the Flex Tracker</h3>
+        <p>Your dashboard shows real-time views, clicks, and signups driven by your link. Post your HotShort-generated clip → link in bio → watch the numbers climb.</p>
+      </div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3>💸 Cash Shower</h3>
+        <p>Every time someone subscribes through your link you earn <strong style="color:var(--gold)">${{ commission }}</strong>. Your wallet updates instantly. HotShort essentially pays for itself.</p>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ══════════════════════════════════
+       LOGGED OUT → Login Gate
+       ══════════════════════════════════ -->
+  {% if not current_user.is_authenticated %}
+  <div class="dash-card">
+    <div class="login-gate">
+      <div class="lock">🔐</div>
+      <h3>Login to Join Partners</h3>
+      <p>Create a free HotShort account to unlock your referral link and start earning today.</p>
+      <a href="/auth/login?next=/partners/" class="btn-login">Login / Sign Up Free →</a>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       LOGGED IN — NOT YET A PARTNER
+       ══════════════════════════════════ -->
+  {% elif not partner %}
+  <div class="dash-card">
+    <h2>Join the Partners Program</h2>
+
+    <p class="sub">Takes 5 seconds. No approval needed.</p>
+    <div class="join-section">
+
+      <!-- Channel URL input -->
+      <span class="channel-connect-label">🔗 Connect Your Channel</span>
+      <div class="channel-input-wrap">
+        <div class="channel-platform-badge" id="platformBadge">🌐</div>
+        <input
+          id="channelUrlInput"
+          class="channel-url-input"
+          type="url"
+          placeholder="Paste your YouTube / TikTok / Instagram link…"
+          maxlength="300"
+          oninput="detectPlatform(this.value)"
+          autocomplete="off"
+        >
+      </div>
+
+      <!-- Channel preview (shown after detection) -->
+      <div class="channel-preview hidden" id="channelPreview">
+        <img id="channelThumb" class="channel-thumb hidden" src="" alt="channel thumbnail">
+        <div class="channel-preview-icon" id="previewIcon">📺</div>
+        <div class="channel-preview-info">
+          <div class="channel-preview-platform" id="previewPlatform">YouTube</div>
+          <div class="channel-preview-url" id="previewUrl"></div>
+        </div>
+        <div class="channel-preview-check" id="previewCheck">✅</div>
+      </div>
+
+      <button class="btn-join" id="joinBtn" onclick="joinProgram()">💸 Get My Partner Link</button>
+      <p class="join-helper">Channel link is optional — you can skip and paste the link later</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       LOGGED IN — IS A PARTNER
+       ══════════════════════════════════ -->
+  {% else %}
+  <div class="dash-card">
+    <h2>Your Partner Dashboard</h2>
+    <p class="sub">Live stats · updates every 30s</p>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-box">
+        <span class="stat-icon">🖱️</span>
+        <span class="stat-val" id="statClicks">{{ partner.total_clicks }}</span>
+        <span class="stat-lbl">Link Clicks</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-icon">👥</span>
+        <span class="stat-val" id="statSignups">{{ partner.total_signups }}</span>
+        <span class="stat-lbl">Signups</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-icon">🔥</span>
+        <span class="stat-val" id="statConversions">{{ partner.total_conversions }}</span>
+        <span class="stat-lbl">Paid Subs</span>
+      </div>
+      <div class="stat-box" style="border-color: rgba(77,255,145,0.3); background: rgba(77,255,145,0.05);">
+        <span class="stat-icon">💰</span>
+        <span class="stat-val" id="statWallet" style="color:#4dff91">${{ "%.2f"|format(partner.wallet_usd) }}</span>
+        <span class="stat-lbl">Wallet Balance</span>
+      </div>
+    </div>
+
+    <!-- Referral link -->
+    <div class="link-section">
+      <label>Your Referral Link</label>
+      <div class="link-row">
+        <input class="link-input" id="refLinkInput" type="text"
+               value="{{ base_url }}/vip/{{ partner.referral_code }}" readonly>
+        <button class="btn-copy" id="copyBtn" onclick="copyLink()">📋 Copy Link</button>
+      </div>
+    </div>
+
+    <!-- Conversion feed -->
+    {% if recent_conversions %}
+    <div class="feed-title">💸 Recent Earnings</div>
+    <div class="conversion-list" id="convFeed">
+      {% for c in recent_conversions %}
+      <div class="conversion-item">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span class="plan-badge">{{ c.plan_name }}</span>
+          <span class="when">{{ c.created_at.strftime('%b %d, %Y') }}</span>
+        </div>
+        <span class="earned">+${{ "%.2f"|format(c.amount_usd) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="font-size:13px;color:var(--muted);margin-top:4px;">
+      No conversions yet — share your link and start earning! 🚀
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- Cha-ching toast -->
+<div id="ching-toast">💸 Cha-Ching! +${{ commission }} Added to your Wallet!</div>
+
+<script>
+// ── Platform icons (client-side quick detect) ─────────────────────────────────
+const PLATFORMS = [
+  { name: 'YouTube',   icon: '📺', pattern: /youtube\.com|youtu\.be/i },
+  { name: 'TikTok',    icon: '🎵', pattern: /tiktok\.com/i },
+  { name: 'Instagram', icon: '📸', pattern: /instagram\.com/i },
+  { name: 'Twitter/X', icon: '🐦', pattern: /twitter\.com|x\.com/i },
+  { name: 'Twitch',    icon: '🎮', pattern: /twitch\.tv/i },
+];
+
+let _verifiedPlatform = null;
+let _channelVerified  = false;
+let _verifyTimer      = null;
+let _verifiedUrl      = '';
+
+function _getEl(id) { return document.getElementById(id); }
+
+function _resetPreview(input) {
+  input.classList.remove('detected','error','verifying');
+  _getEl('channelPreview').classList.add('hidden');
+  _getEl('channelPreview').classList.remove('error-card');
+  _getEl('platformBadge').textContent = '🌐';
+  _verifiedPlatform = null;
+  _channelVerified  = false;
+  _verifiedUrl      = '';
+  _getEl('joinBtn').disabled = false;
+}
+
+function detectPlatform(val) {
+  const input = _getEl('channelUrlInput');
+  val = val.trim();
+
+  // Reset
+  clearTimeout(_verifyTimer);
+  _resetPreview(input);
+
+  if (!val || val.length < 10) return;
+
+  const match = PLATFORMS.find(p => p.pattern.test(val));
+  if (!match) {
+    // Unknown platform — show soft warning after pause
+    _verifyTimer = setTimeout(() => _showUnknown(val), 600);
+    return;
+  }
+
+  // Instant client-side icon update
+  _getEl('platformBadge').textContent = match.icon;
+  input.classList.add('verifying');
+
+  // Show "verifying" preview card
+  const preview = _getEl('channelPreview');
+  preview.classList.remove('hidden','error-card');
+  _getEl('previewIcon').textContent = '<span class="spin">⟳</span>';
+  _getEl('previewPlatform').className = 'channel-preview-platform';
+  _getEl('previewPlatform').textContent = 'Verifying ' + match.name + ' channel…';
+  _getEl('previewUrl').textContent = val;
+  const thumb = _getEl('channelThumb');
+  if (thumb) thumb.classList.add('hidden');
+
+  // Debounce actual API call 900ms
+  _verifyTimer = setTimeout(() => _callVerify(val, match.icon), 900);
+}
+
+async function _callVerify(url, icon) {
+  const input = _getEl('channelUrlInput');
+  try {
+    const res = await fetch('/partners/api/validate-channel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+
+    if (data.exists) {
+      // ✅ Channel exists
+      input.classList.remove('verifying','error');
+      input.classList.add('detected');
+      _getEl('channelPreview').classList.remove('error-card');
+
+      _getEl('previewIcon').innerHTML = icon;
+      _getEl('previewPlatform').className = 'channel-preview-platform';
+      _getEl('previewPlatform').textContent = data.platform + ' Channel Verified ✅';
+      _getEl('previewUrl').textContent = data.name || url;
+
+      // Show thumbnail if available
+      const thumb = _getEl('channelThumb');
+      if (thumb && data.thumb) {
+        thumb.src = data.thumb;
+        thumb.classList.remove('hidden');
+        // Put thumb BEFORE icon
+        _getEl('previewIcon').style.display = 'none';
+      }
+
+      _verifiedPlatform = data.platform;
+      _channelVerified  = true;
+      _verifiedUrl      = url;
+    } else {
+      _showError(url, data.error || 'Channel not found');
+    }
+  } catch(e) {
+    _showError(url, 'Could not reach server');
+  }
+}
+
+function _showError(url, msg) {
+  const input = _getEl('channelUrlInput');
+  input.classList.remove('verifying','detected');
+  input.classList.add('error');
+
+  const preview = _getEl('channelPreview');
+  preview.classList.remove('hidden');
+  preview.classList.add('error-card');
+
+  _getEl('previewIcon').innerHTML = '⚠️';
+  _getEl('previewPlatform').className = 'channel-preview-platform err';
+  _getEl('previewPlatform').textContent = 'Channel not found — check the link';
+  _getEl('previewUrl').textContent = msg;
+  _channelVerified = false;
+  _verifiedPlatform = null;
+}
+
+function _showUnknown(url) {
+  const input = _getEl('channelUrlInput');
+  input.classList.add('error');
+  const preview = _getEl('channelPreview');
+  preview.classList.remove('hidden');
+  preview.classList.add('error-card');
+  _getEl('previewIcon').innerHTML = '🌐';
+  _getEl('previewPlatform').className = 'channel-preview-platform err';
+  _getEl('previewPlatform').textContent = 'Platform not supported yet';
+  _getEl('previewUrl').textContent = 'YouTube, TikTok, Instagram, Twitter/X, Twitch supported';
+}
+
+// ── Join program ────────────────────────────────────────────────────────────────────────────────────────────────
+async function joinProgram() {
+  const btn = _getEl('joinBtn');
+  const channelUrl = (_getEl('channelUrlInput').value || '').trim();
+
+  // If a URL was typed but NOT verified, block join
+  if (channelUrl && !_channelVerified) {
+    _getEl('previewPlatform').textContent = 'Please wait for channel verification…';
+    return;
+  }
+
+  btn.textContent = '⏳ Setting up your link…';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/partners/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        social_handle: channelUrl,
+        channel_url:   channelUrl,
+        platform:      _verifiedPlatform || '',
+      }),
+      credentials: 'same-origin',
+    });
+    if (res.status === 401) { window.location.href = '/auth/login?next=/partners/'; return; }
+    const data = await res.json();
+    if (data.code) {
+      showChing();
+      setTimeout(() => window.location.reload(), 1400);
+    }
+  } catch (e) {
+    btn.textContent = '💸 Get My Partner Link';
+    btn.disabled = false;
+    console.error('Join error', e);
+  }
+}
+
+// ── Copy link ─────────────────────────────────────────────────────────────────
+function copyLink() {
+  const input = document.getElementById('refLinkInput');
+  const btn = document.getElementById('copyBtn');
+  if (!input) return;
+  navigator.clipboard.writeText(input.value).then(() => {
+    btn.textContent = '✅ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '📋 Copy Link'; btn.classList.remove('copied'); }, 2500);
+  });
+}
+
+// ── Cha-ching toast ───────────────────────────────────────────────────────────
+function showChing() {
+  const t = document.getElementById('ching-toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+// ── Live stat polling (only when dashboard is visible) ────────────────────────
+{% if partner %}
+let _lastWallet = {{ partner.wallet_usd }};
+
+async function pollStats() {
+  try {
+    const res = await fetch('/partners/api/stats', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const d = await res.json();
+
+    document.getElementById('statClicks').textContent      = d.clicks;
+    document.getElementById('statSignups').textContent     = d.signups;
+    document.getElementById('statConversions').textContent = d.conversions;
+    document.getElementById('statWallet').textContent      = '$' + d.wallet_usd.toFixed(2);
+
+    if (d.wallet_usd > _lastWallet) {
+      showChing();
+      // Play cha-ching audio if available
+      try { new Audio('/static/ching.mp3').play(); } catch(_) {}
+      _lastWallet = d.wallet_usd;
+    }
+  } catch (_) {}
+}
+
+setInterval(pollStats, 30000);
+{% endif %}
+</script>
+</body>
+</html>

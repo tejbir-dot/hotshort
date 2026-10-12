@@ -2153,6 +2153,15 @@ from routes.feedback import feedback_bp
 app.register_blueprint(feedback_bp, url_prefix="/api")
 from routes.admin import admin_bp
 app.register_blueprint(admin_bp, url_prefix="/admin")
+from routes.partners import partners_bp
+app.register_blueprint(partners_bp, url_prefix="/partners")
+
+# Vanity short URL: /vip/<code> -> click tracker
+@app.route("/vip/<code>")
+def vip_redirect(code):
+    from routes.partners import _track_click_and_redirect
+    return _track_click_and_redirect(code)
+
 
 
 
@@ -3308,7 +3317,28 @@ def payment_success(plan):
         user_id=getattr(current_user, "id", None),
         plan=normalized,
     )
-    return render_template("success.html", plan=normalized.capitalize())
+
+    # ── Zero CAC Flywheel: credit partner if this user came via a referral link ──
+    try:
+        hs_ref = request.cookies.get("hs_ref", "").strip()
+        if hs_ref:
+            from routes.partners import credit_partner_for_code
+            credited = credit_partner_for_code(
+                referral_code=hs_ref,
+                new_user_id=current_user.id,
+                plan_name=normalized,
+                stripe_session_id=None,
+            )
+            app.logger.info("[PARTNERS] payment_success hs_ref=%r credited=%s user=%s",
+                            hs_ref, credited, current_user.id)
+    except Exception as _partner_exc:
+        app.logger.exception("[PARTNERS] credit_partner_for_code failed: %s", _partner_exc)
+
+    resp = make_response(render_template("success.html", plan=normalized.capitalize()))
+    # Clear the referral cookie after crediting (prevent double-credit on refresh)
+    resp.set_cookie("hs_ref", "", max_age=0, path="/")
+    return resp
+
 
 @app.route('/subscribe/<plan>')
 @login_required
