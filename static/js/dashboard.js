@@ -560,6 +560,68 @@
   }
 
   /* =====================
+     VIBE MODAL (Choose Your Format)
+     ===================== */
+  const VIBE_NAMES = {
+    brainrot:  "Brainrot / GenZ Mode",
+    tjr:       "TJR / AI TikTok Mode",
+    cinematic: "Cinematic Blur",
+    raw_cut:   "Raw Cut",
+  };
+  let _vibePendingUrl   = "";
+  let _vibeSelected     = null;
+
+  function openDashVibeModal(ytUrl) {
+    _vibePendingUrl = ytUrl;
+    _vibeSelected   = null;
+    const overlay = document.getElementById("vibeOverlay");
+    if (!overlay) { _doAnalyzeWithFormat(ytUrl, "tjr"); return; } // fallback
+    document.querySelectorAll(".vibe-card").forEach(c => c.classList.remove("selected"));
+    const lbl = document.getElementById("vibeSelectedLabel");
+    if (lbl) lbl.innerHTML = "Pick a format above to continue";
+    const goBtn = document.getElementById("vibeGoBtn");
+    if (goBtn) goBtn.disabled = true;
+    overlay.classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeDashVibeModal() {
+    const overlay = document.getElementById("vibeOverlay");
+    if (overlay) overlay.classList.remove("open");
+    document.body.style.overflow = "";
+  }
+
+  // Expose globally so inline onclick in modal HTML can call these
+  window.selectVibe = function(card) {
+    document.querySelectorAll(".vibe-card").forEach(c => c.classList.remove("selected"));
+    card.classList.add("selected");
+    _vibeSelected = card.dataset.mode;
+    const lbl = document.getElementById("vibeSelectedLabel");
+    if (lbl) lbl.innerHTML = "Selected: <span style='color:#FFD580;font-weight:700'>" + (VIBE_NAMES[_vibeSelected] || _vibeSelected) + "</span>";
+    const goBtn = document.getElementById("vibeGoBtn");
+    if (goBtn) goBtn.disabled = false;
+  };
+
+  window.submitWithVibe = function() {
+    if (!_vibeSelected) return;
+    closeDashVibeModal();
+    _doAnalyzeWithFormat(_vibePendingUrl, _vibeSelected);
+  };
+
+  window.closeVibeModal = function(skip) {
+    closeDashVibeModal();
+    if (skip && _vibePendingUrl) _doAnalyzeWithFormat(_vibePendingUrl, "tjr");
+  };
+
+  // ESC + backdrop close
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") closeDashVibeModal();
+  });
+  document.addEventListener("click", function(e) {
+    if (e.target && e.target.id === "vibeOverlay") closeDashVibeModal();
+  });
+
+  /* =====================
      MAIN ANALYZE FLOW
      ===================== */
   async function handleAnalyzeClick(e) {
@@ -571,14 +633,21 @@
       toast("Please paste a YouTube link.");
       return;
     }
+    // Open Vibe Modal first — actual analyze fires from submitWithVibe()
+    openDashVibeModal(ytUrl);
+  }
+
+  async function _doAnalyzeWithFormat(ytUrl, formatMode) {
+    if (_isAnalyzing) return;
     _isAnalyzing = true;
     showLoader();
     try {
       persistLastUrl(ytUrl);
-      analyticsPing("analyze_click", { youtube_url: ytUrl });
+      analyticsPing("analyze_click", { youtube_url: ytUrl, format_mode: formatMode });
       const fd = new FormData();
       fd.append("youtube_url", ytUrl);
       fd.append("mode", "final");
+      fd.append("format_mode", formatMode || "tjr");
       const templateId = getDashboardTemplateId();
       if (templateId) fd.append("template_id", templateId);
       const resp = await fetch(backendUrl("/analyze"), {

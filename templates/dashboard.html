@@ -943,6 +943,132 @@
       padding: 12px 18px !important;
     }
   }
+
+  /* ═══════════════════════════════════════════════
+     CHOOSE YOUR VIBE MODAL
+  ═══════════════════════════════════════════════ */
+  #vibeOverlay {
+    position: fixed; inset: 0; z-index: 9000;
+    background: rgba(4, 2, 18, 0.82);
+    backdrop-filter: blur(22px) saturate(1.4);
+    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    opacity: 0; pointer-events: none;
+    transition: opacity .35s ease;
+  }
+  #vibeOverlay.open { opacity: 1; pointer-events: all; }
+
+  .vibe-modal {
+    background: linear-gradient(145deg, rgba(20,12,48,0.97) 0%, rgba(10,6,28,0.99) 100%);
+    border: 1px solid rgba(255, 200, 80, 0.18);
+    border-radius: 28px;
+    padding: 40px 36px 32px;
+    max-width: 860px; width: 100%;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,200,80,0.08), inset 0 1px 0 rgba(255,255,255,0.06);
+    transform: translateY(28px) scale(0.97);
+    transition: transform .4s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative; overflow: hidden;
+  }
+  #vibeOverlay.open .vibe-modal { transform: translateY(0) scale(1); }
+  .vibe-modal::before {
+    content: ''; position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,200,80,0.6), transparent);
+  }
+  .vibe-eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+    text-transform: uppercase; color: rgba(255,200,80,0.7);
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .vibe-eyebrow-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #4dff91; box-shadow: 0 0 6px #4dff91;
+    animation: vDot 1.4s ease-in-out infinite; flex: 0 0 auto;
+  }
+  @keyframes vDot { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.5);opacity:.5} }
+  .vibe-title { font-size: clamp(22px,4vw,30px); font-weight: 900; line-height: 1.2; margin-bottom: 6px; }
+  .vibe-title .gold {
+    background: linear-gradient(90deg, #FFD580, #FFB347, #FFA500);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .vibe-sub { font-size: 14px; color: #888; margin-bottom: 28px; line-height: 1.55; }
+
+  .vibe-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 14px; margin-bottom: 28px; }
+  @media (max-width: 600px) {
+    .vibe-grid { grid-template-columns: 1fr; }
+    .vibe-modal { padding: 28px 18px 24px; border-radius: 20px; }
+  }
+  .vibe-card {
+    background: rgba(255,255,255,0.035);
+    border: 1.5px solid rgba(255,255,255,0.08);
+    border-radius: 18px; padding: 20px 18px 16px;
+    cursor: pointer; position: relative; overflow: hidden;
+    transition: border-color .25s, transform .25s, box-shadow .25s;
+    user-select: none;
+  }
+  .vibe-card::before {
+    content:''; position:absolute; inset:0; border-radius:17px;
+    background: var(--card-glow, transparent);
+    opacity:0; transition:opacity .3s; pointer-events:none;
+  }
+  .vibe-card:hover { transform:translateY(-4px); border-color:rgba(255,200,80,0.35); box-shadow:0 14px 36px rgba(0,0,0,0.4); }
+  .vibe-card:hover::before { opacity:1; }
+  .vibe-card.selected { border-color:var(--card-accent,#FFD580)!important; box-shadow:0 0 0 3px rgba(255,200,80,0.18),0 14px 40px rgba(0,0,0,0.45)!important; transform:translateY(-4px)!important; }
+  .vibe-card.selected::before { opacity:1!important; }
+  .vibe-card.brainrot   { --card-accent:#a855f7; --card-glow:linear-gradient(135deg,rgba(168,85,247,0.1),transparent); }
+  .vibe-card.tjr        { --card-accent:#FFD580; --card-glow:linear-gradient(135deg,rgba(255,210,90,0.1),transparent); }
+  .vibe-card.cinematic  { --card-accent:#38bdf8; --card-glow:linear-gradient(135deg,rgba(56,189,248,0.1),transparent); }
+  .vibe-card.rawcut     { --card-accent:#94a3b8; --card-glow:linear-gradient(135deg,rgba(148,163,184,0.08),transparent); }
+  .vibe-card-icon { font-size:32px; margin-bottom:10px; display:block; filter:drop-shadow(0 2px 8px rgba(0,0,0,0.4)); }
+  .vibe-card-title { font-size:15px; font-weight:800; margin-bottom:5px; line-height:1.25; }
+  .vibe-card.brainrot  .vibe-card-title { color:#d8b4fe; }
+  .vibe-card.tjr       .vibe-card-title { color:#FFD580; }
+  .vibe-card.cinematic .vibe-card-title { color:#7dd3fc; }
+  .vibe-card.rawcut    .vibe-card-title { color:#cbd5e1; }
+  .vibe-card-desc { font-size:12px; color:#777; line-height:1.55; }
+  .vibe-check {
+    position:absolute; top:12px; right:12px;
+    width:22px; height:22px; border-radius:50%;
+    background:var(--card-accent,#FFD580);
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; color:#07031a; font-weight:900;
+    opacity:0; transform:scale(0.6);
+    transition:opacity .2s,transform .2s;
+  }
+  .vibe-card.selected .vibe-check { opacity:1; transform:scale(1); }
+  .vibe-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; }
+  .vibe-tag {
+    font-size:10px; font-weight:700; padding:2px 8px;
+    border-radius:100px; border:1px solid;
+    text-transform:uppercase; letter-spacing:0.5px;
+  }
+  .vibe-card.brainrot  .vibe-tag { color:#c084fc; border-color:rgba(192,132,252,0.3); background:rgba(192,132,252,0.07); }
+  .vibe-card.tjr       .vibe-tag { color:#fbbf24; border-color:rgba(251,191,36,0.3);  background:rgba(251,191,36,0.07); }
+  .vibe-card.cinematic .vibe-tag { color:#60c8f8; border-color:rgba(96,200,248,0.3);  background:rgba(96,200,248,0.07); }
+  .vibe-card.rawcut    .vibe-tag { color:#94a3b8; border-color:rgba(148,163,184,0.3); background:rgba(148,163,184,0.07); }
+  .vibe-cta-row { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+  .vibe-selected-label { font-size:13px; color:#888; flex:1; transition:color .25s; }
+  .vibe-go-btn {
+    padding:14px 36px; border-radius:14px; border:none; cursor:pointer;
+    font-size:15px; font-weight:800; font-family:inherit;
+    background:linear-gradient(135deg,#FFD580 0%,#FFB347 50%,#fff 100%);
+    color:#07031a;
+    box-shadow:0 8px 30px rgba(255,179,71,0.45),inset 0 1px 0 rgba(255,255,255,0.5);
+    transition:transform .2s,box-shadow .2s;
+    white-space:nowrap;
+    animation:vibeGoGlow 2.2s ease-in-out infinite;
+  }
+  .vibe-go-btn:hover { transform:translateY(-2px); }
+  .vibe-go-btn:disabled { opacity:0.6; cursor:not-allowed; animation:none; }
+  @keyframes vibeGoGlow {
+    0%,100%{box-shadow:0 6px 20px rgba(255,179,71,0.35),inset 0 1px 0 rgba(255,255,255,0.4);}
+    50%{box-shadow:0 12px 36px rgba(255,179,71,0.6),inset 0 1px 0 rgba(255,255,255,0.5);}
+  }
+  .vibe-skip {
+    font-size:12px; color:#555; background:none; border:none;
+    cursor:pointer; padding:4px 8px; transition:color .2s; font-family:inherit;
+  }
+  .vibe-skip:hover { color:#888; }
 </style>
 
 <!-- Glossy background -->
@@ -1030,5 +1156,77 @@
 </script>
 
 {% include "pricing_modal.html" %}
+
+<!-- ═══════════ CHOOSE YOUR VIBE MODAL ═══════════ -->
+<div id="vibeOverlay" role="dialog" aria-modal="true" aria-label="Choose your clip format">
+  <div class="vibe-modal">
+    <div class="vibe-eyebrow"><div class="vibe-eyebrow-dot"></div>Step 2 of 2 &nbsp;·&nbsp; Format Selection</div>
+    <div class="vibe-title">Choose Your <span class="gold">Vibe</span> ✨</div>
+    <p class="vibe-sub">Pick how you want your clips to look. This takes 2 seconds and changes everything.</p>
+    <div class="vibe-grid" id="vibeGrid">
+
+      <!-- Brainrot / GenZ -->
+      <div class="vibe-card brainrot" data-mode="brainrot" onclick="selectVibe(this)">
+        <div class="vibe-check">✓</div>
+        <span class="vibe-card-icon">🧠</span>
+        <div class="vibe-card-title">Brainrot / GenZ Mode</div>
+        <p class="vibe-card-desc">Face-cam up top, viral gameplay or ASMR footage below. Maximum scroll-stop retention for the chronically online audience.</p>
+        <div class="vibe-tags">
+          <span class="vibe-tag">Dual Screen</span>
+          <span class="vibe-tag">Max Retention</span>
+          <span class="vibe-tag">GenZ</span>
+        </div>
+      </div>
+
+      <!-- TJR / AI TikTok -->
+      <div class="vibe-card tjr" data-mode="tjr" onclick="selectVibe(this)">
+        <div class="vibe-check">✓</div>
+        <span class="vibe-card-icon">📱</span>
+        <div class="vibe-card-title">TJR / AI TikTok Mode</div>
+        <p class="vibe-card-desc">Single speaker, face-tracked and centered. God-tier yellow word-by-word captions. The classic format that built viral empires.</p>
+        <div class="vibe-tags">
+          <span class="vibe-tag">Face Track</span>
+          <span class="vibe-tag">AI Captions</span>
+          <span class="vibe-tag">Viral Classic</span>
+        </div>
+      </div>
+
+      <!-- Cinematic Blur -->
+      <div class="vibe-card cinematic" data-mode="cinematic" onclick="selectVibe(this)">
+        <div class="vibe-check">✓</div>
+        <span class="vibe-card-icon">🎬</span>
+        <div class="vibe-card-title">Cinematic Blur</div>
+        <p class="vibe-card-desc">Video centered with the same footage blurred and scaled behind. Perfect for gaming clips, screen recordings, or landscape content.</p>
+        <div class="vibe-tags">
+          <span class="vibe-tag">Blur BG</span>
+          <span class="vibe-tag">9:16 Safe</span>
+          <span class="vibe-tag">Premium</span>
+        </div>
+      </div>
+
+      <!-- Raw Cut -->
+      <div class="vibe-card rawcut" data-mode="raw_cut" onclick="selectVibe(this)">
+        <div class="vibe-check">✓</div>
+        <span class="vibe-card-icon">🎞️</span>
+        <div class="vibe-card-title">Raw Cut</div>
+        <p class="vibe-card-desc">Clean trim only — no overlays, no captions, no effects. For creators who finish in Premiere Pro, CapCut, or DaVinci Resolve.</p>
+        <div class="vibe-tags">
+          <span class="vibe-tag">No Effects</span>
+          <span class="vibe-tag">DIY Edit</span>
+          <span class="vibe-tag">Pro</span>
+        </div>
+      </div>
+
+    </div>
+    <div class="vibe-cta-row">
+      <div class="vibe-selected-label" id="vibeSelectedLabel">Pick a format above to continue</div>
+      <button class="vibe-skip" onclick="closeVibeModal(true)">Skip →</button>
+      <button class="vibe-go-btn" id="vibeGoBtn" disabled onclick="submitWithVibe()">
+        Analyze Now 🚀
+      </button>
+    </div>
+  </div>
+</div>
+<!-- ══════════════════════════════════════════════ -->
 
 {% endblock %}

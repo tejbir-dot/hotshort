@@ -2528,7 +2528,15 @@ def analyze():
         youtube_url = request.form.get("youtube_url", "").strip()
         mode = request.form.get("mode", "final").strip()
         template_id = request.form.get("template_id", "").strip()
-        
+
+        # ── Format / Vibe selected by user on the landing page ──
+        _VALID_FORMATS = {"brainrot", "tjr", "cinematic", "raw_cut"}
+        format_mode = request.form.get("format_mode", "tjr").strip().lower()
+        if format_mode not in _VALID_FORMATS:
+            format_mode = "tjr"
+        app.logger.info("[ANALYZE] format_mode=%s user_id=%s", format_mode,
+                        getattr(current_user, "id", None))
+
         if not youtube_url:
             return jsonify({"error": "Missing youtube_url"}), 400
         
