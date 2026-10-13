@@ -1788,7 +1788,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
     job_id      = job["job_id"]
     youtube_url = job.get("youtube_url") or job.get("video_url", "")
     video_format = job.get("video_format", "center_crop")
-    is_free     = False if os.getenv("HS_UNLIMITED_MODE", "0") == "1" else job.get("is_free_user", False)
+    is_free     = False if os.getenv("HS_UNLIMITED_MODE", "1").strip().lower() in ("1", "true", "yes") else job.get("is_free_user", False)
     
     if video_format == "blur_background":
         os.environ["HS_DISABLE_BG_BLUR"] = "0"

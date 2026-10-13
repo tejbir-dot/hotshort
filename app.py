@@ -2336,14 +2336,29 @@ def ensure_worker_ready(timeout_seconds: int | None = None, retry_interval_secon
 
 
 # ============================================
-# 🎯 HELPER: Free Status Calculation
+# 🎯 HELPER: Unlimited Try Mode & Free Status
 # ============================================
+def _is_unlimited_mode() -> bool:
+    """Check if unlimited try / test mode is active (via env flag or localhost / local IP)."""
+    if os.getenv("HS_UNLIMITED_MODE", "1").strip().lower() in ("1", "true", "yes"):
+        return True
+    try:
+        from flask import has_request_context, request
+        if has_request_context() and request:
+            host = (request.host or "").lower()
+            if any(h in host for h in ("localhost", "127.0.0.1", "0.0.0.0", "::1")):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def get_free_status(user):
     """
     Calculate free tier status for a user.
     
     Returns a dict with:
-    - is_paid: bool (True if user has paid subscription)
+    - is_paid: bool (True if user has paid subscription or in unlimited mode)
     - free_clips_used: int (number of clips used this week)
     - free_clips_left: int (remaining clips for free tier)
     - claimed_clip_ids: list (IDs of claimed free clips this week)
@@ -2351,12 +2366,12 @@ def get_free_status(user):
     from datetime import timedelta
     
     try:
-        # Move UNLIMITED check to the very top so local/dev environments never see pricing, even if anonymous
-        if os.environ.get("HS_UNLIMITED_MODE", "1").strip() == "1":
+        # Move UNLIMITED check to the very top so local/dev environments never see pricing
+        if _is_unlimited_mode():
             return {
                 "is_paid": True,
                 "free_clips_used": 0,
-                "free_clips_left": 9999,
+                "free_clips_left": 99999,
                 "claimed_clip_ids": []
             }
             
@@ -2570,15 +2585,31 @@ def analyze():
         if not user_id:
             return jsonify({"error": "Missing user context"}), 401
 
-        active_job = Job.query.filter(
-            Job.user_id == user_id,
-            Job.status.in_(["queued", "processing", "in_progress", "pending"])
-        ).first()
-        if active_job:
-            return jsonify({
-                "action": "show_pricing_modal",
-                "error": "You already have one video processing. Please wait until it finishes."
-            }), 429
+        if not _is_unlimited_mode():
+            active_job = Job.query.filter(
+                Job.user_id == user_id,
+                Job.status.in_(["queued", "processing", "in_progress", "pending"])
+            ).first()
+            if active_job:
+                return jsonify({
+                    "action": "show_pricing_modal",
+                    "error": "You already have one video processing. Please wait until it finishes."
+                }), 429
+        else:
+            # On localhost / unlimited mode: auto-expire stale jobs older than 3 minutes so user is never locked out
+            try:
+                stale_cutoff = datetime.utcnow() - timedelta(minutes=3)
+                stale_jobs = Job.query.filter(
+                    Job.user_id == user_id,
+                    Job.status.in_(["queued", "processing", "in_progress", "pending"]),
+                    Job.created_at < stale_cutoff
+                ).all()
+                for sj in stale_jobs:
+                    sj.status = "failed"
+                if stale_jobs:
+                    db.session.commit()
+            except Exception:
+                db.session.rollback()
 
         analyze_lock = _acquire_analyze_lock_for_user(user_id)
         if analyze_lock is None:
@@ -2611,7 +2642,7 @@ def analyze():
             )
             db.session.add(job)
             db.session.commit()
-            log.info("[ANALYZE] Created job %s for user %s with URL: %s", job_id, current_user.id, youtube_url)
+            log.info("[ANALYZE] Created job %s for user %s with URL: %s", job_id, user_id, youtube_url)
         except Exception as e:
             log.error("[ANALYZE] Failed to create job: %s", e)
             db.session.rollback()
@@ -2660,7 +2691,7 @@ def _effective_user_id_for_request() -> int | None:
         except Exception:
             return None
 
-    if not app.config.get("LOGIN_DISABLED"):
+    if not (_is_unlimited_mode() or app.config.get("LOGIN_DISABLED")):
         return None
 
     email = (os.getenv("HS_DEV_USER_EMAIL") or "dev@local").strip().lower()
@@ -2671,7 +2702,13 @@ def _effective_user_id_for_request() -> int | None:
     try:
         user = User.query.filter_by(email=email).first()
         if not user:
-            user = User(email=email, name=name)
+            user = User(
+                email=email,
+                name=name,
+                plan_type="pro",
+                subscription_plan="pro",
+                subscription_status="active"
+            )
             db.session.add(user)
             db.session.commit()
         return int(user.id)
@@ -2706,16 +2743,17 @@ def analyze_video():
         flash("Missing user context", "error")
         return redirect(url_for("dashboard"))
 
-    active_job = Job.query.filter(
-        Job.user_id == user_id,
-        Job.status.in_(["queued", "processing", "in_progress", "pending"])
-    ).first()
-    if active_job:
-        return render_template(
-            "pricing_modal.html",
-            current_user=current_user,
-            error="You already have one video processing. Please wait until it finishes."
-        )
+    if not _is_unlimited_mode():
+        active_job = Job.query.filter(
+            Job.user_id == user_id,
+            Job.status.in_(["queued", "processing", "in_progress", "pending"])
+        ).first()
+        if active_job:
+            return render_template(
+                "pricing_modal.html",
+                current_user=current_user,
+                error="You already have one video processing. Please wait until it finishes."
+            )
 
     analyze_lock = _acquire_analyze_lock_for_user(user_id)
     if analyze_lock is None:
@@ -3168,9 +3206,9 @@ def analytics():
 
 
 @app.route("/api/free-status", methods=["GET"])
-@login_required
 def api_free_status():
-    return jsonify(get_free_status(current_user))
+    user = current_user if getattr(current_user, "is_authenticated", False) else None
+    return jsonify(get_free_status(user))
 
 
 @app.route("/api/runpod-download", methods=["POST"])

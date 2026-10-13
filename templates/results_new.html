@@ -1409,15 +1409,16 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
     }
 
     function normalizeFreeStatus(s) {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0';
       const obj = (s && typeof s === 'object') ? s : {};
       const claimed = Array.isArray(obj.claimed_clip_ids) ? obj.claimed_clip_ids : [];
       const usedRaw = Number.isFinite(+obj.free_clips_used) ? +obj.free_clips_used : (Number.isFinite(+obj.free_downloads_used) ? +obj.free_downloads_used : 0);
       const leftRaw = Number.isFinite(+obj.free_clips_left) ? +obj.free_clips_left : (3 - usedRaw);
       return {
-        is_paid: !!obj.is_paid,
-        free_clips_used: usedRaw,
-        free_downloads_used: usedRaw,
-        free_clips_left: Math.max(0, leftRaw),
+        is_paid: isLocal || !!obj.is_paid,
+        free_clips_used: isLocal ? 0 : usedRaw,
+        free_downloads_used: isLocal ? 0 : usedRaw,
+        free_clips_left: isLocal ? 99999 : Math.max(0, leftRaw),
         claimed_clip_ids: claimed.map(x => parseInt(x, 10)).filter(n => Number.isFinite(n)),
       };
     }
@@ -2255,7 +2256,8 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         const rawClipUrl = (typeof clip.clip_url === 'string') ? clip.clip_url : '';
         const legacyDownloadHref = rawClipUrl ? `/download-by-path?clip_url=${encodeURIComponent(rawClipUrl)}` : '';
         const isClaimed = Number.isFinite(clipIdNum) && claimed.has(clipIdNum);
-        const locked = (!s.is_paid) && (s.free_clips_left === 0) && !isClaimed;
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0';
+        const locked = (!s.is_paid && !isLocal) && (s.free_clips_left === 0) && !isClaimed;
         if (locked) {
           analyticsPing('download_blocked', {
             reason: 'free_limit_client',

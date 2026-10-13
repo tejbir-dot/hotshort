@@ -1669,12 +1669,15 @@
             }
 
             if (data && data.action === 'show_pricing_modal') {
-              if (typeof window.showPricingModal === 'function') {
-                window.showPricingModal();
-              } else {
-                showMessage(form, 'Upgrade required to continue.');
+              const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0';
+              if (!isLocal) {
+                if (typeof window.showPricingModal === 'function') {
+                  window.showPricingModal();
+                } else {
+                  showMessage(form, 'Upgrade required to continue.');
+                }
+                return;
               }
-              return;
             }
 
             if (data.error) {
@@ -1823,8 +1826,11 @@
           return;
         }
         if (data && data.action === 'show_pricing_modal') {
-          if (typeof window.showPricingModal === 'function') window.showPricingModal();
-          else if (msgBox) { msgBox.textContent = 'Upgrade required.'; }
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0';
+          if (!isLocal) {
+            if (typeof window.showPricingModal === 'function') window.showPricingModal();
+            else if (msgBox) { msgBox.textContent = 'Upgrade required.'; }
+          }
         }
         if (data && data.error) {
           if (msgBox) { msgBox.textContent = data.error; }
