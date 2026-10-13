@@ -4235,6 +4235,20 @@ def init_db():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+
+            # Partner table migrations
+            for col_sql in [
+                "ALTER TABLE partner ADD COLUMN channel_url VARCHAR(300)",
+                "ALTER TABLE partner ADD COLUMN platform VARCHAR(50)",
+                "ALTER TABLE partner ADD COLUMN payout_method VARCHAR(20)",
+                "ALTER TABLE partner ADD COLUMN payout_info VARCHAR(300)",
+            ]:
+                try:
+                    db.session.execute(text(col_sql))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+
     except (OperationalError, Exception) as e:
         # Ignore "table already exists" or "locked" errors during multi-worker boot
         msg = str(e).lower()
