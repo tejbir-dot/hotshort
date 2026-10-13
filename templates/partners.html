@@ -531,7 +531,9 @@
   </div>
 </nav>
 
-<div class="page">
+<div class="page" id="partnerPage"
+     data-is-auth="{{ current_user.is_authenticated | lower }}"
+     data-is-partner="{{ 'true' if partner else 'false' }}">
 
   <!-- Hero -->
   <div class="partner-eyebrow">
@@ -591,22 +593,17 @@
   </div>
 
 
-  <!-- Golden CTA visible to everyone -->
-  <div style="text-align:center; margin-bottom: 52px;">
-    {% if not current_user.is_authenticated %}
-      <a href="/auth/login?next=/partners/" class="cta-earn-btn" style="display:inline-block;text-decoration:none;">
-        💸 Start Earning Now — It's Free
-      </a>
-    {% elif not partner %}
-  <div class="dash-card" style="text-align:center; padding: 44px 36px;">
-    <div style="font-size:52px; margin-bottom:16px; filter:drop-shadow(0 0 20px rgba(255,200,80,0.4));">🚀</div>
-    <h2 style="font-size:22px; margin-bottom:8px;">Ready to Start Earning?</h2>
-    <p class="sub" style="margin-bottom:28px;">Setup takes 60 seconds. Get your link + connect payout in one flow.</p>
-    <button class="btn-join" onclick="openEarnModal()" style="width:100%; font-size:17px; padding:18px;">💸 Get My Partner Link</button>
+  {% if not partner %}
+  <!-- Universal Smart CTA -->
+  <div style="text-align:center; margin-top: 36px; margin-bottom: 52px;">
+    <button class="cta-earn-btn" id="smartEarnBtn" onclick="smartEarnClick()">
+      💸 Start Earning Now
+    </button>
+    <p class="cta-sub-text">No credit card &middot; No approval &middot; 60 seconds</p>
   </div>
-
-
   {% else %}
+  <hr class="divider" style="margin-top: 36px; margin-bottom:40px;">
+
   <div class="dash-card" id="dashCard">
     <h2>Your Partner Dashboard</h2>
     <p class="sub">Live stats · updates every 30s</p>
@@ -937,9 +934,11 @@ setInterval(pollStats, 30000);
 
     function goToStep2() {
       _earnChannelUrl = (document.getElementById('channelUrlInput').value || '').trim();
+      const match = PLATFORMS.find(p => p.pattern.test(_earnChannelUrl));
+      _earnPlatform = _verifiedPlatform || (match ? match.name : '');
       _showEarnStep(2);
     }
-    function goToStep2Skip() { _earnChannelUrl = ''; _showEarnStep(2); }
+    function goToStep2Skip() { _earnChannelUrl = ''; _earnPlatform = ''; _showEarnStep(2); }
     function goToStep1() { _showEarnStep(1); }
 
     const PAYOUT_HINTS = {
@@ -979,7 +978,10 @@ setInterval(pollStats, 30000);
           }),
           credentials: 'same-origin',
         });
-        if (res.status === 401) { window.location.href = '/auth/login?next=/partners/'; return; }
+        if (res.status === 401) {
+          window.location.href = '/auth/google_login?next=' + encodeURIComponent('/partners/?autostart=1');
+          return;
+        }
         const data = await res.json();
         if (data.code) {
           const base = window.location.origin;
@@ -1018,6 +1020,55 @@ setInterval(pollStats, 30000);
           if (ov2 && ov2.classList.contains('open')) closeEarnModal();
         }
       });
+    })();
+
+  
+    // Smart Earn Button + Auto-open logic
+    (function() {
+      var page = document.getElementById('partnerPage');
+      var IS_AUTH    = page && page.dataset.isAuth    === 'true';
+      var IS_PARTNER = page && page.dataset.isPartner === 'true';
+
+      window.smartEarnClick = function() {
+        if (!IS_AUTH) {
+          // Not logged in -> Google OAuth, come back with autostart=1
+          var next = encodeURIComponent('/partners/?autostart=1');
+          window.location.href = '/auth/google_login?next=' + next;
+          return;
+        }
+        if (IS_PARTNER) {
+          // Already partner -> scroll to dashboard
+          var dc = document.getElementById('dashCard');
+          if (dc) dc.scrollIntoView({ behavior: 'smooth' });
+          return;
+        }
+        // Logged in, not partner -> open 2-step earn modal
+        if (typeof openEarnModal === 'function') openEarnModal();
+      };
+
+      // Auto-open modal or trap after Google login / navbar redirect
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('autostart') === '1') {
+        if (!IS_AUTH) {
+          // Logged-out trap: direct to Google login
+          var next = encodeURIComponent('/partners/?autostart=1');
+          window.location.href = '/auth/google_login?next=' + next;
+          return;
+        } else if (!IS_PARTNER) {
+          // Logged in, not partner: auto-open 2-step modal
+          setTimeout(function() {
+            if (typeof openEarnModal === 'function') openEarnModal();
+          }, 350);
+        } else {
+          // Logged in, already partner: scroll to dashboard
+          setTimeout(function() {
+            var dc = document.getElementById('dashCard');
+            if (dc) dc.scrollIntoView({ behavior: 'smooth' });
+          }, 300);
+        }
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     })();
 
   </script>

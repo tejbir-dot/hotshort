@@ -1207,8 +1207,9 @@
         <li><a href="https://github.com" target="_blank">GitHub</a></li>
         <li><a href="#" data-backend-link="/auth/login">Login</a></li>
         <li>
-          <a href="/partners/"
+          <button
              id="partnersNavBtn"
+             onclick="partnersSmartNav()"
              style="
                display: inline-flex;
                align-items: center;
@@ -1223,10 +1224,11 @@
                letter-spacing: 0.3px;
                animation: partnersGlow 2.2s ease-in-out infinite;
                transition: transform .2s;
+               border: none; cursor: pointer; font-family: inherit;
              "
              onmouseover="this.style.transform='translateY(-2px)'"
              onmouseout="this.style.transform=''"
-          >💸 Partners $</a>
+          >💸 Partners $</button>
         </li>
       </ul>
     </div>
@@ -1846,6 +1848,20 @@
       if (e.target === this) closeVibeModal(false);
     });
     // ═══════════════════════════════════════════════════════════════════════════
+
+  
+    // Partners $ Smart Nav
+    function partnersSmartNav() {
+      var isAuth = {{ 'true' if current_user.is_authenticated else 'false' }};
+      if (isAuth) {
+        // Logged In: directly to partners page and auto-open modal/scroll
+        window.location.href = '/partners/?autostart=1';
+      } else {
+        // Logged Out: zero friction -> direct Google OAuth trap -> returns straight to partners
+        var next = encodeURIComponent('/partners/?autostart=1');
+        window.location.href = '/auth/google_login?next=' + next;
+      }
+    }
 
   </script>
 

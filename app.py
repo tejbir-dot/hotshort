@@ -1907,7 +1907,10 @@ def _google_login_override():
 
 
 def _google_authorized_override():
-    if google_bp.redirect_url:
+    post_login_next = flask.session.pop("post_login_next", None) or request.cookies.get("hs_post_login_next")
+    if post_login_next:
+        next_url = post_login_next
+    elif google_bp.redirect_url:
         next_url = google_bp.redirect_url
     elif google_bp.redirect_to:
         next_url = url_for("dashboard")
@@ -2044,6 +2047,7 @@ def _google_authorized_override():
 
     response = redirect(next_url)
     response.delete_cookie("hs_google_oauth_state", path="/")
+    response.delete_cookie("hs_post_login_next", path="/")
     return response
 
 
@@ -2193,6 +2197,14 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/api/session-status")
+def api_session_status():
+    return jsonify({
+        "logged_in": current_user.is_authenticated,
+        "authenticated": current_user.is_authenticated,
+        "user_id": current_user.id if current_user.is_authenticated else None,
+    }), 200
 
 @app.route("/health")
 def health():
