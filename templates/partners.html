@@ -161,19 +161,571 @@
     .dash-card h2 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
     .dash-card .sub { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
 
-    /* Stats grid */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 14px; margin-bottom: 32px; }
-    .stat-box {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--border);
-      border-radius: 16px; padding: 20px 18px;
-      display: flex; flex-direction: column; gap: 6px;
-      transition: border-color .3s, transform .25s;
+    /* ── Next Tier Gravity Bar ── */
+    .gravity-wrap {
+      background: linear-gradient(135deg, rgba(255,215,128,0.08) 0%, rgba(255,255,255,0.02) 100%);
+      border: 1px solid rgba(255,200,80,0.25);
+      border-radius: 20px;
+      padding: 22px 24px;
+      margin-bottom: 28px;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
     }
-    .stat-box:hover { border-color: rgba(255,200,80,0.4); transform: translateY(-2px); }
-    .stat-icon { font-size: 20px; }
-    .stat-val { font-size: 28px; font-weight: 900; color: var(--gold); }
-    .stat-lbl { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .gravity-wrap::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,215,128,0.5), transparent);
+    }
+    .gravity-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .gravity-badge-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .gravity-tier-badge {
+      font-size: 22px;
+      filter: drop-shadow(0 2px 8px rgba(255,200,80,0.4));
+    }
+    .gravity-tier-text {
+      font-size: 14px;
+      font-weight: 500;
+      color: #e0e0e0;
+    }
+    .gravity-tier-name {
+      font-weight: 800;
+      color: var(--gold);
+    }
+    .gravity-counter {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ccc;
+      background: rgba(255,255,255,0.07);
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .gravity-track {
+      width: 100%;
+      height: 10px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 10px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+    }
+    .gravity-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #FFB347, #FFD580 60%, #4dff91 100%);
+      border-radius: 10px;
+      transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+      box-shadow: 0 0 16px rgba(255,213,128,0.6);
+    }
+    .gravity-fill::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -50px; bottom: 0; width: 40px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+      animation: gravityShine 2.5s infinite;
+    }
+    @keyframes gravityShine {
+      0% { left: -50px; }
+      100% { left: 100%; }
+    }
+    .gravity-milestones {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #777;
+      font-weight: 600;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .gravity-milestones span.active {
+      color: var(--gold);
+      font-weight: 700;
+    }
+    .gravity-hook {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #ccc;
+      line-height: 1.5;
+    }
+    .gravity-hook-icon {
+      font-size: 16px;
+      animation: pulseSpark 2s ease-in-out infinite;
+    }
+    @keyframes pulseSpark {
+      0%, 100% { transform: scale(1); filter: brightness(1); }
+      50% { transform: scale(1.2); filter: brightness(1.4); }
+    }
+
+    /* ── The Value Funnel Pipeline ── */
+    .funnel-pipeline {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .funnel-stage {
+      flex: 1;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      backdrop-filter: blur(12px);
+      transition: all 0.25s ease;
+    }
+    .funnel-stage:hover {
+      transform: translateY(-3px);
+      border-color: rgba(255,200,80,0.4);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+    }
+    .funnel-stage-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .funnel-stage-icon {
+      font-size: 20px;
+    }
+    .funnel-stage-tag {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.07);
+      color: #999;
+    }
+    .funnel-stage-num {
+      font-size: 28px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.1;
+      margin-bottom: 6px;
+      letter-spacing: -0.5px;
+    }
+    .funnel-stage-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #e0e0e0;
+      margin-bottom: 2px;
+    }
+    .funnel-stage-desc {
+      font-size: 11px;
+      color: #777;
+      font-weight: 500;
+    }
+
+    /* Conduit connector between funnel stages */
+    .funnel-conduit {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 16px;
+      color: rgba(255,200,80,0.4);
+      font-size: 13px;
+      position: relative;
+    }
+    .funnel-conduit::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(255,200,80,0.2), rgba(255,200,80,0.6), rgba(255,200,80,0.2));
+      z-index: 0;
+    }
+    .funnel-conduit-arrow {
+      position: relative;
+      z-index: 1;
+      background: #0d0824;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      border: 1px solid rgba(255,200,80,0.3);
+      color: var(--gold);
+      box-shadow: 0 0 10px rgba(255,200,80,0.2);
+    }
+
+    /* THE PENDING VAULT (HERO NODE) */
+    .funnel-stage.vault-stage {
+      background: linear-gradient(135deg, rgba(255,180,60,0.12) 0%, rgba(232,138,0,0.05) 100%);
+      border: 1.5px solid rgba(255,190,60,0.55);
+      box-shadow: 0 0 35px rgba(255,180,60,0.2), inset 0 1px 0 rgba(255,255,255,0.2);
+      animation: vaultGlowPulse 3s ease-in-out infinite alternate;
+    }
+    @keyframes vaultGlowPulse {
+      0% { box-shadow: 0 0 20px rgba(255,180,60,0.15), inset 0 1px 0 rgba(255,255,255,0.15); }
+      100% { box-shadow: 0 0 45px rgba(255,180,60,0.35), inset 0 1px 0 rgba(255,255,255,0.3); }
+    }
+    .funnel-stage.vault-stage .funnel-stage-tag {
+      background: rgba(255,180,60,0.2);
+      color: #FFD580;
+      border: 1px solid rgba(255,200,80,0.4);
+      font-weight: 800;
+    }
+    .funnel-stage.vault-stage .funnel-stage-num {
+      color: #FFD580;
+      text-shadow: 0 0 20px rgba(255,180,60,0.6);
+    }
+
+    /* SETTLED WALLET */
+    .funnel-stage.wallet-stage {
+      background: linear-gradient(135deg, rgba(77,255,145,0.1) 0%, rgba(0,212,170,0.03) 100%);
+      border: 1.5px solid rgba(77,255,145,0.45);
+      box-shadow: 0 0 25px rgba(77,255,145,0.15);
+    }
+    .funnel-stage.wallet-stage .funnel-stage-tag {
+      background: rgba(77,255,145,0.15);
+      color: #4dff91;
+      border: 1px solid rgba(77,255,145,0.35);
+      font-weight: 800;
+    }
+    .funnel-stage.wallet-stage .funnel-stage-num {
+      color: #4dff91;
+      text-shadow: 0 0 20px rgba(77,255,145,0.5);
+    }
+
+    /* Pending Wealth Callout Banner */
+    .pending-callout-banner {
+      background: linear-gradient(135deg, rgba(255,170,30,0.1) 0%, rgba(20,10,40,0.6) 100%);
+      border: 1px solid rgba(255,180,60,0.3);
+      border-radius: 16px;
+      padding: 16px 20px;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .callout-flare {
+      position: absolute;
+      top: -20px; right: -20px; width: 100px; height: 100px;
+      background: radial-gradient(circle, rgba(255,180,60,0.25) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .callout-icon-box {
+      font-size: 26px;
+      background: rgba(255,180,60,0.15);
+      border: 1px solid rgba(255,180,60,0.3);
+      border-radius: 12px;
+      width: 48px; height: 48px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .callout-text-box {
+      flex: 1;
+    }
+    .callout-headline {
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 3px;
+    }
+    .callout-headline .callout-highlight {
+      color: #FFD580;
+      text-shadow: 0 0 12px rgba(255,213,128,0.5);
+    }
+    .callout-detail {
+      font-size: 12px;
+      color: #bbb;
+      line-height: 1.45;
+    }
+    .callout-energy-tag {
+      font-size: 11px;
+      font-weight: 800;
+      background: rgba(255,200,80,0.15);
+      color: var(--gold);
+      border: 1px solid rgba(255,200,80,0.3);
+      padding: 6px 12px;
+      border-radius: 20px;
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Creator Action Center (Zero-Friction Engine) ── */
+    .action-center {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,200,80,0.18);
+      border-radius: 20px;
+      padding: 24px;
+      margin-top: 28px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+    .action-center-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .action-center-sub {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 20px;
+    }
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .action-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .action-card:hover {
+      border-color: rgba(255,200,80,0.35);
+      background: rgba(255,255,255,0.06);
+      transform: translateY(-2px);
+    }
+    .action-card-top {
+      margin-bottom: 14px;
+    }
+    .action-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .action-card-icon {
+      font-size: 22px;
+    }
+    .action-card-tag {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(255,180,60,0.15);
+      color: var(--gold);
+      border: 1px solid rgba(255,180,60,0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .action-card-h {
+      font-size: 14px;
+      font-weight: 800;
+      color: #f0f0f0;
+      margin-bottom: 4px;
+    }
+    .action-card-desc {
+      font-size: 11px;
+      color: #999;
+      line-height: 1.45;
+    }
+    .btn-action-primary {
+      width: 100%;
+      padding: 11px 16px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 12px;
+      font-family: inherit;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-mid) 100%);
+      color: #07031a;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 4px 14px rgba(255,180,60,0.25);
+    }
+    .btn-action-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(255,180,60,0.45);
+    }
+
+    /* Viral Hook Swipe File */
+    .hook-swipe-box {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .hook-swipe-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hook-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hook-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 9px 12px;
+      transition: all 0.2s;
+    }
+    .hook-item:hover {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,200,80,0.2);
+    }
+    .hook-text {
+      font-size: 12px;
+      color: #ddd;
+      font-style: italic;
+      line-height: 1.4;
+      flex: 1;
+    }
+    .hook-copy-btn {
+      padding: 5px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 8px;
+      border: 1px solid rgba(255,200,80,0.3);
+      background: rgba(255,200,80,0.1);
+      color: var(--gold);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .hook-copy-btn:hover {
+      background: var(--gold);
+      color: #07031a;
+    }
+
+    /* Modal for Assets / Script */
+    .resource-overlay {
+      position: fixed; inset: 0; z-index: 999;
+      background: rgba(7,3,26,0.85); backdrop-filter: blur(14px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      opacity: 0; pointer-events: none; transition: opacity .25s ease;
+    }
+    .resource-overlay.open { opacity: 1; pointer-events: auto; }
+    .resource-modal {
+      background: #0d0824;
+      border: 1px solid rgba(255,200,80,0.3);
+      border-radius: 24px;
+      width: 100%; max-width: 580px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 40px rgba(255,180,60,0.15);
+      position: relative;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    .resource-modal h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+    .resource-modal p.sub { font-size: 13px; color: #888; margin-bottom: 20px; line-height: 1.5; }
+    .teleprompter-box {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,200,80,0.2);
+      border-radius: 14px;
+      padding: 18px;
+      font-size: 13px;
+      color: #f0f0f0;
+      line-height: 1.6;
+      margin-bottom: 18px;
+      white-space: pre-wrap;
+      max-height: 260px;
+      overflow-y: auto;
+      font-family: inherit;
+    }
+    .teleprompter-box .script-tag {
+      color: var(--gold);
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 11px;
+      display: block;
+      margin-top: 10px;
+      margin-bottom: 3px;
+    }
+    .broll-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .broll-item {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .broll-item:hover {
+      border-color: rgba(255,200,80,0.3);
+      background: rgba(255,255,255,0.07);
+    }
+    .broll-item-title { font-size: 13px; font-weight: 700; color: #fff; }
+    .broll-item-meta { font-size: 11px; color: #777; }
+    .broll-dl-btn {
+      margin-top: 6px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 8px;
+      border: none;
+      background: rgba(255,200,80,0.15);
+      color: var(--gold);
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      transition: all 0.15s;
+    }
+    .broll-dl-btn:hover {
+      background: var(--gold);
+      color: #07031a;
+    }
+
 
     /* Link box */
     .link-section { margin-bottom: 28px; }
@@ -509,6 +1061,15 @@
       white-space: nowrap; flex: 0 0 auto;
     }
 
+    @media (max-width: 768px) {
+      .funnel-pipeline { flex-direction: column; }
+      .funnel-conduit { transform: rotate(90deg); margin: -4px auto; }
+      .pending-callout-banner { flex-direction: column; align-items: flex-start; }
+      .action-grid { grid-template-columns: 1fr; }
+      .broll-grid { grid-template-columns: 1fr; }
+      .gravity-header { flex-direction: column; align-items: flex-start; }
+    }
+
     @media (max-width: 600px) {
       nav { padding: 16px 18px; }
       .page { padding: 96px 16px 60px; }
@@ -538,32 +1099,32 @@
   <!-- Hero -->
   <div class="partner-eyebrow">
     <div class="dot-pulse"></div>
-    Partners Program · Zero CAC Flywheel
+    Partners Program · Zero CAC Compounding Engine
   </div>
-  <h1>Earn <span class="gold">Real Money</span><br>Just by Sharing</h1>
+  <h1>Build a <span class="gold">Micro-SaaS</span>.<br>Earn 30% Monthly Recurring Revenue for Life.</h1>
   <p class="subtitle">
-    Share your HotShort link. Every user who subscribes through you puts
-    <strong style="color:var(--gold)">${{ commission }}</strong> straight into your wallet.
-    No limits. No minimums. Cha-ching. 💸
+    Share your HotShort link. Turn your audience into compounding monthly cashflow with
+    <strong style="color:var(--gold)">30% lifetime recurring MRR</strong> on every subscription.
+    No arbitrary caps. No minimum payout barriers. Real, automated creator wealth. 💸
   </p>
 
   <!-- Math pills -->
   <div class="math-row">
     <div class="math-pill">
-      <span class="big">${{ commission }}</span>
-      <span class="label">per conversion</span>
+      <span class="big">30%</span>
+      <span class="label">monthly recurring MRR</span>
     </div>
     <div class="math-pill">
       <span class="big">∞</span>
-      <span class="label">no cap</span>
+      <span class="label">compounding lifetime cap</span>
     </div>
     <div class="math-pill">
       <span class="big">30d</span>
-      <span class="label">cookie window</span>
+      <span class="label">smart attribution window</span>
     </div>
     <div class="math-pill">
-      <span class="big">0</span>
-      <span class="label">minimum payout</span>
+      <span class="big">$0</span>
+      <span class="label">minimum payout threshold</span>
     </div>
   </div>
 
@@ -572,26 +1133,25 @@
     <div class="step-card">
       <div class="step-num">1</div>
       <div class="step-body">
-        <h3>🔗 Get Your Magic Link</h3>
-        <p>Join below to get a personalised link like <code style="color:var(--gold);background:rgba(255,200,80,0.1);padding:2px 8px;border-radius:6px">hotshort.ai/vip/YOURCODE</code>. Paste it anywhere — bio, reel, story, thread.</p>
+        <h3>🔗 Claim Your VIP Creator Link</h3>
+        <p>Join below in 30 seconds to claim your personalized link like <code style="color:var(--gold);background:rgba(255,200,80,0.1);padding:2px 8px;border-radius:6px">hotshort.ai/vip/YOURCODE</code>. Paste it in your YouTube descriptions, TikTok bio, Instagram linktree, or Twitter thread.</p>
       </div>
     </div>
     <div class="step-card">
       <div class="step-num">2</div>
       <div class="step-body">
-        <h3>📊 Watch the Flex Tracker</h3>
-        <p>Your dashboard shows real-time views, clicks, and signups driven by your link. Post your HotShort-generated clip → link in bio → watch the numbers climb.</p>
+        <h3>📊 Track the Value Funnel & Pending Vault</h3>
+        <p>Real-time momentum tracking. Watch your Clicks convert to Free Trials, and see future subscription wealth accumulate in your Pending Vault before users even upgrade.</p>
       </div>
     </div>
     <div class="step-card">
       <div class="step-num">3</div>
       <div class="step-body">
-        <h3>💸 Cash Shower</h3>
-        <p>Every time someone subscribes through your link you earn <strong style="color:var(--gold)">${{ commission }}</strong>. Your wallet updates instantly. HotShort essentially pays for itself.</p>
+        <h3>💸 Compounding MRR Shower</h3>
+        <p>Every paid subscription sends 30% monthly recurring cash directly to your payout wallet (UPI, PayPal, Bank, or Crypto). As your referrals renew month after month, your payouts compound.</p>
       </div>
     </div>
   </div>
-
 
   {% if not partner %}
   <!-- Universal Smart CTA -->
@@ -605,31 +1165,125 @@
   <hr class="divider" style="margin-top: 36px; margin-bottom:40px;">
 
   <div class="dash-card" id="dashCard">
+
+    <!-- 1. NEXT TIER GRAVITY BAR -->
+    <div class="gravity-wrap" id="gravityWrap">
+      <div class="gravity-header">
+        <div class="gravity-badge-group">
+          <span class="gravity-tier-badge" id="gravityBadge">{{ tier_info.tier_badge }}</span>
+          <div class="gravity-tier-text">
+            You are currently: <span class="gravity-tier-name" id="gravityTierName">{{ tier_info.tier_name }} ({{ tier_info.cut_pct }}% Cut)</span>
+          </div>
+        </div>
+        <div class="gravity-counter" id="gravityCounter">
+          {{ tier_info.current_subs }} / {{ tier_info.target_subs }} Paid Subs
+        </div>
+      </div>
+      <div class="gravity-track">
+        <div class="gravity-fill" id="gravityFill" style="width: {{ tier_info.progress_pct }}%;"></div>
+      </div>
+      <div class="gravity-milestones">
+        <span class="{{ 'active' if tier_info.current_subs >= 0 else '' }}">🥉 Bronze (0)</span>
+        <span class="{{ 'active' if tier_info.current_subs >= 10 else '' }}">🥈 Silver (10)</span>
+        <span class="{{ 'active' if tier_info.current_subs >= 25 else '' }}">🥇 Gold (25)</span>
+        <span class="{{ 'active' if tier_info.current_subs >= 50 else '' }}">💎 Diamond (50)</span>
+      </div>
+      <div class="gravity-hook" id="gravityHook">
+        <span class="gravity-hook-icon">⚡</span>
+        <span id="gravityHookText">
+          {% if tier_info.next_tier_name %}
+          Drive <strong style="color:var(--gold);">{{ tier_info.needed_subs }} more Paid Subs</strong> to unlock <strong style="color:#4dff91;">{{ tier_info.next_tier_name }} ({{ tier_info.next_cut_pct }}% Cut + {{ tier_info.next_perks }})</strong>.
+          {% else %}
+          👑 You've reached the highest partner tier! Enjoy 40% Lifetime MRR & Co-Branding.
+          {% endif %}
+        </span>
+      </div>
+    </div>
+
     <h2>Your Partner Dashboard</h2>
     <p class="sub">Live stats · updates every 30s</p>
 
-    <!-- Stats -->
-    <div class="stats-grid" id="statsGrid">
-      <div class="stat-box">
-        <span class="stat-icon">🖱️</span>
-        <span class="stat-val" id="statClicks">{{ partner.total_clicks }}</span>
-        <span class="stat-lbl">Link Clicks</span>
+    <!-- 2. VALUE FUNNEL PIPELINE -->
+    <div class="funnel-pipeline" id="funnelPipeline">
+      <!-- Node 1: Clicks -->
+      <div class="funnel-stage">
+        <div class="funnel-stage-header">
+          <span class="funnel-stage-icon">🖱️</span>
+          <span class="funnel-stage-tag">Attribution</span>
+        </div>
+        <div class="funnel-stage-num" id="statClicks">{{ partner.total_clicks }}</div>
+        <div class="funnel-stage-title">Link Clicks</div>
+        <div class="funnel-stage-desc">Top-of-Funnel Traffic</div>
       </div>
-      <div class="stat-box">
-        <span class="stat-icon">👥</span>
-        <span class="stat-val" id="statSignups">{{ partner.total_signups }}</span>
-        <span class="stat-lbl">Signups</span>
+
+      <!-- Connector 1 -->
+      <div class="funnel-conduit">
+        <div class="funnel-conduit-arrow">▶</div>
       </div>
-      <div class="stat-box">
-        <span class="stat-icon">🔥</span>
-        <span class="stat-val" id="statConversions">{{ partner.total_conversions }}</span>
-        <span class="stat-lbl">Paid Subs</span>
+
+      <!-- Node 2: Free Signups -->
+      <div class="funnel-stage">
+        <div class="funnel-stage-header">
+          <span class="funnel-stage-icon">👥</span>
+          <span class="funnel-stage-tag">Active Trials</span>
+        </div>
+        <div class="funnel-stage-num" id="statSignups">{{ partner.total_signups }}</div>
+        <div class="funnel-stage-title">Free Signups</div>
+        <div class="funnel-stage-desc">Testing HotShort</div>
       </div>
-      <div class="stat-box" style="border-color: rgba(77,255,145,0.3); background: rgba(77,255,145,0.05);">
-        <span class="stat-icon">💰</span>
-        <span class="stat-val" id="statWallet" style="color:#4dff91">${{ "%.2f"|format(partner.wallet_usd) }}</span>
-        <span class="stat-lbl">Wallet Balance</span>
+
+      <!-- Connector 2 -->
+      <div class="funnel-conduit">
+        <div class="funnel-conduit-arrow">▶</div>
       </div>
+
+      <!-- Node 3: The Pending Vault (HERO) -->
+      <div class="funnel-stage vault-stage">
+        <div class="funnel-stage-header">
+          <span class="funnel-stage-icon">🔥</span>
+          <span class="funnel-stage-tag">Vault Potential</span>
+        </div>
+        <div class="funnel-stage-num" id="statPendingVault">+${{ "%.2f"|format(pending_potential) }}/mo</div>
+        <div class="funnel-stage-title">The Pending Vault</div>
+        <div class="funnel-stage-desc">Projected Recurring MRR</div>
+      </div>
+
+      <!-- Connector 3 -->
+      <div class="funnel-conduit">
+        <div class="funnel-conduit-arrow">▶</div>
+      </div>
+
+      <!-- Node 4: Settled Wallet -->
+      <div class="funnel-stage wallet-stage">
+        <div class="funnel-stage-header">
+          <span class="funnel-stage-icon">💰</span>
+          <span class="funnel-stage-tag">Instant Payout</span>
+        </div>
+        <div class="funnel-stage-num" id="statWallet">${{ "%.2f"|format(partner.wallet_usd) }}</div>
+        <div class="funnel-stage-title">Settled Wallet</div>
+        <div class="funnel-stage-desc">Ready for Payout</div>
+      </div>
+    </div>
+
+    <!-- PENDING WEALTH CALLOUT -->
+    <div class="pending-callout-banner" id="pendingVaultCallout">
+      <div class="callout-flare"></div>
+      <div class="callout-icon-box">🔥</div>
+      <div class="callout-text-box">
+        <div class="callout-headline">
+          <span class="callout-highlight" id="calloutPendingAmount">${{ "%.2f"|format(pending_potential) }}/mo</span> in Pending Potential
+        </div>
+        <div class="callout-detail" id="calloutDesc">
+          {% if free_signups > 0 %}
+          <strong>{{ free_signups }} user{{ 's' if free_signups != 1 else '' }}</strong> currently testing the app. At standard 10% upgrade rate on our $15/mo plan, this represents <strong>${{ "%.2f"|format(pending_potential) }}/mo</strong> in compounding recurring income. Keep driving traffic!
+          {% elif partner.total_clicks > 0 %}
+          Your clicks are warming up the pipeline! Every free trial started adds ~$0.45/mo in projected recurring MRR to your vault. Keep sharing your link!
+          {% else %}
+          These users are testing the app. Every free trial user adds ~$0.45/mo in projected recurring MRR before they even pay. Share your link below to fill your vault!
+          {% endif %}
+        </div>
+      </div>
+      <div class="callout-energy-tag">⚡ Kinetic Energy</div>
     </div>
 
     <!-- Referral link -->
@@ -642,9 +1296,76 @@
       </div>
     </div>
 
+    <!-- 3. ZERO-FRICTION ACTION CENTER -->
+    <div class="action-center">
+      <div class="action-center-title">
+        <span>⚡ Creator Action Center · Zero-Friction Launchpad</span>
+      </div>
+      <p class="action-center-sub">
+        Zero excuses. Download high-retention viral assets, copy battle-tested teleprompter scripts, and publish to TikTok & Reels in under 2 minutes.
+      </p>
+
+      <div class="action-grid">
+        <!-- Action 1: ASMR B-Roll Pack -->
+        <div class="action-card">
+          <div class="action-card-top">
+            <div class="action-card-header">
+              <span class="action-card-icon">📥</span>
+              <span class="action-card-tag">High Retention</span>
+            </div>
+            <div class="action-card-h">Download Top Performing ASMR B-Roll</div>
+            <div class="action-card-desc">
+              Curated Minecraft Parkour, GTA Ramp Loops, Kinetic Sand & Soap ASMR clips. Proven background videos for split-screen podcast shorts.
+            </div>
+          </div>
+          <button class="btn-action-primary" onclick="openBrollModal()">
+            📥 Access ASMR B-Roll Pack
+          </button>
+        </div>
+
+        <!-- Action 2: TikTok Script -->
+        <div class="action-card">
+          <div class="action-card-top">
+            <div class="action-card-header">
+              <span class="action-card-icon">📋</span>
+              <span class="action-card-tag">3.8x Conversion</span>
+            </div>
+            <div class="action-card-h">Copy High-Converting TikTok Script</div>
+            <div class="action-card-desc">
+              30-second teleprompter script optimized to turn viewers into free trials. Includes high-converting Hook, Story, and Call-to-Action.
+            </div>
+          </div>
+          <button class="btn-action-primary" onclick="copyTikTokScript()">
+            📋 Copy Viral TikTok Script
+          </button>
+        </div>
+      </div>
+
+      <!-- Viral Hook Swipe File -->
+      <div class="hook-swipe-box">
+        <div class="hook-swipe-title">
+          <span>🎣 Rapid Hook Swipe File (1-Click Copy)</span>
+        </div>
+        <div class="hook-list">
+          <div class="hook-item">
+            <span class="hook-text">"Stop paying video editors $50 a clip. Look at what this AI tool did in 30 seconds..."</span>
+            <button class="hook-copy-btn" onclick="copyHookText(this, 'Stop paying video editors $50 a clip. Look at what this AI tool did in 30 seconds...')">📋 Copy Hook</button>
+          </div>
+          <div class="hook-item">
+            <span class="hook-text">"How faceless channels are making $3k/month using this secret podcast clip generator..."</span>
+            <button class="hook-copy-btn" onclick="copyHookText(this, 'How faceless channels are making $3k/month using this secret podcast clip generator...')">📋 Copy Hook</button>
+          </div>
+          <div class="hook-item">
+            <span class="hook-text">"The AI tool every short-form creator is secretly using to post 5x a day on autopilot..."</span>
+            <button class="hook-copy-btn" onclick="copyHookText(this, 'The AI tool every short-form creator is secretly using to post 5x a day on autopilot...')">📋 Copy Hook</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Conversion feed -->
     {% if recent_conversions %}
-    <div class="feed-title">💸 Recent Earnings</div>
+    <div class="feed-title" style="margin-top:24px;">💸 Recent Earnings</div>
     <div class="conversion-list" id="convFeed">
       {% for c in recent_conversions %}
       <div class="conversion-item">
@@ -656,11 +1377,8 @@
       </div>
       {% endfor %}
     </div>
-    {% else %}
-    <p style="font-size:13px;color:var(--muted);margin-top:4px;">
-      No conversions yet — share your link and start earning! 🚀
-    </p>
     {% endif %}
+
   </div>
   {% endif %}
 
@@ -859,7 +1577,7 @@ function showChing() {
   setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-// ── Live stat polling (only when dashboard is visible) ────────────────────────
+// ── Live stat polling (Value Funnel & Gravity Bar) ────────────────────────
 {% if partner %}
 let _lastWallet = {{ partner.wallet_usd }};
 
@@ -869,14 +1587,54 @@ async function pollStats() {
     if (!res.ok) return;
     const d = await res.json();
 
-    document.getElementById('statClicks').textContent      = d.clicks;
-    document.getElementById('statSignups').textContent     = d.signups;
-    document.getElementById('statConversions').textContent = d.conversions;
-    document.getElementById('statWallet').textContent      = '$' + d.wallet_usd.toFixed(2);
+    const sc = document.getElementById('statClicks');
+    if (sc && d.clicks !== undefined) sc.textContent = d.clicks;
+
+    const ss = document.getElementById('statSignups');
+    if (ss && d.signups !== undefined) ss.textContent = d.signups;
+
+    const sv = document.getElementById('statPendingVault');
+    if (sv && d.pending_potential_usd !== undefined) {
+      sv.textContent = '+$' + Number(d.pending_potential_usd).toFixed(2) + '/mo';
+    }
+
+    const sw = document.getElementById('statWallet');
+    if (sw && d.wallet_usd !== undefined) {
+      sw.textContent = '$' + Number(d.wallet_usd).toFixed(2);
+    }
+
+    const cpa = document.getElementById('calloutPendingAmount');
+    if (cpa && d.pending_potential_usd !== undefined) {
+      cpa.textContent = '$' + Number(d.pending_potential_usd).toFixed(2) + '/mo';
+    }
+
+    // Dynamic Gravity Bar
+    if (d.tier_info) {
+      const t = d.tier_info;
+      const gb = document.getElementById('gravityBadge');
+      if (gb && t.tier_badge) gb.textContent = t.tier_badge;
+
+      const gtn = document.getElementById('gravityTierName');
+      if (gtn) gtn.textContent = `${t.tier_name} (${t.cut_pct}% Cut)`;
+
+      const gc = document.getElementById('gravityCounter');
+      if (gc) gc.textContent = `${t.current_subs} / ${t.target_subs} Paid Subs`;
+
+      const gf = document.getElementById('gravityFill');
+      if (gf && t.progress_pct !== undefined) gf.style.width = t.progress_pct + '%';
+
+      const ght = document.getElementById('gravityHookText');
+      if (ght) {
+        if (t.next_tier_name) {
+          ght.innerHTML = `Drive <strong style="color:var(--gold);">${t.needed_subs} more Paid Subs</strong> to unlock <strong style="color:#4dff91;">${t.next_tier_name} (${t.next_cut_pct}% Cut + ${t.next_perks})</strong>.`;
+        } else {
+          ght.textContent = "👑 You've reached the highest partner tier! Enjoy 40% Lifetime MRR & Co-Branding.";
+        }
+      }
+    }
 
     if (d.wallet_usd > _lastWallet) {
       showChing();
-      // Play cha-ching audio if available
       try { new Audio('/static/ching.mp3').play(); } catch(_) {}
       _lastWallet = d.wallet_usd;
     }
@@ -885,6 +1643,87 @@ async function pollStats() {
 
 setInterval(pollStats, 30000);
 {% endif %}
+
+// ── Creator Action Center (Zero-Friction Engine Helpers) ──────────────────────
+const VIRAL_TIKTOK_SCRIPT = `[0:00 - 0:03 · HOOK]
+Stop paying video editors $50 a clip. Look at what this AI tool did in 30 seconds...
+
+[0:03 - 0:18 · DEMO]
+I took a 1-hour podcast link from YouTube, pasted it into HotShort, and it automatically found the 5 most viral moments. It cropped them to 9:16 vertical, added animated colored captions, and tracked both faces with auto-zoom.
+
+[0:18 - 0:30 · CTA]
+You don't need any editing skills and you can try it completely free without a watermark. The link is right in my bio. Go generate your first 10 viral clips right now!`;
+
+function copyTikTokScript() {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(VIRAL_TIKTOK_SCRIPT).then(() => {
+      showScriptToast("✅ 30s Viral Script Copied to Clipboard!");
+      openScriptModal();
+    }).catch(() => openScriptModal());
+  } else {
+    openScriptModal();
+  }
+}
+
+function copyScriptContent() {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(VIRAL_TIKTOK_SCRIPT).then(() => {
+      showScriptToast("✅ Script Copied to Clipboard!");
+    });
+  }
+}
+
+function copyHookText(btn, text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = "✅ Copied!";
+      btn.style.background = "#4dff91";
+      btn.style.color = "#07031a";
+      setTimeout(() => {
+        btn.textContent = orig;
+        btn.style.background = "";
+        btn.style.color = "";
+      }, 2000);
+      showScriptToast("✅ Viral Hook Copied!");
+    });
+  }
+}
+
+function openBrollModal() {
+  const m = document.getElementById('brollModal');
+  if (m) m.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeBrollModal() {
+  const m = document.getElementById('brollModal');
+  if (m) m.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function openScriptModal() {
+  const m = document.getElementById('scriptModal');
+  if (m) m.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeScriptModal() {
+  const m = document.getElementById('scriptModal');
+  if (m) m.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function showScriptToast(msg) {
+  const t = document.getElementById('ching-toast');
+  if (!t) return;
+  const orig = t.textContent;
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => { t.textContent = orig; }, 300);
+  }, 2800);
+}
+
 
     // 2-STEP EARN MODAL JS
     let _earnChannelUrl = '';
@@ -1148,6 +1987,83 @@ setInterval(pollStats, 30000);
         <p style="font-size:12px;color:#555;margin-bottom:20px;">Drop this in your bio, reel, or story. Watch the cha-ching roll in. 💸</p>
         <button class="earn-submit-btn" onclick="closeEarnModal(); window.location.reload();">📊 Open My Dashboard</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- B-ROLL ASSETS MODAL -->
+<div id="brollModal" class="resource-overlay" role="dialog" aria-modal="true" onclick="if(event.target===this)closeBrollModal()">
+  <div class="resource-modal">
+    <button class="earn-close" onclick="closeBrollModal()">✕</button>
+    <h2>📥 Viral ASMR & Split-Screen B-Roll Pack</h2>
+    <p class="sub">
+      High-retention video loops ready for your TikToks, Reels, and Shorts. Stack your HotShort podcast clip on top and loop one of these at the bottom to boost average view duration past 80%.
+    </p>
+
+    <div class="broll-grid">
+      <div class="broll-item">
+        <div class="broll-item-title">🎮 Minecraft Parkour 4K</div>
+        <div class="broll-item-meta">60fps Smooth Loop · 1080x1920 Vertical</div>
+        <a class="broll-dl-btn" href="https://assets.mixkit.co/videos/preview/mixkit-animation-of-futuristic-retro-grid-circuit-41122-large.mp4" target="_blank" download="minecraft_parkour_loop.mp4">
+          📥 Download Clip (.mp4)
+        </a>
+      </div>
+      <div class="broll-item">
+        <div class="broll-item-title">🚗 GTA V Impossible Ramp</div>
+        <div class="broll-item-meta">Adrenaline Stunts · Viral High Retention</div>
+        <a class="broll-dl-btn" href="https://assets.mixkit.co/videos/preview/mixkit-car-driving-through-a-neon-tunnel-at-night-42861-large.mp4" target="_blank" download="gta_ramp_stunt_loop.mp4">
+          📥 Download Clip (.mp4)
+        </a>
+      </div>
+      <div class="broll-item">
+        <div class="broll-item-title">🧼 Kinetic Sand & Soap ASMR</div>
+        <div class="broll-item-meta">Oddly Satisfying Slicing · No Audio</div>
+        <a class="broll-dl-btn" href="https://assets.mixkit.co/videos/preview/mixkit-hands-cutting-colorful-soap-bars-with-a-knife-42777-large.mp4" target="_blank" download="kinetic_sand_asmr.mp4">
+          📥 Download Clip (.mp4)
+        </a>
+      </div>
+      <div class="broll-item">
+        <div class="broll-item-title">🏎️ Subway Dash Infinite</div>
+        <div class="broll-item-meta">Speedrun Track · Max Completion Rate</div>
+        <a class="broll-dl-btn" href="https://assets.mixkit.co/videos/preview/mixkit-roller-coaster-running-on-tracks-at-high-speed-42795-large.mp4" target="_blank" download="subway_dash_loop.mp4">
+          📥 Download Clip (.mp4)
+        </a>
+      </div>
+    </div>
+
+    <div style="background:rgba(255,200,80,0.1);border:1px solid rgba(255,200,80,0.25);border-radius:14px;padding:14px;font-size:12px;color:#e0e0e0;line-height:1.5;">
+      💡 <strong>Creator Pro Tip:</strong> In CapCut, create a 9:16 vertical canvas. Place your HotShort clip on top and one of these loops on bottom. Drop your VIP link in your bio and pinned comment!
+    </div>
+  </div>
+</div>
+
+<!-- TIKTOK SCRIPT MODAL -->
+<div id="scriptModal" class="resource-overlay" role="dialog" aria-modal="true" onclick="if(event.target===this)closeScriptModal()">
+  <div class="resource-modal">
+    <button class="earn-close" onclick="closeScriptModal()">✕</button>
+    <h2>📋 High-Converting 30s TikTok Script</h2>
+    <p class="sub">
+      Engineered for maximum click-throughs to your referral link. Paste into your teleprompter or record directly.
+    </p>
+
+    <div class="teleprompter-box" id="teleprompterText">
+<span class="script-tag">0:00 - 0:03 · THE PATTERN INTERRUPT</span>
+"Stop paying video editors $50 a clip. Look at what this AI tool did in 30 seconds..."
+
+<span class="script-tag">0:03 - 0:18 · THE DEMO / VALUE</span>
+"I took a 1-hour podcast link from YouTube, pasted it into HotShort, and it automatically found the 5 most viral moments. It cropped them to 9:16 vertical, added animated colored captions, and tracked both faces with auto-zoom."
+
+<span class="script-tag">0:18 - 0:30 · THE CALL-TO-ACTION (YOUR FLYWHEEL)</span>
+"You don't need any editing skills and you can try it completely free without a watermark. The link is right in my bio. Go generate your first 10 viral clips right now before they make it paid!"
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button class="btn-action-primary" style="flex:1;" onclick="copyScriptContent()">
+        📋 Copy Script to Clipboard
+      </button>
+      <button class="btn-action-secondary" style="flex:0 0 auto;" onclick="closeScriptModal()">
+        Done
+      </button>
     </div>
   </div>
 </div>

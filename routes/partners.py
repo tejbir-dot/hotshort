@@ -7,12 +7,103 @@ partners_bp = Blueprint("partners", __name__)
 PARTNER_COMMISSION_USD = float(os.getenv("PARTNER_COMMISSION_USD", "3.0"))
 
 
+def calculate_pending_potential(total_signups: int, total_conversions: int, total_clicks: int) -> float:
+    """
+    Pending Wealth psychology:
+    Calculates projected recurring value from non-converted free trials.
+    Formula: Free Signups * 10% conversion * $15/mo starter sub * 30% cut = free_signups * $0.45/mo.
+    If 0 free signups but clicks exist, project kinetic interest.
+    """
+    free_signups = max(total_signups - total_conversions, 0)
+    if free_signups > 0:
+        return round(free_signups * 0.45, 2)
+    elif total_clicks > 0:
+        est_signups = max(1, int(total_clicks * 0.05))
+        return round(est_signups * 0.45, 2)
+    return 0.0
+
+
+def calculate_partner_tier(total_conversions: int) -> dict:
+    """
+    Gamified Next-Tier Gravity System:
+    Bronze (0-9): 25% cut
+    Silver (10-24): 30% cut + Custom Watermarks
+    Gold (25-49): 35% cut + Dedicated VIP Manager
+    Diamond (50+): 40% cut + Custom Subdomain & Co-Branding
+    """
+    if total_conversions >= 50:
+        return {
+            "tier_name": "Diamond Partner",
+            "tier_badge": "💎",
+            "cut_pct": 40,
+            "perks": "40% Cut + Co-Branding & Custom Subdomain",
+            "next_tier_name": None,
+            "next_cut_pct": None,
+            "next_perks": None,
+            "needed_subs": 0,
+            "target_subs": 50,
+            "current_subs": total_conversions,
+            "progress_pct": 100,
+        }
+    elif total_conversions >= 25:
+        needed = 50 - total_conversions
+        progress = min(100, max(5, int(((total_conversions - 25) / 25) * 100)))
+        return {
+            "tier_name": "Gold Partner",
+            "tier_badge": "🥇",
+            "cut_pct": 35,
+            "perks": "35% Cut + Dedicated VIP Manager",
+            "next_tier_name": "Diamond Partner",
+            "next_cut_pct": 40,
+            "next_perks": "40% Cut + Co-Branding & Subdomain",
+            "needed_subs": needed,
+            "target_subs": 50,
+            "current_subs": total_conversions,
+            "progress_pct": progress,
+        }
+    elif total_conversions >= 10:
+        needed = 25 - total_conversions
+        progress = min(100, max(5, int(((total_conversions - 10) / 15) * 100)))
+        return {
+            "tier_name": "Silver Partner",
+            "tier_badge": "🥈",
+            "cut_pct": 30,
+            "perks": "30% Cut + Custom Watermarks",
+            "next_tier_name": "Gold Partner",
+            "next_cut_pct": 35,
+            "next_perks": "35% Cut + Dedicated VIP Manager",
+            "needed_subs": needed,
+            "target_subs": 25,
+            "current_subs": total_conversions,
+            "progress_pct": progress,
+        }
+    else:
+        needed = 10 - total_conversions
+        progress = min(100, max(0, int((total_conversions / 10) * 100)))
+        return {
+            "tier_name": "Bronze Partner",
+            "tier_badge": "🥉",
+            "cut_pct": 25,
+            "perks": "25% Cut",
+            "next_tier_name": "Silver Partner",
+            "next_cut_pct": 30,
+            "next_perks": "30% Cut + Custom Watermarks",
+            "needed_subs": needed,
+            "target_subs": 10,
+            "current_subs": total_conversions,
+            "progress_pct": progress,
+        }
+
+
 @partners_bp.route("/")
 def dashboard():
     partner = None
     if current_user.is_authenticated:
         partner = Partner.query.filter_by(user_id=current_user.id).first()
     recent_conversions = []
+    pending_potential = 0.0
+    tier_info = calculate_partner_tier(0)
+    free_signups = 0
     if partner:
         recent_conversions = (
             PartnerConversion.query
@@ -21,6 +112,11 @@ def dashboard():
             .limit(10)
             .all()
         )
+        free_signups = max(partner.total_signups - partner.total_conversions, 0)
+        pending_potential = calculate_pending_potential(
+            partner.total_signups, partner.total_conversions, partner.total_clicks
+        )
+        tier_info = calculate_partner_tier(partner.total_conversions)
     base_url = request.host_url.rstrip("/")
     return render_template(
         "partners.html",
@@ -28,6 +124,9 @@ def dashboard():
         recent_conversions=recent_conversions,
         base_url=base_url,
         commission=PARTNER_COMMISSION_USD,
+        pending_potential=pending_potential,
+        free_signups=free_signups,
+        tier_info=tier_info,
     )
 
 
@@ -87,15 +186,23 @@ def stats():
     if not partner:
         return jsonify({"error": "not_a_partner"}), 404
     base_url = request.host_url.rstrip("/")
+    free_signups = max(partner.total_signups - partner.total_conversions, 0)
+    pending_potential = calculate_pending_potential(
+        partner.total_signups, partner.total_conversions, partner.total_clicks
+    )
+    tier_info = calculate_partner_tier(partner.total_conversions)
     return jsonify({
         "code": partner.referral_code,
         "referral_url": f"{base_url}/vip/{partner.referral_code}",
         "clicks": partner.total_clicks,
         "signups": partner.total_signups,
+        "free_signups": free_signups,
         "conversions": partner.total_conversions,
         "wallet_usd": round(partner.wallet_usd, 2),
         "total_earned_usd": round(partner.total_earned_usd, 2),
         "commission_per_sale": PARTNER_COMMISSION_USD,
+        "pending_potential_usd": pending_potential,
+        "tier_info": tier_info,
     })
 
 
