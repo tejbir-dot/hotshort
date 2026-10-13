@@ -1209,6 +1209,7 @@
         <li>
           <button
              id="partnersNavBtn"
+             data-is-auth="{{ 'true' if current_user.is_authenticated else 'false' }}"
              onclick="partnersSmartNav()"
              style="
                display: inline-flex;
@@ -1852,7 +1853,8 @@
   
     // Partners $ Smart Nav
     function partnersSmartNav() {
-      var isAuth = {{ 'true' if current_user.is_authenticated else 'false' }};
+      var btn = document.getElementById('partnersNavBtn');
+      var isAuth = btn && btn.dataset && btn.dataset.isAuth === 'true';
       if (isAuth) {
         // Logged In: directly to partners page and auto-open modal/scroll
         window.location.href = '/partners/?autostart=1';

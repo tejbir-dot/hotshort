@@ -7,7 +7,14 @@ import string
 
 db = SQLAlchemy()
 
-class User(db.Model, UserMixin):
+class BaseModel(db.Model):
+    """Base declarative model providing explicit __init__(**kwargs) for static analysis / type checkers."""
+    __abstract__ = True
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+class User(BaseModel, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200))
@@ -30,7 +37,7 @@ class User(db.Model, UserMixin):
     google_sub = db.Column(db.String(255), unique=True, nullable=True)
     free_generations_used = db.Column(db.Integer, default=0, nullable=False)
 
-class FreeClipClaim(db.Model):
+class FreeClipClaim(BaseModel):
     __tablename__ = "free_clip_claim"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -42,7 +49,7 @@ class FreeClipClaim(db.Model):
         UniqueConstraint("user_id", "clip_id", name="uq_free_clip_claim_user_clip"),
     )
 
-class Clip(db.Model):
+class Clip(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150))
     file_path = db.Column(db.String(300))
@@ -56,7 +63,7 @@ class Clip(db.Model):
     score = db.Column(db.Float, nullable=True)
     label = db.Column(db.String(120), nullable=True)
 
-class Job(db.Model):
+class Job(BaseModel):
     """Video processing job with analysis results"""
     id = db.Column(db.String(50), primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -72,7 +79,7 @@ class Job(db.Model):
     def __repr__(self):
         return f"<Job {self.id}>"
 
-class Plan(db.Model):
+class Plan(BaseModel):
     """Pricing plans"""
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)  # starter, creator, pro
@@ -86,7 +93,7 @@ class Plan(db.Model):
     def __repr__(self):
         return f"<Plan {self.name}>"
 
-class Subscription(db.Model):
+class Subscription(BaseModel):
     """User subscriptions to plans"""
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -104,7 +111,7 @@ class Subscription(db.Model):
         return f"<Subscription user={self.user_id} plan={self.plan_id}>"
 
 
-class UserExport(db.Model):
+class UserExport(BaseModel):
     __tablename__ = "user_export"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
@@ -123,7 +130,7 @@ def _generate_referral_code(length=8):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
-class Partner(db.Model):
+class Partner(BaseModel):
     """Partner/Affiliate account — one per User."""
     __tablename__ = "partner"
 
@@ -152,7 +159,7 @@ class Partner(db.Model):
         return f'<Partner code={self.referral_code} wallet=${self.wallet_usd:.2f}>'
 
 
-class PartnerConversion(db.Model):
+class PartnerConversion(BaseModel):
     """Records each paid subscription that came through a partner link."""
     __tablename__ = "partner_conversion"
 
