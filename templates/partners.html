@@ -360,6 +360,155 @@
     .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.06) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; }
     @keyframes shimmer { to { background-position: -200% 0; } }
 
+
+    /* -- Golden CTA Button -------------------------------------------- */
+    .cta-earn-btn {
+      display: block; width: 100%; max-width: 420px;
+      margin: 0 auto;
+      padding: 20px 40px;
+      border-radius: 20px; border: none; cursor: pointer;
+      font-size: 19px; font-weight: 900; font-family: inherit;
+      background: linear-gradient(135deg, #FFD580 0%, #FFB347 45%, #FF8C00 100%);
+      color: #07031a;
+      box-shadow:
+        0 0 0 1px rgba(255,200,80,0.3),
+        0 12px 40px rgba(255,150,40,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.55);
+      animation: earnPulse 2.6s ease-in-out infinite;
+      transition: transform .25s;
+      letter-spacing: 0.2px;
+    }
+    .cta-earn-btn:hover { transform: translateY(-4px); }
+    @keyframes earnPulse {
+      0%,100% { box-shadow: 0 0 0 1px rgba(255,200,80,0.3), 0 10px 36px rgba(255,150,40,0.45), inset 0 1px 0 rgba(255,255,255,0.5); }
+      50%      { box-shadow: 0 0 0 3px rgba(255,200,80,0.2), 0 18px 60px rgba(255,150,40,0.7), inset 0 1px 0 rgba(255,255,255,0.55); }
+    }
+    .cta-sub-text {
+      text-align: center; font-size: 12px; color: #555;
+      margin-top: 10px;
+    }
+
+    /* -- 2-Step Modal Overlay ----------------------------------------- */
+    #earnOverlay {
+      position: fixed; inset: 0; z-index: 9100;
+      background: rgba(3, 1, 14, 0.88);
+      backdrop-filter: blur(28px) saturate(1.6);
+      -webkit-backdrop-filter: blur(28px) saturate(1.6);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      opacity: 0; pointer-events: none;
+      transition: opacity .4s ease;
+    }
+    #earnOverlay.open { opacity: 1; pointer-events: all; }
+
+    .earn-modal {
+      background: linear-gradient(155deg, rgba(18,10,44,0.97) 0%, rgba(8,4,22,0.99) 100%);
+      border: 1px solid rgba(255,200,80,0.2);
+      border-radius: 28px;
+      padding: 40px 38px 36px;
+      max-width: 520px; width: 100%;
+      box-shadow: 0 50px 120px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,200,80,0.06), inset 0 1px 0 rgba(255,255,255,0.07);
+      transform: translateY(30px) scale(0.96);
+      transition: transform .42s cubic-bezier(0.34,1.56,0.64,1);
+      position: relative; overflow: hidden;
+    }
+    #earnOverlay.open .earn-modal { transform: translateY(0) scale(1); }
+    .earn-modal::before {
+      content: ''; position: absolute; top: 0; left: 15%; right: 15%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,200,80,0.7), transparent);
+    }
+    .earn-steps-indicator {
+      display: flex; gap: 8px; margin-bottom: 28px; align-items: center;
+    }
+    .earn-step-dot {
+      flex: 1; height: 3px; border-radius: 99px;
+      background: rgba(255,255,255,0.1); transition: background .4s;
+    }
+    .earn-step-dot.active { background: linear-gradient(90deg, #FFD580, #FFB347); }
+    .earn-step-dot.done   { background: #4dff91; }
+    .earn-step-label { font-size: 11px; color: #555; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; white-space: nowrap; }
+    .earn-close {
+      position: absolute; top: 16px; right: 18px;
+      background: rgba(255,255,255,0.06); border: none; cursor: pointer;
+      color: #666; font-size: 18px; width: 32px; height: 32px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      transition: background .2s, color .2s;
+    }
+    .earn-close:hover { background: rgba(255,255,255,0.12); color: #ccc; }
+    .earn-panel { display: none; }
+    .earn-panel.active { display: block; }
+    .earn-panel h2 { font-size: 24px; font-weight: 900; margin-bottom: 6px; }
+    .earn-panel h2 .gold {
+      background: linear-gradient(90deg,#FFD580,#FFB347);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .earn-panel .earn-sub { font-size: 14px; color: #777; margin-bottom: 24px; line-height: 1.55; }
+
+    .payout-methods { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+    .payout-method-btn {
+      flex: 1; min-width: 90px; padding: 12px 10px;
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid rgba(255,255,255,0.08);
+      border-radius: 14px; cursor: pointer; font-family: inherit;
+      font-size: 13px; font-weight: 700; color: #888;
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      transition: border-color .2s, color .2s, background .2s;
+    }
+    .payout-method-btn .p-icon { font-size: 22px; }
+    .payout-method-btn.selected { border-color: rgba(255,200,80,0.6); background: rgba(255,200,80,0.08); color: #FFD580; }
+    .payout-input-wrap { position: relative; margin-bottom: 8px; }
+    .payout-input {
+      width: 100%; background: rgba(255,255,255,0.06);
+      border: 1.5px solid rgba(255,200,80,0.2); border-radius: 14px;
+      padding: 15px 18px; font-size: 15px; color: #e8e8e8; font-family: inherit;
+      transition: border-color .3s, box-shadow .3s;
+    }
+    .payout-input:focus { outline: none; border-color: rgba(255,180,60,0.6); box-shadow: 0 0 0 3px rgba(255,180,60,0.1); }
+    .payout-hint { font-size: 11px; color: #555; margin-bottom: 20px; }
+    .security-badge {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(77,255,145,0.06); border: 1px solid rgba(77,255,145,0.15);
+      border-radius: 10px; padding: 10px 14px; margin-bottom: 20px;
+      font-size: 12px; color: #4dff91;
+    }
+    .earn-submit-btn {
+      width: 100%; padding: 17px; border-radius: 16px; border: none; cursor: pointer;
+      font-size: 16px; font-weight: 900; font-family: inherit;
+      background: linear-gradient(135deg, #FFD580 0%, #FFB347 50%, #fff 100%);
+      color: #07031a;
+      box-shadow: 0 10px 40px rgba(255,179,71,0.5), inset 0 1px 0 rgba(255,255,255,0.5);
+      animation: earnBtnPulse 2.4s ease-in-out infinite;
+      transition: transform .25s;
+    }
+    .earn-submit-btn:hover { transform: translateY(-2px); }
+    .earn-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; animation: none; }
+    @keyframes earnBtnPulse {
+      0%,100%{ box-shadow: 0 8px 28px rgba(255,179,71,0.4), inset 0 1px 0 rgba(255,255,255,0.45); }
+      50%    { box-shadow: 0 14px 48px rgba(255,179,71,0.7), inset 0 1px 0 rgba(255,255,255,0.5); }
+    }
+    .earn-back-btn {
+      background: none; border: none; color: #555; cursor: pointer;
+      font-size: 13px; font-family: inherit; margin-top: 12px;
+      display: block; width: 100%; text-align: center; transition: color .2s;
+    }
+    .earn-back-btn:hover { color: #888; }
+    .earn-success { text-align: center; padding: 20px 0; }
+    .earn-success .big-icon { font-size: 64px; margin-bottom: 16px; }
+    .earn-success h2 { font-size: 26px; font-weight: 900; margin-bottom: 8px; }
+    .earn-success p  { color: #888; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+    .link-copy-box {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,200,80,0.25);
+      border-radius: 14px; padding: 14px 16px;
+      display: flex; gap: 10px; align-items: center; margin-bottom: 12px;
+    }
+    .link-copy-text { flex: 1; font-size: 13px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .link-copy-btn {
+      padding: 8px 18px; border-radius: 10px; border: none; cursor: pointer;
+      background: linear-gradient(135deg, #FFD580, #FFB347);
+      color: #07031a; font-weight: 800; font-size: 13px; font-family: inherit;
+      white-space: nowrap; flex: 0 0 auto;
+    }
+
     @media (max-width: 600px) {
       nav { padding: 16px 18px; }
       .page { padding: 96px 16px 60px; }
@@ -441,67 +590,24 @@
     </div>
   </div>
 
-  <hr class="divider">
 
-  <!-- ══════════════════════════════════
-       LOGGED OUT → Login Gate
-       ══════════════════════════════════ -->
-  {% if not current_user.is_authenticated %}
-  <div class="dash-card">
-    <div class="login-gate">
-      <div class="lock">🔐</div>
-      <h3>Login to Join Partners</h3>
-      <p>Create a free HotShort account to unlock your referral link and start earning today.</p>
-      <a href="/auth/login?next=/partners/" class="btn-login">Login / Sign Up Free →</a>
-    </div>
+  <!-- Golden CTA visible to everyone -->
+  <div style="text-align:center; margin-bottom: 52px;">
+    {% if not current_user.is_authenticated %}
+      <a href="/auth/login?next=/partners/" class="cta-earn-btn" style="display:inline-block;text-decoration:none;">
+        💸 Start Earning Now — It's Free
+      </a>
+    {% elif not partner %}
+  <div class="dash-card" style="text-align:center; padding: 44px 36px;">
+    <div style="font-size:52px; margin-bottom:16px; filter:drop-shadow(0 0 20px rgba(255,200,80,0.4));">🚀</div>
+    <h2 style="font-size:22px; margin-bottom:8px;">Ready to Start Earning?</h2>
+    <p class="sub" style="margin-bottom:28px;">Setup takes 60 seconds. Get your link + connect payout in one flow.</p>
+    <button class="btn-join" onclick="openEarnModal()" style="width:100%; font-size:17px; padding:18px;">💸 Get My Partner Link</button>
   </div>
 
-  <!-- ══════════════════════════════════
-       LOGGED IN — NOT YET A PARTNER
-       ══════════════════════════════════ -->
-  {% elif not partner %}
-  <div class="dash-card">
-    <h2>Join the Partners Program</h2>
 
-    <p class="sub">Takes 5 seconds. No approval needed.</p>
-    <div class="join-section">
-
-      <!-- Channel URL input -->
-      <span class="channel-connect-label">🔗 Connect Your Channel</span>
-      <div class="channel-input-wrap">
-        <div class="channel-platform-badge" id="platformBadge">🌐</div>
-        <input
-          id="channelUrlInput"
-          class="channel-url-input"
-          type="url"
-          placeholder="Paste your YouTube / TikTok / Instagram link…"
-          maxlength="300"
-          oninput="detectPlatform(this.value)"
-          autocomplete="off"
-        >
-      </div>
-
-      <!-- Channel preview (shown after detection) -->
-      <div class="channel-preview hidden" id="channelPreview">
-        <img id="channelThumb" class="channel-thumb hidden" src="" alt="channel thumbnail">
-        <div class="channel-preview-icon" id="previewIcon">📺</div>
-        <div class="channel-preview-info">
-          <div class="channel-preview-platform" id="previewPlatform">YouTube</div>
-          <div class="channel-preview-url" id="previewUrl"></div>
-        </div>
-        <div class="channel-preview-check" id="previewCheck">✅</div>
-      </div>
-
-      <button class="btn-join" id="joinBtn" onclick="joinProgram()">💸 Get My Partner Link</button>
-      <p class="join-helper">Channel link is optional — you can skip and paste the link later</p>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════
-       LOGGED IN — IS A PARTNER
-       ══════════════════════════════════ -->
   {% else %}
-  <div class="dash-card">
+  <div class="dash-card" id="dashCard">
     <h2>Your Partner Dashboard</h2>
     <p class="sub">Live stats · updates every 30s</p>
 
@@ -782,6 +888,218 @@ async function pollStats() {
 
 setInterval(pollStats, 30000);
 {% endif %}
-</script>
+
+    // 2-STEP EARN MODAL JS
+    let _earnChannelUrl = '';
+    let _earnPlatform   = null;
+    let _earnPayoutM    = 'upi';
+
+    function openEarnModal() {
+      _earnChannelUrl = ''; _earnPlatform = null;
+      const ci = document.getElementById('channelUrlInput');
+      if (ci) ci.value = '';
+      const cp = document.getElementById('channelPreview');
+      if (cp) { cp.classList.add('hidden'); cp.classList.remove('error-card'); }
+      const pb = document.getElementById('platformBadge');
+      if (pb) pb.textContent = '\u{1F310}';
+      const pi = document.getElementById('payoutInput');
+      if (pi) pi.value = '';
+      _showEarnStep(1);
+      document.getElementById('earnOverlay').classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeEarnModal() {
+      document.getElementById('earnOverlay').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function _showEarnStep(n) {
+      ['earnPanel1','earnPanel2','earnSuccess'].forEach((id, i) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', i === n - 1);
+      });
+      const d1  = document.getElementById('sdot1');
+      const d2  = document.getElementById('sdot2');
+      const lbl = document.getElementById('sLabel');
+      if (!d1 || !d2) return;
+      if (n === 1) {
+        d1.className = 'earn-step-dot active'; d2.className = 'earn-step-dot';
+        if (lbl) lbl.textContent = 'Step 1 of 2 — Channel';
+      } else if (n === 2) {
+        d1.className = 'earn-step-dot done'; d2.className = 'earn-step-dot active';
+        if (lbl) lbl.textContent = 'Step 2 of 2 — Payout';
+      } else {
+        d1.className = 'earn-step-dot done'; d2.className = 'earn-step-dot done';
+        if (lbl) lbl.textContent = "You're all set! \u{1F389}";
+      }
+    }
+
+    function goToStep2() {
+      _earnChannelUrl = (document.getElementById('channelUrlInput').value || '').trim();
+      _showEarnStep(2);
+    }
+    function goToStep2Skip() { _earnChannelUrl = ''; _showEarnStep(2); }
+    function goToStep1() { _showEarnStep(1); }
+
+    const PAYOUT_HINTS = {
+      upi:    ['yourname@upi', 'Example: yourname@okaxis or yourname@paytm'],
+      paypal: ['you@email.com', 'Your PayPal email address'],
+      bank:   ['IFSC + Account No.', 'Enter your IFSC code and account number'],
+      crypto: ['Wallet address', 'Your USDT / BTC / ETH wallet address'],
+    };
+
+    function selectPayout(btn) {
+      document.querySelectorAll('.payout-method-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      _earnPayoutM = btn.dataset.method;
+      const [ph, hint] = PAYOUT_HINTS[_earnPayoutM] || ['', ''];
+      const pi = document.getElementById('payoutInput');
+      const ph2 = document.getElementById('payoutHint');
+      if (pi) pi.placeholder = ph;
+      if (ph2) ph2.textContent = hint;
+    }
+
+    async function finalJoin() {
+      const btn = document.getElementById('earnFinalBtn');
+      const pv  = (document.getElementById('payoutInput').value || '').trim();
+      if (!btn) return;
+      btn.textContent = '\u23F3 Activating...';
+      btn.disabled = true;
+      try {
+        const res = await fetch('/partners/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            social_handle: _earnChannelUrl,
+            channel_url:   _earnChannelUrl,
+            platform:      _earnPlatform || '',
+            payout_method: _earnPayoutM,
+            payout_info:   pv,
+          }),
+          credentials: 'same-origin',
+        });
+        if (res.status === 401) { window.location.href = '/auth/login?next=/partners/'; return; }
+        const data = await res.json();
+        if (data.code) {
+          const base = window.location.origin;
+          const sl = document.getElementById('successLinkText');
+          if (sl) sl.textContent = base + '/vip/' + data.code;
+          _showEarnStep(3);
+          try { new Audio('/static/ching.mp3').play(); } catch(_) {}
+        }
+      } catch(e) {
+        console.error(e);
+      } finally {
+        if (!document.getElementById('earnSuccess').classList.contains('active')) {
+          btn.textContent = '\u{1F680} Activate My Partner Link';
+          btn.disabled = false;
+        }
+      }
+    }
+
+    function copySuccessLink() {
+      const txt = (document.getElementById('successLinkText') || {}).textContent || '';
+      navigator.clipboard.writeText(txt).then(() => {
+        const b = document.querySelector('.link-copy-btn');
+        if (b) { b.textContent = '\u2705 Copied!'; setTimeout(() => b.textContent = '\u{1F4CB} Copy', 2500); }
+      });
+    }
+
+    // Backdrop + ESC
+    (function() {
+      const ov = document.getElementById('earnOverlay');
+      if (ov) {
+        ov.addEventListener('click', e => { if (e.target === ov) closeEarnModal(); });
+      }
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          const ov2 = document.getElementById('earnOverlay');
+          if (ov2 && ov2.classList.contains('open')) closeEarnModal();
+        }
+      });
+    })();
+
+  </script>
+
+<!-- 2-STEP EARN MODAL -->
+<div id="earnOverlay" role="dialog" aria-modal="true">
+  <div class="earn-modal">
+    <button class="earn-close" onclick="closeEarnModal()">✕</button>
+    <div class="earn-steps-indicator">
+      <div class="earn-step-dot active" id="sdot1"></div>
+      <span class="earn-step-label" id="sLabel">Step 1 of 2 — Channel</span>
+      <div class="earn-step-dot" id="sdot2"></div>
+    </div>
+
+    <!-- STEP 1 -->
+    <div class="earn-panel active" id="earnPanel1">
+      <h2>🔗 Connect Your <span class="gold">Channel</span></h2>
+      <p class="earn-sub">Paste your creator link — we verify it's real so your referrals get tracked to it.</p>
+      <span style="font-size:11px;color:#666;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:8px;display:block;">Your Channel URL</span>
+      <div class="channel-input-wrap" style="margin-bottom:14px;">
+        <div class="channel-platform-badge" id="platformBadge">🌐</div>
+        <input id="channelUrlInput" class="channel-url-input" type="url"
+          placeholder="Paste your YouTube / TikTok / Instagram link…"
+          maxlength="300" oninput="detectPlatform(this.value)" autocomplete="off">
+      </div>
+      <div class="channel-preview hidden" id="channelPreview" style="margin-bottom:18px;">
+        <img id="channelThumb" class="channel-thumb hidden" src="" alt="">
+        <div class="channel-preview-icon" id="previewIcon">📺</div>
+        <div class="channel-preview-info">
+          <div class="channel-preview-platform" id="previewPlatform">Verified</div>
+          <div class="channel-preview-url" id="previewUrl"></div>
+        </div>
+        <div class="channel-preview-check" id="previewCheck">✅</div>
+      </div>
+      <button class="earn-submit-btn" id="step1NextBtn" onclick="goToStep2()">Continue → Add Payout Info</button>
+      <button class="earn-back-btn" onclick="goToStep2Skip()">Skip channel — just get my link →</button>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="earn-panel" id="earnPanel2">
+      <h2>💰 Where Should We Send <span class="gold">Your Money?</span></h2>
+      <p class="earn-sub">Set this once. Every ${{ commission }} conversion goes straight here — no delays.</p>
+      <div class="payout-methods" id="payoutMethods">
+        <button class="payout-method-btn selected" data-method="upi" onclick="selectPayout(this)">
+          <span class="p-icon">🇮🇳</span>UPI ID
+        </button>
+        <button class="payout-method-btn" data-method="paypal" onclick="selectPayout(this)">
+          <span class="p-icon">🅿️</span>PayPal
+        </button>
+        <button class="payout-method-btn" data-method="bank" onclick="selectPayout(this)">
+          <span class="p-icon">🏦</span>Bank
+        </button>
+        <button class="payout-method-btn" data-method="crypto" onclick="selectPayout(this)">
+          <span class="p-icon">₿</span>Crypto
+        </button>
+      </div>
+      <div class="payout-input-wrap">
+        <input class="payout-input" id="payoutInput" type="text"
+          placeholder="yourname@upi" maxlength="200" autocomplete="off">
+      </div>
+      <p class="payout-hint" id="payoutHint">Example: yourname@okaxis or yourname@paytm</p>
+      <div class="security-badge">🔒 Encrypted & secure. Only used to send your earnings. Never shared.</div>
+      <button class="earn-submit-btn" id="earnFinalBtn" onclick="finalJoin()">🚀 Activate My Partner Link</button>
+      <button class="earn-back-btn" onclick="goToStep1()">← Back</button>
+    </div>
+
+    <!-- SUCCESS -->
+    <div class="earn-panel" id="earnSuccess">
+      <div class="earn-success">
+        <div class="big-icon">🎉</div>
+        <h2>You're In! <span style="color:#4dff91">Link Active!</span></h2>
+        <p>Your referral link is live. Every paid signup through you = <strong style="color:#FFD580">${{ commission }}</strong> to your wallet. Instantly.</p>
+        <div class="link-copy-box">
+          <span class="link-copy-text" id="successLinkText">Loading...</span>
+          <button class="link-copy-btn" onclick="copySuccessLink()">📋 Copy</button>
+        </div>
+        <p style="font-size:12px;color:#555;margin-bottom:20px;">Drop this in your bio, reel, or story. Watch the cha-ching roll in. 💸</p>
+        <button class="earn-submit-btn" onclick="closeEarnModal(); window.location.reload();">📊 Open My Dashboard</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

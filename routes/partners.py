@@ -38,19 +38,30 @@ def join():
     if existing:
         return jsonify({"status": "already_partner", "code": existing.referral_code}), 200
     body = (request.json or {}) if request.is_json else {}
-    social_handle = body.get("social_handle", "").strip()[:120]
-    channel_url   = body.get("channel_url",   "").strip()[:300]
-    platform      = body.get("platform",       "").strip()[:50]
+    social_handle  = body.get("social_handle",  "").strip()[:120]
+    channel_url    = body.get("channel_url",    "").strip()[:300]
+    platform       = body.get("platform",       "").strip()[:50]
+    payout_method  = body.get("payout_method",  "").strip()[:20]
+    payout_info    = body.get("payout_info",    "").strip()[:300]
+
+    _VALID_PM = {"upi", "paypal", "bank", "crypto"}
+    if payout_method not in _VALID_PM:
+        payout_method = None
+
     partner = Partner(
         user_id=current_user.id,
         social_handle=social_handle or channel_url or None,
         channel_url=channel_url or None,
         platform=platform or None,
+        payout_method=payout_method or None,
+        payout_info=payout_info or None,
     )
     db.session.add(partner)
     db.session.commit()
-    current_app.logger.info("[PARTNERS] New partner user_id=%s code=%s", current_user.id, partner.referral_code)
+    current_app.logger.info("[PARTNERS] New partner user_id=%s code=%s payout=%s",
+                            current_user.id, partner.referral_code, payout_method)
     return jsonify({"status": "joined", "code": partner.referral_code}), 201
+
 
 
 def _track_click_and_redirect(code):

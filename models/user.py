@@ -140,6 +140,8 @@ class Partner(db.Model):
     total_earned_usd = db.Column(db.Float, default=0.0, nullable=False)  # All-time earned
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    payout_method = db.Column(db.String(20),  nullable=True)  # upi / paypal / bank / crypto
+    payout_info   = db.Column(db.String(300), nullable=True)  # UPI ID, PayPal email, wallet addr
 
     # Relationship back to user
     user = db.relationship('User', backref=db.backref('partner', uselist=False))
