@@ -165,6 +165,15 @@ def signup():
         db.session.add(new_user)
         db.session.commit()
 
+        # Partner automation: trigger micro-win signup dopamine
+        hs_ref = request.cookies.get("hs_ref")
+        if hs_ref:
+            try:
+                from api.partner_automation_service import partner_automation
+                partner_automation.on_user_signed_up(hs_ref, new_user.id, new_user.email)
+            except Exception as _pe:
+                current_app.logger.warning("[PARTNERS] on_user_signed_up failed: %s", _pe)
+
         flash('Account created successfully! Please log in.', 'success')
         return redirect(url_for('auth.login', next=next_target, template_id=template_id or None))
 

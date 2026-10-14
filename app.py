@@ -2019,6 +2019,14 @@ def _google_authorized_override():
                         user = User(email=email, name=name, profile_pic=picture, google_sub=google_sub)
                         db.session.add(user)
                         db.session.commit()
+                        # Partner automation: trigger micro-win signup dopamine
+                        hs_ref = request.cookies.get("hs_ref")
+                        if hs_ref:
+                            try:
+                                from api.partner_automation_service import partner_automation
+                                partner_automation.on_user_signed_up(hs_ref, user.id, user.email)
+                            except Exception as _pe:
+                                app.logger.warning("[PARTNERS] on_user_signed_up failed: %s", _pe)
                     except Exception as e:
                         db.session.rollback()
                         user = User.query.filter_by(google_sub=google_sub).first()
@@ -4242,6 +4250,11 @@ def init_db():
                 "ALTER TABLE partner ADD COLUMN platform VARCHAR(50)",
                 "ALTER TABLE partner ADD COLUMN payout_method VARCHAR(20)",
                 "ALTER TABLE partner ADD COLUMN payout_info VARCHAR(300)",
+                "ALTER TABLE partner ADD COLUMN last_click_at DATETIME",
+                "ALTER TABLE partner ADD COLUMN last_signup_at DATETIME",
+                "ALTER TABLE partner ADD COLUMN last_click_email_at DATETIME",
+                "ALTER TABLE partner ADD COLUMN last_loss_aversion_at DATETIME",
+                "ALTER TABLE partner ADD COLUMN last_tier_nudge_at DATETIME",
             ]:
                 try:
                     db.session.execute(text(col_sql))

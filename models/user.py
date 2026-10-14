@@ -150,13 +150,41 @@ class Partner(BaseModel):
     payout_method = db.Column(db.String(20),  nullable=True)  # upi / paypal / bank / crypto
     payout_info   = db.Column(db.String(300), nullable=True)  # UPI ID, PayPal email, wallet addr
 
+    # Behavioral Automation & Engagement Tracking
+    last_click_at          = db.Column(db.DateTime, nullable=True)
+    last_signup_at         = db.Column(db.DateTime, nullable=True)
+    last_click_email_at    = db.Column(db.DateTime, nullable=True)
+    last_loss_aversion_at  = db.Column(db.DateTime, nullable=True)
+    last_tier_nudge_at     = db.Column(db.DateTime, nullable=True)
+
     # Relationship back to user
     user = db.relationship('User', backref=db.backref('partner', uselist=False))
     # Conversions list
     conversions = db.relationship('PartnerConversion', backref='partner', lazy='dynamic')
+    # Activity log list
+    activity_logs = db.relationship('PartnerActivityLog', backref='partner', lazy='dynamic', order_by='PartnerActivityLog.created_at.desc()')
 
     def __repr__(self):
         return f'<Partner code={self.referral_code} wallet=${self.wallet_usd:.2f}>'
+
+
+class PartnerActivityLog(BaseModel):
+    """Records every dopamine trigger, click milestone, signup, tier nudge, and notification."""
+    __tablename__ = "partner_activity_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    partner_id = db.Column(db.Integer, db.ForeignKey('partner.id'), nullable=False, index=True)
+    event_type = db.Column(db.String(50), nullable=False)  # click, signup, loss_aversion, tier_nudge, conversion
+    icon = db.Column(db.String(10), default="🔥", nullable=False)
+    title = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.String(400), nullable=True)
+    potential_usd = db.Column(db.Float, default=0.0, nullable=False)
+    email_sent = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<PartnerActivityLog partner={self.partner_id} event={self.event_type} title={self.title}>'
+
 
 
 class PartnerConversion(BaseModel):

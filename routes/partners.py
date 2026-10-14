@@ -1,10 +1,29 @@
 import os
 from flask import Blueprint, render_template, request, redirect, jsonify, make_response, current_app
 from flask_login import current_user, login_required
-from models.user import db, Partner, PartnerConversion
+from models.user import db, Partner, PartnerConversion, PartnerActivityLog
+from datetime import datetime
 
 partners_bp = Blueprint("partners", __name__)
 PARTNER_COMMISSION_USD = float(os.getenv("PARTNER_COMMISSION_USD", "3.0"))
+
+
+def _format_time_ago(dt):
+    if not dt:
+        return ""
+    diff = datetime.utcnow() - dt
+    seconds = int(diff.total_seconds())
+    if seconds < 60:
+        return "Just now"
+    elif seconds < 3600:
+        mins = seconds // 60
+        return f"{mins}m ago"
+    elif seconds < 86400:
+        hours = seconds // 3600
+        return f"{hours}h ago"
+    else:
+        days = seconds // 86400
+        return f"{days}d ago"
 
 
 def calculate_pending_potential(total_signups: int, total_conversions: int, total_clicks: int) -> float:
@@ -101,6 +120,7 @@ def dashboard():
     if current_user.is_authenticated:
         partner = Partner.query.filter_by(user_id=current_user.id).first()
     recent_conversions = []
+    activity_logs = []
     pending_potential = 0.0
     tier_info = calculate_partner_tier(0)
     free_signups = 0
@@ -110,6 +130,13 @@ def dashboard():
             .filter_by(partner_id=partner.id)
             .order_by(PartnerConversion.created_at.desc())
             .limit(10)
+            .all()
+        )
+        activity_logs = (
+            PartnerActivityLog.query
+            .filter_by(partner_id=partner.id)
+            .order_by(PartnerActivityLog.created_at.desc())
+            .limit(15)
             .all()
         )
         free_signups = max(partner.total_signups - partner.total_conversions, 0)
@@ -122,6 +149,7 @@ def dashboard():
         "partners.html",
         partner=partner,
         recent_conversions=recent_conversions,
+        activity_logs=activity_logs,
         base_url=base_url,
         commission=PARTNER_COMMISSION_USD,
         pending_potential=pending_potential,
@@ -164,11 +192,16 @@ def join():
 
 
 def _track_click_and_redirect(code):
-    partner = Partner.query.filter_by(referral_code=code.upper(), is_active=True).first()
-    if partner:
-        partner.total_clicks += 1
-        db.session.commit()
-        current_app.logger.info("[PARTNERS] Click code=%s total=%d", code, partner.total_clicks)
+    try:
+        from api.partner_automation_service import partner_automation
+        partner_automation.on_link_clicked(code)
+    except Exception as e:
+        current_app.logger.warning("[PARTNERS] on_link_clicked failed: %s", e)
+        # Fallback manual tracking if automation encounters any error
+        partner = Partner.query.filter_by(referral_code=code.upper(), is_active=True).first()
+        if partner:
+            partner.total_clicks += 1
+            db.session.commit()
     response = make_response(redirect("/"))
     response.set_cookie("hs_ref", code.upper(), max_age=30*24*3600, httponly=True, samesite="Lax", path="/")
     return response
@@ -206,6 +239,61 @@ def stats():
     })
 
 
+@partners_bp.route("/api/activity")
+@login_required
+def activity_feed():
+    partner = Partner.query.filter_by(user_id=current_user.id).first()
+    if not partner:
+        return jsonify({"error": "not_a_partner"}), 404
+
+    logs = (
+        PartnerActivityLog.query
+        .filter_by(partner_id=partner.id)
+        .order_by(PartnerActivityLog.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    items = []
+    for l in logs:
+        items.append({
+            "id": l.id,
+            "event_type": l.event_type,
+            "icon": l.icon,
+            "title": l.title,
+            "description": l.description,
+            "potential_usd": round(l.potential_usd, 2),
+            "email_sent": l.email_sent,
+            "created_at": l.created_at.isoformat(),
+            "time_ago": _format_time_ago(l.created_at)
+        })
+    return jsonify({"activities": items})
+
+
+@partners_bp.route("/api/cron/automation-run", methods=["GET", "POST"])
+def run_automation_cron():
+    """
+    Cron trigger for behavioral automation:
+    - Scans inactive trials with pending potential and sends loss-aversion alerts with fresh viral hooks.
+    - Scans partners close to unlocking the next tier and sends proximity gravity nudges.
+    Can be invoked by external cron (e.g. GitHub Actions / EasyCron) or admin dashboard.
+    """
+    cron_secret = os.getenv("PARTNER_CRON_SECRET")
+    provided_secret = request.headers.get("X-Cron-Secret") or request.args.get("secret")
+    if cron_secret and provided_secret != cron_secret:
+        return jsonify({"error": "unauthorized"}), 401
+
+    from api.partner_automation_service import partner_automation
+    loss_sent = partner_automation.check_and_send_loss_aversion_alerts(inactive_days=3, min_cooldown_days=5)
+    tier_sent = partner_automation.check_and_send_tier_nudges(max_gap=3, min_cooldown_days=6)
+
+    return jsonify({
+        "status": "success",
+        "loss_aversion_alerts_sent": loss_sent,
+        "tier_nudges_sent": tier_sent,
+        "timestamp": datetime.utcnow().isoformat(),
+    }), 200
+
+
 def credit_partner_for_code(referral_code, new_user_id, plan_name, stripe_session_id=None):
     """Credit the partner whose referral_code matches. ALWAYS logs outcome per AGENTS.md."""
     import logging
@@ -221,7 +309,8 @@ def credit_partner_for_code(referral_code, new_user_id, plan_name, stripe_sessio
     partner.wallet_usd = round(partner.wallet_usd + commission, 2)
     partner.total_earned_usd = round(partner.total_earned_usd + commission, 2)
     partner.total_conversions += 1
-    partner.total_signups += 1
+    if partner.total_signups < partner.total_conversions:
+        partner.total_signups = partner.total_conversions
     conversion = PartnerConversion(
         partner_id=partner.id,
         converted_user_id=new_user_id,
@@ -233,6 +322,14 @@ def credit_partner_for_code(referral_code, new_user_id, plan_name, stripe_sessio
     db.session.commit()
     logger.info("[PARTNERS] Credited code=%s user=%s +$%.2f wallet=$%.2f",
                 referral_code, partner.user_id, commission, partner.wallet_usd)
+
+    # Fire behavioral automation conversion notification
+    try:
+        from api.partner_automation_service import partner_automation
+        partner_automation.on_conversion_paid(referral_code, new_user_id, commission, plan_name)
+    except Exception as _e:
+        logger.warning("[PARTNERS] on_conversion_paid failed: %s", _e)
+
     return True
 
 
