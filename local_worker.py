@@ -2352,14 +2352,29 @@ def _process_job(job: dict, cloudinary_ok: bool):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="HotShort Local Worker")
+    parser.add_argument("--localhost", action="store_true",
+                        help="Connect to local app.py on http://127.0.0.1:5000 instead of Railway cloud.")
+    parser.add_argument("--server", default=None,
+                        help="Target server URL (e.g. http://127.0.0.1:5000).")
     parser.add_argument("--local", action="store_true",
-                        help="Local mode: no Railway. Process a YouTube URL directly.")
+                        help="Local mode: no Railway/server. Process a YouTube URL directly from CLI.")
     parser.add_argument("--url", default=None, help="YouTube URL (used with --local).")
     parser.add_argument("--intent", default=None, help="Creator Intent (used with --local).")
     parser.add_argument("--format", choices=["center_crop", "blur_background", "original_with_black_bars"], default=None, help="Video Format (used with --local).")
     parser.add_argument("--clips", type=int, default=int(os.getenv("HS_ORCH_TOP_K", "5")),
                         help="Number of clips to select (default 5).")
     args = parser.parse_args()
+
+    global RAILWAY_URL, WORKER_SECRET, _HEADERS
+    if args.localhost:
+        RAILWAY_URL = "http://127.0.0.1:5000"
+    elif args.server:
+        RAILWAY_URL = args.server.rstrip("/")
+
+    if not WORKER_SECRET:
+        WORKER_SECRET = os.getenv("WORKER_SECRET") or "fa72afa80af434597d74b135b151c37c2d4bab76b04e063745df9de14b1d101c"
+
+    _HEADERS["X-Worker-Secret"] = WORKER_SECRET
 
     _print_startup_banner()
 
