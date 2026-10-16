@@ -665,13 +665,14 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
     MAX_CHUNK_RETRIES = 3
 
     for chunk_idx, segs_to_use in enumerate(chunks):
+        chunk_t0 = _time.time()
         if chunk_idx > 0:
             if not gemini_enabled:
                 log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 8 seconds before chunk {chunk_idx+1}/{len(chunks)} to respect TPM limits...")
                 _time.sleep(8.0)
             else:
-                log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 3 seconds before chunk {chunk_idx+1}/{len(chunks)} for rate limits...")
-                _time.sleep(3.0)
+                log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 1 second before chunk {chunk_idx+1}/{len(chunks)}...")
+                _time.sleep(1.0)
                 log.info(f"[TRIGGER_FORENSIC_LLM] Preparing chunk {chunk_idx+1}/{len(chunks)} for Gemini...")
 
         transcript_text = ""
@@ -871,7 +872,8 @@ Transcript:
                         "artifact": artifact
                     })
                     found_in_chunk += 1
-                log.info(f"[TRIGGER_FORENSIC_LLM] Chunk {chunk_idx+1} complete: {found_in_chunk} triggers found.")
+                wall_s = round(_time.time() - chunk_t0, 2)
+                log.info(f"[TRIGGER_FORENSIC_LLM] Chunk {chunk_idx+1}/{len(chunks)} complete: {found_in_chunk} triggers found in {wall_s}s.")
                 chunk_succeeded = True
                 break  # success — stop retrying this chunk
 

@@ -645,39 +645,54 @@ def _browser_cookie_error(stderr: str) -> bool:
 
 
 def _auto_refresh_cookies() -> bool:
-    """Export fresh cookies from Firefox into cookies.txt before each download."""
+    """Export fresh cookies from Firefox into cookies.txt with fast 4s timeout (no 30s hangs)."""
     cookies_file = os.path.join(os.getcwd(), "cookies.txt")
+    has_existing = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100
+    tmp_cookies = cookies_file + ".tmp"
 
-    # Remove any existing file that may be in wrong/corrupt format
-    # yt-dlp refuses to overwrite a file it can't parse as Netscape cookies
-    if os.path.exists(cookies_file):
+    if os.path.exists(tmp_cookies):
         try:
-            os.remove(cookies_file)
+            os.remove(tmp_cookies)
         except Exception:
             pass
 
-    print("[LOCAL_WORKER] Auto-refreshing cookies from Firefox...", flush=True)
+    print("[LOCAL_WORKER] Checking Firefox cookies (fast 4s timeout)...", flush=True)
     try:
         result = subprocess.run(
             [
                 sys.executable, "-m", "yt_dlp",
                 "--cookies-from-browser", "firefox",
-                "--cookies", cookies_file,
+                "--cookies", tmp_cookies,
                 "--skip-download", "--quiet",
                 "https://www.youtube.com",
             ],
-            capture_output=True, timeout=30,
+            capture_output=True, timeout=4,
         )
-        if result.returncode == 0 and os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100:
+        if result.returncode == 0 and os.path.exists(tmp_cookies) and os.path.getsize(tmp_cookies) > 100:
+            if os.path.exists(cookies_file):
+                try:
+                    os.remove(cookies_file)
+                except Exception:
+                    pass
+            os.rename(tmp_cookies, cookies_file)
             sz = os.path.getsize(cookies_file) / 1024
             print(f"[LOCAL_WORKER] Cookies refreshed from Firefox ({sz:.0f} KB) -> cookies.txt", flush=True)
             return True
         err = result.stderr.decode("utf-8", errors="replace")[:200]
-        print(f"[LOCAL_WORKER] Firefox cookie refresh failed: {err}", flush=True)
-        return False
+        print(f"[LOCAL_WORKER] Firefox cookie refresh bypassed ({err.strip() or 'non-zero exit'}), using {'existing cookies.txt' if has_existing else 'fallback'}", flush=True)
+        return has_existing
+    except subprocess.TimeoutExpired:
+        print(f"[LOCAL_WORKER] Firefox profile locked or busy (fast bypass in 4s) -> using {'existing cookies.txt' if has_existing else 'proxy/direct'}", flush=True)
+        return has_existing
     except Exception as e:
-        print(f"[LOCAL_WORKER] Cookie refresh error: {e}", flush=True)
-        return False
+        print(f"[LOCAL_WORKER] Cookie refresh error: {e} -> continuing", flush=True)
+        return has_existing
+    finally:
+        if os.path.exists(tmp_cookies):
+            try:
+                os.remove(tmp_cookies)
+            except Exception:
+                pass
 
 
 

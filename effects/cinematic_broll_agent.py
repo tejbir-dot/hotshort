@@ -69,7 +69,7 @@ def _ask_llm(prompt: str) -> Optional[str]:
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if api_key:
             _client = _genai.Client(api_key=api_key)
-            for model_name in ["gemini-3.5-flash", "gemini-3.5-flash-lite"]:
+            for model_name in ["gemini-3.5-flash-lite", "gemini-3.5-flash"]:
                 try:
                     resp = _client.models.generate_content(
                         model=model_name, contents=prompt,

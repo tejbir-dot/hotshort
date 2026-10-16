@@ -4886,6 +4886,10 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
             log.warning("[GROQ_CORTEX] Enabled but GROQ_API_KEY missing — skipping.")
     except Exception as e:
         log.warning("[GROQ_CORTEX] Exception during review: %s", e)
+    finally:
+        wall_s = round(time.time() - t0, 3)
+        _record_stage(ctx, "L11B_GROQ_SURGEON", wall_s=wall_s, candidates_in=len(_groq_pool), candidates_out=len(ctx.ranked_output or []))
+        log.info(f"[STAGE_BENCH] L11B_GROQ_SURGEON wall_s={wall_s}s candidates={len(ctx.ranked_output or [])}")
     # ------------------------------------
 
 def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool, creator_intent: str = None):
