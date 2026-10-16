@@ -155,6 +155,9 @@ def _print_startup_banner():
     whisper_model  = os.getenv("WHISPER_MODEL", "base")
     if whisper_device == "auto":
         whisper_device = "cuda" if cuda_available else "cpu"
+    os.environ["WHISPER_DEVICE"] = whisper_device
+    if cuda_available and whisper_device == "cuda":
+        os.environ["HS_TRANSCRIPTION_FORCE_LOCAL"] = "1"
 
     # ── FFmpeg GPU check ─────────────────────────────────────────────────────
     ffmpeg_nvenc = False
