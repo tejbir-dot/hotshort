@@ -37,7 +37,7 @@ def generate_clip_for_job(yt_url, job_id, progress=None):
     # 1) Download
     say("Downloading video…")
     ydl_opts = {
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
+        "format": "bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/mp4",
         "outtmpl": temp_file,
         "merge_output_format": "mp4",
         "quiet": True,

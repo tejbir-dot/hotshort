@@ -3643,15 +3643,32 @@ def results(job_id):
                 error='Job not found'
             )
 
-        # If the job is still running, render a processing state instead of "no clips found".
+        # Check if any progressive clips are already generated in analysis_data
+        progressive_clips = []
+        envelope_data = {}
+        if job.analysis_data:
+            try:
+                import json as jsonmodule
+                raw = jsonmodule.loads(job.analysis_data)
+                if isinstance(raw, dict):
+                    progressive_clips = raw.get("clips", []) or []
+                    envelope_data = raw
+                elif isinstance(raw, list):
+                    progressive_clips = raw
+            except Exception:
+                pass
+
+        # If the job is still running, stream any ready clips immediately!
         if str(job.status or "").lower() in ("pending", "processing", "queued", "in_queue"):
             worker_envelope = {
                 "job_id": job.id,
                 "status": job.status,
+                "clips_ready": len(progressive_clips),
+                "total_expected": envelope_data.get("total_expected", 0),
             }
             return render_template(
                 "results_new.html",
-                clips_json=[],
+                clips_json=progressive_clips,
                 free_status_json=get_free_status(current_user),
                 pro_checkout_url=url_for("create_checkout_session", plan="pro"),
                 job_id=job_id,

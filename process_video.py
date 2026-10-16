@@ -41,7 +41,7 @@ def download_video(url: str, dest: str):
     t0 = time.perf_counter()
     subprocess.run([
         sys.executable, "-m", "yt_dlp",
-        "--format", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "--format", "bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "--merge-output-format", "mp4",
         "--no-playlist",
         "-o", dest,

@@ -759,7 +759,7 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
             *_js_runtime_args,
             *_player_client_args,
             *extra_args,
-            "--format", "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "--format", "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "--merge-output-format", "mp4",
             "--retries", "10",
             "--fragment-retries", "10",
@@ -1876,8 +1876,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
         _bench = _JobBenchmark(job_id, youtube_url)
         _bench.finish("1_download")  # download already done above
 
-        # ── PIPELINE ARCHITECTURE (Parallel NVENC Renders) ──────────
-        _concurrency = int(os.getenv("HS_RENDER_CONCURRENCY", "2"))
+        # ── PIPELINE ARCHITECTURE (Configurable Concurrency Renders) ──────────
+        _concurrency = int(os.getenv("HS_RENDER_CONCURRENCY", "1"))
         print(f"[LOCAL_WORKER] Parallel render concurrency: {_concurrency}", flush=True)
         clip_queue = queue.Queue(maxsize=max(10, _concurrency * 4))
         results = []
@@ -2120,33 +2120,21 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 
                 try:
                     t_clip_total = time.perf_counter()
-                    # ── Stage 6a: Fast-Seek Stream Copy (0.1s keyframe-accurate) ──
+                    # ── Stage 6a: Frame-Accurate Fast Extraction (1.3s, 0s keyframe drift) ──
                     t0 = time.perf_counter()
                     raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
                     _bench.begin(f"6a_extract_clip{i}")
                     duration = max(0.1, end - start)
                     import subprocess
-                    try:
-                        # Fast stream copy (-c copy): 0.1s extraction, 0% CPU overhead
-                        subprocess.run([
-                            "ffmpeg", "-y", "-nostdin",
-                            "-ss", f"{start:.3f}",
-                            "-i", video_path,
-                            "-t", f"{duration:.3f}",
-                            "-c", "copy",
-                            "-avoid_negative_ts", "make_zero",
-                            raw_path
-                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, check=True)
-                    except Exception as _copy_err:
-                        print(f"[PIPELINE] Stream copy fallback to ultrafast for clip {i}: {_copy_err}", flush=True)
-                        subprocess.run([
-                            "ffmpeg", "-y", "-nostdin",
-                            "-ss", f"{start:.3f}",
-                            "-i", video_path,
-                            "-t", f"{duration:.3f}",
-                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
-                            "-c:a", "aac", "-async", "1", raw_path
-                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
+                    subprocess.run([
+                        "ffmpeg", "-y", "-nostdin",
+                        "-ss", f"{start:.3f}",
+                        "-i", video_path,
+                        "-t", f"{duration:.3f}",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                        "-c:a", "aac", "-async", "1",
+                        raw_path
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
                     t_raw_cut = time.perf_counter() - t0
                     _bench.finish(f"6a_extract_clip{i}")
 

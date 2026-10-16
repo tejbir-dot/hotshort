@@ -199,6 +199,33 @@
       font-weight: 600;
     }
 
+    .live-studio-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, rgba(255, 195, 80, 0.16), rgba(255, 140, 20, 0.08));
+      border: 1px solid rgba(255, 215, 120, 0.35);
+      border-radius: 999px;
+      padding: 7px 18px;
+      font-size: 0.84rem;
+      font-weight: 650;
+      color: #ffdf9e;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 0 24px rgba(255, 190, 60, 0.18);
+      animation: pulsePill 2.5s infinite ease-in-out;
+    }
+    .live-studio-pill.is-completed {
+      background: rgba(34, 197, 94, 0.14);
+      border-color: rgba(74, 222, 128, 0.4);
+      color: #86efac;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 0 24px rgba(74, 222, 128, 0.18);
+      animation: none;
+    }
+    @keyframes pulsePill {
+      0%, 100% { opacity: 0.95; transform: scale(1); }
+      50% { opacity: 0.80; transform: scale(0.99); }
+    }
+
     .carousel {
       display: flex;
       gap: 20px;
@@ -1753,9 +1780,31 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
       }, 8000);
     }
 
+    function updateLiveStudioPill(clipsReady, totalExpected, isCompleted) {
+      const cContainer = document.querySelector('.carousel-container');
+      if (!cContainer) return;
+      let livePill = document.getElementById('liveStudioPill');
+      if (!livePill) {
+        livePill = document.createElement('div');
+        livePill.id = 'liveStudioPill';
+        livePill.className = 'live-studio-pill';
+        const cLabel = document.querySelector('.carousel-label');
+        if (cLabel) cLabel.parentNode.insertBefore(livePill, cLabel);
+        else cContainer.prepend(livePill);
+      }
+      if (isCompleted) {
+        livePill.innerHTML = `<span>✅ All ${clipsReady} Viral Shorts Ready! Studio Complete.</span>`;
+        livePill.classList.add('is-completed');
+      } else {
+        const total = totalExpected || 15;
+        livePill.innerHTML = `<span>⚡ LIVE STUDIO: ${clipsReady} of ${total} Shorts Ready & Playing • Generating remaining clips in background…</span>`;
+        livePill.classList.remove('is-completed');
+      }
+    }
+
     async function pollJobUntilDone(jobId) {
       let delayMs = 2000;
-      const maxDelayMs = 8000;
+      const maxDelayMs = 6000;
       while (true) {
         await new Promise(r => setTimeout(r, delayMs));
         try {
@@ -1764,8 +1813,26 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           const data = await resp.json();
           const st = (data.status || '').toString().toLowerCase();
 
-          // ⚡ Live progressive counter update on the glassmorphic loading screen
-          if (data.clips_ready && data.clips_ready > 0) {
+          // ⚡ Progressive stream: AS SOON AS 1 OR MORE CLIPS ARE READY, DISPLAY THEM LIVE!
+          if (data.clips && Array.isArray(data.clips) && data.clips.length > 0) {
+            const hasNewClips = data.clips.length > (clips ? clips.length : 0);
+            if (hasNewClips || !clips || clips.length === 0) {
+              clips = data.clips;
+              window.CLIPS_DATA = data.clips;
+
+              // Hide loader, reveal carousel immediately
+              const pState = document.getElementById('processingState');
+              if (pState) pState.style.display = 'none';
+              _stopPipelineTimers();
+
+              const cContainer = document.querySelector('.carousel-container');
+              if (cContainer) cContainer.style.display = 'block';
+
+              renderCarousel();
+              renderTierLine();
+              updateLiveStudioPill(clips.length, data.total_expected || 15, st === 'completed');
+            }
+          } else if (data.clips_ready && data.clips_ready > 0) {
             const total = data.total_expected || 15;
             const el = document.getElementById('loaderText');
             if (el) el.textContent = `⚡ ${data.clips_ready} of ${total} 9:16 Shorts Ready & Polished!`;
@@ -1775,9 +1842,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
           if (st === 'completed') {
             _stopPipelineTimers();
-            const el = document.getElementById('loaderText');
-            if (el) el.textContent = '✅ All Clips Ready! Assembling your studio carousel…';
-            setTimeout(() => window.location.reload(), 600);
+            updateLiveStudioPill(clips ? clips.length : (data.clips_ready || 1), data.total_expected || (clips ? clips.length : 15), true);
             return;
           }
           if (st === 'failed') {
@@ -2111,6 +2176,15 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
     } else {
       renderCarousel();
       setTimeout(refreshFreeStatus, 500);
+
+      // If job is still running in background, keep polling to stream new clips live!
+      const jobId = currentJobId();
+      const st = _jobStatus();
+      if (st && st !== 'completed' && st !== 'failed') {
+        const env = window.WORKER_ENVELOPE || {};
+        updateLiveStudioPill(clips.length, env.total_expected || 15, false);
+        if (jobId) pollJobUntilDone(jobId);
+      }
 
       // Batch Export All Feature
       document.getElementById('batchExportBtn')?.addEventListener('click', async () => {

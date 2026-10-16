@@ -105,7 +105,7 @@ class DirectorSegment:
     apply_zoom: bool = False
 
 # Concurrency semaphore for GPU rendering (supports parallel NVENC streams)
-_concurrency_val = int(os.getenv("HS_RENDER_CONCURRENCY", "2"))
+_concurrency_val = int(os.getenv("HS_RENDER_CONCURRENCY", "1"))
 _GPU_SEMAPHORE = threading.Semaphore(_concurrency_val)
 
 try:
@@ -2801,6 +2801,13 @@ class ClipEditor:
                 _visual_energy["ema_peak"], _visual_energy["dual_speaker"],
                 _visual_energy["banter_score"],
             )
+            log.info(
+                "[WCE_PERF] [FACE_STATS] detect_calls=%d detect_time=%.2fs clahe_retries=%d tracker_time=%.2fs",
+                WCE_PERF_STATS.get("detect_calls", 0),
+                WCE_PERF_STATS.get("detect_time_s", 0.0),
+                WCE_PERF_STATS.get("clahe_retries", 0),
+                WCE_PERF_STATS.get("tracker_update_time_s", 0.0),
+            )
             return stable_segments
 
         return _clamp(
@@ -4564,18 +4571,11 @@ class ClipEditor:
                         f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[hs_main_v]"
                     )
                 else:
-                    _long_heavy_render = ramped_duration >= 90.0
-                    if _long_heavy_render:
-                        _blur_chain = (
-                            "scale=540:960:force_original_aspect_ratio=increase,"
-                            "crop=540:960,boxblur=10,scale=1080:1920"
-                        )
-                        log.info("[WCE_PERF] long clip %.1fs: half-res background blur enabled", ramped_duration)
-                    else:
-                        _blur_chain = (
-                            "scale=1080:1920:force_original_aspect_ratio=increase,"
-                            "crop=1080:1920,boxblur=20"
-                        )
+                    _blur_chain = (
+                        "scale=270:480:force_original_aspect_ratio=increase,"
+                        "crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear"
+                    )
+                    log.info("[WCE_PERF] Fast quarter-res background blur enabled (270x480 -> boxblur 5 -> 1080x1920)")
                     # Build branding chain appended onto [out_v]
                     _brand_chain = (
                         f";[out_v]split=2[hs_blur_src][hs_vid_raw]"
@@ -4925,13 +4925,19 @@ class ClipEditor:
                     "ffmpeg_passes": int(ffmpeg_passes),
                     "intermediate_files_created": int(intermediate_files_created),
                     "decode_encode_passes_saved": int(passes_saved),
+                    "detect_calls": int(WCE_PERF_STATS.get("detect_calls", 0)),
+                    "detect_time_s": round(float(WCE_PERF_STATS.get("detect_time_s", 0.0)), 3),
+                    "clahe_retries": int(WCE_PERF_STATS.get("clahe_retries", 0)),
                 }
                 log.info(
-                    "[EDIT-PROFILE] reframe=%.2fs face=%.2fs encode=%.2fs total=%.2fs ffmpeg_passes=%d intermediates=%d saved=%d",
+                    "[EDIT-PROFILE] reframe=%.2fs face=%.2fs encode=%.2fs total=%.2fs detect_calls=%d detect_time=%.2fs clahe=%d ffmpeg_passes=%d intermediates=%d saved=%d",
                     float(t_reframe),
                     float(t_face),
                     float(t_encode),
                     float(total_s),
+                    int(WCE_PERF_STATS.get("detect_calls", 0)),
+                    float(WCE_PERF_STATS.get("detect_time_s", 0.0)),
+                    int(WCE_PERF_STATS.get("clahe_retries", 0)),
                     int(ffmpeg_passes),
                     int(intermediate_files_created),
                     int(passes_saved),
