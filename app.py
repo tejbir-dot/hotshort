@@ -2927,9 +2927,14 @@ def v2_result(job_id: str):
         else:
             payload["result"] = envelope
     else:
-        # still pending/processing/failed: return lightweight diagnostics
+        # still pending/processing/failed: return lightweight diagnostics and any progressive clips ready
         if isinstance(envelope, dict):
             payload["diagnostics"] = envelope.get("diagnostics") or {}
+            if envelope.get("clips"):
+                payload["clips"] = envelope.get("clips")
+                payload["clips_ready"] = len(envelope.get("clips"))
+            if envelope.get("total_expected"):
+                payload["total_expected"] = envelope.get("total_expected")
             if envelope.get("error"):
                 payload["error"] = envelope.get("error")
     return jsonify(payload)
@@ -3038,6 +3043,50 @@ def api_jobs_next():
         "is_free_user": is_free,
         "creator_intent": job.creator_intent
     })
+
+
+@app.route("/api/jobs/<job_id>/progress", methods=["POST"])
+def api_jobs_progress(job_id: str):
+    """
+    Called progressively by local_worker.py as each clip finishes rendering.
+    Allows UI to immediately stream finished clips while remaining clips render.
+    Expects JSON: {"clip": {...}, "total_expected": N}
+    """
+    if not _check_worker_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    clip = data.get("clip")
+    total_expected = data.get("total_expected", 0)
+
+    job = Job.query.filter_by(id=job_id).first()
+    if not job:
+        return jsonify({"error": "job_not_found"}), 404
+
+    envelope = {}
+    if job.analysis_data:
+        try:
+            envelope = json.loads(job.analysis_data) or {}
+        except Exception:
+            envelope = {}
+
+    clips = envelope.get("clips", [])
+    if clip:
+        existing_urls = {c.get("clip_url") for c in clips if c.get("clip_url")}
+        clip_url = clip.get("clip_url")
+        if not clip_url or clip_url not in existing_urls:
+            clips.append(clip)
+            envelope["clips"] = clips
+            envelope["clips_ready"] = len(clips)
+            envelope["total_expected"] = total_expected
+            job.analysis_data = json.dumps(envelope)
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                log.warning("[WORKER_API] Progressive clip commit failed: %s", e)
+
+    return jsonify({"ok": True, "job_id": job_id, "clips_ready": len(clips)})
 
 
 @app.route("/api/jobs/<job_id>/complete", methods=["POST"])

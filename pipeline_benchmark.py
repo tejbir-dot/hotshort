@@ -183,6 +183,7 @@ class JobBenchmark:
         self.job_id = job_id
         self.youtube_url = youtube_url
         self.t_job_start = time.time()
+        self._lock = threading.Lock()
         self._sampler = _Sampler(interval=0.5)
         self._sampler.start()
         self._stages: List[_Stage] = []
@@ -192,17 +193,19 @@ class JobBenchmark:
     # ── Stage control ─────────────────────────────────────────────────────────
     def begin(self, name: str):
         """Mark the start of a named stage."""
-        st = _Stage(name=name, t_start=time.time())
-        self._open[name] = st
+        with self._lock:
+            st = _Stage(name=name, t_start=time.time())
+            self._open[name] = st
 
     def finish(self, name: str):
         """Mark the end of a named stage."""
-        st = self._open.pop(name, None)
-        if st is None:
-            # stage was never begun — create a zero-duration placeholder
-            st = _Stage(name=name, t_start=time.time())
-        st.close()
-        self._stages.append(st)
+        with self._lock:
+            st = self._open.pop(name, None)
+            if st is None:
+                # stage was never begun — create a zero-duration placeholder
+                st = _Stage(name=name, t_start=time.time())
+            st.close()
+            self._stages.append(st)
         print(
             f"[BENCH] stage={name:30s}  wall={st.wall_s:>7.1f}s",
             flush=True,
@@ -211,11 +214,12 @@ class JobBenchmark:
     # ── Save ──────────────────────────────────────────────────────────────────
     def save(self):
         """Stop sampler, generate report, write to scratch/benchmarks/."""
-        # Close any stages that were started but never finished
-        for name, st in list(self._open.items()):
-            st.close()
-            self._stages.append(st)
-        self._open.clear()
+        with self._lock:
+            # Close any stages that were started but never finished
+            for name, st in list(self._open.items()):
+                st.close()
+                self._stages.append(st)
+            self._open.clear()
 
         self._sampler.stop()
         t_job_end = time.time()

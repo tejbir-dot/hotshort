@@ -1763,10 +1763,20 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           if (!resp.ok) { delayMs = Math.min(maxDelayMs, Math.floor(delayMs * 1.35)); continue; }
           const data = await resp.json();
           const st = (data.status || '').toString().toLowerCase();
+
+          // ⚡ Live progressive counter update on the glassmorphic loading screen
+          if (data.clips_ready && data.clips_ready > 0) {
+            const total = data.total_expected || 15;
+            const el = document.getElementById('loaderText');
+            if (el) el.textContent = `⚡ ${data.clips_ready} of ${total} 9:16 Shorts Ready & Polished!`;
+            const badge = document.querySelector('.time-badge');
+            if (badge) badge.textContent = `⚡ ${data.clips_ready}/${total} SHORTS READY`;
+          }
+
           if (st === 'completed') {
             _stopPipelineTimers();
             const el = document.getElementById('loaderText');
-            if (el) el.textContent = '✅ Clips Ready! Assembling your studio carousel…';
+            if (el) el.textContent = '✅ All Clips Ready! Assembling your studio carousel…';
             setTimeout(() => window.location.reload(), 600);
             return;
           }

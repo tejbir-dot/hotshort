@@ -240,6 +240,26 @@ def _complete_job(job_id: str, clips: list):
         print(f"[LOCAL_WORKER] ERROR marking complete {job_id}: {e}", flush=True)
 
 
+def _report_clip_progress(job_id: str, clip: dict, total_expected: int):
+    """POST /api/jobs/{id}/progress as each clip finishes rendering."""
+    if not job_id or not RAILWAY_URL:
+        return
+    try:
+        clip_data = _json_safe(clip)
+        resp = requests.post(
+            f"{RAILWAY_URL}/api/jobs/{job_id}/progress",
+            headers=_HEADERS,
+            json={"clip": clip_data, "total_expected": total_expected},
+            timeout=10,
+        )
+        if resp.ok:
+            data = resp.json()
+            print(f"[LOCAL_WORKER] ⚡ Streamed clip {clip.get('start', 0):.0f}s-{clip.get('end', 0):.0f}s to server ({data.get('clips_ready', 1)}/{total_expected} ready)", flush=True)
+    except Exception as e:
+        # non-blocking
+        pass
+
+
 def _json_safe(value):
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
@@ -1856,11 +1876,13 @@ def _process_job(job: dict, cloudinary_ok: bool):
         _bench = _JobBenchmark(job_id, youtube_url)
         _bench.finish("1_download")  # download already done above
 
-        # "?"? PIPELINE ARCHITECTURE "?"?
-        clip_queue = queue.Queue(maxsize=5)
+        # ── PIPELINE ARCHITECTURE (Parallel NVENC Renders) ──────────
+        _concurrency = int(os.getenv("HS_RENDER_CONCURRENCY", "2"))
+        print(f"[LOCAL_WORKER] Parallel render concurrency: {_concurrency}", flush=True)
+        clip_queue = queue.Queue(maxsize=max(10, _concurrency * 4))
         results = []
         results_lock = threading.Lock()
-        gpu_lock = threading.Semaphore(1)
+        gpu_lock = threading.Semaphore(_concurrency)
         # Track orchestrator outcome so we can distinguish "orchestrator produced
         # nothing / crashed" from "clips were produced but failed during editing".
         orch_state = {"error": None, "produced": 0}
@@ -2070,11 +2092,22 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 orch_state["error"] = e
                 print(f"[LOCAL_WORKER] Orchestrator thread failed: {e}\n{traceback.format_exc()}", flush=True)
             finally:
-                clip_queue.put(None) # Signal done
+                for _ in range(_concurrency):
+                    clip_queue.put(None) # Signal all consumer threads done
 
-        def run_editor():
+        def run_editor(worker_id: int):
             from effects.genius_brutal_captioner import BrutalCaptioner
             captioner = BrutalCaptioner()
+
+            # Isolated editor instance per worker thread to prevent file collisions
+            worker_editor = None
+            if _editor_cls:
+                worker_work_dir = os.path.join(tmp, f"wce_work_{worker_id}")
+                os.makedirs(worker_work_dir, exist_ok=True)
+                worker_editor = _editor_cls(worker_work_dir)
+            else:
+                worker_editor = editor_instance
+
             while True:
                 item = clip_queue.get()
                 if item is None:
@@ -2087,23 +2120,33 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 
                 try:
                     t_clip_total = time.perf_counter()
-                    # CPU: Extract subclip (ffmpeg copy)
+                    # ── Stage 6a: Fast-Seek Stream Copy (0.1s keyframe-accurate) ──
                     t0 = time.perf_counter()
                     raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
                     _bench.begin(f"6a_extract_clip{i}")
-                    # Frame-accurate extraction (avoid -c copy keyframe drift)
+                    duration = max(0.1, end - start)
                     import subprocess
                     try:
-                        duration = end - start
+                        # Fast stream copy (-c copy): 0.1s extraction, 0% CPU overhead
                         subprocess.run([
-                            "ffmpeg", "-y", "-nostdin", "-ss", str(start), 
-                            "-i", video_path, "-t", str(duration), 
-                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                            "ffmpeg", "-y", "-nostdin",
+                            "-ss", f"{start:.3f}",
+                            "-i", video_path,
+                            "-t", f"{duration:.3f}",
+                            "-c", "copy",
+                            "-avoid_negative_ts", "make_zero",
+                            raw_path
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, check=True)
+                    except Exception as _copy_err:
+                        print(f"[PIPELINE] Stream copy fallback to ultrafast for clip {i}: {_copy_err}", flush=True)
+                        subprocess.run([
+                            "ffmpeg", "-y", "-nostdin",
+                            "-ss", f"{start:.3f}",
+                            "-i", video_path,
+                            "-t", f"{duration:.3f}",
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
                             "-c:a", "aac", "-async", "1", raw_path
                         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
-                    except subprocess.CalledProcessError as e:
-                        print(f"[PIPELINE] Extraction failed for clip {i}: {e}", flush=True)
-                        continue
                     t_raw_cut = time.perf_counter() - t0
                     _bench.finish(f"6a_extract_clip{i}")
 
@@ -2113,7 +2156,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     t_upload = 0.0
                     
                     # GPU: Enhance Clip
-                    if editor_instance:
+                    if worker_editor:
                         edited_path = os.path.join(tmp, f"edited_{i}_{int(start)}_{int(end)}.mp4")
                         clip_transcript = clip.get("transcript") or clip.get("captions") or []
                         clip_title = clip.get("opening_caption") or clip.get("title") or clip.get("text", "")
@@ -2136,7 +2179,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         _bench.begin(f"6b_wce_clip{i}")
                         with gpu_lock:
                             t0 = time.perf_counter()
-                            edit_result = editor_instance.enhance_pretrimmed_clip(
+                            edit_result = worker_editor.enhance_pretrimmed_clip(
                                 input_path=raw_path,
                                 output_path=edited_path,
                                 source_start=start,
@@ -2172,7 +2215,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         # WCE stores the per-clip visual_energy summary on self after
                         # each enhance_pretrimmed_clip() call. Pull it here and attach
                         # to clip_res so the orchestrator can fuse it with text score.
-                        _ve = getattr(editor_instance, '_last_visual_energy', None)
+                        _ve = getattr(worker_editor, '_last_visual_energy', None)
                         if _ve:
                             clip_res['visual_energy'] = _ve
                             clip_res['banter_score']  = float(_ve.get('banter_score', 0.0))
@@ -2332,8 +2375,11 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     with results_lock:
                         results.append(clip_res)
                         
+                    # ⚡ Live progressive reporting: push clip to server dashboard immediately!
+                    _report_clip_progress(job_id, clip_res, orch_state.get("produced", 0))
+
                     print(
-                        f"[EDITOR_TIMING] clip={i} raw={t_raw_cut:.2f}s wce={t_wce:.2f}s "
+                        f"[EDITOR_TIMING] worker={worker_id} clip={i} raw={t_raw_cut:.2f}s wce={t_wce:.2f}s "
                         f"branding={t_branding:.2f}s upload={t_upload:.2f}s total={time.perf_counter() - t_clip_total:.2f}s",
                         flush=True,
                     )
@@ -2349,13 +2395,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     clip_queue.task_done()
 
         producer = threading.Thread(target=run_orchestrator, name="Orchestrator")
-        consumer = threading.Thread(target=run_editor, name="Editor")
+        consumers = [
+            threading.Thread(target=run_editor, args=(c_idx,), name=f"Editor-{c_idx}")
+            for c_idx in range(_concurrency)
+        ]
         
         producer.start()
-        consumer.start()
-        
+        for c in consumers:
+            c.start()
+            
         producer.join()
-        consumer.join()
+        for c in consumers:
+            c.join()
         
         # Sort results back to original order by start time
         results.sort(key=lambda x: x.get("start", 0))

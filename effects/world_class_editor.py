@@ -104,8 +104,9 @@ class DirectorSegment:
     frame_timeline: list = field(default_factory=list)
     apply_zoom: bool = False
 
-# Global semaphore to ensure only one GPU encode runs at a time (e.g. for GTX 1630)
-_GPU_SEMAPHORE = threading.Semaphore(1)
+# Concurrency semaphore for GPU rendering (supports parallel NVENC streams)
+_concurrency_val = int(os.getenv("HS_RENDER_CONCURRENCY", "2"))
+_GPU_SEMAPHORE = threading.Semaphore(_concurrency_val)
 
 try:
     import cv2
