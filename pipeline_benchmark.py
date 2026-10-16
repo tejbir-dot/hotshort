@@ -18,6 +18,14 @@ Usage inside local_worker.py:
 
 import os
 import sys
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import time
 import json
 import threading
@@ -187,8 +195,14 @@ class JobBenchmark:
         self._sampler = _Sampler(interval=0.5)
         self._sampler.start()
         self._stages: List[_Stage] = []
-        self._open: Dict[str, _Stage] = {}   # stages that have begun but not finished
+        self._open: Dict[str, _Stage] = {}
+        self.progressive_metrics: Dict[str, Optional[float]] = {}
         print(f"[BENCH] Job benchmark started: {job_id}", flush=True)
+
+    def set_progressive_metrics(self, metrics: Dict[str, Optional[float]]):
+        """Record progressive timing metrics (cards, TTFC, TT3, TT6)."""
+        with self._lock:
+            self.progressive_metrics = dict(metrics)
 
     # ── Stage control ─────────────────────────────────────────────────────────
     def begin(self, name: str):
@@ -241,7 +255,14 @@ class JobBenchmark:
             json.dump(json_data, f, indent=2)
 
         # Also print to console
-        print("\n" + "\n".join(report_lines), flush=True)
+        try:
+            print("\n" + "\n".join(report_lines), flush=True)
+        except Exception:
+            try:
+                safe_text = "\n".join(line.encode("ascii", errors="replace").decode("ascii") for line in report_lines)
+                print("\n" + safe_text, flush=True)
+            except Exception:
+                pass
         print(f"\n[BENCH] Saved -> {txt_path}", flush=True)
         print(f"[BENCH] Saved -> {json_path}", flush=True)
 
@@ -256,6 +277,15 @@ class JobBenchmark:
             f"  URL      : {self.youtube_url[:90]}",
             f"  Started  : {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.t_job_start))}",
             f"  Total    : {total_wall:.1f}s  ({total_wall/60:.1f} min)",
+        ]
+        pm = getattr(self, "progressive_metrics", {})
+        if pm:
+            ttfc = f"{pm.get('t_first_clip', 0):.1f}s" if pm.get('t_first_clip') is not None else "N/A"
+            tt3 = f"{pm.get('t_top3', 0):.1f}s" if pm.get('t_top3') is not None else "N/A"
+            tt6 = f"{pm.get('t_top6', 0):.1f}s" if pm.get('t_top6') is not None else "N/A"
+            cards = f"{pm.get('t_cards_ready', 0):.1f}s" if pm.get('t_cards_ready') is not None else "N/A"
+            lines.append(f"  Progressive : TTFC={ttfc}  TT3={tt3}  TT6={tt6}  cards={cards}")
+        lines += [
             SEP,
             f"  {'Stage':<32} {'Time':>7}  {'%Total':>7}  "
             f"{'CPU avg/max':>12}  {'RAM GB':>7}  "
@@ -317,6 +347,7 @@ class JobBenchmark:
             "youtube_url": self.youtube_url,
             "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(self.t_job_start)),
             "total_wall_s": round(total_wall, 2),
+            "progressive_metrics": getattr(self, "progressive_metrics", {}),
             "hw_available": {
                 "psutil": _HAS_PSUTIL,
                 "pynvml": _HAS_NVML,

@@ -113,7 +113,7 @@ def _get_app():
                     providers=_providers,          # probe-determined: CUDA or CPU-only
                     allowed_modules=["detection"],
                 )
-                app.prepare(ctx_id=0, det_size=(DET_SIZE_CFG, DET_SIZE_CFG))
+                app.prepare(ctx_id=(0 if _force_cuda else -1), det_size=(DET_SIZE_CFG, DET_SIZE_CFG))
 
         active = _device_name
         log.info(
@@ -155,7 +155,7 @@ def _reinit_cpu_only():
                     providers=["CPUExecutionProvider"],
                     allowed_modules=["detection"],
                 )
-                app.prepare(ctx_id=0, det_size=(DET_SIZE_CFG, DET_SIZE_CFG))
+                app.prepare(ctx_id=-1, det_size=(DET_SIZE_CFG, DET_SIZE_CFG))
         _thread_local.if_app = app
         log.info(
             "[INSIGHTFACE] cuDNN unavailable -- reinitialized on CPU. "

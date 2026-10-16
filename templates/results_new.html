@@ -500,6 +500,260 @@
       pointer-events: none;
     }
 
+    /* =====================================
+       PHASE 4: CARDS UI & STATUS CHIPS
+       ===================================== */
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+    .chip-ready {
+      background: rgba(16, 185, 129, 0.25);
+      border: 1px solid rgba(16, 185, 129, 0.6);
+      color: #34d399;
+    }
+    .chip-ready .chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+    .chip-rendering {
+      background: rgba(59, 130, 246, 0.25);
+      border: 1px solid rgba(59, 130, 246, 0.6);
+      color: #60a5fa;
+    }
+    .chip-rendering .chip-pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #3b82f6;
+      animation: pulseAnim 1.4s ease-in-out infinite;
+    }
+    .chip-queued {
+      background: rgba(245, 158, 11, 0.25);
+      border: 1px solid rgba(245, 158, 11, 0.6);
+      color: #fbbf24;
+    }
+    .chip-not-rendered {
+      background: rgba(161, 161, 170, 0.15);
+      border: 1px solid rgba(161, 161, 170, 0.35);
+      color: #d4d4d8;
+    }
+    .chip-not-rendered .chip-circle {
+      font-size: 8px;
+      opacity: 0.7;
+    }
+
+    @keyframes pulseAnim {
+      0%, 100% { opacity: 0.4; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* Duration Chip (Always Visible) */
+    .clip-duration-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      background: rgba(0, 0, 0, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #e4e4e7;
+      backdrop-filter: blur(6px);
+    }
+
+    /* Viral Score Pill */
+    .viral-score-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      background: rgba(245, 158, 11, 0.18);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+      backdrop-filter: blur(6px);
+    }
+
+    /* Transcript Snippet Box */
+    .transcript-snippet-box {
+      margin: 10px 0 12px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 200, 120, 0.1);
+      border-left: 3px solid rgba(245, 158, 11, 0.7);
+      border-radius: 6px;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: rgba(255, 230, 200, 0.82);
+      font-style: italic;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      position: relative;
+    }
+    .transcript-quote-mark {
+      color: #f59e0b;
+      font-weight: 900;
+      font-style: normal;
+      font-size: 0.95rem;
+    }
+
+    /* Hook line prominent display */
+    .card-hook-line {
+      font-size: 0.95rem;
+      font-weight: 700;
+      line-height: 1.35;
+      color: #fff;
+      margin-bottom: 6px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Media poster containers */
+    .clip-media-poster {
+      width: 100%;
+      height: 200px;
+      position: relative;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-color: #0d1117;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .media-overlay-dim {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(13, 17, 23, 0.75) 0%, rgba(13, 17, 23, 0.92) 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      text-align: center;
+    }
+
+    /* Rendering State inside Media Area */
+    .render-spinner-ring {
+      width: 34px;
+      height: 34px;
+      border: 3px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spinAnim 0.9s linear infinite;
+      margin-bottom: 8px;
+    }
+    @keyframes spinAnim {
+      to { transform: rotate(360deg); }
+    }
+    .render-state-title {
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: #60a5fa;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .render-progress-wrap {
+      width: 80%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .render-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+      border-radius: 9999px;
+      transition: width 0.4s ease;
+    }
+    .render-eta-text {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #93c5fd;
+    }
+
+    /* Queued State inside Media Area */
+    .queue-icon-big {
+      font-size: 1.8rem;
+      margin-bottom: 4px;
+    }
+    .queue-state-title {
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: #fbbf24;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .queue-eta-text {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #fde68a;
+      margin-bottom: 2px;
+    }
+    .queue-subtext {
+      font-size: 0.7rem;
+      color: #9ca3af;
+    }
+
+    /* Not Rendered State inside Media Area */
+    .not-rendered-icon-big {
+      font-size: 1.8rem;
+      margin-bottom: 4px;
+    }
+    .not-rendered-state-title {
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: #e4e4e7;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .not-rendered-subtext {
+      font-size: 0.75rem;
+      color: #a1a1aa;
+      margin-bottom: 2px;
+    }
+    .not-rendered-hint {
+      font-size: 0.7rem;
+      color: #f59e0b;
+      font-weight: 600;
+    }
+    .poster-not-rendered-badge {
+      position: absolute;
+      bottom: 12px;
+      background: rgba(0, 0, 0, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #e4e4e7;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
     /* ================================
        UPGRADE MODAL (Free limit)
        ================================ */
@@ -1595,6 +1849,14 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
                       .replace(/'/g, "&#039;");
     }
 
+    function formatDuration(sec) {
+      const s = Math.round(Number(sec) || 0);
+      if (s <= 0) return "--:--";
+      const m = Math.floor(s / 60);
+      const rem = s % 60;
+      return `${m}:${rem < 10 ? '0' : ''}${rem}`;
+    }
+
     /* =====================================
        DATA INTERFACE
        ===================================== */
@@ -1616,6 +1878,57 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         window.WORKER_ENVELOPE = {};
       }
     })();
+
+    window.RENDER_STATS = (window.WORKER_ENVELOPE && window.WORKER_ENVELOPE.render_stats) ? window.WORKER_ENVELOPE.render_stats : {};
+
+    function updateLiveETAs() {
+      const stats = window.RENDER_STATS || {};
+      const avgS = (typeof stats.avg_clip_render_s === 'number' && stats.avg_clip_render_s > 0) ? stats.avg_clip_render_s : 45.0;
+      
+      const cards = document.querySelectorAll('.clip-card');
+      let queuedIndex = 0;
+      cards.forEach(card => {
+        const st = (card.dataset.clipStatus || '').toLowerCase();
+        if (st === 'rendering') {
+          let elapsed = 0;
+          if (stats.active_started_at) {
+            elapsed = Math.max(0, (Date.now() / 1000) - stats.active_started_at);
+          }
+          const remaining = Math.max(5, Math.round(avgS - elapsed));
+          const pct = Math.min(95, Math.max(10, Math.round((elapsed / avgS) * 100)));
+          
+          const bar = card.querySelector('.render-progress-bar');
+          if (bar) bar.style.width = pct + '%';
+          
+          const etaEl = card.querySelector('.render-eta-text');
+          if (etaEl) etaEl.textContent = `ETA ~${remaining}s • Measured avg ${Math.round(avgS)}s/clip`;
+          
+          const btn = card.querySelector('.on-demand-render-btn');
+          if (btn && btn.disabled) {
+            btn.textContent = `⚙️ Rendering • ETA ~${remaining}s`;
+          }
+        } else if (st === 'queued') {
+          let elapsedCurrent = 0;
+          if (stats.active_started_at) {
+            elapsedCurrent = Math.max(0, (Date.now() / 1000) - stats.active_started_at);
+          }
+          const remainingCurrent = Math.max(5, Math.round(avgS - elapsedCurrent));
+          const qEta = Math.round(remainingCurrent + (queuedIndex * avgS));
+          queuedIndex++;
+
+          const qEtaEl = card.querySelector('.queue-eta-text');
+          if (qEtaEl) qEtaEl.textContent = `Queue #${queuedIndex} • ETA ~${qEta}s`;
+
+          const btn = card.querySelector('.on-demand-render-btn');
+          if (btn && btn.disabled) {
+            btn.textContent = `⏳ Queued • ETA ~${qEta}s`;
+          }
+        }
+      });
+    }
+
+    // Smoothly tick ETA countdown and live progress every second
+    setInterval(updateLiveETAs, 1000);
 
     function _jobStatus() {
       const env = window.WORKER_ENVELOPE || {};
@@ -1813,10 +2126,18 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           const data = await resp.json();
           const st = (data.status || '').toString().toLowerCase();
 
+          if (data.render_stats) {
+            window.RENDER_STATS = Object.assign(window.RENDER_STATS || {}, data.render_stats);
+          }
+
           // ⚡ Progressive stream: AS SOON AS 1 OR MORE CLIPS ARE READY, DISPLAY THEM LIVE!
           if (data.clips && Array.isArray(data.clips) && data.clips.length > 0) {
-            const hasNewClips = data.clips.length > (clips ? clips.length : 0);
-            if (hasNewClips || !clips || clips.length === 0) {
+            const clipCountChanged = data.clips.length !== (clips ? clips.length : 0);
+            const clipStatusChanged = clips && data.clips.some((c, idx) => {
+              const old = clips[idx];
+              return old && (old.status !== c.status || old.clip_url !== c.clip_url);
+            });
+            if (clipCountChanged || clipStatusChanged || !clips || clips.length === 0) {
               clips = data.clips;
               window.CLIPS_DATA = data.clips;
 
@@ -1831,6 +2152,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
               renderCarousel();
               renderTierLine();
               updateLiveStudioPill(clips.length, data.total_expected || 15, st === 'completed');
+              checkWorkerOnline();
             }
           } else if (data.clips_ready && data.clips_ready > 0) {
             const total = data.total_expected || 15;
@@ -1843,7 +2165,12 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           if (st === 'completed') {
             _stopPipelineTimers();
             updateLiveStudioPill(clips ? clips.length : (data.clips_ready || 1), data.total_expected || (clips ? clips.length : 15), true);
-            return;
+            const hasPending = clips && clips.some(c => c.status === 'queued' || c.status === 'rendering');
+            if (!hasPending) {
+              return;
+            }
+            delayMs = 4000;
+            continue;
           }
           if (st === 'failed') {
             _stopPipelineTimers();
@@ -1900,6 +2227,110 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
     function currentJobId() {
       return document.querySelector('[data-job-id]')?.getAttribute('data-job-id') || null;
+    }
+
+    async function checkWorkerOnline() {
+      try {
+        const resp = await fetch('/api/worker/status', { credentials: 'same-origin' });
+        if (!resp.ok) return false;
+        const data = await resp.json();
+        const isOnline = !!(data.alive || data.online);
+        document.querySelectorAll('.on-demand-render-btn').forEach(btn => {
+          const isBusy = btn.dataset.busy === '1' || btn.textContent.includes('Queued') || btn.textContent.includes('Rendering');
+          if (!isOnline && !isBusy) {
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.style.cursor = 'not-allowed';
+            btn.style.background = '#374151';
+            btn.style.color = '#9ca3af';
+            btn.textContent = '⚠️ Worker Offline';
+            btn.title = 'Render worker is currently offline. Please wait or ensure worker is running.';
+          } else if (isOnline && btn.textContent === '⚠️ Worker Offline') {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+            btn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+            btn.style.color = '#111';
+            btn.textContent = '⚡ Render Video';
+            btn.title = '';
+          }
+        });
+        return isOnline;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function handleOnDemandRender(btn, jobId, clipRank) {
+      if (btn.disabled || btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳ Requesting...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/clips/${encodeURIComponent(clipRank)}/render`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin'
+        });
+        const data = await res.json();
+
+        if (res.status === 503 || data.worker_offline) {
+          btn.innerHTML = '⚠️ Worker Offline';
+          btn.disabled = true;
+          btn.style.opacity = '0.6';
+          btn.style.cursor = 'not-allowed';
+          btn.style.background = '#374151';
+          btn.style.color = '#9ca3af';
+          btn.title = data.error || 'Render worker is currently offline.';
+          alert(data.error || 'Worker is currently offline. Please ensure worker is running.');
+          return;
+        }
+
+        if (res.status === 429 || data.rate_limited) {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+          delete btn.dataset.busy;
+          alert(data.error || 'Rate limit reached: Maximum 3 on-demand renders pending simultaneously.');
+          return;
+        }
+
+        if (!res.ok) {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+          delete btn.dataset.busy;
+          alert('Render request failed: ' + (data.error || 'Unknown error'));
+          return;
+        }
+
+        // Successfully queued with priority!
+        btn.innerHTML = '⏳ Queued • ETA ~90s';
+        btn.style.background = 'rgba(245, 158, 11, 0.2)';
+        btn.style.color = '#fbbf24';
+        btn.style.border = '1px solid rgba(245, 158, 11, 0.4)';
+        btn.disabled = true;
+
+        const card = btn.closest('.clip-card');
+        if (card) {
+          const notRenderedView = card.querySelector('.clip-not-rendered-view');
+          if (notRenderedView) {
+            notRenderedView.innerHTML = `
+              <div style="font-size: 2.2rem; margin-bottom: 6px;">⏳</div>
+              <div style="font-weight: 700; color: #fbbf24; font-size: 0.95rem; letter-spacing: 0.5px;">QUEUED IN PRIORITY</div>
+              <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">ETA ~90s • Front of Line</div>
+            `;
+          }
+        }
+
+        // Start / resume polling for live update
+        pollJobUntilDone(jobId);
+      } catch (err) {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        delete btn.dataset.busy;
+        console.error('Error on-demand render:', err);
+      }
     }
 
     function openPricingModal(context = {}) {
@@ -2323,8 +2754,13 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
       clips.forEach((clip, index) => {
         const card = document.createElement('article');
-        card.className = 'clip-card' + (clip.is_best ? ' is-best' : '');
+        const clipStatus = (clip.status || (clip.clip_url ? 'ready' : 'not_rendered')).toLowerCase();
+        card.className = 'clip-card' + (clip.is_best ? ' is-best' : '') + ' status-' + clipStatus;
         card.dataset.clipIndex = index;
+        card.dataset.clipStatus = clipStatus;
+        const clipRank = clip.ranking_rank || clip.rank || (index + 1);
+        card.dataset.clipRank = clipRank;
+
         const s = normalizeFreeStatus(freeStatus);
         const claimed = claimedSet();
         const clipIdNum = parseInt(clip.clip_id, 10);
@@ -2345,78 +2781,165 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           ? `<a class="btn" data-action="quality" href="${downloadHref}?quality=1" target="_blank" rel="noopener noreferrer">✨ Quality</a>`
           : '';
 
-        // Determine badges
+        // Status Chip (Honest Labels!)
+        let statusChipHtml = '';
+        if (clipStatus === 'ready') {
+          statusChipHtml = `<div class="status-chip chip-ready"><span class="chip-dot"></span> Ready</div>`;
+        } else if (clipStatus === 'rendering') {
+          statusChipHtml = `<div class="status-chip chip-rendering"><span class="chip-pulse"></span> ⚙️ Rendering</div>`;
+        } else if (clipStatus === 'queued') {
+          statusChipHtml = `<div class="status-chip chip-queued"><span class="chip-clock">⏳</span> Queued</div>`;
+        } else {
+          statusChipHtml = `<div class="status-chip chip-not-rendered"><span class="chip-circle">⚪</span> Not Rendered</div>`;
+        }
+
+        // Duration formatting
+        const rawDur = (typeof clip.duration === 'number' && clip.duration > 0) ? clip.duration : ((clip.end_time || 0) - (clip.start_time || 0));
+        const formattedDur = formatDuration(rawDur);
+        const durationBadgeHtml = `<span class="clip-duration-badge">⏱️ ${formattedDur}</span>`;
+
+        // Viral score & confidence
+        const confVal = (typeof clip.confidence === 'number' && clip.confidence > 0) ? clip.confidence : Math.round((clip.viral_score || 0.7) * 100);
+        const viralScoreHtml = `<span class="viral-score-pill">🔥 ${confVal}% Viral</span>`;
+
+        // Badges
         const badges = [];
         if (clip.is_best) badges.push({ text: '🏆 Best Pick', class: 'best' });
-        if (clip.is_recommended && !clip.is_best) badges.push({ text: '⭐ Recommended', class: 'recommended' });
-        // Free tier signaling (avoid clutter; use the top-right stamp)
-        if (clip.confidence > 80) badges.push({ text: '🔥 High Confidence', class: 'high-confidence' });
+        else if (clip.is_recommended) badges.push({ text: '⭐ Recommended', class: 'recommended' });
         if (clip.hook_type === 'Contradiction') badges.push({ text: '⚡ Pattern Break', class: 'pattern-break' });
 
-        const badgesHtml = badges
-          .map(b => `<div class="badge ${b.class}">${b.text}</div>`)
-          .join('');
+        const badgesHtml = badges.map(b => `<div class="badge ${b.class}">${b.text}</div>`).join('');
 
-        // Get the main reason as the punch line
-        const punchLine = clip.selection_reason?.primary || clip.why?.[0] || "Highly viral moment";
+        // Dynamic ETA calculation from measured average
+        const stats = window.RENDER_STATS || {};
+        const avgRenderS = (typeof stats.avg_clip_render_s === 'number' && stats.avg_clip_render_s > 0) ? stats.avg_clip_render_s : 45.0;
+        
+        let elapsed = 0;
+        if (stats.active_started_at) {
+          elapsed = Math.max(0, (Date.now() / 1000) - stats.active_started_at);
+        }
+        const renderingEta = Math.max(5, Math.round(avgRenderS - elapsed));
+        const progressPct = Math.min(95, Math.max(10, Math.round((elapsed / avgRenderS) * 100)));
 
-        // Truncate punch line for display
-        const shortPunch = punchLine.length > 60 ? punchLine.substring(0, 60) + '…' : punchLine;
+        // Position in queued items
+        const queuedClips = clips.filter(c => (c.status || '').toLowerCase() === 'queued');
+        const queuedPos = Math.max(0, queuedClips.findIndex(c => (c.ranking_rank || c.rank) === (clip.ranking_rank || clip.rank)));
+        const queueEta = Math.round(renderingEta + (queuedPos * avgRenderS));
 
-        // Debug log
-        console.log(`[CLIP ${index}] URL: ${clip.clip_url}, Type: ${clip.hook_type}, Confidence: ${clip.confidence}`);
+        const hookLineText = clip.exact_hook || clip.hook_line || clip.title || `Viral Clip #${index + 1}`;
+        const transcriptSnippet = clip.transcript_snippet || clip.transcript_window || '';
 
         const soundHintHtml = (!soundPrefEnabled)
           ? `<div class="sound-hint" data-role="sound-hint">🔊 Tap for sound</div>`
           : '';
-
         const freeStampHtml = showFreeStamp ? `<div class="free-stamp">FREE • Watermarked</div>` : '';
+
+        // Media area HTML
+        let mediaHtml = '';
+        if (clipStatus === 'ready' && clip.clip_url) {
+          mediaHtml = `
+            <video class="clip-video" muted playsinline loop preload="metadata" src="${clip.clip_url}" title="${escapeHtml(hookLineText)}"></video>
+            <div class="badge-group">${statusChipHtml} ${badgesHtml} ${durationBadgeHtml} ${viralScoreHtml}</div>
+            ${freeStampHtml}
+            ${soundHintHtml}
+            <div class="hook-glass-overlay">
+              <p class="hook-text">"${escapeHtml(hookLineText)}"</p>
+            </div>
+          `;
+        } else if (clipStatus === 'rendering') {
+          mediaHtml = `
+            <div class="clip-media-poster rendering-poster" ${clip.thumbnail_url ? `style="background-image: url('${clip.thumbnail_url}');"` : ''}>
+              <div class="badge-group">${statusChipHtml} ${badgesHtml} ${durationBadgeHtml} ${viralScoreHtml}</div>
+              <div class="media-overlay-dim">
+                <div class="render-spinner-ring"></div>
+                <div class="render-state-title">⚙️ RENDERING 9:16 SHORT</div>
+                <div class="render-progress-wrap">
+                  <div class="render-progress-bar" style="width: ${progressPct}%;"></div>
+                </div>
+                <div class="render-eta-text">ETA ~${renderingEta}s • Measured avg ${Math.round(avgRenderS)}s/clip</div>
+              </div>
+            </div>
+          `;
+        } else if (clipStatus === 'queued') {
+          mediaHtml = `
+            <div class="clip-media-poster queued-poster" ${clip.thumbnail_url ? `style="background-image: url('${clip.thumbnail_url}');"` : ''}>
+              <div class="badge-group">${statusChipHtml} ${badgesHtml} ${durationBadgeHtml} ${viralScoreHtml}</div>
+              <div class="media-overlay-dim">
+                <div class="queue-icon-big">⏳</div>
+                <div class="queue-state-title">QUEUED IN PRIORITY</div>
+                <div class="queue-eta-text">Queue #${queuedPos + 1} • ETA ~${queueEta}s</div>
+                <div class="queue-subtext">Waiting for active render to finish</div>
+              </div>
+            </div>
+          `;
+        } else {
+          // not_rendered — HONEST LABEL & NO FAKE READY/PREVIEW
+          mediaHtml = `
+            <div class="clip-media-poster not-rendered-poster" ${clip.thumbnail_url ? `style="background-image: url('${clip.thumbnail_url}');"` : ''}>
+              <div class="badge-group">${statusChipHtml} ${badgesHtml} ${durationBadgeHtml} ${viralScoreHtml}</div>
+              <div class="media-overlay-dim">
+                <div class="not-rendered-icon-big">⚡</div>
+                <div class="not-rendered-state-title">NOT RENDERED</div>
+                <div class="not-rendered-subtext">Hook & timestamps extracted</div>
+                <div class="not-rendered-hint">Click below to render on demand (~${Math.round(avgRenderS)}s)</div>
+              </div>
+            </div>
+          `;
+        }
+
+        // Action Buttons HTML
+        let actionButtonsHtml = '';
+        if (clipStatus === 'ready' && clip.clip_url) {
+          actionButtonsHtml = `
+            <a class="btn ${downloadClass}" data-action="download" ${downloadAttrs}>⬇ Download Short</a>
+            <select id="exportFormat_${clipIdNum}" style="background:rgba(255,210,120,0.06);color:rgba(255,210,120,0.85);border:1px solid rgba(255,210,120,0.25);border-radius:8px;padding:6px 10px;font-size:0.8rem;font-weight:600;cursor:pointer;outline:none;width:100%;transition:border-color 0.2s;">
+              <option value="tiktok" style="background:#1a1a1a">TikTok (9:16 • 60s • 30fps)</option>
+              <option value="instagram" style="background:#1a1a1a">Instagram Reel (9:16 • 90s • 30fps)</option>
+              <option value="shorts" style="background:#1a1a1a">YouTube Shorts (9:16 • 60s • 60fps)</option>
+            </select>
+          `;
+        } else if (clipStatus === 'rendering') {
+          actionButtonsHtml = `
+            <button class="btn on-demand-render-btn is-rendering" disabled style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); cursor: default;">⚙️ Rendering • ETA ~${renderingEta}s</button>
+          `;
+        } else if (clipStatus === 'queued') {
+          actionButtonsHtml = `
+            <button class="btn on-demand-render-btn is-queued" disabled style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); cursor: default;">⏳ Queued • ETA ~${queueEta}s</button>
+          `;
+        } else {
+          // not_rendered
+          actionButtonsHtml = `
+            <button class="btn on-demand-render-btn" data-action="render-on-demand" data-clip-rank="${clipRank}" data-clip-index="${index}" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #111; font-weight: 700;">⚡ Render this short</button>
+          `;
+        }
 
         card.innerHTML = `
           <div class="clip-preview">
-            <video class="clip-video" muted playsinline loop preload="metadata" src="${clip.clip_url}" title="${clip.exact_hook ? escapeHtml(clip.exact_hook) : (clip.title ? escapeHtml(clip.title) : 'Viral Clip #' + index)}"></video>
-            <div class="badge-group">${badgesHtml}</div>
-            ${freeStampHtml}
-            ${soundHintHtml}
-            
-            <div class="hook-glass-overlay" style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
-              ${clip.groq_summary ? `<div class="groq-summary-badge" style="background: rgba(30, 136, 229, 0.9); color: white; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; display: inline-block; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid rgba(100, 181, 246, 0.5);">${escapeHtml(clip.groq_summary)}</div>` : ''}
-              <p class="hook-text">"${clip.exact_hook ? escapeHtml(clip.exact_hook) : escapeHtml(clip.title || 'Viral Clip')}"</p>
-            </div>
-
-            <div class="clip-duration-tooltip">
-              <span class="duration-icon">⏱️</span>
-              <span class="duration-text clip-duration-value">--:--</span>
-            </div>
+            ${mediaHtml}
           </div>
 
           <div class="clip-content">
-            <div class="clip-title">${clip.exact_hook ? escapeHtml(clip.exact_hook) : escapeHtml(clip.title || 'Viral Clip')}</div>
-            
-            <!-- Genius: Show punch line right before hook type -->
-            ${clip.hook_type === 'Contradiction' ? `
-              <div class="punch-line">✨ ${shortPunch}</div>
+            <div class="card-hook-line">"${escapeHtml(hookLineText)}"</div>
+
+            ${transcriptSnippet ? `
+              <div class="transcript-snippet-box">
+                <span class="transcript-quote-mark">“</span>
+                <span class="transcript-snippet-text">${escapeHtml(transcriptSnippet)}</span>
+                <span class="transcript-quote-mark">”</span>
+              </div>
             ` : ''}
-            
-            <div class="hook-label">${clip.hook_type}</div>
+
+            <div class="hook-label">${escapeHtml(clip.hook_type || 'Curiosity Hook')}</div>
 
             <div class="confidence-container">
               <div class="confidence-bar">
-                <div class="confidence-fill" style="width: ${clip.confidence}%"></div>
+                <div class="confidence-fill" style="width: ${confVal}%"></div>
               </div>
-              <div class="confidence-value">${clip.confidence}%</div>
+              <div class="confidence-value">${confVal}% Potential</div>
             </div>
 
-              <div class="clip-actions">
-              <button class="btn" data-action="view">👁 View Reasons</button>
-              
-              <select id="exportFormat_${clipIdNum}" style="background:rgba(255,210,120,0.06);color:rgba(255,210,120,0.85);border:1px solid rgba(255,210,120,0.25);border-radius:8px;padding:6px 10px;font-size:0.8rem;font-weight:600;cursor:pointer;outline:none;width:100%;transition:border-color 0.2s;">
-                <option value="tiktok" style="background:#1a1a1a">TikTok (9:16 • 60s • 30fps)</option>
-                <option value="instagram" style="background:#1a1a1a">Instagram Reel (9:16 • 90s • 30fps)</option>
-                <option value="shorts" style="background:#1a1a1a">YouTube Shorts (9:16 • 60s • 60fps)</option>
-              </select>
-
-              <a class="btn ${downloadClass}" data-action="download" ${downloadAttrs}>⬇ Download</a>
+            <div class="clip-actions">
+              ${actionButtonsHtml}
               ${qualityHtml}
               <div class="clip-feedback" style="display:inline-block;margin-left:10px">
                 <button class="btn feedback-btn" data-action="useful" data-clip-id="${clip.clip_id}">👍 Useful</button>
@@ -2424,7 +2947,6 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
               </div>
             </div>
             
-            <!-- 🔥 LOGO FOOTER - Premium branding at bottom -->
             <div class="logo-footer">
               <img src="/static/branding/logo_icon.png" alt="HotShort Logo" class="logo-footer-img" title="Made with HotShort Studio">
               <span class="logo-footer-text">HotShort</span>
@@ -2588,6 +3110,16 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
             } finally {
               delete downloadBtn.dataset.busy;
             }
+          });
+        }
+
+        const onDemandBtn = card.querySelector('[data-action="render-on-demand"]');
+        if (onDemandBtn) {
+          onDemandBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const clipRank = onDemandBtn.dataset.clipRank || index;
+            await handleOnDemandRender(onDemandBtn, currentJobId(), clipRank);
           });
         }
 
@@ -2795,8 +3327,14 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           document.addEventListener('click', closeHandler);
         }, 0);
       }
+
+      checkWorkerOnline();
       // close renderCarousel scope
     }
+
+    // Periodic worker status check
+    checkWorkerOnline();
+    setInterval(checkWorkerOnline, 10000);
 
     /* =====================================
        BACKGROUND ANIMATION

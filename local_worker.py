@@ -23,6 +23,13 @@ os.environ["HS_DEBUG_FRAMES"] = "./debug_out"
 
 import sys
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Inject local bundled bin/ directory (containing dav1d FFmpeg) into PATH
 # This guarantees that ffmpeg and ffprobe execute our optimized build, not system defaults.
 _local_bin = os.path.abspath(os.path.join(os.path.dirname(__file__), "bin"))
@@ -34,6 +41,8 @@ import time
 import tempfile
 import subprocess
 import traceback
+import queue
+import shutil
 
 # ── Pipeline benchmark (one report per job) ────────────────────────────────
 try:
@@ -110,6 +119,47 @@ _HEADERS = {
     "X-Worker-Secret": WORKER_SECRET,
     "Content-Type": "application/json",
 }
+
+# ── Retention & Job Cache Configuration (Phase 3) ─────────────────────────────
+HS_JOB_RETENTION_HOURS = float(os.getenv("HS_JOB_RETENTION_HOURS", "24"))
+JOB_CACHE_BASE = os.getenv("HS_JOBS_CACHE_DIR") or os.path.join(BASE_DIR, "scratch", "job_cache")
+os.makedirs(JOB_CACHE_BASE, exist_ok=True)
+
+
+def cleanup_expired_jobs(retention_hours: float = None) -> list:
+    """
+    Purges job directories older than HS_JOB_RETENTION_HOURS (default 24h).
+    Returns list of purged job IDs.
+    """
+    if retention_hours is None:
+        retention_hours = float(os.getenv("HS_JOB_RETENTION_HOURS", "24"))
+    cutoff = time.time() - (retention_hours * 3600.0)
+    deleted = []
+    if not os.path.isdir(JOB_CACHE_BASE):
+        return deleted
+
+    for entry in os.listdir(JOB_CACHE_BASE):
+        dir_path = os.path.join(JOB_CACHE_BASE, entry)
+        if not os.path.isdir(dir_path):
+            continue
+        meta_file = os.path.join(dir_path, "job_meta.json")
+        mtime = os.path.getmtime(dir_path)
+        if os.path.exists(meta_file):
+            try:
+                with open(meta_file, "r", encoding="utf-8") as mf:
+                    meta = json.load(mf)
+                    mtime = float(meta.get("created_at", mtime))
+            except Exception:
+                pass
+
+        if mtime < cutoff:
+            try:
+                shutil.rmtree(dir_path, ignore_errors=True)
+                deleted.append(entry)
+                print(f"[RETENTION_CLEANUP] Deleted expired job cache: {entry} (age > {retention_hours}h)", flush=True)
+            except Exception as ex:
+                print(f"[RETENTION_CLEANUP] Error deleting {entry}: {ex}", flush=True)
+    return deleted
 
 
 def _local_save_clip(src_path: str, clip_index: int, start: float, end: float) -> str:
@@ -221,14 +271,17 @@ def _poll_next_job() -> dict | None:
         return None
 
 
-def _complete_job(job_id: str, clips: list):
+def _complete_job(job_id: str, clips: list, metrics: dict = None):
     """POST /api/jobs/{id}/complete"""
     try:
         clips = _json_safe(clips)
+        payload = {"clips": clips}
+        if metrics:
+            payload["metrics"] = _json_safe(metrics)
         resp = requests.post(
             f"{RAILWAY_URL}/api/jobs/{job_id}/complete",
             headers=_HEADERS,
-            json={"clips": clips},
+            json=payload,
             timeout=30,
         )
         if resp.status_code == 404:
@@ -240,23 +293,181 @@ def _complete_job(job_id: str, clips: list):
         print(f"[LOCAL_WORKER] ERROR marking complete {job_id}: {e}", flush=True)
 
 
-def _report_clip_progress(job_id: str, clip: dict, total_expected: int):
-    """POST /api/jobs/{id}/progress as each clip finishes rendering."""
+def _extract_transcript_snippet(clip: dict, max_words: int = 24) -> str:
+    """Extract a short, human-readable transcript snippet for the candidate card."""
+    words_list = clip.get("transcript") or clip.get("captions") or []
+    if isinstance(words_list, list) and words_list:
+        start = float(clip.get("start", 0))
+        end = float(clip.get("end", start + 30))
+        extracted = []
+        for w in words_list:
+            if isinstance(w, dict):
+                w_start = float(w.get("start", 0))
+                w_end = float(w.get("end", w_start))
+                if w_end >= start and w_start <= end:
+                    txt = str(w.get("word") or w.get("text") or "").strip()
+                    if txt:
+                        extracted.append(txt)
+            elif isinstance(w, str) and w.strip():
+                extracted.append(w.strip())
+        if extracted:
+            s = " ".join(extracted[:max_words]).strip()
+            if len(extracted) > max_words:
+                s += "…"
+            return s
+            
+    tw = clip.get("transcript_window") or clip.get("text") or clip.get("opening_caption") or ""
+    if tw:
+        parts = str(tw).split()
+        s = " ".join(parts[:max_words]).strip()
+        if len(parts) > max_words:
+            s += "…"
+        return s
+
+    return str(clip.get("exact_hook") or clip.get("hook_text") or clip.get("title") or "")
+
+
+def _benchmark_and_extract_thumbnails(video_path: str, clips: list, job_dir: str, job_id: str) -> bool:
+    """
+    Benchmark single-frame seek time via FFmpeg.
+    If > 1.0s (e.g. slow AV1/VP9 seek), skip thumbnail extraction to avoid lag.
+    If <= 1.0s, generate fast thumbnails for all candidate clips.
+    """
+    if not video_path or not os.path.exists(video_path) or not clips:
+        return False
+
+    probe_seek = float(clips[0].get("start", 0.0)) + 1.0
+    probe_img = os.path.join(job_dir, "probe_thumb.jpg")
+    t0 = time.perf_counter()
+    cmd_probe = [
+        "ffmpeg", "-y", "-nostdin",
+        "-ss", f"{probe_seek:.2f}",
+        "-i", video_path,
+        "-frames:v", "1",
+        "-q:v", "3",
+        probe_img,
+    ]
+    try:
+        proc = subprocess.run(cmd_probe, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=4)
+        seek_s = time.perf_counter() - t0
+        if proc.returncode != 0 or not os.path.exists(probe_img):
+            print(f"[THUMBNAILS] Single frame probe failed (took {seek_s:.3f}s). Skipping thumbnails.", flush=True)
+            return False
+    except Exception as e:
+        seek_s = time.perf_counter() - t0
+        print(f"[THUMBNAILS] Single frame probe timed out or error ({seek_s:.3f}s): {e}. Skipping.", flush=True)
+        return False
+
+    print(f"[THUMBNAIL_BENCH] Single frame seek time = {seek_s:.3f}s (threshold = 1.0s)", flush=True)
+    if seek_s > 1.0:
+        print(f"[THUMBNAIL_BENCH] ⚠️ Seek time {seek_s:.3f}s > 1.0s (slow seek on source AV1/VP9). Skipping thumbnails for all clips.", flush=True)
+        return False
+
+    print(f"[THUMBNAIL_BENCH] ✅ Seek time {seek_s:.3f}s <= 1.0s. Extracting thumbnails for candidate clips...", flush=True)
+    thumbs_dir = os.path.join("static", "thumbnails")
+    os.makedirs(thumbs_dir, exist_ok=True)
+    for idx, c in enumerate(clips):
+        target_s = float(c.get("start", 0.0)) + 1.0
+        thumb_name = f"{job_id}_clip_{idx}.jpg"
+        thumb_file = os.path.join(thumbs_dir, thumb_name)
+        if not os.path.exists(thumb_file):
+            cmd = [
+                "ffmpeg", "-y", "-nostdin",
+                "-ss", f"{target_s:.2f}",
+                "-i", video_path,
+                "-frames:v", "1",
+                "-q:v", "3",
+                thumb_file,
+            ]
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+            except Exception:
+                pass
+        if os.path.exists(thumb_file) and os.path.getsize(thumb_file) > 0:
+            c["thumbnail_url"] = f"/static/thumbnails/{thumb_name}"
+    return True
+
+
+def _report_stage2_cards(job_id: str, clips: list, total_expected: int, metrics: dict = None, render_stats: dict = None):
+    """POST /api/jobs/{id}/progress immediately after Stage 2 completes to display all cards."""
+    if not job_id or not RAILWAY_URL:
+        return
+    try:
+        cards = [_json_safe(c) for c in clips]
+        payload = {
+            "cards": cards,
+            "total_expected": total_expected,
+        }
+        if metrics:
+            payload["metrics"] = _json_safe(metrics)
+        if render_stats:
+            payload["render_stats"] = _json_safe(render_stats)
+        resp = requests.post(
+            f"{RAILWAY_URL}/api/jobs/{job_id}/progress",
+            headers=_HEADERS,
+            json=payload,
+            timeout=10,
+        )
+        if resp.ok:
+            print(f"[LOCAL_WORKER] ⚡ Stage 2 complete: Published {len(cards)} clip cards to server immediately!", flush=True)
+    except Exception as e:
+        print(f"[LOCAL_WORKER] Failed to publish Stage 2 cards: {e}", flush=True)
+
+
+def _report_clip_progress(job_id: str, clip: dict, total_expected: int, metrics: dict = None, render_stats: dict = None):
+    """POST /api/jobs/{id}/progress as each clip updates (rendering/ready/failed)."""
     if not job_id or not RAILWAY_URL:
         return
     try:
         clip_data = _json_safe(clip)
+        payload = {"clip": clip_data, "total_expected": total_expected}
+        if metrics:
+            payload["metrics"] = _json_safe(metrics)
+        if render_stats:
+            payload["render_stats"] = _json_safe(render_stats)
         resp = requests.post(
             f"{RAILWAY_URL}/api/jobs/{job_id}/progress",
             headers=_HEADERS,
-            json={"clip": clip_data, "total_expected": total_expected},
+            json=payload,
             timeout=10,
         )
         if resp.ok:
             data = resp.json()
             print(f"[LOCAL_WORKER] ⚡ Streamed clip {clip.get('start', 0):.0f}s-{clip.get('end', 0):.0f}s to server ({data.get('clips_ready', 1)}/{total_expected} ready)", flush=True)
     except Exception as e:
-        # non-blocking
+        pass
+
+
+def _poll_demand_queue(job_id: str) -> tuple:
+    """GET /api/jobs/{job_id}/demand-queue — returns (demand_queue, user_active)."""
+    if not job_id or not RAILWAY_URL:
+        return [], False
+    try:
+        resp = requests.get(
+            f"{RAILWAY_URL}/api/jobs/{job_id}/demand-queue",
+            headers=_HEADERS,
+            timeout=5,
+        )
+        if resp.ok:
+            data = resp.json()
+            return data.get("demand_queue") or [], bool(data.get("user_active", False))
+    except Exception:
+        pass
+    return [], False
+
+
+def _ack_demand_request(job_id: str, ranks: list):
+    """POST /api/jobs/{job_id}/demand-ack — worker acknowledges on-demand pickup."""
+    if not job_id or not RAILWAY_URL or not ranks:
+        return
+    try:
+        requests.post(
+            f"{RAILWAY_URL}/api/jobs/{job_id}/demand-ack",
+            headers=_HEADERS,
+            json={"ranks": ranks},
+            timeout=5,
+        )
+    except Exception:
         pass
 
 
@@ -914,9 +1125,9 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
         if has_outro:
             # ── SINGLE PASS: blur + watermark + outro concat ───────────────────
             filter_complex = (
-                # Main clip: cinematic blur bg + centered video
+                # Main clip: fast quarter-res cinematic blur bg + centered video
                 "[0:v]fps=30,split=2[blur][vid];"
-                "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20[bg];"
+                "[blur]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear[bg];"
                 "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
                 "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
                 # Watermark overlay (forced even height with -2 to prevent NVENC -22 invalid argument)
@@ -952,7 +1163,7 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
             print(f"[LOCAL_WORKER] WARNING: Outro not found at {outro_path}. Watermark only.", flush=True)
             filter_complex = (
                 "[0:v]fps=30,split=2[blur][vid];"
-                "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20[bg];"
+                "[blur]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear[bg];"
                 "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
                 "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
                 "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
@@ -1106,10 +1317,10 @@ def _fc_assign_slots(faces, frame_w):
 
 
 class FaceCache:
-    def __init__(self, video_path: str, clips: list, format_map: dict = None):
+    def __init__(self, video_path: str, clips: list = None, format_map: dict = None):
         """Args:
             video_path: path to source video.
-            clips: list of clip dicts with 'start'/'end' keys.
+            clips: list of clip dicts with 'start'/'end' keys (optional).
             format_map: dict mapping id(clip) -> VideoFormat, built by format_classify.
                         Enables format-aware stride + multi-rep podcast sampling.
         """
@@ -1117,17 +1328,22 @@ class FaceCache:
         self.cache = {}
         self.clip_caches = {}
         self.clip_timelines = {}  # (start, end) -> [{start,end,mode,n_faces},...] from real detection
-        self.clips = clips
+        self.clips = list(clips or [])
         self._done = False
-        self._format_map = format_map or {}  # clip object id → VideoFormat
-        if clips:
-            self._precompute_clips_only(clips)
+        self._format_map = dict(format_map or {})  # clip object id → VideoFormat
+        self._lock = threading.Lock()
+        probe = cv2.VideoCapture(self.video_path)
+        self.fps = probe.get(cv2.CAP_PROP_FPS) or 25.0
+        probe.release()
+        if self.clips:
+            self._precompute_clips_only(self.clips)
         else:
             self._done = True
 
     def _get_clip_fmt(self, clip):
         """Return VideoFormat for this clip, or None if unavailable."""
-        return self._format_map.get(id(clip))
+        with self._lock:
+            return self._format_map.get(id(clip))
         
     def _detect(self, frame):
         raw_mean = float(frame.mean())
@@ -1257,15 +1473,35 @@ class FaceCache:
             count += 1
         return count
 
+    def scan_clip(self, clip, clip_fmt=None, clip_idx=0):
+        start = float(clip.get("start", 0.0) or 0.0)
+        end = float(clip.get("end", start) or start)
+        key = (round(start, 2), round(end, 2))
+        with self._lock:
+            if clip_fmt is not None:
+                self._format_map[id(clip)] = clip_fmt
+            if key in self.clip_caches:
+                return dict(self.clip_caches[key])
+
+        self._precompute_clips_only([clip], is_jit_single=True, clip_idx=clip_idx)
+        with self._lock:
+            if clip not in self.clips:
+                self.clips.append(clip)
+            return dict(self.clip_caches.get(key, {}))
+
     def get_clip_cache(self, clip):
         start = float(clip.get("start", 0.0) or 0.0)
         end = float(clip.get("end", start) or start)
         key = (round(start, 2), round(end, 2))
-        return dict(self.clip_caches.get(key, {}))
+        with self._lock:
+            if key in self.clip_caches:
+                return dict(self.clip_caches[key])
+        return self.scan_clip(clip, clip_fmt=self._get_clip_fmt(clip))
 
-    def _precompute_clips_only(self, clips):
+    def _precompute_clips_only(self, clips, is_jit_single: bool = False, clip_idx: int = 0):
         _face_cache_start = time.time()
-        print(f"[FACE_CACHE] Starting targeted Haar face detection...", flush=True)
+        if not is_jit_single:
+            print(f"[FACE_CACHE] Starting targeted Haar face detection...", flush=True)
         probe = cv2.VideoCapture(self.video_path)
         fps = probe.get(cv2.CAP_PROP_FPS) or 25.0
         probe.release()
@@ -1612,7 +1848,7 @@ class FaceCache:
                         _tl_segs.append((_cur_start, round(_clip_dur, 1), _cur_mode, _n_prev))
 
                 # Print face timeline
-                _BAR_CH   = {"PODCAST": "\u2588", "MONOLOGUE": "\u2591", "GAP": "?"}
+                _BAR_CH   = {"PODCAST": "#", "MONOLOGUE": "=", "GAP": "?"}
                 _switches  = max(0, len(_tl_segs) - 1)
                 _res_s     = round(stride / max(1.0, local_fps), 1)
                 print(f"[FACE_TIMELINE] clip={start:.1f}-{end:.1f}s  "
@@ -1621,7 +1857,7 @@ class FaceCache:
                     _dur_s   = max(0.1, _e - _s)
                     _bar_len = max(1, round(_dur_s / _clip_dur * 24))
                     _bar     = _BAR_CH.get(_m, "?") * _bar_len
-                    print(f"  t={_s:5.1f}s → {_e:5.1f}s : {_m:<9} ({_n}f)  [{_bar}]",
+                    print(f"  t={_s:5.1f}s -> {_e:5.1f}s : {_m:<9} ({_n}f)  [{_bar}]",
                           flush=True)
                 if _tl_segs:
                     _dom_mode = max(
@@ -1646,19 +1882,22 @@ class FaceCache:
             return (round(start, 2), round(end, 2)), abs_results, rel_results, _tl_segs
 
         with ThreadPoolExecutor(max_workers=min(workers, max(1, len(clips)))) as ex:
-            futures = [ex.submit(scan_one_clip, i, clip) for i, clip in enumerate(clips)]
+            futures = [ex.submit(scan_one_clip, clip_idx if is_jit_single else i, clip) for i, clip in enumerate(clips)]
             for future in futures:
                 key, abs_results, rel_results, tl_segs = future.result()
-                self.cache.update(abs_results)
-                self.clip_caches[key] = rel_results
-                # Store real-detection timeline for director pre-cognition
-                self.clip_timelines[key] = [
-                    {"start": s, "end": e, "mode": m, "n_faces": n}
-                    for s, e, m, n in tl_segs
-                ]
+                with self._lock:
+                    self.cache.update(abs_results)
+                    self.clip_caches[key] = rel_results
+                    # Store real-detection timeline for director pre-cognition
+                    self.clip_timelines[key] = [
+                        {"start": s, "end": e, "mode": m, "n_faces": n}
+                        for s, e, m, n in tl_segs
+                    ]
 
         self._done = True
         _face_cache_elapsed = time.time() - _face_cache_start
+        if is_jit_single:
+            return
 
         # ── DIAGNOSTIC REPORT: Terminal banner + JSON file ─────────────────────
         # Gives complete visibility into what the cache actually stored.
@@ -1850,15 +2089,35 @@ def _process_job(job: dict, cloudinary_ok: bool):
         os.environ["HS_DISABLE_BG_BLUR"] = "1"
         os.environ["HS_DISABLE_CROP"] = "0"
 
-    print(f"[LOCAL_WORKER] dYZ Processing job {job_id}: {youtube_url[:80]}", flush=True)
+    print(f"[LOCAL_WORKER] Processing job {job_id}: {youtube_url[:80]}", flush=True)
 
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        video_path = os.path.join(tmp, "video.mp4")
+    # ── Phase 3: Retain job folder under JOB_CACHE_BASE for HS_JOB_RETENTION_HOURS ──
+    job_dir = os.path.join(JOB_CACHE_BASE, f"job_{job_id}")
+    os.makedirs(job_dir, exist_ok=True)
+    tmp = job_dir
+    video_path = os.path.join(tmp, "video.mp4")
+    meta_path = os.path.join(job_dir, "job_meta.json")
+    artifacts_path = os.path.join(job_dir, "artifacts.json")
 
-        # "?"? Step 1: Handle Local Files vs Download "?"?
+    if not os.path.exists(meta_path):
+        try:
+            with open(meta_path, "w", encoding="utf-8") as mf:
+                json.dump({
+                    "job_id": job_id,
+                    "created_at": time.time(),
+                    "video_path": video_path,
+                    "youtube_url": youtube_url,
+                }, mf)
+        except Exception:
+            pass
+
+    try:
+        # Step 1: Handle Local Files vs Cached Retention vs Download
         if not str(youtube_url).startswith("http"):
             print(f"[LOCAL_WORKER] Local file detected, skipping download: {youtube_url}", flush=True)
             video_path = youtube_url
+        elif os.path.exists(video_path) and os.path.getsize(video_path) > 1000:
+            print(f"[LOCAL_WORKER] [RETENTION] Reusing retained video file: {video_path} ({os.path.getsize(video_path) // (1024*1024)}MB)", flush=True)
         else:
             print(f"[LOCAL_WORKER] Downloading video...", flush=True)
             try:
@@ -1872,14 +2131,32 @@ def _process_job(job: dict, cloudinary_ok: bool):
 
         print(f"[LOCAL_WORKER] Download complete: {os.path.getsize(video_path) // (1024*1024)}MB", flush=True)
 
-        # ── Per-job benchmark ───────────────────────────────────────────
+        # ── Per-job benchmark & progressive metrics ─────────────────────
         _bench = _JobBenchmark(job_id, youtube_url)
         _bench.finish("1_download")  # download already done above
 
-        # ── PIPELINE ARCHITECTURE (Configurable Concurrency Renders) ──────────
+        t_job_start = time.perf_counter()
+        progressive_metrics = {
+            "t_cards_ready": None,
+            "t_first_clip": None,
+            "t_top3": None,
+            "t_top6": None,
+        }
+        job["progressive_metrics"] = progressive_metrics
+
+        # ── PIPELINE ARCHITECTURE (PriorityQueue + Concurrency) ───────────────
         _concurrency = int(os.getenv("HS_RENDER_CONCURRENCY", "1"))
         print(f"[LOCAL_WORKER] Parallel render concurrency: {_concurrency}", flush=True)
-        clip_queue = queue.Queue(maxsize=max(10, _concurrency * 4))
+        clip_queue = queue.PriorityQueue()
+        _seq_lock = threading.Lock()
+        _seq_counter = 0
+
+        def _get_seq():
+            nonlocal _seq_counter
+            with _seq_lock:
+                _seq_counter += 1
+                return _seq_counter
+
         results = []
         results_lock = threading.Lock()
         gpu_lock = threading.Semaphore(_concurrency)
@@ -1946,105 +2223,192 @@ def _process_job(job: dict, cloudinary_ok: bool):
         # Global precomputed captions
         precomputed_captions = {}
 
+        # Progressive Reveal (Phase 1): Not-rendered candidates (analysis ready, video on demand)
+        clips = []
+        clips_not_rendered = []
+        clips_to_render = []
+
+        def _classify_one(clip):
+            import time
+            t_start = time.perf_counter()
+            s = float(clip.get("start", 0.0) or 0.0)
+            e = float(clip.get("end", s) or s)
+            fmt = analyze_video_format(video_path, s, e)
+            
+            # 🚀 SPACEX FIX: Bulletproof formatting
+            _genre = str(clip.get("content_genre", "")).upper()
+            if _genre in ("PODCAST", "INTERVIEW"):
+                from effects.format_analyzer import DirectorMode
+                if fmt and fmt.format_type != "podcast":
+                    print(f"[SPACEX FIX] Cortex tagged {_genre} but analyzer said {fmt.format_type}. Forcing BLIND SPLIT (50/50).")
+                    fmt.format_type = "podcast"
+                    fmt.director_mode = DirectorMode.SPLIT
+                    fmt.face_count_avg = max(2.0, fmt.face_count_avg)
+                    fmt.speaker_positions = [0.25, 0.75]
+                    
+            clip["_fmt"] = fmt  # attach result so editor doesn't re-run
+            clip["_stage3_time"] = time.perf_counter() - t_start
+            if fmt is not None:
+                clip["_fmt_type"] = fmt.format_type
+                clip["_speaker_positions"] = list(fmt.speaker_positions or [])
+            mode_name = fmt.director_mode.name if fmt and fmt.director_mode else "UNKNOWN"
+            faces_avg = fmt.face_count_avg if fmt else 0.0
+            spk = fmt.speaker_positions if fmt else []
+            print(
+                f"[FORMAT_CLASSIFY] clip={clip.get('ranking_rank', '?')} {s:.0f}s-{e:.0f}s "
+                f"mode={mode_name} avg_faces={faces_avg:.2f} speakers={spk} wall_s={clip.get('_stage3_time', 0.0):.1f}",
+                flush=True,
+            )
+            return clip, fmt
+
         def run_orchestrator():
+            nonlocal clips
             try:
-                print(f"[LOCAL_WORKER] Running orchestrator...", flush=True)
-                from viral_finder.orchestrator import orchestrate
-                
-                _bench.begin("2_orchestration")
-                clips = orchestrate(
-                    video_path,
-                    top_k=int(os.getenv("HS_ORCH_TOP_K", "15")),  # raised 8→15; dynamic formula scales by video length
-                    prefer_gpu=True,
-                    use_cache=True,
-                    allow_fallback=False,
-                    pipeline_mode=os.getenv("HS_ORCH_PIPELINE_MODE", "staged"),
-                    creator_intent=job.get("creator_intent")
-                )
-                _bench.finish("2_orchestration")
+                cached_clips = None
+                if os.path.exists(artifacts_path):
+                    try:
+                        with open(artifacts_path, "r", encoding="utf-8") as af:
+                            art_data = json.load(af)
+                            if art_data.get("clips"):
+                                cached_clips = art_data["clips"]
+                                print(f"[LOCAL_WORKER] [RETENTION] Loaded {len(cached_clips)} cached clips from {artifacts_path}", flush=True)
+                    except Exception:
+                        cached_clips = None
 
-                # Pre-classify clips for the Lightning Editor
-                # ── PARALLEL format_classify ──────────────────────────────────────
-                _bench.begin("3_format_classify")
-                haar_clips = []
-                _fc_fmt_map = {}
-
-                if video_format in ("blur_background", "original_with_black_bars"):
-                    print(f"[FORMAT] {video_format} selected — skipping FaceCache entirely, no crop tracking needed", flush=True)
-                    for c in clips:
-                        c["_fmt"] = None
-                        c["director_mode"] = None
-                        c["focus_x"] = 0.5
+                if cached_clips:
+                    clips = cached_clips
                 else:
-                    def _classify_one(clip):
-                        import time
-                        t_start = time.perf_counter()
-                        s = float(clip.get("start", 0.0) or 0.0)
-                        e = float(clip.get("end", s) or s)
-                        fmt = analyze_video_format(video_path, s, e)
-                        
-                        # 🚀 SPACEX FIX: Bulletproof formatting
-                        _genre = str(clip.get("content_genre", "")).upper()
-                        # User insight: For podcasts, a blind 50/50 split is geometrically superior 
-                        # to a center crop (monologue) because stacking left+right halves perfectly 
-                        # converts 16:9 into 9:16 without losing any horizontal context.
-                        if _genre in ("PODCAST", "INTERVIEW"):
-                            from effects.format_analyzer import DirectorMode
-                            if fmt and fmt.format_type != "podcast":
-                                print(f"[SPACEX FIX] Cortex tagged {_genre} but analyzer said {fmt.format_type}. Forcing BLIND SPLIT (50/50).")
-                                fmt.format_type = "podcast"
-                                fmt.director_mode = DirectorMode.SPLIT
-                                fmt.face_count_avg = max(2.0, fmt.face_count_avg)
-                                # Default left speaker to 25% of screen width, right to 75%
-                                fmt.speaker_positions = [0.25, 0.75]
-                                
-                        clip["_fmt"] = fmt  # attach result so editor doesn't re-run
-                        clip["_stage3_time"] = time.perf_counter() - t_start
-                        return clip, fmt
-
-                    _classify_workers = max(1, min(len(clips), 4))
-                    with ThreadPoolExecutor(max_workers=_classify_workers) as _pool:
-                        _fmt_futures = {_pool.submit(_classify_one, c): c for c in clips}
-                        for _fut in _fmt_futures:
-                            _clip, _fmt = _fut.result()
-                            mode_name = _fmt.director_mode.name if _fmt and _fmt.director_mode else "UNKNOWN"
-                            faces_avg = _fmt.face_count_avg if _fmt else 0.0
-                            spk = _fmt.speaker_positions if _fmt else []
-                            print(
-                                f"[FORMAT_CLASSIFY] {_clip.get('start',0):.0f}s-{_clip.get('end',0):.0f}s "
-                                f"mode={mode_name} avg_faces={faces_avg:.2f} speakers={spk} wall_s={_clip.get('_stage3_time', 0.0):.1f}",
-                                flush=True,
-                            )
-                            haar_clips.append(_clip)
-                            # ── UPGRADE 1: Preserve VideoFormat for FaceCache ──
-                            if _fmt is not None:
-                                _fc_fmt_map[id(_clip)] = _fmt
-                                _clip["_fmt_type"] = _fmt.format_type
-                                _clip["_speaker_positions"] = list(_fmt.speaker_positions or [])
-
-                _bench.finish("3_format_classify")
-
-                # ── Haar scan (face cache pre-computation) ─────────────────────────
-                nonlocal face_cache
-                _bench.begin("4_haar_scan")
-                if haar_clips and video_format == "center_crop":
-                    print(
-                        f"[FACE_CACHE] format_map populated for "
-                        f"{len(_fc_fmt_map)}/{len(haar_clips)} clips",
-                        flush=True,
+                    print(f"[LOCAL_WORKER] Running orchestrator...", flush=True)
+                    from viral_finder.orchestrator import orchestrate
+                    
+                    _bench.begin("2_orchestration")
+                    clips = orchestrate(
+                        video_path,
+                        top_k=int(os.getenv("HS_ORCH_TOP_K", "15")),  # raised 8→15; dynamic formula scales by video length
+                        prefer_gpu=True,
+                        use_cache=True,
+                        allow_fallback=False,
+                        pipeline_mode=os.getenv("HS_ORCH_PIPELINE_MODE", "staged"),
+                        creator_intent=job.get("creator_intent")
                     )
-                    face_cache = FaceCache(video_path, haar_clips, format_map=_fc_fmt_map)
+                    _bench.finish("2_orchestration")
+
+                if clips and isinstance(clips, list) and len(clips) > 0:
+                    s2_layers = clips[0].get("stage2_layers") or {}
+                    if s2_layers:
+                        progressive_metrics["stage2_layers"] = s2_layers
+                        print("\n============================================================", flush=True)
+                        print("  [STAGE 2 COGNITIVE BREAKDOWN] Layer-wise wall_s timers:", flush=True)
+                        print("============================================================", flush=True)
+                        for l_name, l_sec in s2_layers.items():
+                            print(f"  {l_name:<30} {l_sec:>8}s", flush=True)
+                        print("============================================================\n", flush=True)
+
+                progressive_metrics["t_cards_ready"] = round(time.perf_counter() - t_job_start, 2)
+                print(f"[PROGRESSIVE] cards={progressive_metrics['t_cards_ready']:.1f}s (Candidate clips & metadata ready)", flush=True)
+
+                # ── Phase 1: Rank order guarantee + Auto-render cap ───────────────────
+                # Confirm clips are ordered by ranking score (rank 1 first)
+                clips.sort(key=lambda c: (
+                    int(c.get("ranking_rank", 9999)),
+                    -float(c.get("viral_score", c.get("score_enriched", c.get("score", 0.0))) or 0.0)
+                ))
+                for rank_idx, c in enumerate(clips):
+                    c["rank"] = rank_idx + 1
+                    if "ranking_rank" not in c:
+                        c["ranking_rank"] = rank_idx + 1
+
+                # Save artifacts to job_dir for future on-demand reuse
+                try:
+                    with open(artifacts_path, "w", encoding="utf-8") as af:
+                        json.dump({
+                            "job_id": job_id,
+                            "clips": _json_safe(clips),
+                            "timestamp": time.time(),
+                        }, af)
+                except Exception:
+                    pass
+
+                top_rank_score = float(clips[0].get("viral_score", clips[0].get("score_enriched", clips[0].get("score", 0.0))) or 0.0) if clips else 0.0
+                print(f"[PROGRESSIVE] Rank order confirmed: {len(clips)} candidate(s). Top clip rank 1 score={top_rank_score:.3f}", flush=True)
+
+                auto_render_n = int(os.getenv("HS_AUTO_RENDER_N", "6"))
+                min_auto_render = min(3, len(clips))
+                score_threshold = float(os.getenv("HS_AUTO_RENDER_THRESHOLD", "0.0"))
+
+                demand_from_job = set(job.get("on_demand_queue") or [])
+
+                # ── Phase 4: Enrich candidate clips & benchmark/extract thumbnails ──
+                _benchmark_and_extract_thumbnails(video_path, clips, job_dir, job_id)
+
+                for idx, c in enumerate(clips):
+                    start_t = float(c.get("start", 0))
+                    end_t = float(c.get("end", start_t + 30))
+                    dur = round(end_t - start_t, 1)
+                    hook_l = c.get("exact_hook") or c.get("hook_text") or c.get("opening_caption") or c.get("title") or f"Viral Clip #{idx + 1}"
+                    v_score = float(c.get("viral_score", c.get("score_enriched", c.get("score", 0.7))) or 0.7)
+                    conf_pct = int(max(0, min(100, round(v_score * 100))))
+
+                    c["hook_line"] = hook_l
+                    c["exact_hook"] = hook_l
+                    c["duration"] = dur
+                    c["viral_score"] = round(v_score, 2)
+                    c["confidence"] = conf_pct
+                    c["transcript_snippet"] = _extract_transcript_snippet(c)
+
+                    c_rank = c.get("ranking_rank") or c.get("rank")
+                    c_score = float(c.get("viral_score", c.get("score_enriched", c.get("score", 0.0))) or 0.0)
+                    is_demanded = (c_rank in demand_from_job or idx in demand_from_job or c.get("on_demand"))
+                    is_already_ready = (c.get("status") == "ready" and c.get("clip_url"))
+
+                    should_render = False
+                    if is_already_ready:
+                        should_render = False
+                    elif is_demanded:
+                        should_render = True
+                        c["on_demand"] = True
+                    elif not cached_clips:
+                        # Initial auto-render logic
+                        if idx < min_auto_render:
+                            should_render = True
+                        elif idx < auto_render_n and c_score >= score_threshold:
+                            should_render = True
+
+                    if should_render:
+                        c["status"] = "queued"
+                        clips_to_render.append(c)
+                    elif is_already_ready:
+                        pass
+                    else:
+                        c["status"] = "not_rendered"
+                        c["clip_url"] = None
+                        c["rendered"] = False
+                        clips_not_rendered.append(c)
+
+                print(
+                    f"[PROGRESSIVE] Auto-render cap: HS_AUTO_RENDER_N={auto_render_n} | "
+                    f"Total={len(clips)} | Queued to render={len(clips_to_render)} (min={min_auto_render}) | "
+                    f"Marked not_rendered={len(clips_not_rendered)}",
+                    flush=True,
+                )
+
+                # ⚡ IMMEDIATELY EMIT ALL STAGE 2 CARDS TO SERVER
+                _report_stage2_cards(job_id, clips, total_expected=len(clips), metrics=progressive_metrics)
+
+                # ── Phase 2: Just-in-Time Setup (no upfront Stage 3 / Stage 4 blocking) ──
+                nonlocal face_cache
+                if video_format == "center_crop":
+                    face_cache = FaceCache(video_path, clips=[])
                 else:
                     face_cache = None
-                _bench.finish("4_haar_scan")
 
                 # Precompute captions async before releasing clips
                 _bench.begin("5_caption_pregen")
-                if editor_instance and clips:
+                if editor_instance and clips_to_render:
                     from utils.clipper import get_video_duration
-                    print(f"[LOCAL_WORKER] Orchestration done: {len(clips)} clips. Pre-generating captions...", flush=True)
+                    print(f"[LOCAL_WORKER] Orchestration done: {len(clips_to_render)} clips to render. Pre-generating captions...", flush=True)
                     
-                    _full_transcript = clips[0].get("transcript") or clips[0].get("captions")
+                    _full_transcript = clips_to_render[0].get("transcript") or clips_to_render[0].get("captions")
                     
                     def gen_cap(clip, idx):
                         start = float(clip.get("start", 0))
@@ -2078,14 +2442,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         return idx, ass_path
 
                     ex = ThreadPoolExecutor(max_workers=4)
-                    for i, c in enumerate(clips):
+                    for i, c in enumerate(clips_to_render):
                         precomputed_captions[i] = ex.submit(gen_cap, c, i)
 
                 _bench.finish("5_caption_pregen")
                 orch_state["produced"] = len(clips)
-                for i, clip in enumerate(clips):
-                    clip_queue.put((i, clip))
-                    print(f"[PIPELINE] Clip queued: {i}", flush=True)
+                orch_state["to_render"] = len(clips_to_render)
+                for i, clip in enumerate(clips_to_render):
+                    rank_val = int(clip.get("ranking_rank", i + 1))
+                    prio = 0 if clip.get("on_demand") else (10 + rank_val)
+                    seq = _get_seq()
+                    clip_queue.put((prio, seq, (i, clip)))
+                    print(f"[PIPELINE] Clip queued: {i} (rank={clip.get('ranking_rank')}, priority={prio}, status=queued)", flush=True)
 
             except Exception as e:
                 import traceback
@@ -2093,7 +2461,11 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 print(f"[LOCAL_WORKER] Orchestrator thread failed: {e}\n{traceback.format_exc()}", flush=True)
             finally:
                 for _ in range(_concurrency):
-                    clip_queue.put(None) # Signal all consumer threads done
+                    clip_queue.put((999999, _get_seq(), None)) # Signal all consumer threads done
+
+        completed_clip_render_times = []
+        active_rendering_lock = threading.Lock()
+        active_rendering_info = {"rank": None, "started_at": None}
 
         def run_editor(worker_id: int):
             from effects.genius_brutal_captioner import BrutalCaptioner
@@ -2109,17 +2481,61 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 worker_editor = editor_instance
 
             while True:
-                item = clip_queue.get()
+                prio, seq, item = clip_queue.get()
                 if item is None:
+                    clip_queue.task_done()
                     break
                     
                 i, clip = item
                 start = float(clip.get("start", 0))
                 end   = float(clip.get("end", start + 30))
-                clip_res = {**clip, "clip_url": None, "error": None}
+                clip_res = {**clip, "clip_url": None, "error": None, "status": "rendering"}
+                c_rank = clip.get("ranking_rank") or clip.get("rank") or (i + 1)
+                print(f"[PROGRESSIVE] Clip {i} (rank={c_rank}) -> status=rendering", flush=True)
+
+                with active_rendering_lock:
+                    active_rendering_info["rank"] = c_rank
+                    active_rendering_info["started_at"] = time.time()
+                    avg_s = round(sum(completed_clip_render_times) / len(completed_clip_render_times), 1) if completed_clip_render_times else None
+
+                # Live ping: report actively rendering clip with measured ETA stats
+                _report_clip_progress(
+                    job_id,
+                    clip_res,
+                    orch_state.get("produced", len(clips) if clips else 0),
+                    metrics=progressive_metrics,
+                    render_stats={
+                        "avg_clip_render_s": avg_s,
+                        "completed_renders": len(completed_clip_render_times),
+                        "active_rank": active_rendering_info["rank"],
+                        "active_started_at": active_rendering_info["started_at"],
+                    }
+                )
                 
                 try:
                     t_clip_total = time.perf_counter()
+
+                    # ── Phase 2: Just-in-Time Per-Clip Analysis (Stage 3 + Stage 4) ──
+                    t_jit_start = time.perf_counter()
+                    _bench.begin(f"3_format_classify_clip{i}")
+                    if video_format in ("blur_background", "original_with_black_bars"):
+                        clip["_fmt"] = None
+                        clip["director_mode"] = None
+                        clip["focus_x"] = 0.5
+                    else:
+                        if clip.get("_fmt") is None:
+                            _classify_one(clip)
+                    _bench.finish(f"3_format_classify_clip{i}")
+
+                    _bench.begin(f"4_haar_scan_clip{i}")
+                    if video_format == "center_crop" and face_cache is not None:
+                        face_cache.scan_clip(clip, clip_fmt=clip.get("_fmt"), clip_idx=i)
+                    _bench.finish(f"4_haar_scan_clip{i}")
+
+                    t_jit_s = time.perf_counter() - t_jit_start
+                    clip_res["jit_analysis_s"] = round(t_jit_s, 2)
+                    print(f"[PROGRESSIVE] clip={i} jit_analysis_s={t_jit_s:.2f}s", flush=True)
+
                     # ── Stage 6a: Frame-Accurate Fast Extraction (1.3s, 0s keyframe drift) ──
                     t0 = time.perf_counter()
                     raw_path = os.path.join(tmp, f"clip_{i}_{int(start)}_{int(end)}.mp4")
@@ -2198,6 +2614,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 print(f"[SILENCE_KILLER] Post-processing failed: {e}", flush=True)
                                 
                             clip_res["edit_metadata"] = getattr(edit_result, "metadata", {}) or {}
+                            detect_calls = int(clip_res["edit_metadata"].get("edit_profile", {}).get("detect_calls", 0))
+                            clip_res["detect_faces_calls"] = detect_calls
+                            print(f"[FACE_DETECT_PROFILE] clip={i} rank={c_rank} detect_faces_best_calls={detect_calls}", flush=True)
 
                         # \u2500\u2500 Healing #5: Attach visual_energy from Director Loop \u2500\u2500\u2500\u2500\u2500\u2500\u2500
                         # WCE stores the per-clip visual_energy summary on self after
@@ -2349,22 +2768,56 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             url = _upload_clip_to_cloudinary(final_path)
                         if url is None:
                             url = _upload_clip_to_railway(final_path, job_id)
+                        if url is None:
+                            url = final_path
                     t_upload = time.perf_counter() - t0
                     _bench.finish(f"6c_upload_clip{i}")
 
                     clip_res["clip_url"] = url
+                    clip_res["status"] = "ready"
+                    clip_res["rendered"] = True
+                    print(f"[PROGRESSIVE] Clip {i} (rank={clip.get('ranking_rank')}) -> status=ready", flush=True)
+                    total_clip_s = round(time.perf_counter() - t_clip_total, 3)
                     clip_res["editor_timing"] = {
                         "raw_cut_s": round(t_raw_cut, 3),
                         "wce_s": round(t_wce, 3),
                         "branding_s": round(t_branding, 3),
                         "upload_s": round(t_upload, 3),
-                        "total_s": round(time.perf_counter() - t_clip_total, 3),
+                        "total_s": total_clip_s,
                     }
+                    with active_rendering_lock:
+                        completed_clip_render_times.append(total_clip_s)
+                        avg_s = round(sum(completed_clip_render_times) / len(completed_clip_render_times), 1)
+                        active_rendering_info["rank"] = None
+                        active_rendering_info["started_at"] = None
+
                     with results_lock:
                         results.append(clip_res)
+                        finished_count = len([r for r in results if not r.get("error")])
+                        now_s = round(time.perf_counter() - t_job_start, 2)
+                        if finished_count == 1 and progressive_metrics["t_first_clip"] is None:
+                            progressive_metrics["t_first_clip"] = now_s
+                            print(f"[PROGRESSIVE] TTFC={now_s:.1f}s (First clip ready)", flush=True)
+                        if finished_count == 3 and progressive_metrics["t_top3"] is None:
+                            progressive_metrics["t_top3"] = now_s
+                            print(f"[PROGRESSIVE] TT3={now_s:.1f}s (Top 3 clips ready)", flush=True)
+                        if finished_count == 6 and progressive_metrics["t_top6"] is None:
+                            progressive_metrics["t_top6"] = now_s
+                            print(f"[PROGRESSIVE] TT6={now_s:.1f}s (Top 6 clips ready)", flush=True)
                         
                     # ⚡ Live progressive reporting: push clip to server dashboard immediately!
-                    _report_clip_progress(job_id, clip_res, orch_state.get("produced", 0))
+                    _report_clip_progress(
+                        job_id,
+                        clip_res,
+                        orch_state.get("produced", 0),
+                        metrics=progressive_metrics,
+                        render_stats={
+                            "avg_clip_render_s": avg_s,
+                            "completed_renders": len(completed_clip_render_times),
+                            "active_rank": None,
+                            "active_started_at": None,
+                        }
+                    )
 
                     print(
                         f"[EDITOR_TIMING] worker={worker_id} clip={i} raw={t_raw_cut:.2f}s wce={t_wce:.2f}s "
@@ -2376,11 +2829,81 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 except Exception as e:
                     import traceback
                     print(f"[PIPELINE] Clip failed: {i} -> {e}\n{traceback.format_exc()}", flush=True)
+                    clip_res["status"] = "failed"
                     clip_res["error"] = str(e)
+                    print(f"[PROGRESSIVE] Clip {i} (rank={clip.get('ranking_rank')}) -> status=failed error={e}", flush=True)
                     with results_lock:
                         results.append(clip_res)
                 finally:
                     clip_queue.task_done()
+
+        job_active = threading.Event()
+        job_active.set()
+        queued_demand_ids = set()
+
+        HS_IDLE_PREFETCH_ENABLED = os.getenv("HS_IDLE_PREFETCH_ENABLED", "0").lower() in ("1", "true", "yes")
+        queued_prefetch_ids = set()
+
+        def _demand_poller():
+            while job_active.is_set():
+                try:
+                    res = _poll_demand_queue(job_id)
+                    if isinstance(res, tuple):
+                        demand_items, user_active = res
+                    else:
+                        demand_items, user_active = res, False
+
+                    # 1. User click hamesha upar (Priority 0)
+                    if demand_items:
+                        acked_ranks = []
+                        for item in demand_items:
+                            if item in queued_demand_ids:
+                                continue
+                            # Match item against candidate clips
+                            target_c = None
+                            target_i = None
+                            for idx_c, c in enumerate(clips):
+                                c_rank = c.get("ranking_rank") or c.get("rank")
+                                if c_rank == item or idx_c == item:
+                                    target_c = c
+                                    target_i = idx_c
+                                    break
+                            if target_c:
+                                status = target_c.get("status")
+                                if status != "ready" and status != "rendering":
+                                    target_c["status"] = "queued"
+                                    target_c["on_demand"] = True
+                                    queued_demand_ids.add(item)
+                                    acked_ranks.append(item)
+                                    seq = _get_seq()
+                                    # Priority 0 puts on-demand render in front of auto-render / idle-prefetch queues!
+                                    clip_queue.put((0, seq, (target_i, target_c)))
+                                    print(f"[PROGRESSIVE] On-demand render queued: clip={target_i} rank={target_c.get('ranking_rank')} (priority=0, ETA=~90s)", flush=True)
+                        if acked_ranks:
+                            _ack_demand_request(job_id, acked_ranks)
+
+                    # 2. PHASE 5: Optional Idle Prefetch (default OFF)
+                    # Top N ke baad, agar user page pe active hai (heartbeat), to agle clips low priority (prio=50+) pe render hon.
+                    if HS_IDLE_PREFETCH_ENABLED and user_active:
+                        if clip_queue.qsize() == 0:
+                            for idx_c, c in enumerate(clips):
+                                c_rank = c.get("ranking_rank") or c.get("rank")
+                                if c.get("status") == "not_rendered" and c_rank not in queued_prefetch_ids and c_rank not in queued_demand_ids:
+                                    c["status"] = "queued"
+                                    c["idle_prefetch"] = True
+                                    queued_prefetch_ids.add(c_rank)
+                                    seq = _get_seq()
+                                    prio = 50 + int(c_rank or idx_c)
+                                    clip_queue.put((prio, seq, (idx_c, c)))
+                                    print(f"[IDLE_PREFETCH] User active. Low-priority queued candidate clip={idx_c} rank={c_rank} (priority={prio})", flush=True)
+                                    _report_clip_progress(job_id, c, orch_state.get("produced", len(clips) if clips else 0), metrics=progressive_metrics)
+                                    break
+                except Exception:
+                    pass
+                time.sleep(3.0)
+
+        demand_thread = threading.Thread(target=_demand_poller, name=f"DemandPoller-{job_id}", daemon=True)
+        demand_thread.start()
 
         producer = threading.Thread(target=run_orchestrator, name="Orchestrator")
         consumers = [
@@ -2396,10 +2919,56 @@ def _process_job(job: dict, cloudinary_ok: bool):
         for c in consumers:
             c.join()
         
-        # Sort results back to original order by start time
-        results.sort(key=lambda x: x.get("start", 0))
+        job_active.clear()
+        demand_thread.join(timeout=1.0)
+
+        # Assemble all clips: rendered results + not_rendered candidates (deduping rendered ones)
+        rendered_ids = {r.get("ranking_rank") or r.get("rank") for r in results}
+        unrendered_kept = [c for c in clips_not_rendered if (c.get("ranking_rank") or c.get("rank")) not in rendered_ids]
+        all_results = list(results) + unrendered_kept
+        # Guarantee rank order: rank 1 first
+        all_results.sort(key=lambda x: (
+            int(x.get("ranking_rank", 9999)),
+            -float(x.get("viral_score", x.get("score_enriched", x.get("score", 0.0))) or 0.0)
+        ))
+
+        # Update and persist analysis artifacts for future on-demand requests within retention TTL
+        try:
+            with open(artifacts_path, "w", encoding="utf-8") as af:
+                json.dump({
+                    "job_id": job_id,
+                    "clips": _json_safe(all_results),
+                    "timestamp": time.time(),
+                }, af)
+        except Exception as afe:
+            print(f"[LOCAL_WORKER] Failed to save job artifacts: {afe}", flush=True)
+
+        ready_count = len([r for r in all_results if r.get("status") == "ready"])
+        not_rendered_count = len([r for r in all_results if r.get("status") == "not_rendered"])
+        failed_count = len([r for r in all_results if r.get("status") == "failed"])
+        print(
+            f"[PROGRESSIVE] Render complete: total={len(all_results)} | ready={ready_count} | "
+            f"not_rendered={not_rendered_count} | failed={failed_count}",
+            flush=True,
+        )
+
+        # Finalize progressive metrics
+        final_elapsed = round(time.perf_counter() - t_job_start, 2)
+        if ready_count >= 1 and progressive_metrics["t_first_clip"] is None:
+            progressive_metrics["t_first_clip"] = final_elapsed
+        if ready_count >= 3 and progressive_metrics["t_top3"] is None:
+            progressive_metrics["t_top3"] = final_elapsed
+        if ready_count >= 6 and progressive_metrics["t_top6"] is None:
+            progressive_metrics["t_top6"] = final_elapsed
+
+        ttfc_s = f"{progressive_metrics['t_first_clip']:.1f}s" if progressive_metrics.get("t_first_clip") is not None else "N/A"
+        tt3_s = f"{progressive_metrics['t_top3']:.1f}s" if progressive_metrics.get("t_top3") is not None else "N/A"
+        tt6_s = f"{progressive_metrics['t_top6']:.1f}s" if progressive_metrics.get("t_top6") is not None else "N/A"
+        cards_s = f"{progressive_metrics['t_cards_ready']:.1f}s" if progressive_metrics.get("t_cards_ready") is not None else "N/A"
+        print(f"[PROGRESSIVE] TTFC={ttfc_s} TT3={tt3_s} TT6={tt6_s} cards={cards_s}", flush=True)
 
         # ── Save benchmark report for this job ─────────────────────────────
+        _bench.set_progressive_metrics(progressive_metrics)
         _bench.save()
 
         if orch_state["error"] is not None:
@@ -2407,14 +2976,16 @@ def _process_job(job: dict, cloudinary_ok: bool):
         if orch_state["produced"] == 0:
             raise RuntimeError("Orchestrator produced 0 candidate clips — nothing to edit")
 
-        successful = [r for r in results if not r.get("error")]
-        failed = [r for r in results if r.get("error")]
-        if not successful:
+        successful = [r for r in all_results if r.get("status") == "ready"]
+        failed = [r for r in all_results if r.get("status") == "failed"]
+        if not successful and ready_count == 0 and len(clips_to_render) > 0:
             summary = "; ".join(f"[{r.get('start')}-{r.get('end')}]: {r.get('error')}" for r in failed[:5])
             raise RuntimeError(f"All {len(failed)} clip(s) failed during editing → {summary}")
         if failed:
-            print(f"[PIPELINE] {len(failed)}/{len(results)} clips failed during editing; returning {len(successful)} successful.", flush=True)
-        return successful
+            print(f"[PIPELINE] {len(failed)}/{len(clips_to_render)} queued clips failed during editing.", flush=True)
+        return all_results
+    finally:
+        pass
 
 
 
@@ -2432,7 +3003,15 @@ def main():
     parser.add_argument("--format", choices=["center_crop", "blur_background", "original_with_black_bars"], default=None, help="Video Format (used with --local).")
     parser.add_argument("--clips", type=int, default=int(os.getenv("HS_ORCH_TOP_K", "5")),
                         help="Number of clips to select (default 5).")
+    parser.add_argument("--cleanup", action="store_true",
+                        help="Run retention cleanup for expired job caches and exit.")
     args = parser.parse_args()
+
+    if args.cleanup:
+        print("[LOCAL_WORKER] Running retention cleanup for expired jobs...", flush=True)
+        deleted = cleanup_expired_jobs()
+        print(f"[LOCAL_WORKER] Retention cleanup finished: {len(deleted)} expired job(s) removed.", flush=True)
+        sys.exit(0)
 
     global RAILWAY_URL, WORKER_SECRET, _HEADERS
     if args.localhost:
@@ -2538,7 +3117,20 @@ def main():
     if not cloudinary_ok:
         print("[LOCAL_WORKER] Cloudinary not configured - Railway fallback active.", flush=True)
 
+    last_retention_cleanup = time.time()
+    try:
+        cleanup_expired_jobs()
+    except Exception as ce:
+        print(f"[LOCAL_WORKER] Startup retention cleanup error: {ce}", flush=True)
+
     while True:
+        if time.time() - last_retention_cleanup > 3600.0:
+            try:
+                cleanup_expired_jobs()
+                last_retention_cleanup = time.time()
+            except Exception as ce:
+                print(f"[LOCAL_WORKER] Periodic retention cleanup error: {ce}", flush=True)
+
         print(f"[LOCAL_WORKER] polling...", flush=True)
         job = _poll_next_job()
         if job is None:
@@ -2548,7 +3140,7 @@ def main():
         print(f"[LOCAL_WORKER] Job received: {job_id}", flush=True)
         try:
             clips = _process_job(job, cloudinary_ok=cloudinary_ok)
-            _complete_job(job_id, clips)
+            _complete_job(job_id, clips, metrics=job.get("progressive_metrics"))
         except Exception as e:
             err_msg = str(e)
             tb = traceback.format_exc()

@@ -2919,6 +2919,20 @@ def v2_result(job_id: str):
         "job_id": job.id,
         "status": job.status,
     }
+    if isinstance(envelope, dict):
+        if envelope.get("render_stats"):
+            payload["render_stats"] = envelope["render_stats"]
+        if envelope.get("progressive_metrics"):
+            payload["progressive_metrics"] = envelope["progressive_metrics"]
+        
+        # Track client active heartbeat on poll
+        envelope["client_last_active_at"] = time.time()
+        job.analysis_data = json.dumps(envelope)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
     if job.status == "completed":
         if isinstance(envelope, dict):
             env_copy = dict(envelope)
@@ -2932,7 +2946,7 @@ def v2_result(job_id: str):
             payload["diagnostics"] = envelope.get("diagnostics") or {}
             if envelope.get("clips"):
                 payload["clips"] = envelope.get("clips")
-                payload["clips_ready"] = len(envelope.get("clips"))
+                payload["clips_ready"] = len([c for c in envelope.get("clips", []) if c.get("status") == "ready" or c.get("clip_url")])
             if envelope.get("total_expected"):
                 payload["total_expected"] = envelope.get("total_expected")
             if envelope.get("error"):
@@ -2943,9 +2957,13 @@ def v2_result(job_id: str):
 @app.route("/api/worker/status", methods=["GET"])
 # @login_required
 def api_worker_status():
+    online = is_worker_online()
+    last_seen = round(time.time() - _last_worker_poll_time, 1) if _last_worker_poll_time > 0 else None
     return jsonify({
         "ok": True,
-        "alive": worker_alive(),
+        "alive": online,
+        "online": online,
+        "last_seen_seconds_ago": last_seen,
         "wake_wait_seconds": _wake_wait_seconds(),
     })
 
@@ -2983,19 +3001,45 @@ def api_worker_wake():
 # 🏭 LOCAL WORKER API  (authenticated via X-Worker-Secret header)
 # ============================================================================
 
+_last_worker_poll_time = 0.0
+
+def _record_worker_heartbeat():
+    global _last_worker_poll_time
+    _last_worker_poll_time = time.time()
+
+def is_worker_online() -> bool:
+    if os.getenv("HS_LOCAL_MODE", "0") == "1":
+        return True
+    if _last_worker_poll_time > 0 and (time.time() - _last_worker_poll_time) < 45.0:
+        return True
+    try:
+        return worker_alive()
+    except Exception:
+        return False
+
 def _check_worker_secret() -> bool:
     """Return True if the request carries the correct WORKER_SECRET or originates from localhost."""
     secret = (os.getenv("WORKER_SECRET") or "").strip()
     client_secret = request.headers.get("X-Worker-Secret", "").strip()
     default_secret = "fa72afa80af434597d74b135b151c37c2d4bab76b04e063745df9de14b1d101c"
 
+    authorized = False
     if secret and client_secret == secret:
-        return True
-    if client_secret == default_secret:
-        return True
-    if request.remote_addr in ("127.0.0.1", "localhost", "::1"):
-        return True
-    return False
+        authorized = True
+    elif client_secret == default_secret:
+        authorized = True
+    elif request.remote_addr in ("127.0.0.1", "localhost", "::1"):
+        authorized = True
+
+    if authorized:
+        _record_worker_heartbeat()
+    return authorized
+
+@app.route("/api/worker/heartbeat", methods=["GET", "POST"])
+def api_worker_heartbeat():
+    if not _check_worker_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify({"ok": True, "online": True, "server_time": time.time()})
 
 
 @app.route("/api/jobs/next", methods=["GET"])
@@ -3071,35 +3115,89 @@ def api_jobs_progress(job_id: str):
             envelope = {}
 
     clips = envelope.get("clips", [])
-    if clip:
-        existing_urls = {c.get("clip_url") for c in clips if c.get("clip_url")}
-        clip_url = clip.get("clip_url")
-        if not clip_url or clip_url not in existing_urls:
-            clips.append(clip)
-            envelope["clips"] = clips
-            envelope["clips_ready"] = len(clips)
-            envelope["total_expected"] = total_expected
-            job.analysis_data = json.dumps(envelope)
-            try:
-                db.session.commit()
-            except Exception as e:
-                db.session.rollback()
-                log.warning("[WORKER_API] Progressive clip commit failed: %s", e)
+    metrics = data.get("metrics")
+    if metrics:
+        envelope["progressive_metrics"] = metrics
 
-    return jsonify({"ok": True, "job_id": job_id, "clips_ready": len(clips)})
+    render_stats = data.get("render_stats")
+    if render_stats:
+        envelope["render_stats"] = render_stats
+
+    cards = data.get("cards")
+    if cards:
+        if not clips:
+            envelope["clips"] = cards
+        else:
+            cards_by_rank = {c.get("ranking_rank") or c.get("rank") or idx: c for idx, c in enumerate(cards)}
+            for idx, existing in enumerate(clips):
+                rk = existing.get("ranking_rank") or existing.get("rank") or idx
+                if rk in cards_by_rank:
+                    card_data = dict(cards_by_rank[rk])
+                    if existing.get("clip_url") and not card_data.get("clip_url"):
+                        card_data["clip_url"] = existing.get("clip_url")
+                        card_data["status"] = existing.get("status")
+                    clips[idx].update(card_data)
+                    del cards_by_rank[rk]
+            for rk, card_data in cards_by_rank.items():
+                clips.append(card_data)
+            envelope["clips"] = clips
+
+        envelope["total_expected"] = total_expected or len(cards)
+        if job.status == "pending":
+            job.status = "processing"
+        job.analysis_data = json.dumps(envelope)
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+
+    if clip:
+        c_rank = clip.get("ranking_rank") or clip.get("rank")
+        c_bounds = (round(float(clip.get("start", 0)), 1), round(float(clip.get("end", 0)), 1))
+        found = False
+        for idx, existing in enumerate(clips):
+            e_rank = existing.get("ranking_rank") or existing.get("rank")
+            e_bounds = (round(float(existing.get("start", 0)), 1), round(float(existing.get("end", 0)), 1))
+            if (c_rank and e_rank == c_rank) or (c_bounds == e_bounds):
+                clips[idx].update(clip)
+                found = True
+                break
+        if not found:
+            clips.append(clip)
+            
+        envelope["clips"] = clips
+        envelope["clips_ready"] = len([c for c in clips if c.get("status") == "ready" or c.get("clip_url")])
+        envelope["total_expected"] = total_expected or len(clips)
+        if job.status == "pending":
+            job.status = "processing"
+        job.analysis_data = json.dumps(envelope)
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            log.warning("[WORKER_API] Progressive clip commit failed: %s", e)
+
+    ready_count = len([c for c in clips if c.get("status") == "ready" or c.get("clip_url")])
+    return jsonify({
+        "ok": True,
+        "job_id": job_id,
+        "clips_ready": ready_count,
+        "demand_queue": envelope.get("on_demand_queue", []),
+    })
 
 
 @app.route("/api/jobs/<job_id>/complete", methods=["POST"])
 def api_jobs_complete(job_id: str):
     """
     Called by local_worker.py after successful processing.
-    Expects JSON: {"clips": [...]}
+    Expects JSON: {"clips": [...], "metrics": {...}}
     """
     if not _check_worker_secret():
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(force=True, silent=True) or {}
     clips = data.get("clips") or []
+    metrics = data.get("metrics") or {}
 
     job = Job.query.filter_by(id=job_id).first()
     if not job:
@@ -3109,6 +3207,7 @@ def api_jobs_complete(job_id: str):
         "job_id": job_id,
         "status": "completed",
         "clips": clips,
+        "progressive_metrics": metrics,
     }
     job.analysis_data = json.dumps(result_envelope)
     job.status = "completed"
@@ -3133,6 +3232,243 @@ def api_jobs_complete(job_id: str):
 
     log.info("[WORKER_API] Job %s completed with %d clips", job_id, len(clips))
     return jsonify({"ok": True, "job_id": job_id, "clips": len(clips)})
+
+
+@app.route("/api/jobs/<job_id>/clips/<idx>/render", methods=["POST"])
+def api_render_clip_on_demand(job_id: str, idx: str):
+    """
+    User-facing endpoint to request an on-demand render for a not_rendered clip.
+    Auth: Logged-in user and owner of the job.
+    Rate limit: Max 3 pending on-demand renders per job.
+    """
+    # 1. User Authentication
+    user_id = None
+    if not app.config.get("LOGIN_DISABLED"):
+        if current_user.is_authenticated:
+            user_id = getattr(current_user, "id", None)
+        elif session.get("user_id"):
+            user_id = session.get("user_id")
+        else:
+            return jsonify({"error": "Unauthorized. Please log in.", "ok": False}), 401
+
+    # 2. Fetch Job & Verify Ownership
+    job = Job.query.filter_by(id=job_id).first()
+    if not job:
+        return jsonify({"error": "Job not found", "ok": False}), 404
+
+    if not app.config.get("LOGIN_DISABLED") and user_id is not None:
+        if job.user_id != user_id:
+            return jsonify({"error": "Forbidden: You are not the owner of this job.", "ok": False}), 403
+
+    # 3. Check Worker Status
+    if not is_worker_online():
+        return jsonify({
+            "error": "Render worker is currently offline. Please wait or ensure worker is running.",
+            "ok": False,
+            "worker_offline": True,
+        }), 503
+
+    # 4. Parse Envelope
+    envelope = {}
+    if job.analysis_data:
+        try:
+            envelope = json.loads(job.analysis_data) or {}
+        except Exception:
+            envelope = {}
+
+    clips = envelope.get("clips", [])
+    if not clips:
+        return jsonify({"error": "No clips found for this job.", "ok": False}), 404
+
+    # 5. Locate Clip by index / rank
+    target_idx = None
+    target_clip = None
+    try:
+        req_idx = int(idx)
+    except ValueError:
+        req_idx = -1
+
+    for i, c in enumerate(clips):
+        c_rank = c.get("ranking_rank") or c.get("rank")
+        if c_rank == req_idx or i == req_idx:
+            target_idx = i
+            target_clip = c
+            break
+
+    if target_clip is None:
+        return jsonify({"error": f"Clip '{idx}' not found in job.", "ok": False}), 404
+
+    # 6. Deduplication Check
+    status = target_clip.get("status", "not_rendered")
+    if status == "ready" and target_clip.get("clip_url"):
+        return jsonify({
+            "ok": True,
+            "status": "ready",
+            "clip": target_clip,
+            "clip_url": target_clip.get("clip_url"),
+            "message": "Clip already rendered.",
+        }), 200
+
+    if status == "rendering":
+        return jsonify({
+            "ok": True,
+            "status": "rendering",
+            "clip": target_clip,
+            "message": "Clip is currently rendering.",
+        }), 200
+
+    if status == "queued" and target_clip.get("on_demand"):
+        return jsonify({
+            "ok": True,
+            "status": "queued",
+            "clip": target_clip,
+            "message": "Clip is already queued for render.",
+        }), 200
+
+    # 7. Rate Limiting: Max 3 pending requests per job
+    pending_count = len([
+        c for c in clips 
+        if c.get("on_demand") and c.get("status") in ("queued", "rendering")
+    ])
+    if pending_count >= 3:
+        return jsonify({
+            "error": "Rate limit exceeded. Maximum 3 on-demand renders pending simultaneously.",
+            "ok": False,
+            "rate_limited": True,
+        }), 429
+
+    # 8. Mark Clip Queued & Add to On-Demand Queue
+    target_clip["status"] = "queued"
+    target_clip["on_demand"] = True
+    target_clip["requested_at"] = time.time()
+
+    demand_queue = envelope.get("on_demand_queue", [])
+    clip_identifier = target_clip.get("ranking_rank") or target_idx
+    if clip_identifier not in demand_queue:
+        demand_queue.append(clip_identifier)
+    envelope["on_demand_queue"] = demand_queue
+
+    job.analysis_data = json.dumps(envelope)
+    if job.status == "completed":
+        job.status = "pending"
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        log.error("[ON_DEMAND] Failed to commit on-demand render: %s", e)
+        return jsonify({"error": "Database error while enqueuing render", "ok": False}), 500
+
+    log.info("[ON_DEMAND] Clip %s (job %s) queued with priority", clip_identifier, job_id)
+    return jsonify({
+        "ok": True,
+        "status": "queued",
+        "clip": target_clip,
+        "queue_position": 1,
+        "estimated_seconds": 90,
+        "message": "Clip queued with priority. Render will start shortly.",
+    }), 200
+
+
+@app.route("/api/jobs/<job_id>/demand-queue", methods=["GET"])
+def api_jobs_demand_queue(job_id: str):
+    """
+    Called by local_worker.py every 3-5 seconds to check if user clicked on-demand render.
+    Returns: {"ok": True, "job_id": job_id, "demand_clips": [clip_ranks_or_indices]}
+    """
+    if not _check_worker_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    job = Job.query.filter_by(id=job_id).first()
+    if not job:
+        return jsonify({"error": "job_not_found"}), 404
+
+    envelope = {}
+    if job.analysis_data:
+        try:
+            envelope = json.loads(job.analysis_data) or {}
+        except Exception:
+            envelope = {}
+
+    demand_queue = envelope.get("on_demand_queue", [])
+    clips = envelope.get("clips", [])
+    
+    demand_clips_data = []
+    for item in demand_queue:
+        for idx_c, c in enumerate(clips):
+            c_rank = c.get("ranking_rank") or c.get("rank")
+            if c_rank == item or idx_c == item:
+                demand_clips_data.append({"index": idx_c, "rank": c_rank, "clip": c})
+                break
+
+    last_active = float(envelope.get("client_last_active_at") or 0.0)
+    user_active = (time.time() - last_active) < 45.0 if last_active > 0 else False
+
+    return jsonify({
+        "ok": True,
+        "job_id": job_id,
+        "demand_queue": demand_queue,
+        "demand_clips": demand_clips_data,
+        "user_active": user_active,
+        "client_last_active_at": last_active,
+    })
+
+
+@app.route("/api/jobs/<job_id>/client-heartbeat", methods=["POST", "GET"])
+def api_client_heartbeat(job_id: str):
+    """Client heartbeat ping to signal user is actively viewing the job."""
+    job = Job.query.filter_by(id=job_id).first()
+    if not job:
+        return jsonify({"error": "not_found", "ok": False}), 404
+    envelope = {}
+    if job.analysis_data:
+        try:
+            envelope = json.loads(job.analysis_data) or {}
+        except Exception:
+            envelope = {}
+    now = time.time()
+    envelope["client_last_active_at"] = now
+    job.analysis_data = json.dumps(envelope)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return jsonify({"ok": True, "active_at": now})
+
+
+@app.route("/api/jobs/<job_id>/demand-ack", methods=["POST"])
+def api_jobs_demand_ack(job_id: str):
+    """
+    Worker acknowledges it picked up on-demand clip(s) into its priority queue.
+    Expects JSON: {"ranks": [1, 2]} or {"rank": 1}
+    """
+    if not _check_worker_secret():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    ranks = data.get("ranks") or ([data.get("rank")] if data.get("rank") is not None else [])
+
+    job = Job.query.filter_by(id=job_id).first()
+    if not job:
+        return jsonify({"error": "job_not_found"}), 404
+
+    envelope = {}
+    if job.analysis_data:
+        try:
+            envelope = json.loads(job.analysis_data) or {}
+        except Exception:
+            envelope = {}
+
+    demand_queue = envelope.get("on_demand_queue", [])
+    envelope["on_demand_queue"] = [r for r in demand_queue if r not in ranks]
+
+    job.analysis_data = json.dumps(envelope)
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "db_error"}), 500
+
+    return jsonify({"ok": True, "remaining_queue": envelope["on_demand_queue"]})
 
 
 # ── Direct clip file upload from local worker (Cloudinary fallback) ──────────
@@ -4006,6 +4342,13 @@ def results(job_id):
                 clip.arc_quality_pct = arc_quality_pct
                 clip.viral_potential_label = viral_potential_label
                 clip.viral_potential_emoji = viral_potential_emoji
+                clip.status = simple_clip.get("status", "ready" if resolved_url else "not_rendered")
+                clip.rendered = bool(simple_clip.get("rendered", bool(resolved_url)))
+                clip.hook_line = str(simple_clip.get("hook_line") or exact_hook or simple_clip.get("title") or "")
+                clip.transcript_snippet = str(simple_clip.get("transcript_snippet") or simple_clip.get("transcript_window") or "")
+                clip.thumbnail_url = simple_clip.get("thumbnail_url")
+                clip.ranking_rank = simple_clip.get("ranking_rank", rank)
+                clip.viral_score = float(simple_clip.get("viral_score", confidence_pct / 100.0))
                 transformed_clips.append(clip)
             
             # Serialize to JSON for frontend
@@ -4015,6 +4358,14 @@ def results(job_id):
                     "clip_id": clip.clip_id,
                     "title": clip.title,
                     "clip_url": clip.clip_url,
+                    "status": getattr(clip, "status", "ready" if clip.clip_url else "not_rendered"),
+                    "rendered": getattr(clip, "rendered", bool(clip.clip_url)),
+                    "hook_line": getattr(clip, "hook_line", getattr(clip, "exact_hook", clip.title)),
+                    "exact_hook": getattr(clip, "exact_hook", ""),
+                    "transcript_snippet": getattr(clip, "transcript_snippet", ""),
+                    "thumbnail_url": getattr(clip, "thumbnail_url", None),
+                    "ranking_rank": getattr(clip, "ranking_rank", clip.rank),
+                    "viral_score": getattr(clip, "viral_score", round(clip.confidence / 100.0, 2)),
                     "platform_variants": clip.platform_variants,
                     "hook_type": clip.hook_type,
                     "confidence": clip.confidence,

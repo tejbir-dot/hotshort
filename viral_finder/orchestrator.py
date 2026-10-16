@@ -5878,6 +5878,13 @@ def orchestrate(path: str,
         log.info("[FUSION] No clips have visual_energy attached yet (pre-edit). Skipping re-rank.")
     # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
+    # Attach stage2_layers wall_s breakdown to all candidates
+    if ctx and hasattr(ctx, "stage_stats") and ctx.stage_stats:
+        layer_summary = {k: v.get("wall_s") for k, v in ctx.stage_stats.items() if isinstance(v, dict) and "wall_s" in v}
+        for c in final_candidates:
+            if isinstance(c, dict):
+                c["stage2_layers"] = layer_summary
+
     return final_candidates
 # -------------------------
 # CLI helper
