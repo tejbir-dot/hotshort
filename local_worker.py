@@ -2167,12 +2167,27 @@ def _process_job(job: dict, cloudinary_ok: bool):
         elif os.path.exists(video_path) and os.path.getsize(video_path) > 1000:
             print(f"[LOCAL_WORKER] [RETENTION] Reusing retained video file: {video_path} ({os.path.getsize(video_path) // (1024*1024)}MB)", flush=True)
         else:
-            print(f"[LOCAL_WORKER] Downloading video...", flush=True)
-            try:
-                _download_via_api(youtube_url, video_path)
-            except Exception as e:
-                print(f"[LOCAL_WORKER] RapidAPI failed ({e}), falling back to yt-dlp...", flush=True)
-                _download_via_ytdlp(youtube_url, video_path)
+            # Check if any existing job in JOB_CACHE_BASE already downloaded this URL
+            if os.path.isdir(JOB_CACHE_BASE):
+                for d in os.listdir(JOB_CACHE_BASE):
+                    cand_video = os.path.join(JOB_CACHE_BASE, d, "video.mp4")
+                    cand_meta = os.path.join(JOB_CACHE_BASE, d, "job_meta.json")
+                    if os.path.isfile(cand_video) and os.path.isfile(cand_meta):
+                        try:
+                            with open(cand_meta, "r", encoding="utf-8") as cmf:
+                                if json.load(cmf).get("youtube_url") == youtube_url:
+                                    shutil.copy2(cand_video, video_path)
+                                    print(f"[LOCAL_WORKER] [RETENTION] Copied existing video from {d}: {video_path}", flush=True)
+                                    break
+                        except Exception:
+                            pass
+            if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
+                print(f"[LOCAL_WORKER] Downloading video...", flush=True)
+                try:
+                    _download_via_api(youtube_url, video_path)
+                except Exception as e:
+                    print(f"[LOCAL_WORKER] RapidAPI failed ({e}), falling back to yt-dlp...", flush=True)
+                    _download_via_ytdlp(youtube_url, video_path)
 
         if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
             raise RuntimeError(f"Video file is missing or too small: {video_path}")
@@ -2692,7 +2707,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             
                             # 🚀 SILENCE KILLER POST-PROCESSING
                             try:
-                                _bench.start(f"6c_silence_killer_clip{i}")
+                                _bench.begin(f"6c_silence_killer_clip{i}")
                                 from effects.silence_killer import run_silence_killer
                                 nosilence_path = final_path.replace(".mp4", "_nosilence.mp4")
                                 if run_silence_killer(final_path, nosilence_path):
@@ -2797,11 +2812,19 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     url = None
                     t0 = time.perf_counter()
                     _bench.begin(f"6c_upload_clip{i}")
+                    
+                    t_up_start = time.perf_counter() - t_job_start
                     if _LOCAL_MODE:
                         saved = _local_save_clip(final_path, i, start, end)
                         url = f"local://{saved}"
-                        
+                        t_up_end = time.perf_counter() - t_job_start
+                        file_sz = (os.path.getsize(saved) / (1024*1024)) if os.path.exists(saved) else 0.0
+                        up_dur = t_up_end - t_up_start
+                        up_speed = (file_sz / up_dur) if up_dur > 0.001 else 0.0
+                        print(f"[MEASURE_6C] clip={i} sub=upload_save start={t_up_start:.2f}s end={t_up_end:.2f}s dur={up_dur:.3f}s size={file_sz:.1f}MB speed={up_speed:.1f}MB/s retries=0", flush=True)
+
                         # ── GENIUS BRUTAL CAPTIONER ──
+                        t_cap_start = time.perf_counter() - t_job_start
                         try:
                             # Extract raw text from transcript dictionaries if necessary
                             _clip_transcript = clip.get("transcript") or clip.get("captions") or []
@@ -2854,6 +2877,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 print(f"[LOCAL_SAVE] caption -> {_cap_path}", flush=True)
                         except Exception as _ce:
                             print(f"[CAPTIONER] Failed: {_ce}", flush=True)
+                        t_cap_end = time.perf_counter() - t_job_start
+                        print(f"[MEASURE_6C] clip={i} sub=caption start={t_cap_start:.2f}s end={t_cap_end:.2f}s dur={t_cap_end - t_cap_start:.3f}s", flush=True)
                     else:
                         if cloudinary_ok:
                             url = _upload_clip_to_cloudinary(final_path)
@@ -2861,12 +2886,21 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             url = _upload_clip_to_railway(final_path, job_id)
                         if url is None:
                             url = final_path
+                        t_up_end = time.perf_counter() - t_job_start
+                        file_sz = (os.path.getsize(final_path) / (1024*1024)) if os.path.exists(final_path) else 0.0
+                        up_dur = t_up_end - t_up_start
+                        up_speed = (file_sz / up_dur) if up_dur > 0.001 else 0.0
+                        print(f"[MEASURE_6C] clip={i} sub=upload_remote start={t_up_start:.2f}s end={t_up_end:.2f}s dur={up_dur:.3f}s size={file_sz:.1f}MB speed={up_speed:.1f}MB/s retries=0", flush=True)
+
                     t_upload = time.perf_counter() - t0
                     _bench.finish(f"6c_upload_clip{i}")
 
+                    t_post_start = time.perf_counter() - t_job_start
                     clip_res["clip_url"] = url
                     clip_res["status"] = "ready"
                     clip_res["rendered"] = True
+                    t_ready = time.perf_counter() - t_job_start
+                    print(f"[MEASURE_6C] clip={i} sub=status_ready ts={t_ready:.2f}s", flush=True)
                     print(f"[PROGRESSIVE] Clip {i} (rank={clip.get('ranking_rank')}) -> status=ready", flush=True)
                     total_clip_s = round(time.perf_counter() - t_clip_total, 3)
                     clip_res["editor_timing"] = {
@@ -2897,6 +2931,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             print(f"[PROGRESSIVE] TT6={now_s:.1f}s (Top 6 clips ready)", flush=True)
                         
                     # ⚡ Live progressive reporting: push clip to server dashboard immediately!
+                    t_rep_start = time.perf_counter() - t_job_start
                     _report_clip_progress(
                         job_id,
                         clip_res,
@@ -2909,6 +2944,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             "active_started_at": None,
                         }
                     )
+                    t_rep_end = time.perf_counter() - t_job_start
+                    t_post_end = time.perf_counter() - t_job_start
+                    print(f"[MEASURE_6C] clip={i} sub=remainder start={t_post_start:.2f}s end={t_post_end:.2f}s dur={t_post_end - t_post_start:.3f}s (report_progress_dur={t_rep_end - t_rep_start:.3f}s)", flush=True)
 
                     print(
                         f"[EDITOR_TIMING] worker={worker_id} clip={i} raw={t_raw_cut:.2f}s wce={t_wce:.2f}s "
@@ -3185,7 +3223,7 @@ def main():
         print("=" * 55, flush=True)
         for i, c in enumerate(clips):
             title = (c.get("opening_caption") or c.get("title") or "")[:60]
-            saved = c.get("clip_url", "").replace("local://", "")
+            saved = (c.get("clip_url") or "").replace("local://", "")
             print(f"  [{i+1}] {c.get('start',0):.0f}s-{c.get('end',0):.0f}s  {title}", flush=True)
             if saved:
                 print(f"        -> {os.path.basename(saved)}", flush=True)

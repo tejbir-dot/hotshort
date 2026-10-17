@@ -6,6 +6,7 @@ Viral caption generator with dual backend:
 """
 
 import os
+import time
 import requests
 import traceback
 
@@ -157,6 +158,8 @@ TRANSCRIPT:
         if not self.gemini_client:
             return None
         for model_name in _GEMINI_MODELS:
+            t_call0 = time.perf_counter()
+            print(f"[CAPTIONER] Calling Gemini model={model_name}...", flush=True)
             try:
                 from google.genai import types as _gtypes
                 response = self.gemini_client.models.generate_content(
@@ -167,14 +170,16 @@ TRANSCRIPT:
                         max_output_tokens=1400,
                     )
                 )
+                dur = time.perf_counter() - t_call0
                 if response and response.text:
-                    print(f"[CAPTIONER] Gemini [{model_name}] success.", flush=True)
+                    print(f"[CAPTIONER] Gemini [{model_name}] success in {dur:.2f}s.", flush=True)
                     return response.text.replace("**", "").replace("*", "").strip()
                 else:
-                    print(f"[CAPTIONER] {model_name} empty response. Trying next.", flush=True)
+                    print(f"[CAPTIONER] {model_name} empty response in {dur:.2f}s. Trying next.", flush=True)
             except Exception as e:
-                err = str(e)[:120]
-                print(f"[CAPTIONER] {model_name} failed: {err}. Trying next.", flush=True)
+                dur = time.perf_counter() - t_call0
+                err = str(e)
+                print(f"[CAPTIONER] {model_name} failed in {dur:.2f}s: {err}. Trying next.", flush=True)
         return None
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -221,11 +226,14 @@ TRANSCRIPT:
                 "temperature": 0.95,   # high creativity — push past safe generic hooks
                 "messages": [{"role": "user", "content": prompt}]
             }
+            t_or0 = time.perf_counter()
+            print(f"[CAPTIONER] Calling OpenRouter model={model} timeout={timeout}s...", flush=True)
             try:
                 r = requests.post(
                     f"{self.openrouter_base}/chat/completions",
                     headers=headers, json=payload, timeout=timeout
                 )
+                dur = time.perf_counter() - t_or0
                 if r.status_code == 200:
                     data = r.json()
                     content = (
@@ -235,13 +243,14 @@ TRANSCRIPT:
                     if content:
                         # Strip thinking chains before returning
                         content = self._strip_thinking(content)
-                        print(f"[CAPTIONER] OpenRouter [{model}] success.", flush=True)
+                        print(f"[CAPTIONER] OpenRouter [{model}] success in {dur:.2f}s.", flush=True)
                         return content.replace("**", "").replace("*", "").strip()
-                    print(f"[CAPTIONER] {model} empty. Trying next.", flush=True)
+                    print(f"[CAPTIONER] {model} empty in {dur:.2f}s. Trying next.", flush=True)
                 else:
-                    print(f"[CAPTIONER] {model} -> {r.status_code}. Trying next.", flush=True)
+                    print(f"[CAPTIONER] {model} -> {r.status_code} in {dur:.2f}s: {r.text[:200]}. Trying next.", flush=True)
             except Exception as e:
-                print(f"[CAPTIONER] {model} error: {str(e)[:80]}. Trying next.", flush=True)
+                dur = time.perf_counter() - t_or0
+                print(f"[CAPTIONER] {model} error in {dur:.2f}s: {str(e)}. Trying next.", flush=True)
         return None
 
 
