@@ -7,7 +7,19 @@ import tempfile
 import queue
 import threading
 import sys
- 
+
+# Auto-handoff to project .venv if executed with system/global Python (ensures CUDA PyTorch + GPU Whisper)
+_project_dir = os.path.abspath(os.path.dirname(__file__))
+_venv_python = os.path.join(_project_dir, ".venv", "Scripts", "python.exe")
+if os.path.exists(_venv_python) and os.path.abspath(sys.executable).lower() != os.path.abspath(_venv_python).lower():
+    if not os.environ.get("_HOTSHORT_APP_VENV_HANDOFF"):
+        os.environ["_HOTSHORT_APP_VENV_HANDOFF"] = "1"
+        import subprocess
+        sys.exit(subprocess.call([_venv_python] + sys.argv))
+
+if hasattr(sys, "_base_executable"):
+    sys._base_executable = sys.executable
+
 def log_step(msg):
     """Elite Debugger: Force-flushed logging for production isolation."""
     print(f"[TRACE] {msg}", flush=True)
@@ -3999,7 +4011,7 @@ def results(job_id):
             worker_envelope = {
                 "job_id": job.id,
                 "status": job.status,
-                "clips_ready": len(progressive_clips),
+                "clips_ready": len([c for c in progressive_clips if c.get("status") == "ready" or c.get("clip_url")]),
                 "total_expected": envelope_data.get("total_expected", 0),
             }
             return render_template(

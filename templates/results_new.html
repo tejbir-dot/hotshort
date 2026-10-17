@@ -1883,7 +1883,8 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
     function updateLiveETAs() {
       const stats = window.RENDER_STATS || {};
-      const avgS = (typeof stats.avg_clip_render_s === 'number' && stats.avg_clip_render_s > 0) ? stats.avg_clip_render_s : 45.0;
+      const hasAvg = (typeof stats.avg_clip_render_s === 'number' && stats.avg_clip_render_s > 0);
+      const avgS = hasAvg ? stats.avg_clip_render_s : null;
       
       const cards = document.querySelectorAll('.clip-card');
       let queuedIndex = 0;
@@ -1894,34 +1895,57 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           if (stats.active_started_at) {
             elapsed = Math.max(0, (Date.now() / 1000) - stats.active_started_at);
           }
-          const remaining = Math.max(5, Math.round(avgS - elapsed));
-          const pct = Math.min(95, Math.max(10, Math.round((elapsed / avgS) * 100)));
+          
+          let renderEtaFull = '';
+          let btnText = '';
+          let pct = 50;
+          
+          if (hasAvg) {
+            pct = Math.min(95, Math.max(10, Math.round((elapsed / avgS) * 100)));
+            if (elapsed >= avgS) {
+              renderEtaFull = `ETA finishing… • Measured avg ${Math.round(avgS)}s/clip`;
+              btnText = `⚙️ Rendering • finishing…`;
+            } else {
+              const remaining = Math.round(avgS - elapsed);
+              renderEtaFull = `ETA ~${remaining}s • Measured avg ${Math.round(avgS)}s/clip`;
+              btnText = `⚙️ Rendering • ETA ~${remaining}s`;
+            }
+          } else {
+            renderEtaFull = `ETA estimating…`;
+            btnText = `⚙️ Rendering • ETA estimating…`;
+          }
           
           const bar = card.querySelector('.render-progress-bar');
           if (bar) bar.style.width = pct + '%';
           
           const etaEl = card.querySelector('.render-eta-text');
-          if (etaEl) etaEl.textContent = `ETA ~${remaining}s • Measured avg ${Math.round(avgS)}s/clip`;
+          if (etaEl) etaEl.textContent = renderEtaFull;
           
           const btn = card.querySelector('.on-demand-render-btn');
           if (btn && btn.disabled) {
-            btn.textContent = `⚙️ Rendering • ETA ~${remaining}s`;
+            btn.textContent = btnText;
           }
         } else if (st === 'queued') {
-          let elapsedCurrent = 0;
-          if (stats.active_started_at) {
-            elapsedCurrent = Math.max(0, (Date.now() / 1000) - stats.active_started_at);
-          }
-          const remainingCurrent = Math.max(5, Math.round(avgS - elapsedCurrent));
-          const qEta = Math.round(remainingCurrent + (queuedIndex * avgS));
           queuedIndex++;
-
           const qEtaEl = card.querySelector('.queue-eta-text');
-          if (qEtaEl) qEtaEl.textContent = `Queue #${queuedIndex} • ETA ~${qEta}s`;
-
           const btn = card.querySelector('.on-demand-render-btn');
-          if (btn && btn.disabled) {
-            btn.textContent = `⏳ Queued • ETA ~${qEta}s`;
+          
+          if (hasAvg) {
+            let elapsedCurrent = 0;
+            if (stats.active_started_at) {
+              elapsedCurrent = Math.max(0, (Date.now() / 1000) - stats.active_started_at);
+            }
+            const remainingCurrent = (elapsedCurrent >= avgS) ? 0 : Math.round(avgS - elapsedCurrent);
+            const qEta = Math.round(remainingCurrent + ((queuedIndex - 1) * avgS));
+            if (qEtaEl) qEtaEl.textContent = `Queue #${queuedIndex} • ETA ~${qEta}s`;
+            if (btn && btn.disabled) {
+              btn.textContent = `⏳ Queued • ETA ~${qEta}s`;
+            }
+          } else {
+            if (qEtaEl) qEtaEl.textContent = `#${queuedIndex} in line`;
+            if (btn && btn.disabled) {
+              btn.textContent = `⏳ Queued • #${queuedIndex} in line`;
+            }
           }
         }
       });
@@ -2106,11 +2130,18 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         else cContainer.prepend(livePill);
       }
       if (isCompleted) {
-        livePill.innerHTML = `<span>✅ All ${clipsReady} Viral Shorts Ready! Studio Complete.</span>`;
+        const total = totalExpected || (clips ? clips.length : clipsReady);
+        const allDone = (clipsReady >= total && total > 0);
+        const titleText = allDone ? `✅ All ${clipsReady} Viral Shorts Ready! Studio Complete.` : `✅ ${clipsReady} of ${total} Shorts Ready! Studio Complete.`;
+        livePill.innerHTML = `<span>${titleText}</span>`;
         livePill.classList.add('is-completed');
       } else {
-        const total = totalExpected || 15;
-        livePill.innerHTML = `<span>⚡ LIVE STUDIO: ${clipsReady} of ${total} Shorts Ready & Playing • Generating remaining clips in background…</span>`;
+        const total = totalExpected || (clips ? clips.length : 15);
+        if (clipsReady > 0) {
+          livePill.innerHTML = `<span>⚡ LIVE STUDIO: ${clipsReady} of ${total} Shorts Ready & Playing • Generating remaining clips in background…</span>`;
+        } else {
+          livePill.innerHTML = `<span>⚡ LIVE STUDIO: 0 of ${total} Shorts Ready • Generating clips in background…</span>`;
+        }
         livePill.classList.remove('is-completed');
       }
     }
@@ -2151,7 +2182,10 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
               renderCarousel();
               renderTierLine();
-              updateLiveStudioPill(clips.length, data.total_expected || 15, st === 'completed');
+              const readyCount = (typeof data.clips_ready === 'number')
+                ? data.clips_ready
+                : (clips ? clips.filter(c => c.status === 'ready' || c.clip_url).length : 0);
+              updateLiveStudioPill(readyCount, data.total_expected || (clips ? clips.length : 15), st === 'completed');
               checkWorkerOnline();
             }
           } else if (data.clips_ready && data.clips_ready > 0) {
@@ -2164,7 +2198,10 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
           if (st === 'completed') {
             _stopPipelineTimers();
-            updateLiveStudioPill(clips ? clips.length : (data.clips_ready || 1), data.total_expected || (clips ? clips.length : 15), true);
+            const readyCount = (typeof data.clips_ready === 'number')
+              ? data.clips_ready
+              : (clips ? clips.filter(c => c.status === 'ready' || c.clip_url).length : 0);
+            updateLiveStudioPill(readyCount, data.total_expected || (clips ? clips.length : 15), true);
             const hasPending = clips && clips.some(c => c.status === 'queued' || c.status === 'rendering');
             if (!hasPending) {
               return;
@@ -2613,7 +2650,10 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
       const st = _jobStatus();
       if (st && st !== 'completed' && st !== 'failed') {
         const env = window.WORKER_ENVELOPE || {};
-        updateLiveStudioPill(clips.length, env.total_expected || 15, false);
+        const readyCount = (clips && clips.length > 0)
+          ? clips.filter(c => c.status === 'ready' || c.clip_url).length
+          : ((typeof env.clips_ready === 'number') ? env.clips_ready : 0);
+        updateLiveStudioPill(readyCount, env.total_expected || (clips ? clips.length : 15), false);
         if (jobId) pollJobUntilDone(jobId);
       }
 
@@ -2812,19 +2852,51 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
         // Dynamic ETA calculation from measured average
         const stats = window.RENDER_STATS || {};
-        const avgRenderS = (typeof stats.avg_clip_render_s === 'number' && stats.avg_clip_render_s > 0) ? stats.avg_clip_render_s : 45.0;
+        const hasAvg = (typeof stats.avg_clip_render_s === 'number' && stats.avg_clip_render_s > 0);
+        const avgRenderS = hasAvg ? stats.avg_clip_render_s : null;
         
         let elapsed = 0;
         if (stats.active_started_at) {
           elapsed = Math.max(0, (Date.now() / 1000) - stats.active_started_at);
         }
-        const renderingEta = Math.max(5, Math.round(avgRenderS - elapsed));
-        const progressPct = Math.min(95, Math.max(10, Math.round((elapsed / avgRenderS) * 100)));
+
+        let renderEtaLabel = '';
+        let renderingBtnLabel = '';
+        let progressPct = 50;
+        if (hasAvg) {
+          progressPct = Math.min(95, Math.max(10, Math.round((elapsed / avgRenderS) * 100)));
+          if (elapsed >= avgRenderS) {
+            renderEtaLabel = `ETA finishing… • Measured avg ${Math.round(avgRenderS)}s/clip`;
+            renderingBtnLabel = `⚙️ Rendering • finishing…`;
+          } else {
+            const remainingS = Math.round(avgRenderS - elapsed);
+            renderEtaLabel = `ETA ~${remainingS}s • Measured avg ${Math.round(avgRenderS)}s/clip`;
+            renderingBtnLabel = `⚙️ Rendering • ETA ~${remainingS}s`;
+          }
+        } else {
+          renderEtaLabel = `ETA estimating…`;
+          renderingBtnLabel = `⚙️ Rendering • ETA estimating…`;
+        }
 
         // Position in queued items
         const queuedClips = clips.filter(c => (c.status || '').toLowerCase() === 'queued');
         const queuedPos = Math.max(0, queuedClips.findIndex(c => (c.ranking_rank || c.rank) === (clip.ranking_rank || clip.rank)));
-        const queueEta = Math.round(renderingEta + (queuedPos * avgRenderS));
+        
+        let queueEtaLabel = '';
+        let queuedBtnLabel = '';
+        if (hasAvg) {
+          const remainingCur = (elapsed >= avgRenderS) ? 0 : Math.round(avgRenderS - elapsed);
+          const queueEta = Math.round(remainingCur + (queuedPos * avgRenderS));
+          queueEtaLabel = `Queue #${queuedPos + 1} • ETA ~${queueEta}s`;
+          queuedBtnLabel = `⏳ Queued • ETA ~${queueEta}s`;
+        } else {
+          queueEtaLabel = `#${queuedPos + 1} in line`;
+          queuedBtnLabel = `⏳ Queued • #${queuedPos + 1} in line`;
+        }
+
+        const notRenderedHintLabel = hasAvg
+          ? `Click below to render on demand (~${Math.round(avgRenderS)}s)`
+          : `Click below to render on demand`;
 
         const hookLineText = clip.exact_hook || clip.hook_line || clip.title || `Viral Clip #${index + 1}`;
         const transcriptSnippet = clip.transcript_snippet || clip.transcript_window || '';
@@ -2856,7 +2928,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
                 <div class="render-progress-wrap">
                   <div class="render-progress-bar" style="width: ${progressPct}%;"></div>
                 </div>
-                <div class="render-eta-text">ETA ~${renderingEta}s • Measured avg ${Math.round(avgRenderS)}s/clip</div>
+                <div class="render-eta-text">${renderEtaLabel}</div>
               </div>
             </div>
           `;
@@ -2867,7 +2939,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
               <div class="media-overlay-dim">
                 <div class="queue-icon-big">⏳</div>
                 <div class="queue-state-title">QUEUED IN PRIORITY</div>
-                <div class="queue-eta-text">Queue #${queuedPos + 1} • ETA ~${queueEta}s</div>
+                <div class="queue-eta-text">${queueEtaLabel}</div>
                 <div class="queue-subtext">Waiting for active render to finish</div>
               </div>
             </div>
@@ -2881,7 +2953,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
                 <div class="not-rendered-icon-big">⚡</div>
                 <div class="not-rendered-state-title">NOT RENDERED</div>
                 <div class="not-rendered-subtext">Hook & timestamps extracted</div>
-                <div class="not-rendered-hint">Click below to render on demand (~${Math.round(avgRenderS)}s)</div>
+                <div class="not-rendered-hint">${notRenderedHintLabel}</div>
               </div>
             </div>
           `;
@@ -2900,11 +2972,11 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           `;
         } else if (clipStatus === 'rendering') {
           actionButtonsHtml = `
-            <button class="btn on-demand-render-btn is-rendering" disabled style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); cursor: default;">⚙️ Rendering • ETA ~${renderingEta}s</button>
+            <button class="btn on-demand-render-btn is-rendering" disabled style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); cursor: default;">${renderingBtnLabel}</button>
           `;
         } else if (clipStatus === 'queued') {
           actionButtonsHtml = `
-            <button class="btn on-demand-render-btn is-queued" disabled style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); cursor: default;">⏳ Queued • ETA ~${queueEta}s</button>
+            <button class="btn on-demand-render-btn is-queued" disabled style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); cursor: default;">${queuedBtnLabel}</button>
           `;
         } else {
           // not_rendered

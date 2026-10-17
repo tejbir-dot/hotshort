@@ -36,6 +36,15 @@ _local_bin = os.path.abspath(os.path.join(os.path.dirname(__file__), "bin"))
 if os.path.isdir(_local_bin):
     os.environ["PATH"] = _local_bin + os.pathsep + os.environ.get("PATH", "")
 
+# Auto-handoff to project .venv if executed with system/global Python (ensures CUDA PyTorch + GPU Whisper)
+_project_dir = os.path.abspath(os.path.dirname(__file__))
+_venv_python = os.path.join(_project_dir, ".venv", "Scripts", "python.exe")
+if os.path.exists(_venv_python) and os.path.abspath(sys.executable).lower() != os.path.abspath(_venv_python).lower():
+    if not os.environ.get("_HOTSHORT_VENV_HANDOFF"):
+        os.environ["_HOTSHORT_VENV_HANDOFF"] = "1"
+        import subprocess
+        sys.exit(subprocess.call([_venv_python] + sys.argv))
+
 import json
 import time
 import tempfile
@@ -970,7 +979,8 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
             *_js_runtime_args,
             *_player_client_args,
             *extra_args,
-            "--format", "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "-S", "res,vcodec:vp9",
+            "--format", "bestvideo[vcodec^=vp9]+bestaudio/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "--merge-output-format", "mp4",
             "--retries", "10",
             "--fragment-retries", "10",
@@ -991,12 +1001,15 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
 
     refreshed_on_demand = False
     last_err = "unknown error"
+    captured_stdout = ""
+    t_dl_start = time.perf_counter()
 
     for extra_args, label in strategies:
         cmd = _base_cmd(extra_args)
         print(f"[LOCAL_WORKER] yt-dlp attempt [{label}]", flush=True)
         result = subprocess.run(cmd, capture_output=True)
         if result.returncode == 0:
+            captured_stdout = result.stdout.decode("utf-8", errors="replace")
             break
 
         last_err = result.stderr.decode("utf-8", errors="replace")
@@ -1018,6 +1031,7 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
                     print("[LOCAL_WORKER] yt-dlp retrying with refreshed cookies.txt...", flush=True)
                     retry_result = subprocess.run(cmd_refreshed, capture_output=True)
                     if retry_result.returncode == 0:
+                        captured_stdout = retry_result.stdout.decode("utf-8", errors="replace")
                         break
                     last_err = retry_result.stderr.decode("utf-8", errors="replace")
             continue
@@ -1029,6 +1043,40 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
 
     if not os.path.exists(dest_path) or os.path.getsize(dest_path) < 1000:
         raise RuntimeError("yt-dlp completed but output file is missing or empty.")
+
+    dl_wall_s = time.perf_counter() - t_dl_start
+    size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+    fmt_str = "unknown"
+    codec_str = "unknown"
+    wxh_str = "unknown"
+
+    for line in captured_stdout.splitlines():
+        if line.startswith("format_id: "):
+            fmt_str = line.replace("format_id: ", "").strip()
+            break
+
+    try:
+        probe_res = subprocess.run([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=codec_name,width,height",
+            "-show_entries", "format=format_name",
+            "-of", "json", dest_path
+        ], capture_output=True, text=True, timeout=10)
+        if probe_res.returncode == 0:
+            import json as _json
+            pdata = _json.loads(probe_res.stdout)
+            streams = pdata.get("streams", [])
+            if streams:
+                codec_str = streams[0].get("codec_name", "unknown")
+                w = streams[0].get("width", "?")
+                h = streams[0].get("height", "?")
+                wxh_str = f"{w}x{h}"
+            if fmt_str == "unknown":
+                fmt_str = pdata.get("format", {}).get("format_name", "mp4").split(",")[0]
+    except Exception:
+        pass
+
+    print(f"[SOURCE] fmt={fmt_str} codec={codec_str} WxH={wxh_str} size={size_mb:.2f}MB download_wall_s={dl_wall_s:.2f}s", flush=True)
 
 
 def _download_via_api(youtube_url: str, dest_path: str):
@@ -2542,17 +2590,57 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     _bench.begin(f"6a_extract_clip{i}")
                     duration = max(0.1, end - start)
                     import subprocess
-                    subprocess.run([
-                        "ffmpeg", "-y", "-nostdin",
-                        "-ss", f"{start:.3f}",
-                        "-i", video_path,
-                        "-t", f"{duration:.3f}",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
-                        "-c:a", "aac", "-async", "1",
-                        raw_path
-                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
+
+                    use_nvenc = os.environ.get("HS_6A_NVENC", "1").strip().lower() not in ("0", "false", "no")
+                    encoder_used = "nvenc" if use_nvenc else "libx264_fallback"
+                    cut_ok = False
+
+                    if use_nvenc:
+                        try:
+                            res_nvenc = subprocess.run([
+                                "ffmpeg", "-y", "-nostdin",
+                                "-ss", f"{start:.3f}",
+                                "-i", video_path,
+                                "-t", f"{duration:.3f}",
+                                "-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "19", "-b:v", "0",
+                                "-c:a", "aac", "-async", "1",
+                                raw_path
+                            ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=180)
+                            if res_nvenc.returncode == 0 and os.path.exists(raw_path) and os.path.getsize(raw_path) >= 1000:
+                                cut_ok = True
+                            else:
+                                print(f"[LOCAL_WORKER] [6A] NVENC returned {res_nvenc.returncode}, falling back to libx264...", flush=True)
+                        except Exception as e:
+                            print(f"[LOCAL_WORKER] [6A] NVENC failed ({e}), falling back to libx264...", flush=True)
+
+                    if not cut_ok:
+                        encoder_used = "libx264_fallback"
+                        subprocess.run([
+                            "ffmpeg", "-y", "-nostdin",
+                            "-ss", f"{start:.3f}",
+                            "-i", video_path,
+                            "-t", f"{duration:.3f}",
+                            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+                            "-c:a", "aac", "-async", "1",
+                            raw_path
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
+
                     t_raw_cut = time.perf_counter() - t0
                     _bench.finish(f"6a_extract_clip{i}")
+
+                    # Measure output duration for verification log
+                    out_dur = duration
+                    try:
+                        probe_d = subprocess.run([
+                            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "default=noprint_wrappers=1:nokey=1", raw_path
+                        ], capture_output=True, text=True, timeout=10)
+                        if probe_d.returncode == 0 and probe_d.stdout.strip():
+                            out_dur = float(probe_d.stdout.strip())
+                    except Exception:
+                        pass
+
+                    print(f"[6A] encoder={encoder_used} wall_s={t_raw_cut:.2f} out_dur={out_dur:.2f} req_dur={duration:.2f}", flush=True)
 
                     final_path = raw_path
                     t_wce = 0.0
@@ -2604,6 +2692,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             
                             # 🚀 SILENCE KILLER POST-PROCESSING
                             try:
+                                _bench.start(f"6c_silence_killer_clip{i}")
                                 from effects.silence_killer import run_silence_killer
                                 nosilence_path = final_path.replace(".mp4", "_nosilence.mp4")
                                 if run_silence_killer(final_path, nosilence_path):
@@ -2612,6 +2701,8 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                     shutil.move(nosilence_path, final_path)
                             except Exception as e:
                                 print(f"[SILENCE_KILLER] Post-processing failed: {e}", flush=True)
+                            finally:
+                                _bench.finish(f"6c_silence_killer_clip{i}")
                                 
                             clip_res["edit_metadata"] = getattr(edit_result, "metadata", {}) or {}
                             detect_calls = int(clip_res["edit_metadata"].get("edit_profile", {}).get("detect_calls", 0))

@@ -87,10 +87,22 @@ def _log(level: str, *args):
 # -----------------------
 def resolve_device(prefer_gpu: bool = DEFAULT_PRETEND_GPU) -> str:
     try:
-        # 1. Respect explicit environment variable WHISPER_DEVICE
+        # 1. Respect explicit environment variable WHISPER_DEVICE (only if CUDA is actually usable)
         env_device = os.environ.get("WHISPER_DEVICE", "").strip().lower()
-        if env_device in ("cuda", "cpu"):
-            return env_device
+        if env_device == "cuda":
+            has_torch_cuda = torch is not None and torch.cuda.is_available()
+            has_ct2_cuda = False
+            try:
+                import ctranslate2
+                has_ct2_cuda = ctranslate2.get_cuda_device_count() > 0
+            except Exception:
+                pass
+            if has_torch_cuda or has_ct2_cuda:
+                return "cuda"
+            _log("WARN", "WHISPER_DEVICE=cuda was specified, but PyTorch/ctranslate2 CUDA is not available. Auto-falling back to CPU.")
+            return "cpu"
+        elif env_device == "cpu":
+            return "cpu"
 
         # 2. Check ctranslate2 CUDA devices — but ALSO verify torch agrees
         #    ctranslate2 can report cuda available even when torch cannot use it
@@ -558,9 +570,15 @@ def load_model_instance(model_name: str, prefer_gpu: bool):
             
     if whisper:
         _log("INFO", f"Loading openai-whisper '{model_name}' on {device}...")
-        model = whisper.load_model(model_name, device=device)
-        _MODEL_CACHE[key] = ("whisper", model, device)
-        return _MODEL_CACHE[key]
+        try:
+            model = whisper.load_model(model_name, device=device)
+            _MODEL_CACHE[key] = ("whisper", model, device)
+            return _MODEL_CACHE[key]
+        except Exception as e:
+            _log("WARN", f"openai-whisper load on {device} failed ({e}), falling back to CPU...")
+            model = whisper.load_model(model_name, device="cpu")
+            _MODEL_CACHE[(model_name, "cpu")] = ("whisper", model, "cpu")
+            return _MODEL_CACHE[(model_name, "cpu")]
         
     raise RuntimeError("No whisper backend found.")
 
