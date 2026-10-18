@@ -52,6 +52,8 @@ import subprocess
 import traceback
 import queue
 import shutil
+import threading
+import concurrent.futures
 
 # ── Pipeline benchmark (one report per job) ────────────────────────────────
 try:
@@ -128,6 +130,11 @@ _HEADERS = {
     "X-Worker-Secret": WORKER_SECRET,
     "Content-Type": "application/json",
 }
+
+# ── Social Caption Generator Configuration ────────────────────────────────────
+HS_GENERATE_CAPTIONS = os.getenv("HS_GENERATE_CAPTIONS", "1").strip().lower() not in ("0", "false", "no")
+HS_ASYNC_CAPTIONS   = os.getenv("HS_ASYNC_CAPTIONS", "1").strip().lower() not in ("0", "false", "no")
+HS_CAPTION_WORKERS  = max(1, int(os.getenv("HS_CAPTION_WORKERS", "2")))
 
 # ── Retention & Job Cache Configuration (Phase 3) ─────────────────────────────
 HS_JOB_RETENTION_HOURS = float(os.getenv("HS_JOB_RETENTION_HOURS", "24"))
@@ -235,6 +242,7 @@ def _print_startup_banner():
     print(f"  [LOCAL_WORKER] Whisper    = {whisper_model} on {whisper_device}", flush=True)
     print(f"  [LOCAL_WORKER] FFmpeg GPU = {ffmpeg_nvenc} (h264_nvenc)", flush=True)
     print(f"  [LOCAL_WORKER] Poll every = {POLL_INTERVAL}s", flush=True)
+    print(f"  [LOCAL_WORKER] Captions   = generate={int(HS_GENERATE_CAPTIONS)} async={int(HS_ASYNC_CAPTIONS)} workers={HS_CAPTION_WORKERS}", flush=True)
 
     if whisper_device == "cpu":
         print("", flush=True)
@@ -423,10 +431,12 @@ def _report_stage2_cards(job_id: str, clips: list, total_expected: int, metrics:
         print(f"[LOCAL_WORKER] Failed to publish Stage 2 cards: {e}", flush=True)
 
 
-def _report_clip_progress(job_id: str, clip: dict, total_expected: int, metrics: dict = None, render_stats: dict = None):
-    """POST /api/jobs/{id}/progress as each clip updates (rendering/ready/failed)."""
+def _report_clip_progress_sync(job_id: str, clip: dict, total_expected: int, metrics: dict = None, render_stats: dict = None):
+    """Internal sync POST to Railway with 3s timeout and explicit latency & status logging."""
     if not job_id or not RAILWAY_URL:
         return
+    t0 = time.perf_counter()
+    clip_desc = f"{clip.get('start', 0):.0f}s-{clip.get('end', 0):.0f}s rank={clip.get('ranking_rank', '?')}"
     try:
         clip_data = _json_safe(clip)
         payload = {"clip": clip_data, "total_expected": total_expected}
@@ -438,13 +448,159 @@ def _report_clip_progress(job_id: str, clip: dict, total_expected: int, metrics:
             f"{RAILWAY_URL}/api/jobs/{job_id}/progress",
             headers=_HEADERS,
             json=payload,
-            timeout=10,
+            timeout=3,
         )
+        dur = time.perf_counter() - t0
         if resp.ok:
-            data = resp.json()
-            print(f"[LOCAL_WORKER] ⚡ Streamed clip {clip.get('start', 0):.0f}s-{clip.get('end', 0):.0f}s to server ({data.get('clips_ready', 1)}/{total_expected} ready)", flush=True)
+            data = resp.json() if resp.text else {}
+            print(f"[REPORT_PROGRESS] job={job_id} clip={clip_desc} status={resp.status_code} dur={dur:.2f}s ({data.get('clips_ready', 1)}/{total_expected} ready)", flush=True)
+        else:
+            print(f"[REPORT_PROGRESS] job={job_id} clip={clip_desc} status={resp.status_code} dur={dur:.2f}s resp={resp.text[:60]}", flush=True)
     except Exception as e:
-        pass
+        dur = time.perf_counter() - t0
+        print(f"[REPORT_PROGRESS] job={job_id} clip={clip_desc} FAILED ({type(e).__name__}: {e}) dur={dur:.2f}s", flush=True)
+
+
+def _report_clip_progress(job_id: str, clip: dict, total_expected: int, metrics: dict = None, render_stats: dict = None):
+    """Non-blocking daemon thread so network telemetry never blocks local video rendering."""
+    t = threading.Thread(
+        target=_report_clip_progress_sync,
+        args=(job_id, clip, total_expected, metrics, render_stats),
+        daemon=True
+    )
+    t.start()
+
+
+def _generate_viral_caption_worker(
+    clip_idx: int,
+    c_rank: int,
+    saved_path: str,
+    clip_dict: dict,
+    job_dict: dict,
+    t_job_start: float,
+    caption_stats: list = None,
+    caption_stats_lock: threading.Lock = None,
+) -> dict:
+    t_cap_start = time.perf_counter()
+    ts_cap_start = t_cap_start - t_job_start
+    source = "gemini"
+    cap_text = None
+
+    _words = clip_dict.get("words", [])
+    _sliced_words = []
+    if _words and isinstance(_words, list):
+        start = float(clip_dict.get("start", 0))
+        end = float(clip_dict.get("end", start + 30))
+        for w in _words:
+            if isinstance(w, dict):
+                w_start = float(w.get("start", 0))
+                w_end = float(w.get("end", 0))
+                if w_end >= start and w_start <= end:
+                    _sliced_words.append(str(w.get("word") or w.get("text") or "").strip())
+            elif isinstance(w, str):
+                _sliced_words.append(w)
+    _clip_text = " ".join([w for w in _sliced_words if w])
+    if not _clip_text:
+        _hook = clip_dict.get("hook_text", "")
+        _payoff = clip_dict.get("payoff_text", "")
+        _exact_text = f"{_hook} {_payoff}".strip()
+        _clip_text = _exact_text if _exact_text else str(clip_dict.get("transcript_window", ""))
+
+    _hook_text = (
+        clip_dict.get("opening_caption")
+        or clip_dict.get("title")
+        or (_clip_text[:120] if _clip_text else "")
+        or str(clip_dict.get("transcript_window", ""))[:120]
+        or "Viral Moment"
+    )
+
+    _cortex = clip_dict.get("cortex_hints", {})
+    if _cortex:
+        _h_type = _cortex.get("hook_type", "")
+        _why = _cortex.get("why_this_clip_works", "")
+        _ls = _cortex.get("learning_signal_for_hotshort", {})
+        _meaning = _ls.get("meaning_pattern", "") if isinstance(_ls, dict) else ""
+        _clip_text += f"\n\n--- METADATA ---\nHook Type: {_h_type}\nWhy it works: {_why}\nKeywords: {_meaning}"
+
+    _creator = job_dict.get("creator_name") or job_dict.get("channel_name")
+    if not _creator:
+        _out_path = job_dict.get("output_dir", "")
+        if "Double_Coverage" in _out_path:
+            _creator = "Double Coverage"
+        elif "Crypto" in _out_path:
+            _creator = "Crypto Bros"
+        else:
+            _creator = "Creator"
+
+    def _call_captioner():
+        from effects.genius_brutal_captioner import BrutalCaptioner
+        captioner = BrutalCaptioner()
+        return captioner.generate_viral_caption(_clip_text, creator_name=_creator)
+
+    # Per-call timeout 240s
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as inner_exec:
+        inner_fut = inner_exec.submit(_call_captioner)
+        try:
+            cap_text = inner_fut.result(timeout=240.0)
+        except concurrent.futures.TimeoutError:
+            print(f"[CAPTIONER] Timeout (240s) reached for clip={clip_idx} rank={c_rank}", flush=True)
+            source = "fallback"
+        except Exception as ce:
+            print(f"[CAPTIONER] Failed for clip={clip_idx} rank={c_rank}: {ce}", flush=True)
+            source = "fallback"
+
+    if not cap_text or len(cap_text.strip()) == 0:
+        source = "fallback"
+        cap_text = (
+            f"📱 TIKTOK CAPTION:\n{_hook_text}\n\n"
+            f"Watch until the end. Drop your thoughts below!\n"
+            f"Click the link in bio for more.\n"
+            f"@{_creator}\n"
+            f"#shorts #viral #clip #{_creator.lower().replace(' ', '')}\n\n"
+            f"--------------------------------------------------\n\n"
+            f"🟥 YOUTUBE SHORTS CAPTION:\n{_hook_text}\n\n"
+            f"Did you expect this? Let us know in the comments!\n"
+            f"Subscribe for daily viral moments.\n"
+            f"@{_creator}\n"
+            f"#shorts #youtube #viral\n\n"
+            f"--------------------------------------------------\n\n"
+            f"📸 INSTAGRAM REELS CAPTION:\n{_hook_text}\n\n"
+            f"The moment everyone is talking about.\n"
+            f"Share this with someone who needs to see this!\n"
+            f"Link in bio.\n"
+            f"@{_creator}\n"
+            f"#reels #trending #explore\n"
+        )
+
+    _cap_path = saved_path.replace(".mp4", "_caption.txt")
+    try:
+        with open(_cap_path, "w", encoding="utf-8") as _cf:
+            _cf.write(cap_text)
+        print(f"[LOCAL_SAVE] caption -> {_cap_path} (source={source})", flush=True)
+    except Exception as _we:
+        print(f"[CAPTIONER] Failed to write {_cap_path}: {_we}", flush=True)
+
+    t_cap_end = time.perf_counter()
+    dur = t_cap_end - t_cap_start
+    ts_cap_done = t_cap_end - t_job_start
+    print(
+        f"[MEASURE_CAPTION] clip={clip_idx} rank={c_rank} source={source} "
+        f"start_at={ts_cap_start:.2f}s done_at={ts_cap_done:.2f}s dur={dur:.2f}s",
+        flush=True
+    )
+    res = {
+        "clip_idx": clip_idx,
+        "rank": c_rank,
+        "source": source,
+        "cap_path": _cap_path,
+        "start_at": ts_cap_start,
+        "done_at": ts_cap_done,
+        "dur": dur,
+    }
+    if caption_stats is not None and caption_stats_lock is not None:
+        with caption_stats_lock:
+            caption_stats.append(res)
+    return res
 
 
 def _poll_demand_queue(job_id: str) -> tuple:
@@ -2530,9 +2686,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
         active_rendering_lock = threading.Lock()
         active_rendering_info = {"rank": None, "started_at": None}
 
+        # ── Caption ThreadPoolExecutor for background social-post captions ──────
+        caption_executor = None
+        caption_futures = []
+        caption_stats = []
+        caption_stats_lock = threading.Lock()
+        if HS_GENERATE_CAPTIONS and HS_ASYNC_CAPTIONS:
+            caption_executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=HS_CAPTION_WORKERS,
+                thread_name_prefix="hs_caption"
+            )
+
         def run_editor(worker_id: int):
-            from effects.genius_brutal_captioner import BrutalCaptioner
-            captioner = BrutalCaptioner()
 
             # Isolated editor instance per worker thread to prevent file collisions
             worker_editor = None
@@ -2823,62 +2988,14 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         up_speed = (file_sz / up_dur) if up_dur > 0.001 else 0.0
                         print(f"[MEASURE_6C] clip={i} sub=upload_save start={t_up_start:.2f}s end={t_up_end:.2f}s dur={up_dur:.3f}s size={file_sz:.1f}MB speed={up_speed:.1f}MB/s retries=0", flush=True)
 
-                        # ── GENIUS BRUTAL CAPTIONER ──
-                        t_cap_start = time.perf_counter() - t_job_start
-                        try:
-                            # Extract raw text from transcript dictionaries if necessary
-                            _clip_transcript = clip.get("transcript") or clip.get("captions") or []
-                            _clip_text = ""
-                            if isinstance(_clip_transcript, list) and len(_clip_transcript) > 0:
-                                # Filter words that fall within this clip's timestamps
-                                _sliced_words = []
-                                for w in _clip_transcript:
-                                    if isinstance(w, dict):
-                                        w_start = float(w.get("start", 0))
-                                        w_end = float(w.get("end", w_start))
-                                        # Include if it overlaps with the clip window
-                                        if w_end >= start and w_start <= end:
-                                            _sliced_words.append(str(w.get("word") or w.get("text") or "").strip())
-                                    elif isinstance(w, str):
-                                        _sliced_words.append(w)
-                                _clip_text = " ".join([w for w in _sliced_words if w])
-                            
-                            if not _clip_text:
-                                _hook = clip.get("hook_text", "")
-                                _payoff = clip.get("payoff_text", "")
-                                _exact_text = f"{_hook} {_payoff}".strip()
-                                _clip_text = _exact_text if _exact_text else str(clip.get("transcript_window", ""))
-                                
-                            # Append metadata
-                            _cortex = clip.get("cortex_hints", {})
-                            if _cortex:
-                                _h_type = _cortex.get("hook_type", "")
-                                _why = _cortex.get("why_this_clip_works", "")
-                                _ls = _cortex.get("learning_signal_for_hotshort", {})
-                                _meaning = _ls.get("meaning_pattern", "") if isinstance(_ls, dict) else ""
-                                _clip_text += f"\n\n--- METADATA ---\nHook Type: {_h_type}\nWhy it works: {_why}\nKeywords: {_meaning}"
-                            
-                            # Extract creator name from job details if available
-                            _creator = job.get("creator_name") or job.get("channel_name")
-                            if not _creator:
-                                # Try to extract from output path/folder
-                                _out_path = job.get("output_dir", "")
-                                if "Double_Coverage" in _out_path:
-                                    _creator = "Double Coverage"
-                                elif "Crypto" in _out_path:
-                                    _creator = "Crypto Bros"
-                                else:
-                                    _creator = "Creator"
-                            _cap_text = captioner.generate_viral_caption(_clip_text, creator_name=_creator)
-                            if _cap_text:
-                                _cap_path = saved.replace(".mp4", "_caption.txt")
-                                with open(_cap_path, "w", encoding="utf-8") as _cf:
-                                    _cf.write(_cap_text)
-                                print(f"[LOCAL_SAVE] caption -> {_cap_path}", flush=True)
-                        except Exception as _ce:
-                            print(f"[CAPTIONER] Failed: {_ce}", flush=True)
-                        t_cap_end = time.perf_counter() - t_job_start
-                        print(f"[MEASURE_6C] clip={i} sub=caption start={t_cap_start:.2f}s end={t_cap_end:.2f}s dur={t_cap_end - t_cap_start:.3f}s", flush=True)
+                        # If blocking captions requested (HS_ASYNC_CAPTIONS=0), generate before status=ready
+                        if HS_GENERATE_CAPTIONS and not HS_ASYNC_CAPTIONS:
+                            t_cap_start = time.perf_counter() - t_job_start
+                            _generate_viral_caption_worker(
+                                i, c_rank, saved, clip, job, t_job_start, caption_stats, caption_stats_lock
+                            )
+                            t_cap_end = time.perf_counter() - t_job_start
+                            print(f"[MEASURE_6C] clip={i} sub=caption_blocking start={t_cap_start:.2f}s end={t_cap_end:.2f}s dur={t_cap_end - t_cap_start:.3f}s", flush=True)
                     else:
                         if cloudinary_ok:
                             url = _upload_clip_to_cloudinary(final_path)
@@ -2902,6 +3019,16 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     t_ready = time.perf_counter() - t_job_start
                     print(f"[MEASURE_6C] clip={i} sub=status_ready ts={t_ready:.2f}s", flush=True)
                     print(f"[PROGRESSIVE] Clip {i} (rank={clip.get('ranking_rank')}) -> status=ready", flush=True)
+
+                    # If async captions enabled (HS_ASYNC_CAPTIONS=1), submit to background ThreadPoolExecutor
+                    if _LOCAL_MODE and HS_GENERATE_CAPTIONS and HS_ASYNC_CAPTIONS and caption_executor is not None:
+                        fut = caption_executor.submit(
+                            _generate_viral_caption_worker,
+                            i, c_rank, saved, clip, job, t_job_start, caption_stats, caption_stats_lock
+                        )
+                        caption_futures.append(fut)
+                    elif _LOCAL_MODE and not HS_GENERATE_CAPTIONS:
+                        print(f"[CAPTIONER] clip={i} HS_GENERATE_CAPTIONS=0 -> Skipped", flush=True)
                     total_clip_s = round(time.perf_counter() - t_clip_total, 3)
                     clip_res["editor_timing"] = {
                         "raw_cut_s": round(t_raw_cut, 3),
@@ -3047,6 +3174,26 @@ def _process_job(job: dict, cloudinary_ok: bool):
         producer.join()
         for c in consumers:
             c.join()
+        
+        # ── Join background caption tasks (total cap 300s) ───────────────────────
+        if caption_futures:
+            t_join_start = time.perf_counter()
+            print(f"[CAPTION_JOIN] Waiting for {len(caption_futures)} pending caption task(s) (total cap 300s)...", flush=True)
+            cap_deadline = time.time() + 300.0
+            for fut in caption_futures:
+                rem = max(0.1, cap_deadline - time.time())
+                try:
+                    fut.result(timeout=rem)
+                except Exception as fe:
+                    print(f"[CAPTION_JOIN] Caption task completed with exception/timeout: {fe}", flush=True)
+            t_join_dur = time.perf_counter() - t_join_start
+            print(f"[CAPTION_JOIN] All captions joined in {t_join_dur:.2f}s", flush=True)
+        if caption_executor is not None:
+            caption_executor.shutdown(wait=True)
+
+        if caption_stats:
+            fallback_caps = [c for c in caption_stats if c.get("source") == "fallback"]
+            print(f"[CAPTION_SUMMARY] Total={len(caption_stats)} | Gemini={len(caption_stats)-len(fallback_caps)} | Fallback={len(fallback_caps)}", flush=True)
         
         job_active.clear()
         demand_thread.join(timeout=1.0)

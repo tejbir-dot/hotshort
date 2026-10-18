@@ -17,9 +17,10 @@ except ImportError:
     def is_groq_enabled(): return False
 
 try:
-    from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
+    from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely, get_gemini_api_keys
 except ImportError:
     def is_gemini_enabled(): return False
+    def get_gemini_api_keys(): return []
 
 
 
@@ -660,21 +661,10 @@ def _run_llm_detection(transcript_segments: List[Dict], log: logging.Logger) -> 
     import uuid
     import time as _time
 
-    all_triggers = []
-    failed_chunks: list[int] = []  # track which chunk indices fully failed
     MAX_CHUNK_RETRIES = 3
 
-    for chunk_idx, segs_to_use in enumerate(chunks):
+    def _process_chunk(chunk_idx: int, segs_to_use: List[Dict], assigned_key: str | None, total_chunks: int, is_gemini: bool):
         chunk_t0 = _time.time()
-        if chunk_idx > 0:
-            if not gemini_enabled:
-                log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 8 seconds before chunk {chunk_idx+1}/{len(chunks)} to respect TPM limits...")
-                _time.sleep(8.0)
-            else:
-                log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 1 second before chunk {chunk_idx+1}/{len(chunks)}...")
-                _time.sleep(1.0)
-                log.info(f"[TRIGGER_FORENSIC_LLM] Preparing chunk {chunk_idx+1}/{len(chunks)} for Gemini...")
-
         transcript_text = ""
         for s in segs_to_use:
             transcript_text += f"[{s.get('start', 0):.1f}-{s.get('end', 0):.1f}] {s.get('text', '')}\n"
@@ -804,14 +794,15 @@ Transcript:
 {transcript_text}
 """
 
+        chunk_triggers = []
         chunk_succeeded = False
         last_exc: Exception | None = None
 
         for attempt in range(1, MAX_CHUNK_RETRIES + 1):
             try:
-                if gemini_enabled:
-                    log.info(f"[TRIGGER_FORENSIC_LLM] 🚀 Attempting request with model: gemini (primary)")
-                    raw_resp_text = post_gemini_completions(prompt=prompt, response_format_schema={"type": "json_object"})
+                if is_gemini:
+                    log.info(f"[TRIGGER_FORENSIC_LLM] 🚀 Chunk {chunk_idx+1}/{total_chunks} Attempt {attempt} with Gemini key: {(assigned_key or '')[:10]}...")
+                    raw_resp_text = post_gemini_completions(prompt=prompt, response_format_schema={"type": "json_object"}, api_key=assigned_key)
                     data = parse_gemini_json_safely(raw_resp_text)
                 else:
                     raise Exception("Gemini API is not enabled! Cannot run forensic trigger extraction.")
@@ -859,7 +850,7 @@ Transcript:
                         trace_id=str(uuid.uuid4())
                     )
 
-                    all_triggers.append({
+                    chunk_triggers.append({
                         "id": uuid.uuid4().hex,
                         "start": float(t.get("start", 0)),
                         "end": float(t.get("end", 0)),
@@ -873,7 +864,7 @@ Transcript:
                     })
                     found_in_chunk += 1
                 wall_s = round(_time.time() - chunk_t0, 2)
-                log.info(f"[TRIGGER_FORENSIC_LLM] Chunk {chunk_idx+1}/{len(chunks)} complete: {found_in_chunk} triggers found in {wall_s}s.")
+                log.info(f"[TRIGGER_FORENSIC_LLM] Chunk {chunk_idx+1}/{total_chunks} complete: {found_in_chunk} triggers found in {wall_s}s.")
                 chunk_succeeded = True
                 break  # success — stop retrying this chunk
 
@@ -887,8 +878,72 @@ Transcript:
                 if attempt < MAX_CHUNK_RETRIES:
                     _time.sleep(backoff)
 
-        if not chunk_succeeded:
+        return chunk_idx, chunk_triggers, chunk_succeeded, last_exc
+
+    gemini_keys = get_gemini_api_keys() if gemini_enabled else []
+    parallel_flag = os.environ.get("HS_PARALLEL_TRIGGERS", "0").strip() == "1"
+    use_parallel = parallel_flag and gemini_enabled and len(gemini_keys) >= 2 and len(chunks) > 1
+
+    chunk_results = []
+    if use_parallel:
+        try:
+            max_workers = min(2, len(gemini_keys), len(chunks))
+            log.info(f"[TRIGGER_FORENSIC_LLM] ⚡ PARALLEL TRIGGER DISPATCH: {len(chunks)} chunks across {len(gemini_keys)} keys ({max_workers} worker threads, max 2)")
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            def _worker_task(args):
+                idx, segs = args
+                key = gemini_keys[idx % len(gemini_keys)]
+                return _process_chunk(idx, segs, key, len(chunks), True)
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(_worker_task, (idx, chunk)) for idx, chunk in enumerate(chunks)]
+                for fut in as_completed(futures):
+                    chunk_results.append(fut.result())
+
+            # Sort by chunk_idx to strictly preserve chronological order
+            chunk_results.sort(key=lambda x: x[0])
+
+            # If any chunk failed during parallel dispatch (e.g. 429 / network error on secondary key),
+            # fall back immediately by re-attempting failed chunks sequentially on primary key
+            failed_in_par = [r[0] for r in chunk_results if not r[2]]
+            if failed_in_par:
+                log.warning(f"[TRIGGER_FORENSIC_LLM] ⚠️ {len(failed_in_par)} chunks failed in parallel dispatch. Falling back sequentially on primary key...")
+                primary_key = gemini_keys[0]
+                for idx in failed_in_par:
+                    log.info(f"[TRIGGER_FORENSIC_LLM] Sequential fallback re-attempt for chunk {idx+1}/{len(chunks)}...")
+                    _time.sleep(1.0)
+                    res = _process_chunk(idx, chunks[idx], primary_key, len(chunks), True)
+                    for r_i, r in enumerate(chunk_results):
+                        if r[0] == idx:
+                            chunk_results[r_i] = res
+                            break
+
+        except Exception as par_err:
+            log.warning(f"[TRIGGER_FORENSIC_LLM] ⚠️ Parallel dispatch encountered error ({par_err}). Falling back completely to sequential mode...")
+            chunk_results = []
+
+    if not chunk_results:
+        primary_key = gemini_keys[0] if gemini_keys else None
+        for chunk_idx, segs_to_use in enumerate(chunks):
+            if chunk_idx > 0:
+                if not gemini_enabled:
+                    log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 8 seconds before chunk {chunk_idx+1}/{len(chunks)} to respect TPM limits...")
+                    _time.sleep(8.0)
+                else:
+                    log.info(f"[TRIGGER_FORENSIC_LLM] Waiting 1 second before chunk {chunk_idx+1}/{len(chunks)}...")
+                    _time.sleep(1.0)
+            res = _process_chunk(chunk_idx, segs_to_use, primary_key, len(chunks), gemini_enabled)
+            chunk_results.append(res)
+
+    all_triggers = []
+    failed_chunks: list[int] = []  # track which chunk indices fully failed
+    for chunk_idx, chunk_triggers, success, last_exc in chunk_results:
+        if success:
+            all_triggers.extend(chunk_triggers)
+        else:
             failed_chunks.append(chunk_idx)
+            segs_to_use = chunks[chunk_idx]
             log.error(
                 f"[TRIGGER_FORENSIC_LLM] ⚠️ CHUNK {chunk_idx+1}/{len(chunks)} PERMANENTLY FAILED after {MAX_CHUNK_RETRIES} attempts. "
                 f"Last error: {last_exc}. "

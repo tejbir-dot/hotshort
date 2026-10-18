@@ -2921,13 +2921,33 @@ class ClipEditor:
                         anchor_y = 0.40 # Eyes are slightly above center
                         dur = seg.end_t - seg.start_t
                         
-                        from effects.broll_engine import get_ken_burns_filter
-                        kb_filter = get_ken_burns_filter(seg.start_t, dur, width=dst_w, height=dst_h, anchor_x=anchor_x, anchor_y=anchor_y)
-                        
-                        log.info(f"[KEN_BURNS_CLIP] seg_idx={idx} mode={seg.mode} anchor_x={anchor_x:.3f}")
-                        chain = f"[v_{idx}_raw]{kb_filter}[v_{idx}_out]"
-                        vf_parts.append(chain)
-                        continue
+                        HS_FIX_KB_CONCAT = os.getenv("HS_FIX_KB_CONCAT", "1").lower() in ("1", "true", "yes")
+                        if HS_FIX_KB_CONCAT:
+                            crop_h = max(2, src_h) & ~1
+                            crop_w = max(2, int(round(crop_h * dst_ar))) & ~1
+                            c_x = int(round(_clamp(median_x - crop_w / 2.0, 0.0, src_w - crop_w))) & ~1
+                            c_y = max(0, int(round((src_h - crop_h) * 0.35))) & ~1
+                            fps = 30
+                            total_frames = max(1, int(dur * fps))
+                            zoom_step = 0.05 / max(1, total_frames)
+                            kb_filter = (
+                                f"crop={crop_w}:{crop_h}:{c_x}:{c_y},scale={dst_w}:{dst_h}:flags=lanczos,setsar=1,"
+                                f"zoompan=z='min(zoom+{zoom_step:.6f},1.0500)':x='iw/2-(iw/zoom/2)':y='ih*{anchor_y:.3f}*(1-1/zoom)':d=1:s={dst_w}x{dst_h}:fps={fps},"
+                                f"setpts=PTS-STARTPTS,format=yuv420p"
+                            )
+                            log.info(f"[KEN_BURNS_CLIP_FIX] seg_idx={idx} mode={seg.mode} anchor_x={anchor_x:.3f} frames={total_frames} (d=1)")
+                            chain = f"[v_{idx}_raw]{kb_filter}[v_{idx}_out]"
+                            vf_parts.append(chain)
+                            concat_inputs.append(f"[v_{idx}_out]")
+                            continue
+                        else:
+                            from effects.broll_engine import get_ken_burns_filter
+                            kb_filter = get_ken_burns_filter(seg.start_t, dur, width=dst_w, height=dst_h, anchor_x=anchor_x, anchor_y=anchor_y)
+                            log.info(f"[KEN_BURNS_CLIP] seg_idx={idx} mode={seg.mode} anchor_x={anchor_x:.3f}")
+                            chain = f"[v_{idx}_raw]{kb_filter}[v_{idx}_out]"
+                            vf_parts.append(chain)
+                            continue
+
 
                     # ── Per-frame dynamic crop via Overlay + Sendcmd ──────────────
                     # FFmpeg `crop` filter does NOT support `sendcmd`, and `eval=frame`
@@ -4451,12 +4471,14 @@ class ClipEditor:
             _brainrot_path = None
             if os.path.exists(_brainrot_dir):
                 import random
-                _br_files = [os.path.join(_brainrot_dir, f) for f in os.listdir(_brainrot_dir) if f.endswith(('.mp4', '.mov', '.webm'))]
+                _br_files = [os.path.join(_brainrot_dir, f) for f in os.listdir(_brainrot_dir) if f.endswith(('.mp4', '.mov', '.webm')) and os.path.isfile(os.path.join(_brainrot_dir, f))]
                 if _br_files:
                     _brainrot_path = random.choice(_br_files)
 
             if (_is_podcast_clip or os.getenv("HS_FORCE_GTA") == "1") and cfg.podcast_crop_mode == "stacked":
                 if _brainrot_path and os.path.exists(_brainrot_path):
+                    from effects.brainrot_pretranscoder import get_pretranscoded_brainrot
+                    _brainrot_path = get_pretranscoded_brainrot(_brainrot_path)
                     _brainrot_active = True
                     if is_complex_graph:
                         vf_render = f"{vf_render};[{{BR_IDX}}:v]setpts=PTS-STARTPTS,scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,fps=30[br_v];[{graph_video_pad}][br_v]overlay=x=0:y=960:eof_action=pass[v_br]"

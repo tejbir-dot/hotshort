@@ -6,8 +6,20 @@ from typing import Dict, Any, List
 
 log = logging.getLogger(__name__)
 
+def get_gemini_api_keys() -> List[str]:
+    """
+    Returns all configured Gemini API keys in priority order.
+    Supports GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3, GOOGLE_API_KEY.
+    """
+    keys = []
+    for k_name in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GOOGLE_API_KEY"]:
+        val = (os.environ.get(k_name) or "").strip()
+        if val and val not in keys:
+            keys.append(val)
+    return keys
+
 def is_gemini_enabled() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY"))
+    return len(get_gemini_api_keys()) > 0
 
 def _get_gemini_fallback_chain() -> List[str]:
     return [
@@ -16,10 +28,11 @@ def _get_gemini_fallback_chain() -> List[str]:
         "gemini-3.8-flash",       # Tertiary fallback
     ]
 
-def post_gemini_completions(prompt: str, response_format_schema: Dict = None) -> str:
+def post_gemini_completions(prompt: str, response_format_schema: Dict = None, api_key: str = None) -> str:
     """
     Sends the prompt to Gemini using the official google-genai SDK.
     Enforces JSON output if a schema or format is requested.
+    If api_key is None, uses the first configured key from get_gemini_api_keys().
     """
     try:
         from google import genai
@@ -28,9 +41,11 @@ def post_gemini_completions(prompt: str, response_format_schema: Dict = None) ->
         log.error("[GEMINI_CORTEX] google-genai package is not installed! Run: pip install google-genai")
         return "{}"
 
-    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY is not set.")
+        keys = get_gemini_api_keys()
+        if not keys:
+            raise ValueError("GEMINI_API_KEY is not set.")
+        api_key = keys[0]
 
     # 15s timeout is plenty for flash-lite (<2s avg). Prevents 30s dead hangs.
     client = genai.Client(api_key=api_key, http_options={'timeout': 15000})
