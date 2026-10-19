@@ -66,6 +66,7 @@ except Exception as _be:
         def save(self): pass
 
 import requests
+import concurrent.futures
 from dotenv import load_dotenv
 
 try:
@@ -1044,12 +1045,19 @@ def _browser_cookie_error(stderr: str) -> bool:
     return any(p in low for p in patterns)
 
 
+_last_cookie_refresh_failed_at = 0.0
+
 def _auto_refresh_cookies() -> bool:
     """
     On-demand export of fresh cookies from Firefox/Chrome into cookies.txt.
     Triggered ONLY when YouTube explicitly requires authentication or cookies are expired.
     Uses strict 4s timeout per browser to guarantee zero hangs.
     """
+    global _last_cookie_refresh_failed_at
+    if time.time() - _last_cookie_refresh_failed_at < 300:
+        print("[LOCAL_WORKER] Cookie refresh recently failed, skipping browser extraction...", flush=True)
+        return False
+
     cookies_file = os.path.join(os.getcwd(), "cookies.txt")
     has_existing = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100
     tmp_cookies = cookies_file + ".tmp"
@@ -1094,11 +1102,12 @@ def _auto_refresh_cookies() -> bool:
                 except Exception:
                     pass
 
-    return has_existing
+    _last_cookie_refresh_failed_at = time.time()
+    return False
 
 
 
-def _download_via_ytdlp(youtube_url: str, dest_path: str):
+def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = False, format_override: str = None):
     """
     Download using local yt-dlp.
     Lazy Cookie Strategy:
@@ -1106,9 +1115,10 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
       2. If no cookies.txt, try direct download first (Deno solves n-challenge).
       3. ONLY IF YouTube rejects with auth/403/bot challenge:
          Trigger _auto_refresh_cookies() ON-DEMAND, then retry with cookies.txt.
-      4. Fallback to direct download if cookie refresh fails.
+      4. Fallback to direct download if cookie refresh fails (skipping redundant retry with stale cookies).
     """
-    print(f"[LOCAL_WORKER] Downloading via yt-dlp to {dest_path}", flush=True)
+    target_type = "audio-only" if is_audio_only else ("custom-format" if format_override else "video")
+    print(f"[LOCAL_WORKER] Downloading {target_type} via yt-dlp to {dest_path}", flush=True)
 
     cookies_file = os.path.join(os.getcwd(), "cookies.txt")
     has_cookies = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100
@@ -1130,14 +1140,22 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
     _player_client_args = ["--extractor-args", "youtube:player_client=web_embedded,default"]
 
     def _base_cmd(extra_args):
+        if format_override:
+            fmt_args = ["-f", format_override]
+        elif is_audio_only:
+            fmt_args = ["-f", "140/bestaudio[ext=m4a]/bestaudio"]
+        else:
+            fmt_args = [
+                "-S", "res,vcodec:vp9",
+                "--format", "bestvideo[vcodec^=vp9]+140/bestvideo[vcodec^=vp9]+bestaudio[ext=m4a]/bestvideo[vcodec^=vp9]+bestaudio/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                "--merge-output-format", "mp4",
+            ]
         return [
             sys.executable, "-m", "yt_dlp",
             *_js_runtime_args,
             *_player_client_args,
             *extra_args,
-            "-S", "res,vcodec:vp9",
-            "--format", "bestvideo[vcodec^=vp9]+bestaudio/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "--merge-output-format", "mp4",
+            *fmt_args,
             "--retries", "10",
             "--fragment-retries", "10",
             "--retry-sleep", "3",
@@ -1147,12 +1165,15 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
             youtube_url,
         ]
 
-    # First attempt: use cookies.txt if already exists; otherwise direct (no-cookies)
-    initial_strategy = (["--cookies", cookies_file], "cookies.txt") if has_cookies else ([], "direct/no-cookies")
+    # First attempt: use cookies.txt if already exists AND hasn't recently failed within 300s memo;
+    # otherwise go straight to direct (no-cookies) to avoid 15-20s wasted on known 403s
+    cookies_stale = (time.time() - _last_cookie_refresh_failed_at < 300)
+    use_cookies = has_cookies and not cookies_stale
+    initial_strategy = (["--cookies", cookies_file], "cookies.txt") if use_cookies else ([], "direct/no-cookies")
     strategies = [initial_strategy]
 
-    # If starting with cookies.txt, add direct as a backup in case existing cookies are stale
-    if has_cookies:
+    # If starting with cookies.txt, add direct as a backup in case existing cookies fail
+    if use_cookies:
         strategies.append(([], "direct/no-cookies"))
 
     refreshed_on_demand = False
@@ -1190,6 +1211,14 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str):
                         captured_stdout = retry_result.stdout.decode("utf-8", errors="replace")
                         break
                     last_err = retry_result.stderr.decode("utf-8", errors="replace")
+                else:
+                    print("[LOCAL_WORKER] Cookie refresh failed; removing stale cookies.txt and jumping directly to direct download", flush=True)
+                    try:
+                        if os.path.exists(cookies_file):
+                            os.remove(cookies_file)
+                    except Exception:
+                        pass
+                    continue
             continue
 
         # Hard error (network down, invalid URL, etc.)
@@ -2315,7 +2344,16 @@ def _process_job(job: dict, cloudinary_ok: bool):
         except Exception:
             pass
 
+    t_user_start = time.perf_counter()
     try:
+        audio_first = os.getenv("HS_AUDIO_FIRST", "1").strip().lower() in ("1", "true", "yes", "on")
+        hs_l2_lowres = os.getenv("HS_L2_LOWRES", "0").strip().lower() in ("1", "true", "yes", "on")
+        audio_path = None
+        lowres_video_path = None
+        video_ready_event = None
+        video_error_holder = [None]
+        video_thread = None
+
         # Step 1: Handle Local Files vs Cached Retention vs Download
         if not str(youtube_url).startswith("http"):
             print(f"[LOCAL_WORKER] Local file detected, skipping download: {youtube_url}", flush=True)
@@ -2324,7 +2362,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
             print(f"[LOCAL_WORKER] [RETENTION] Reusing retained video file: {video_path} ({os.path.getsize(video_path) // (1024*1024)}MB)", flush=True)
         else:
             # Check if any existing job in JOB_CACHE_BASE already downloaded this URL
-            if os.path.isdir(JOB_CACHE_BASE):
+            if os.path.isdir(JOB_CACHE_BASE) and os.getenv("HS_FORCE_DOWNLOAD", "0") != "1":
                 for d in os.listdir(JOB_CACHE_BASE):
                     cand_video = os.path.join(JOB_CACHE_BASE, d, "video.mp4")
                     cand_meta = os.path.join(JOB_CACHE_BASE, d, "job_meta.json")
@@ -2337,18 +2375,73 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                     break
                         except Exception:
                             pass
+
             if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
-                print(f"[LOCAL_WORKER] Downloading video...", flush=True)
-                try:
-                    _download_via_api(youtube_url, video_path)
-                except Exception as e:
-                    print(f"[LOCAL_WORKER] RapidAPI failed ({e}), falling back to yt-dlp...", flush=True)
-                    _download_via_ytdlp(youtube_url, video_path)
+                if audio_first:
+                    audio_path = os.path.join(tmp, "audio.m4a")
+                    if hs_l2_lowres:
+                        lowres_video_path = os.path.join(tmp, "lowres_144p.mp4")
+                        print("[LOCAL_WORKER] [AUDIO_FIRST] Active with HS_L2_LOWRES=1: downloading audio (-f 140) and low-res stream (-f 160) concurrently...", flush=True)
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as dl_ex:
+                            fut_a = dl_ex.submit(_download_via_ytdlp, youtube_url, audio_path, is_audio_only=True)
+                            fut_l = dl_ex.submit(_download_via_ytdlp, youtube_url, lowres_video_path, is_audio_only=False, format_override="160/278/394/bestvideo[height<=240]")
+                            fut_a.result()
+                            try:
+                                fut_l.result()
+                            except Exception as e_l:
+                                print(f"[LOCAL_WORKER] [L2_LOWRES] Low-res stream download failed ({e_l}), will fallback to 4K video wait", flush=True)
+                                lowres_video_path = None
+                    else:
+                        print("[LOCAL_WORKER] [AUDIO_FIRST] Active: downloading audio stream (-f 140) first...", flush=True)
+                        _download_via_ytdlp(youtube_url, audio_path, is_audio_only=True)
 
-        if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
-            raise RuntimeError(f"Video file is missing or too small: {video_path}")
+                    if not os.path.exists(audio_path) or os.path.getsize(audio_path) < 1000:
+                        raise RuntimeError(f"Audio file is missing or too small: {audio_path}")
+                    print(f"[LOCAL_WORKER] [AUDIO_FIRST] Audio download complete: {os.path.getsize(audio_path) / (1024*1024):.2f}MB", flush=True)
+                    if lowres_video_path and os.path.exists(lowres_video_path) and os.path.getsize(lowres_video_path) > 1000:
+                        print(f"[LOCAL_WORKER] [L2_LOWRES] Low-res video stream download complete: {os.path.getsize(lowres_video_path) / (1024*1024):.2f}MB", flush=True)
+                    else:
+                        lowres_video_path = None
 
-        print(f"[LOCAL_WORKER] Download complete: {os.path.getsize(video_path) // (1024*1024)}MB", flush=True)
+                    video_ready_event = threading.Event()
+
+                    def _bg_video_download():
+                        try:
+                            print("[LOCAL_WORKER] [AUDIO_FIRST] Background video download started...", flush=True)
+                            t_vstart = time.perf_counter()
+                            try:
+                                _download_via_api(youtube_url, video_path)
+                            except Exception as e:
+                                print(f"[LOCAL_WORKER] RapidAPI failed ({e}), falling back to yt-dlp...", flush=True)
+                                _download_via_ytdlp(youtube_url, video_path, is_audio_only=False)
+                            if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
+                                raise RuntimeError(f"Video file missing or too small after download: {video_path}")
+                            v_mb = os.path.getsize(video_path) / (1024 * 1024)
+                            v_sec = time.perf_counter() - t_vstart
+                            print(f"[LOCAL_WORKER] [AUDIO_FIRST] Background video download complete: {v_mb:.1f}MB in {v_sec:.1f}s", flush=True)
+                        except Exception as err:
+                            video_error_holder[0] = err
+                            print(f"[LOCAL_WORKER] [AUDIO_FIRST] Background video download failed: {err}", flush=True)
+                        finally:
+                            video_ready_event.set()
+
+                    video_thread = threading.Thread(target=_bg_video_download, daemon=True)
+                    video_thread.start()
+                else:
+                    print(f"[LOCAL_WORKER] Downloading video...", flush=True)
+                    try:
+                        _download_via_api(youtube_url, video_path)
+                    except Exception as e:
+                        print(f"[LOCAL_WORKER] RapidAPI failed ({e}), falling back to yt-dlp...", flush=True)
+                        _download_via_ytdlp(youtube_url, video_path, is_audio_only=False)
+
+                    if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
+                        raise RuntimeError(f"Video file is missing or too small: {video_path}")
+                    print(f"[LOCAL_WORKER] Download complete: {os.path.getsize(video_path) // (1024*1024)}MB", flush=True)
+
+        if not audio_first:
+            if not os.path.exists(video_path) or os.path.getsize(video_path) < 1000:
+                raise RuntimeError(f"Video file is missing or too small: {video_path}")
 
         # ── Per-job benchmark & progressive metrics ─────────────────────
         _bench = _JobBenchmark(job_id, youtube_url)
@@ -2508,7 +2601,11 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         use_cache=True,
                         allow_fallback=False,
                         pipeline_mode=os.getenv("HS_ORCH_PIPELINE_MODE", "staged"),
-                        creator_intent=job.get("creator_intent")
+                        creator_intent=job.get("creator_intent"),
+                        audio_path=audio_path,
+                        video_ready_event=video_ready_event,
+                        video_error_holder=video_error_holder,
+                        lowres_video_path=lowres_video_path,
                     )
                     _bench.finish("2_orchestration")
 
@@ -2524,7 +2621,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         print("============================================================\n", flush=True)
 
                 progressive_metrics["t_cards_ready"] = round(time.perf_counter() - t_job_start, 2)
-                print(f"[PROGRESSIVE] cards={progressive_metrics['t_cards_ready']:.1f}s (Candidate clips & metadata ready)", flush=True)
+                user_visible_ttfc = round(time.perf_counter() - t_user_start, 2)
+                progressive_metrics["t_cards_ready_total"] = user_visible_ttfc
+                print(f"[PROGRESSIVE] cards={progressive_metrics['t_cards_ready']:.1f}s (orch) | user_visible_ttfc={user_visible_ttfc:.1f}s (including download)", flush=True)
 
                 # ── Phase 1: Rank order guarantee + Auto-render cap ───────────────────
                 # Confirm clips are ordered by ranking score (rank 1 first)
@@ -2552,12 +2651,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 print(f"[PROGRESSIVE] Rank order confirmed: {len(clips)} candidate(s). Top clip rank 1 score={top_rank_score:.3f}", flush=True)
 
                 auto_render_n = int(os.getenv("HS_AUTO_RENDER_N", "6"))
-                min_auto_render = min(3, len(clips))
+                min_auto_render = int(os.getenv("HS_MIN_AUTO_RENDER", str(min(3, len(clips)))))
                 score_threshold = float(os.getenv("HS_AUTO_RENDER_THRESHOLD", "0.0"))
 
                 demand_from_job = set(job.get("on_demand_queue") or [])
 
                 # ── Phase 4: Enrich candidate clips & benchmark/extract thumbnails ──
+                if video_ready_event is not None and not video_ready_event.is_set():
+                    print("[LOCAL_WORKER] Awaiting video download before thumbnail extraction...", flush=True)
+                    video_ready_event.wait(timeout=600)
+                if video_error_holder and video_error_holder[0]:
+                    raise RuntimeError(f"Video download failed: {video_error_holder[0]}")
+
                 _benchmark_and_extract_thumbnails(video_path, clips, job_dir, job_id)
 
                 for idx, c in enumerate(clips):
@@ -2744,6 +2849,12 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     t_clip_total = time.perf_counter()
 
                     # ── Phase 2: Just-in-Time Per-Clip Analysis (Stage 3 + Stage 4) ──
+                    if video_ready_event is not None and not video_ready_event.is_set():
+                        print(f"[LOCAL_WORKER] Awaiting video download before processing clip {i}...", flush=True)
+                        video_ready_event.wait(timeout=600)
+                    if video_error_holder and video_error_holder[0]:
+                        raise RuntimeError(f"Video download failed: {video_error_holder[0]}")
+
                     t_jit_start = time.perf_counter()
                     _bench.begin(f"3_format_classify_clip{i}")
                     if video_format in ("blur_background", "original_with_black_bars"):
@@ -2848,6 +2959,11 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 "b_roll_timestamp": clip.get("b_roll_timestamp", 1.0)
                             }
 
+                        _measure_6b = os.getenv("HS_MEASURE_6B_TIMERS", "0").strip().lower() in ("1", "true", "yes", "on")
+                        _t_prec_join_start = time.perf_counter() if _measure_6b else 0.0
+                        _precomp_ass = precomputed_captions[i].result()[1] if precomputed_captions.get(i) else None
+                        _t_prec_join_s = (time.perf_counter() - _t_prec_join_start) if _measure_6b else 0.0
+
                         _bench.begin(f"6b_wce_clip{i}")
                         with gpu_lock:
                             t0 = time.perf_counter()
@@ -2863,31 +2979,73 @@ def _process_job(job: dict, cloudinary_ok: bool):
                                 cortex_hints=cortex_hints,
                                 is_free=is_free,
                                 precomputed_face_cache=face_cache.get_clip_cache(clip) if face_cache else {},
-                                precomputed_ass_path=precomputed_captions[i].result()[1] if precomputed_captions.get(i) else None
+                                precomputed_ass_path=_precomp_ass
                             )
                             t_wce = time.perf_counter() - t0
                         _bench.finish(f"6b_wce_clip{i}")
-                        if edit_result:
+                        edit_ok = bool(
+                            edit_result
+                            and os.path.exists(edited_path)
+                            and os.path.getsize(edited_path) > 1000
+                        )
+                        strict_status = os.getenv("HS_STRICT_EDIT_STATUS", "1").strip().lower() in ("1", "true", "yes", "on")
+
+                        if edit_ok:
                             final_path = edited_path
                             
                             # 🚀 SILENCE KILLER POST-PROCESSING
+                            _t_sk_s = 0.0
                             try:
                                 _bench.begin(f"6c_silence_killer_clip{i}")
                                 from effects.silence_killer import run_silence_killer
                                 nosilence_path = final_path.replace(".mp4", "_nosilence.mp4")
+                                _t_sk_start = time.perf_counter() if _measure_6b else 0.0
                                 if run_silence_killer(final_path, nosilence_path):
                                     import shutil
                                     # Swap paths to keep final_path intact for upload
                                     shutil.move(nosilence_path, final_path)
+                                if _measure_6b:
+                                    _t_sk_s = time.perf_counter() - _t_sk_start
                             except Exception as e:
                                 print(f"[SILENCE_KILLER] Post-processing failed: {e}", flush=True)
                             finally:
                                 _bench.finish(f"6c_silence_killer_clip{i}")
                                 
                             clip_res["edit_metadata"] = getattr(edit_result, "metadata", {}) or {}
+                            if _measure_6b:
+                                t_6b_direct = clip_res["edit_metadata"].get("timers_6b", {})
+                                if t_6b_direct:
+                                    t_6b_direct["thread_joins"] = round(t_6b_direct.get("thread_joins", 0.0) + _t_prec_join_s, 4)
+                                    t_6b_direct["post_process"] = round(t_6b_direct.get("post_process", 0.0) + _t_sk_s, 4)
+                                    total_6b_measured = round(t_wce + _t_sk_s, 4)
+                                    sum_steps = round(sum(t_6b_direct.values()), 4)
+                                    unaccounted = round(total_6b_measured - sum_steps, 4)
+                                    print(
+                                        f"[6B_DIRECT_TIMER_AUDIT] clip={i} rank={c_rank} | "
+                                        f"subtitles_ass={t_6b_direct['subtitles_ass']:.3f}s | "
+                                        f"broll_fetch={t_6b_direct['broll_fetch']:.3f}s | "
+                                        f"director_loop={t_6b_direct['director_loop']:.3f}s | "
+                                        f"ffmpeg_wall={t_6b_direct['ffmpeg_wall']:.3f}s | "
+                                        f"post_process={t_6b_direct['post_process']:.3f}s | "
+                                        f"thread_joins={t_6b_direct['thread_joins']:.3f}s | "
+                                        f"sum={sum_steps:.3f}s | total_6b={total_6b_measured:.3f}s | "
+                                        f"unaccounted={unaccounted:.3f}s",
+                                        flush=True
+                                    )
                             detect_calls = int(clip_res["edit_metadata"].get("edit_profile", {}).get("detect_calls", 0))
                             clip_res["detect_faces_calls"] = detect_calls
                             print(f"[FACE_DETECT_PROFILE] clip={i} rank={c_rank} detect_faces_best_calls={detect_calls}", flush=True)
+                        elif strict_status:
+                            err_msg = (
+                                f"WorldClassEditor failed to produce valid edited video for clip {i} "
+                                f"(edit_result={bool(edit_result)}, path={edited_path}, "
+                                f"exists={os.path.exists(edited_path)}, "
+                                f"size={os.path.getsize(edited_path) if os.path.exists(edited_path) else 0} bytes)"
+                            )
+                            print(f"[LOCAL_WORKER] [STRICT_STATUS] [FAILED] {err_msg}", flush=True)
+                            raise RuntimeError(err_msg)
+                        else:
+                            print(f"[LOCAL_WORKER] [WARN] WCE failed, falling back to raw cut for clip {i} (HS_STRICT_EDIT_STATUS=0)", flush=True)
 
                         # \u2500\u2500 Healing #5: Attach visual_energy from Director Loop \u2500\u2500\u2500\u2500\u2500\u2500\u2500
                         # WCE stores the per-clip visual_energy summary on self after
@@ -2978,6 +3136,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     t0 = time.perf_counter()
                     _bench.begin(f"6c_upload_clip{i}")
                     
+                    if strict_status and (not os.path.exists(final_path) or os.path.getsize(final_path) < 1000):
+                        raise RuntimeError(f"Clip {i} final video file missing or empty before upload: {final_path}")
+
                     t_up_start = time.perf_counter() - t_job_start
                     if _LOCAL_MODE:
                         saved = _local_save_clip(final_path, i, start, end)

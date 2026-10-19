@@ -47,6 +47,11 @@ class PipelineContext:
     trace_logs: Dict[str, Any] = field(default_factory=dict)
     hooks_suppressed: int = 0
     candidate_threads: Dict[str, Any] = field(default_factory=dict)
+    # Audio-first pipeline synchronization
+    audio_path: Optional[str] = None
+    video_ready_event: Any = None
+    video_error_holder: Any = None
+    lowres_video_path: Optional[str] = None
 
     def trace_state(self, trace_id: str, state: str) -> None:
         if trace_id in self.trace_logs:

@@ -4063,6 +4063,15 @@ class ClipEditor:
             },
         }
         profile_enabled = str(os.environ.get("HS_EDIT_PROFILE", "0")).strip().lower() in ("1", "true", "yes", "on")
+        _measure_6b = os.getenv("HS_MEASURE_6B_TIMERS", "0").strip().lower() in ("1", "true", "yes", "on")
+        _timers_6b = {
+            "subtitles_ass": 0.0,
+            "broll_fetch": 0.0,
+            "director_loop": 0.0,
+            "ffmpeg_wall": 0.0,
+            "post_process": 0.0,
+            "thread_joins": 0.0,
+        } if _measure_6b else None
         t_total = time.perf_counter()
         t_face = 0.0
         t_reframe = 0.0
@@ -4227,6 +4236,7 @@ class ClipEditor:
             _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
 
             if _broll_hs_enabled:
+                _t_broll_start = time.perf_counter() if _measure_6b else 0.0
                 try:
                     from effects.smart_broll_matcher import find_broll_cuts
                     cortex_kw = cortex_hints.get("broll_keywords", []) if cortex_hints else []
@@ -4252,6 +4262,8 @@ class ClipEditor:
                         log.info("[WCE-BROLL] Agent returned no B-Roll cuts.")
                 except Exception as _be:
                     log.error("[WCE-BROLL] Cinematic Agent failed: %s", _be)
+                if _measure_6b:
+                    _timers_6b["broll_fetch"] += (time.perf_counter() - _t_broll_start)
             # ── END B-ROLL INJECTION ──────────────────────────────────────────────
 
 
@@ -4275,9 +4287,12 @@ class ClipEditor:
                 log.info("[WCE] HS_DISABLE_CROP=1 -> Skipping FaceCache and active speaker detection completely.")
                 video_fmt = None
             elif cfg.enable_active_speaker and cfg.enable_format_detection:
+                _t_dir_fmt0 = time.perf_counter() if _measure_6b else 0.0
                 t0 = time.perf_counter()
                 video_fmt = self._analyze_video_format(work_b)
                 t_face += time.perf_counter() - t0
+                if _measure_6b:
+                    _timers_6b["director_loop"] += (time.perf_counter() - _t_dir_fmt0)
                 metadata["video_format"] = video_fmt.format_type
                 metadata["speaker_positions"] = video_fmt.speaker_positions
                 log.info(
@@ -4299,9 +4314,12 @@ class ClipEditor:
                     metadata["speaker_positions"] = video_fmt.speaker_positions
             elif cfg.enable_active_speaker:
                 # Legacy: no format detection, use monologue mode only
+                _t_dir_fmt0 = time.perf_counter() if _measure_6b else 0.0
                 t0 = time.perf_counter()
                 video_fmt = self._analyze_video_format(work_b)
                 t_face += time.perf_counter() - t0
+                if _measure_6b:
+                    _timers_6b["director_loop"] += (time.perf_counter() - _t_dir_fmt0)
 
             # --- START CAPTION THREAD (Parallel Processing) ---
             import threading
@@ -4311,7 +4329,9 @@ class ClipEditor:
                     self.editor = editor
                     self.tw = tw; self.ss = ss; self.ti = ti; self.to = to; self.cfg = cfg; self.rw = rw; self.vf = vf
                     self.captions = []
+                    self.gen_dur = 0.0
                 def run(self):
+                    _tc0 = time.perf_counter() if _measure_6b else 0.0
                     self.captions = self.editor._caption_segments(
                         transcript_window=self.tw,
                         source_start=self.ss,
@@ -4321,6 +4341,8 @@ class ClipEditor:
                         ramp_window=self.rw,
                         video_fmt=self.vf,
                     )
+                    if _measure_6b:
+                        self.gen_dur = time.perf_counter() - _tc0
             
             _is_podcast_early = (video_fmt is not None and video_fmt.format_type == "podcast")
             if precomputed_ass_path and _is_podcast_early:
@@ -4333,6 +4355,7 @@ class ClipEditor:
                 cap_thread.start()
             # --- END CAPTION THREAD ---
 
+            _t_dir_crop0 = time.perf_counter() if _measure_6b else 0.0
             t0 = time.perf_counter()
             target_wh = self._resolve_ratio(cfg.target_ratio)
             if video_fmt is not None:
@@ -4340,6 +4363,8 @@ class ClipEditor:
             else:
                 focus_x = 0.5
             is_complex_graph, vf = self._build_reframe_filter(work_meta, target_wh, focus_x, cfg, boring_mode)
+            if _measure_6b:
+                _timers_6b["director_loop"] += (time.perf_counter() - _t_dir_crop0)
             
             # ── B-ROLL INJECTION (Smart Local Asset Matcher — pass 2) ──────────────────
             # _broll_cuts / _broll_paths / _broll_start_sec / _broll_duration are already
@@ -4351,6 +4376,7 @@ class ClipEditor:
             if not _broll_paths:
                 _broll_hs_enabled = os.getenv("HS_BROLL_ENABLED", "1") != "0"
                 if _broll_hs_enabled and transcript_window:
+                    _t_broll2_start = time.perf_counter() if _measure_6b else 0.0
                     try:
                         from effects.smart_broll_matcher import find_broll_cuts
                         _broll_cuts = find_broll_cuts(
@@ -4371,6 +4397,8 @@ class ClipEditor:
                             )
                     except Exception as _be:
                         log.error("[WCE-BROLL] Smart matcher pass-2 failed: %s", _be)
+                    if _measure_6b:
+                        _timers_6b["broll_fetch"] += (time.perf_counter() - _t_broll2_start)
             # ── END B-ROLL INJECTION ──────────────────────────────────────────────
 
 
@@ -4378,9 +4406,14 @@ class ClipEditor:
             af = self._build_audio_filter(cfg)
 
             captions: List[CaptionSegment] = []
+            _t_join0 = time.perf_counter() if _measure_6b else 0.0
             if cap_thread is not None:
                 cap_thread.join()
                 captions = cap_thread.captions
+            if _measure_6b:
+                _timers_6b["thread_joins"] += (time.perf_counter() - _t_join0)
+                if cap_thread is not None:
+                    _timers_6b["subtitles_ass"] += getattr(cap_thread, "gen_dur", 0.0)
             vf_render = vf
             
             # --- CORTEX EDITING HINTS ---
@@ -4494,6 +4527,7 @@ class ClipEditor:
                 if not ass_path:
                     ass_path = os.path.join(self.work_dir, f"wc_subs_{uuid.uuid4().hex}.ass")
                     tmp_files.append(ass_path)
+                    _t_ass0 = time.perf_counter() if _measure_6b else 0.0
                     self._write_ass(
                         path=ass_path,
                         width=target_wh[0],
@@ -4509,6 +4543,8 @@ class ClipEditor:
                         # (focus_x is a list of segments = complex split/stacked output)
                         is_podcast=_is_podcast_clip,
                     )
+                    if _measure_6b:
+                        _timers_6b["subtitles_ass"] += (time.perf_counter() - _t_ass0)
                 fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
                 ass_esc = _ffmpeg_filter_path(ass_path)
                 if is_complex_graph:
@@ -4936,6 +4972,7 @@ class ClipEditor:
             ffmpeg_passes += 1
             
             t0 = time.perf_counter()
+            _t_ffmpeg_wall0 = time.perf_counter() if _measure_6b else 0.0
             with _GPU_SEMAPHORE:
                 gpu_start = time.perf_counter()
                 render_timeout_s = 420 if ramped_duration >= 90.0 else 220
@@ -4947,7 +4984,10 @@ class ClipEditor:
                 log.info(f"[WCE_PARALLEL] clip={os.path.basename(output_path)} cpu_done={cpu_done:.1f}s gpu_done={gpu_done:.1f}s")
                 
             t_encode += time.perf_counter() - t0
+            if _measure_6b:
+                _timers_6b["ffmpeg_wall"] = time.perf_counter() - _t_ffmpeg_wall0
 
+            _t_post_start = time.perf_counter() if _measure_6b else 0.0
             has_hook = bool(clip_title.strip())
             score = self._estimate_engagement(captions, transcript_window, boring_mode=boring_mode, has_hook=has_hook)
             metadata["engagement_score"] = round(score, 2)
@@ -4974,6 +5014,16 @@ class ClipEditor:
             else:
                 metadata["focus_x"] = round(focus_x, 3)
             metadata["platform_variants"] = self._variant_suggestions(score, cfg.target_ratio) if cfg.generate_ab_suggestions else []
+            if _measure_6b:
+                _timers_6b["post_process"] += (time.perf_counter() - _t_post_start)
+                metadata["timers_6b"] = {k: round(v, 4) for k, v in _timers_6b.items()}
+                _sum_wce_timers = sum(_timers_6b.values())
+                log.info(
+                    "[6B_WCE_TIMERS] subtitles_ass=%.3fs broll_fetch=%.3fs director_loop=%.3fs ffmpeg_wall=%.3fs post_process=%.3fs thread_joins=%.3fs sum=%.3fs total_wce=%.3fs",
+                    _timers_6b["subtitles_ass"], _timers_6b["broll_fetch"], _timers_6b["director_loop"],
+                    _timers_6b["ffmpeg_wall"], _timers_6b["post_process"], _timers_6b["thread_joins"],
+                    _sum_wce_timers, time.perf_counter() - t_total
+                )
             if profile_enabled:
                 total_s = max(0.0, time.perf_counter() - t_total)
                 metadata["edit_profile"] = {

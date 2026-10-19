@@ -139,19 +139,22 @@ def analyze_visual(
     if skip:
         return [{"time": 0.0, "motion": 0.5}]
 
+    if not video_path or not os.path.exists(video_path):
+        raise RuntimeError(f"[ANALYZE_VISUAL] Video file not ready or missing: {video_path}")
+
     import cv2
     import numpy as np
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        return [{"time": 0.0, "motion": 0.5}]
+        raise RuntimeError(f"[ANALYZE_VISUAL] cv2.VideoCapture failed to open: {video_path}")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
     if total_frames <= 0:
         cap.release()
-        return [{"time": 0.0, "motion": 0.5}]
+        raise RuntimeError(f"[ANALYZE_VISUAL] Video has invalid frame count ({total_frames}): {video_path}")
 
     # Determine frame step to sample target_samples across the entire video duration
     step = max(1, total_frames // target_samples)
@@ -178,6 +181,6 @@ def analyze_visual(
     cap.release()
 
     if not results:
-        return [{"time": 0.0, "motion": 0.5}]
+        raise RuntimeError(f"[ANALYZE_VISUAL] No valid frames extracted from {video_path}")
 
     return results

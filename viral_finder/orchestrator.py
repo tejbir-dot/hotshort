@@ -1367,9 +1367,12 @@ def _run_transcription(ctx: PipelineContext) -> None:
     transcript = []
     source = "none"
     transcription_engine = "unknown"
+    media_path = ctx.audio_path if (ctx.audio_path and os.path.exists(ctx.audio_path)) else ctx.path
     
     if ctx.use_cache:
-        transcript = _load_cached_transcript(ctx.path) or []
+        transcript = _load_cached_transcript(media_path) or []
+        if not transcript and media_path != ctx.path:
+            transcript = _load_cached_transcript(ctx.path) or []
         if transcript:
             source = "cache"
     
@@ -1400,7 +1403,7 @@ def _run_transcription(ctx: PipelineContext) -> None:
             try:
                 from viral_finder.runpod_transcription import transcribe_local_media_path
 
-                transcript = transcribe_local_media_path(ctx.path) or []
+                transcript = transcribe_local_media_path(media_path) or []
                 source = "runpod"
                 log.info("[TRANSCRIPTION] Completed via RunPod (segments=%d)", len(transcript))
             except Exception as e:
@@ -1414,7 +1417,7 @@ def _run_transcription(ctx: PipelineContext) -> None:
             # Execute transcription with fallback chain
             if not transcript and gemini_transcribe:
                 try:
-                    transcript = gemini_transcribe(ctx.path) or []
+                    transcript = gemini_transcribe(media_path) or []
                     source = "gemini"
                     log.info("[TRANSCRIPTION] Completed via gemini (segments=%d)", len(transcript))
                 except Exception as e:
@@ -1422,7 +1425,7 @@ def _run_transcription(ctx: PipelineContext) -> None:
 
             if not transcript and extract_transcript:
                 try:
-                    transcript = extract_transcript(ctx.path, prefer_gpu=ctx.prefer_gpu) or []
+                    transcript = extract_transcript(media_path, prefer_gpu=ctx.prefer_gpu) or []
                     source = "legacy_extract"
                     log.info("[TRANSCRIPTION] Completed via extract_transcript (segments=%d)", len(transcript))
                 except Exception as e:
@@ -1431,15 +1434,16 @@ def _run_transcription(ctx: PipelineContext) -> None:
             if not transcript and legacy_transcribe:
                 try:
                     _model_name = os.getenv("WHISPER_MODEL", "small")
-                    transcript = legacy_transcribe(ctx.path, _model_name, True) or []
+                    transcript = legacy_transcribe(media_path, _model_name, True) or []
                     source = "legacy_transcribe"
                     log.info("[TRANSCRIPTION] Completed via legacy_transcribe (segments=%d)", len(transcript))
                 except Exception as e:
                     log.error("[TRANSCRIPTION] All engines failed: %s", e)
 
-    
     if transcript and ctx.use_cache:
-        _save_cached_transcript(ctx.path, transcript)
+        _save_cached_transcript(media_path, transcript)
+        if media_path != ctx.path:
+            _save_cached_transcript(ctx.path, transcript)
     
     ctx.transcript = transcript or []
     ctx.transcript_source = source
@@ -1457,20 +1461,45 @@ def _run_transcription(ctx: PipelineContext) -> None:
 
 def _run_av_features(ctx: PipelineContext) -> None:
     t0 = time.time()
+    audio_path = ctx.audio_path if (ctx.audio_path and os.path.exists(ctx.audio_path)) else ctx.path
+
+    # Check if low-res video stream is available for fast L2 visual analysis
+    use_lowres = False
+    visual_video_path = ctx.path
+    if ctx.lowres_video_path and os.path.exists(ctx.lowres_video_path) and os.path.getsize(ctx.lowres_video_path) > 1000:
+        use_lowres = True
+        visual_video_path = ctx.lowres_video_path
+        print(f"[ORCH] [L2_LOWRES] Fast visual analysis using low-res stream: {visual_video_path} ({os.path.getsize(visual_video_path)/(1024*1024):.2f}MB)", flush=True)
+
+    # Audio-first synchronization: if low-res stream is not available, visual analysis MUST wait until full video has arrived
+    if not use_lowres and ctx.video_ready_event is not None:
+        print("[ORCH] [AUDIO_FIRST] L2 analyze_visual awaiting background video download (low-res stream not available)...", flush=True)
+        t_w0 = time.perf_counter()
+        ready = ctx.video_ready_event.wait(timeout=600)
+        if not ready:
+            raise RuntimeError("[ORCH] [AUDIO_FIRST] Timed out waiting for background video download before visual analysis")
+        if ctx.video_error_holder and ctx.video_error_holder[0]:
+            raise RuntimeError(f"[ORCH] [AUDIO_FIRST] Video download failed in background: {ctx.video_error_holder[0]}")
+        if not os.path.exists(ctx.path) or os.path.getsize(ctx.path) < 1000:
+            raise RuntimeError(f"[ORCH] [AUDIO_FIRST] Video file missing or empty after download: {ctx.path}")
+        print(f"[ORCH] [AUDIO_FIRST] Background video ready for L2 visual analysis (waited {time.perf_counter() - t_w0:.1f}s)", flush=True)
+
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        future_audio = executor.submit(analyze_audio, ctx.path)
-        future_visual = executor.submit(analyze_visual, ctx.path)
-        
+        future_audio = executor.submit(analyze_audio, audio_path)
         try:
-            ctx.audio_features = future_audio.result() or []
-        except Exception:
-            ctx.audio_features = []
-            
-        try:
+            future_visual = executor.submit(analyze_visual, visual_video_path)
             ctx.visual_features = future_visual.result() or []
-        except Exception:
-            ctx.visual_features = []
+        except Exception as e_vis:
+            if use_lowres and ctx.video_ready_event is not None:
+                print(f"[ORCH] [L2_LOWRES] Low-res visual analysis failed ({e_vis}), falling back to 4K video wait...", flush=True)
+                ready = ctx.video_ready_event.wait(timeout=600)
+                if not ready or not os.path.exists(ctx.path) or os.path.getsize(ctx.path) < 1000:
+                    raise RuntimeError(f"[ORCH] [AUDIO_FIRST] Video fallback failed after low-res error: {ctx.path}")
+                ctx.visual_features = analyze_visual(ctx.path) or []
+            else:
+                raise
+        ctx.audio_features = future_audio.result() or []
 
     ctx.av_features = {
         "audio": list(ctx.audio_features or []),
@@ -4892,7 +4921,9 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
         log.info(f"[STAGE_BENCH] L11B_GROQ_SURGEON wall_s={wall_s}s candidates={len(ctx.ranked_output or [])}")
     # ------------------------------------
 
-def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool, creator_intent: str = None):
+def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: bool, allow_fallback: bool, creator_intent: str = None,
+                         audio_path: str = None, video_ready_event: Any = None, video_error_holder: Any = None,
+                         lowres_video_path: str = None):
     start = time.time()
     print("PIPELINE STAGE: start staged pipeline")
     has_tf_moments = False
@@ -4904,7 +4935,11 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         allow_fallback=bool(allow_fallback),
         prefer_gpu=bool(prefer_gpu),
         use_cache=bool(use_cache),
-        creator_intent=creator_intent
+        creator_intent=creator_intent,
+        audio_path=audio_path,
+        video_ready_event=video_ready_event,
+        video_error_holder=video_error_holder,
+        lowres_video_path=lowres_video_path,
     )
     t0 = time.time()
     trace_enabled = _env_bool("HS_PIPELINE_TRACE", False)
@@ -5452,7 +5487,11 @@ def orchestrate(path: str,
                  use_cache: bool = True,
                  allow_fallback: bool = False,
                  pipeline_mode: Optional[str] = None,
-                 creator_intent: Optional[str] = None) -> List[Dict]:
+                 creator_intent: Optional[str] = None,
+                 audio_path: Optional[str] = None,
+                 video_ready_event: Optional[Any] = None,
+                 video_error_holder: Optional[Any] = None,
+                 lowres_video_path: Optional[str] = None) -> List[Dict]:
     """
     High-level orchestration entrypoint.
     Modes:
@@ -5485,6 +5524,10 @@ def orchestrate(path: str,
                 use_cache=use_cache,
                 allow_fallback=allow_fallback,
                 creator_intent=creator_intent,
+                audio_path=audio_path,
+                video_ready_event=video_ready_event,
+                video_error_holder=video_error_holder,
+                lowres_video_path=lowres_video_path,
             )
             if isinstance(_staged_result, tuple):
                 if len(_staged_result) == 5:

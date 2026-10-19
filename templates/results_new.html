@@ -246,16 +246,18 @@
       border-radius: 10px;
     }
 
-    /* Individual clip card */
+    /* Individual clip card - Luxury 9:16 Vertical Smartphone Card */
     .clip-card {
-      flex: 0 0 340px;
+      flex: 0 0 295px;
       scroll-snap-align: start;
-      border-radius: 16px;
+      border-radius: 20px;
       overflow: hidden;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.2));
-      border: 1px solid rgba(255, 200, 120, 0.06);
-      box-shadow: 0 10px 30px rgba(10, 6, 4, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.02);
-      transition: all 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+      background: linear-gradient(180deg, rgba(28, 22, 16, 0.78), rgba(12, 9, 6, 0.96));
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 215, 120, 0.12);
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
       cursor: pointer;
       display: flex;
       flex-direction: column;
@@ -264,59 +266,91 @@
 
     .clip-card.is-previewing {
       transform: translateY(-8px) scale(1.02);
-      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 45px rgba(255, 190, 80, 0.08);
+      border-color: rgba(255, 215, 120, 0.38);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 45px rgba(255, 190, 80, 0.15);
     }
 
     .clip-card.is-best {
-      box-shadow: 0 0 40px rgba(255, 200, 100, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.02);
-      transform: scale(1.03);
+      box-shadow: 0 0 40px rgba(255, 200, 100, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 215, 120, 0.35);
     }
 
     .clip-card.is-best.is-previewing {
-      transform: scale(1.06) translateY(-8px);
+      transform: scale(1.04) translateY(-8px);
+      box-shadow: 0 35px 90px rgba(0, 0, 0, 0.85), 0 0 55px rgba(255, 200, 100, 0.25);
     }
 
-    /* Video preview */
+    /* Video preview - Native 9:16 TikTok / Reels Vertical Ratio */
     .clip-preview {
       width: 100%;
-      height: 200px;
-      background: #000;
+      aspect-ratio: 9 / 16;
+      background: #050505;
       position: relative;
       overflow: hidden;
+      border-radius: 20px 20px 0 0;
     }
 
     .clip-preview video {
       width: 100%;
       height: 100%;
+      aspect-ratio: 9 / 16;
       object-fit: cover;
       display: block;
-      filter: brightness(0.85);
-      transition: filter 0.3s ease;
+      filter: brightness(0.92);
+      transition: filter 0.3s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .clip-card.is-previewing .clip-preview video {
-      filter: brightness(1.06) contrast(1.02);
+      filter: brightness(1.05) contrast(1.02);
+    }
+
+    /* Expand to 9:16 Theater Button on Card */
+    .expand-theater-btn {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(15, 12, 8, 0.78);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 215, 120, 0.35);
+      color: #ffdf73;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 6;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    }
+    .expand-theater-btn:hover {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #111;
+      transform: scale(1.15);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
     }
 
     /* The Glassy Overlay for the Hook */
     .hook-glass-overlay {
       position: absolute;
-      bottom: 12px;
+      bottom: 50px;
       left: 50%;
       transform: translateX(-50%);
-      width: 90%;
-      padding: 8px 12px;
-      z-index: 10;
+      width: 88%;
+      padding: 10px 14px;
+      z-index: 5;
 
-      /* Deep Blue Frosted Glass Effect */
-      background: rgba(10, 15, 30, 0.75);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      /* Deep Frosted Glass Effect */
+      background: rgba(10, 15, 30, 0.82);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
 
       /* Subtle Golden Cinematic Border */
-      border: 1px solid rgba(255, 215, 0, 0.25);
-      border-radius: 8px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 215, 0, 0.3);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 
       text-align: center;
       pointer-events: none;
@@ -327,6 +361,191 @@
     .clip-card.is-previewing .hook-glass-overlay {
       opacity: 0;
       transform: translateX(-50%) translateY(10px) scale(0.95);
+      pointer-events: none;
+    }
+
+    /* =====================================
+       9:16 SHORTS THEATER MODAL (WORLD-CLASS)
+       ===================================== */
+    .shorts-theater-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .theater-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(5, 3, 2, 0.88);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      animation: theaterFadeIn 0.3s ease;
+    }
+    .theater-content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-height: 94vh;
+      animation: theaterZoomIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .theater-close-btn {
+      position: absolute;
+      top: -16px;
+      right: -16px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: rgba(30, 24, 18, 0.9);
+      border: 1px solid rgba(255, 215, 120, 0.3);
+      color: #ffdf73;
+      font-size: 1.2rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+      transition: all 0.2s ease;
+      z-index: 10;
+    }
+    .theater-close-btn:hover {
+      background: #f59e0b;
+      color: #111;
+      transform: scale(1.1) rotate(90deg);
+    }
+    .theater-phone-frame {
+      position: relative;
+      width: min(390px, 88vw);
+      height: min(693px, 86vh);
+      aspect-ratio: 9 / 16;
+      background: #000;
+      border-radius: 36px;
+      border: 3px solid rgba(255, 215, 120, 0.35);
+      box-shadow: 0 35px 100px rgba(0, 0, 0, 0.95), 0 0 60px rgba(245, 158, 11, 0.18);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .theater-phone-notch {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100px;
+      height: 20px;
+      background: #000;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      z-index: 5;
+    }
+    .theater-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+      outline: none;
+    }
+    .theater-info-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.92) 50%, #000 100%);
+      padding: 30px 18px 18px;
+      z-index: 4;
+      pointer-events: auto;
+    }
+    .theater-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .theater-hook-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #ffdf73;
+      margin: 0;
+      line-height: 1.35;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+      flex: 1;
+    }
+    .theater-viral-badge {
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      background: rgba(245, 158, 11, 0.25);
+      border: 1px solid rgba(245, 158, 11, 0.5);
+      color: #fbbf24;
+      white-space: nowrap;
+    }
+    .theater-snippet {
+      font-size: 0.78rem;
+      color: rgba(255, 255, 255, 0.8);
+      font-style: italic;
+      margin: 0 0 12px 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .theater-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .theater-actions .btn-primary {
+      flex: 1;
+      padding: 10px 16px;
+      font-size: 0.84rem;
+      font-weight: 700;
+      text-align: center;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(255, 215, 120, 0.18) 0%, rgba(180, 115, 20, 0.22) 50%, rgba(20, 15, 10, 0.82) 100%);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 215, 120, 0.45);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      color: #ffdf73;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+      text-decoration: none;
+      transition: all 0.22s ease;
+    }
+    .theater-actions .btn-primary:hover {
+      background: linear-gradient(135deg, rgba(255, 225, 140, 0.3) 0%, rgba(217, 119, 6, 0.35) 50%, rgba(35, 25, 15, 0.9) 100%);
+      border-color: rgba(255, 225, 150, 0.7);
+      color: #fff;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 22px rgba(245, 158, 11, 0.25);
+    }
+    .theater-actions .btn-secondary {
+      padding: 9px 14px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 215, 120, 0.25);
+      color: #ffdf73;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .theater-actions .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    @keyframes theaterFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes theaterZoomIn {
+      from { opacity: 0; transform: scale(0.92); }
+      to { opacity: 1; transform: scale(1); }
     }
 
     /* The Hook Text */
@@ -631,15 +850,17 @@
       overflow: hidden;
     }
 
-    /* Media poster containers */
+    /* Media poster containers - Native 9:16 Vertical Ratio */
     .clip-media-poster {
       width: 100%;
-      height: 200px;
+      height: 100%;
+      aspect-ratio: 9 / 16;
       position: relative;
       background-size: cover;
       background-position: center;
       background-repeat: no-repeat;
       background-color: #0d1117;
+      border-radius: 20px 20px 0 0;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -972,26 +1193,207 @@
       line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-    }
-
-    /* Action buttons */
+    }    /* =====================================
+       COMPACT PROFESSIONAL CLIP ACTIONS
+       ===================================== */
     .clip-actions {
       display: flex;
-      gap: 8px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255, 200, 100, 0.1);
+      flex-direction: column;
+      gap: 7px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 200, 100, 0.12);
       position: relative;
+    }
+
+    /* Primary Action Row: Download Button + Format Dropdown */
+    .clip-action-primary-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      width: 100%;
+    }
+
+    .btn-download-main {
+      flex: 1;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, rgba(255, 215, 120, 0.16) 0%, rgba(180, 115, 20, 0.22) 50%, rgba(20, 15, 10, 0.8) 100%);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 215, 120, 0.42);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 14px rgba(245, 158, 11, 0.1);
+      color: #ffdf73;
+      font-weight: 700;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-decoration: none;
+      white-space: nowrap;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn-download-main:hover {
+      background: linear-gradient(135deg, rgba(255, 225, 140, 0.28) 0%, rgba(217, 119, 6, 0.32) 50%, rgba(35, 25, 15, 0.9) 100%);
+      border-color: rgba(255, 225, 150, 0.7);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 22px rgba(245, 158, 11, 0.25);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .btn-download-main.is-disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      pointer-events: none;
+      filter: saturate(0.8);
+      box-shadow: none;
+    }
+
+    /* Platform Dropdown Pill */
+    .platform-select-wrap {
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .platform-select {
+      height: 36px;
+      background: rgba(25, 20, 14, 0.95);
+      color: #ffdf73;
+      border: 1px solid rgba(255, 215, 120, 0.25);
+      border-radius: 9px;
+      padding: 0 22px 0 9px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+      transition: all 0.2s ease;
+    }
+
+    .platform-select:hover, .platform-select:focus {
+      border-color: rgba(255, 215, 120, 0.55);
+      background: rgba(35, 28, 18, 0.98);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+    }
+
+    .platform-select-wrap::after {
+      content: '▾';
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #ffdf73;
+      font-size: 0.68rem;
+      pointer-events: none;
+    }
+
+    /* Secondary Meta Row: HD Mode / Format badge + Compact Thumbs */
+    .clip-action-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .meta-tag-pill {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: rgba(255, 215, 120, 0.75);
+      background: rgba(255, 215, 120, 0.05);
+      border: 1px solid rgba(255, 215, 120, 0.15);
+      border-radius: 6px;
+      padding: 3px 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .meta-tag-pill.quality-link {
+      color: #fbbf24;
+      cursor: pointer;
+    }
+
+    .meta-tag-pill.quality-link:hover {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.4);
+      transform: translateY(-1px);
+    }
+
+    /* Compact Thumbs Feedback */
+    .clip-feedback-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-left: auto;
+    }
+
+    .feedback-thumb-btn {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .feedback-thumb-btn:hover {
+      transform: scale(1.1);
+      border-color: rgba(255, 215, 120, 0.4);
+      color: #fff;
+    }
+
+    .feedback-thumb-btn[data-action="useful"]:hover {
+      background: rgba(34, 197, 94, 0.18);
+      border-color: rgba(34, 197, 94, 0.4);
+    }
+
+    .feedback-thumb-btn[data-action="not-useful"]:hover {
+      background: rgba(239, 68, 68, 0.18);
+      border-color: rgba(239, 68, 68, 0.4);
+    }
+
+    .clip-card[data-feedback-locked="1"] .feedback-thumb-btn {
+      opacity: 0.4;
+      cursor: default;
+      transform: none;
+    }
+
+    .feedback-thumb-btn.voted-useful {
+      background: rgba(34, 197, 94, 0.28) !important;
+      border-color: #22c55e !important;
+      opacity: 1 !important;
+    }
+
+    .feedback-thumb-btn.voted-not-useful {
+      background: rgba(239, 68, 68, 0.28) !important;
+      border-color: #ef4444 !important;
+      opacity: 1 !important;
     }
 
     .btn {
       flex: 1;
-      padding: 8px 12px;
+      padding: 7px 10px;
       border-radius: 8px;
       border: 1px solid rgba(255, 210, 120, 0.2);
       background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 210, 120, 0.03));
       color: var(--gold-100);
       font-weight: 600;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       cursor: pointer;
       transition: all 0.2s ease;
       text-decoration: none;
@@ -1016,20 +1418,6 @@
       box-shadow: none;
     }
 
-    .btn:disabled:hover {
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 210, 120, 0.03));
-      color: var(--gold-100);
-      transform: none;
-      box-shadow: none;
-    }
-
-    .btn:disabled:hover {
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 210, 120, 0.03));
-      color: var(--gold-100);
-      transform: none;
-      box-shadow: none;
-    }
-
     .btn.is-disabled {
       opacity: 0.55;
       cursor: not-allowed;
@@ -1044,29 +1432,29 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      padding: 12px 10px;
-      margin-top: 12px;
-      border-top: 1px solid rgba(255, 200, 100, 0.12);
-      background: linear-gradient(180deg, rgba(255, 200, 100, 0.04), rgba(0, 0, 0, 0.1));
+      gap: 6px;
+      padding: 6px 8px;
+      margin-top: 4px;
+      border-top: 1px solid rgba(255, 200, 100, 0.08);
+      background: linear-gradient(180deg, rgba(255, 200, 100, 0.03), rgba(0, 0, 0, 0.08));
       border-radius: 6px;
-      opacity: 0.85;
+      opacity: 0.75;
       transition: all 0.25s ease;
     }
 
     .logo-footer-img {
-      width: 18px;
-      height: 18px;
+      width: 14px;
+      height: 14px;
       object-fit: contain;
-      opacity: 0.9;
+      opacity: 0.85;
       filter: brightness(1.1);
     }
 
     .logo-footer-text {
-      font-size: 0.75rem;
+      font-size: 0.68rem;
       font-weight: 700;
-      color: rgba(255, 210, 120, 0.8);
-      letter-spacing: 0.4px;
+      color: rgba(255, 210, 120, 0.75);
+      letter-spacing: 0.5px;
       text-transform: uppercase;
     }
 
@@ -1277,11 +1665,14 @@
     }
 
     .btn-primary {
-      padding: 10px 24px;
-      border-radius: 50px;
-      border: 1px solid rgba(255, 210, 120, 0.3);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 210, 120, 0.08));
-      color: var(--gold-100);
+      padding: 9px 22px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 215, 120, 0.4);
+      background: linear-gradient(135deg, rgba(255, 215, 120, 0.15) 0%, rgba(180, 115, 20, 0.18) 50%, rgba(20, 15, 10, 0.75) 100%);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 14px rgba(245, 158, 11, 0.08);
+      color: #ffdf73;
       font-weight: 700;
       text-decoration: none;
       cursor: pointer;
@@ -1289,13 +1680,15 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
     }
 
     .btn-primary:hover {
-      background: linear-gradient(90deg, var(--gold-100), var(--gold-200));
-      color: #111;
+      background: linear-gradient(135deg, rgba(255, 225, 140, 0.28) 0%, rgba(217, 119, 6, 0.3) 50%, rgba(35, 25, 15, 0.85) 100%);
+      border-color: rgba(255, 225, 150, 0.68);
+      color: #fff;
       transform: translateY(-2px);
-      box-shadow: 0 0 25px rgba(255, 200, 80, 0.25);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 25px rgba(255, 200, 80, 0.22);
     }
 
     /* =====================================
@@ -1470,8 +1863,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         <div class="carousel-label"
           style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
           <span>Your Top Clips</span>
-          <button id="batchExportBtn" class="btn-primary"
-            style="font-size: 0.8rem; padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255, 210, 120, 0.3);">
+          <button id="batchExportBtn" class="btn-primary" style="font-size: 0.8rem; padding: 7px 16px;">
             <span>📦 Batch Export All (TikTok)</span>
           </button>
         </div>
@@ -1479,6 +1871,29 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           <!-- Populated by JS or server -->
         </div>
       </section>
+
+      <!-- 9:16 Fullscreen Shorts Theater Modal (World-Class Luxury Experience) -->
+      <div id="shortsTheaterModal" class="shorts-theater-modal" style="display: none;" role="dialog" aria-modal="true" aria-label="Shorts Theater Player">
+        <div class="theater-backdrop" id="theaterBackdrop"></div>
+        <div class="theater-content">
+          <button class="theater-close-btn" id="theaterCloseBtn" title="Close (Esc)">✕</button>
+          <div class="theater-phone-frame">
+            <div class="theater-phone-notch"></div>
+            <video id="theaterVideo" class="theater-video" playsinline controls loop autoplay></video>
+            <div class="theater-info-overlay">
+              <div class="theater-header-row">
+                <h3 id="theaterHookTitle" class="theater-hook-title"></h3>
+                <span id="theaterViralBadge" class="theater-viral-badge">🔥 95% Viral</span>
+              </div>
+              <p id="theaterSnippet" class="theater-snippet"></p>
+              <div class="theater-actions">
+                <a id="theaterDownloadBtn" class="btn-primary" href="" target="_blank" rel="noopener noreferrer">⬇ Download Short</a>
+                <button id="theaterNextBtn" class="btn-secondary">Next Clip →</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- No clips message -->
       <div class="empty-state" id="emptyState" style="display: none;">
@@ -2704,11 +3119,139 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
     }
 
     /* =====================================
+       9:16 SHORTS THEATER MODAL (WORLD-CLASS)
+       ===================================== */
+    let currentTheaterIndex = -1;
+
+    function openTheaterModal(index) {
+      const clipList = window.currentRenderedClips || clips || [];
+      if (!Array.isArray(clipList) || !clipList[index]) return;
+      const clip = clipList[index];
+      if (!clip.clip_url) return;
+      currentTheaterIndex = index;
+
+      const modal = document.getElementById('shortsTheaterModal');
+      const video = document.getElementById('theaterVideo');
+      const hookTitle = document.getElementById('theaterHookTitle');
+      const viralBadge = document.getElementById('theaterViralBadge');
+      const snippet = document.getElementById('theaterSnippet');
+      const downloadBtn = document.getElementById('theaterDownloadBtn');
+      const nextBtn = document.getElementById('theaterNextBtn');
+
+      if (!modal || !video) return;
+
+      const hookText = clip.exact_hook || clip.hook_line || clip.title || `Viral Clip #${index + 1}`;
+      const confScore = Math.round((clip.confidence_score || clip.viral_score || 0.9) * 100);
+
+      if (hookTitle) hookTitle.textContent = `"${hookText}"`;
+      if (viralBadge) viralBadge.textContent = `🔥 ${confScore}% Viral`;
+      if (snippet) snippet.textContent = clip.transcript_snippet || clip.transcript_window || '';
+
+      const clipIdNum = parseInt(clip.clip_id, 10);
+      if (downloadBtn) {
+        if (Number.isFinite(clipIdNum)) {
+          downloadBtn.href = `/download/${clipIdNum}`;
+        } else {
+          downloadBtn.href = clip.clip_url;
+        }
+      }
+
+      // Check if there's any other ready clip
+      const hasNext = clipList.some((c, i) => i > index && c.clip_url);
+      if (nextBtn) {
+        nextBtn.style.display = hasNext ? '' : 'none';
+      }
+
+      video.src = clip.clip_url;
+      video.currentTime = 0;
+      video.muted = false;
+      video.volume = 1.0;
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          console.warn("Unmuted autoplay restricted, falling back to muted", err);
+          video.muted = true;
+          video.play().catch(() => {});
+        });
+      }
+    }
+
+    function playNextTheaterClip() {
+      const clipList = window.currentRenderedClips || clips || [];
+      if (!Array.isArray(clipList) || currentTheaterIndex < 0) return;
+      for (let i = currentTheaterIndex + 1; i < clipList.length; i++) {
+        if (clipList[i].clip_url) {
+          openTheaterModal(i);
+          return;
+        }
+      }
+      // If at end, loop back to first ready
+      for (let i = 0; i < currentTheaterIndex; i++) {
+        if (clipList[i].clip_url) {
+          openTheaterModal(i);
+          return;
+        }
+      }
+    }
+
+    function playPrevTheaterClip() {
+      const clipList = window.currentRenderedClips || clips || [];
+      if (!Array.isArray(clipList) || currentTheaterIndex < 0) return;
+      for (let i = currentTheaterIndex - 1; i >= 0; i--) {
+        if (clipList[i].clip_url) {
+          openTheaterModal(i);
+          return;
+        }
+      }
+    }
+
+    function closeTheaterModal() {
+      const modal = document.getElementById('shortsTheaterModal');
+      const video = document.getElementById('theaterVideo');
+      if (video) {
+        video.pause();
+        video.src = '';
+      }
+      if (modal) {
+        modal.style.display = 'none';
+      }
+      document.body.style.overflow = '';
+      currentTheaterIndex = -1;
+    }
+
+    // Modal event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      const closeBtn = document.getElementById('theaterCloseBtn');
+      const backdrop = document.getElementById('theaterBackdrop');
+      const nextBtn = document.getElementById('theaterNextBtn');
+
+      if (closeBtn) closeBtn.addEventListener('click', closeTheaterModal);
+      if (backdrop) backdrop.addEventListener('click', closeTheaterModal);
+      if (nextBtn) nextBtn.addEventListener('click', playNextTheaterClip);
+
+      document.addEventListener('keydown', (e) => {
+        const modal = document.getElementById('shortsTheaterModal');
+        if (!modal || modal.style.display === 'none') return;
+        if (e.key === 'Escape') {
+          closeTheaterModal();
+        } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+          playNextTheaterClip();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+          playPrevTheaterClip();
+        }
+      });
+    });
+
+    /* =====================================
        RENDER CAROUSEL
        ===================================== */
     function renderCarousel() {
       const carousel = document.getElementById('carousel');
       carousel.innerHTML = '';
+      window.currentRenderedClips = clips;
 
       console.log(`[CAROUSEL] Rendering ${clips.length} clips...`);
 
@@ -2914,6 +3457,11 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
             <div class="badge-group">${statusChipHtml} ${badgesHtml} ${durationBadgeHtml} ${viralScoreHtml}</div>
             ${freeStampHtml}
             ${soundHintHtml}
+            <button class="expand-theater-btn" data-action="open-theater" data-clip-index="${index}" title="Open 9:16 Shorts Theater">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+              </svg>
+            </button>
             <div class="hook-glass-overlay">
               <p class="hook-text">"${escapeHtml(hookLineText)}"</p>
             </div>
@@ -2959,29 +3507,51 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
           `;
         }
 
-        // Action Buttons HTML
+        // Action Buttons HTML (Compact Luxury Two-Row Layout)
         let actionButtonsHtml = '';
         if (clipStatus === 'ready' && clip.clip_url) {
+          const qualityPill = (s.is_paid && downloadHref)
+            ? `<a class="meta-tag-pill quality-link" data-action="quality" href="${downloadHref}?quality=1" target="_blank" rel="noopener noreferrer" title="Download Master Studio Quality">✨ HD Master</a>`
+            : `<span class="meta-tag-pill">⚡ 9:16 Short</span>`;
+
           actionButtonsHtml = `
-            <a class="btn ${downloadClass}" data-action="download" ${downloadAttrs}>⬇ Download Short</a>
-            <select id="exportFormat_${clipIdNum}" style="background:rgba(255,210,120,0.06);color:rgba(255,210,120,0.85);border:1px solid rgba(255,210,120,0.25);border-radius:8px;padding:6px 10px;font-size:0.8rem;font-weight:600;cursor:pointer;outline:none;width:100%;transition:border-color 0.2s;">
-              <option value="tiktok" style="background:#1a1a1a">TikTok (9:16 • 60s • 30fps)</option>
-              <option value="instagram" style="background:#1a1a1a">Instagram Reel (9:16 • 90s • 30fps)</option>
-              <option value="shorts" style="background:#1a1a1a">YouTube Shorts (9:16 • 60s • 60fps)</option>
-            </select>
+            <div class="clip-action-primary-row">
+              <a class="btn-download-main ${downloadClass}" data-action="download" ${downloadAttrs}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>Download Short</span>
+              </a>
+              <div class="platform-select-wrap">
+                <select id="exportFormat_${clipIdNum}" class="platform-select" title="Target Platform">
+                  <option value="tiktok" style="background:#1a1a1a">TikTok</option>
+                  <option value="instagram" style="background:#1a1a1a">Reels</option>
+                  <option value="shorts" style="background:#1a1a1a">Shorts</option>
+                </select>
+              </div>
+            </div>
+            <div class="clip-action-meta-row">
+              ${qualityPill}
+              <div class="clip-feedback-group">
+                <button class="feedback-thumb-btn" data-action="useful" data-clip-id="${clip.clip_id}" title="Useful clip">👍</button>
+                <button class="feedback-thumb-btn" data-action="not-useful" data-clip-id="${clip.clip_id}" title="Not useful">👎</button>
+              </div>
+            </div>
           `;
         } else if (clipStatus === 'rendering') {
           actionButtonsHtml = `
-            <button class="btn on-demand-render-btn is-rendering" disabled style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); cursor: default;">${renderingBtnLabel}</button>
+            <button class="btn on-demand-render-btn is-rendering" disabled style="width: 100%; height: 36px; border-radius: 9px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); cursor: default; font-size: 0.8rem; font-weight: 600;">${renderingBtnLabel}</button>
           `;
         } else if (clipStatus === 'queued') {
           actionButtonsHtml = `
-            <button class="btn on-demand-render-btn is-queued" disabled style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); cursor: default;">${queuedBtnLabel}</button>
+            <button class="btn on-demand-render-btn is-queued" disabled style="width: 100%; height: 36px; border-radius: 9px; background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); cursor: default; font-size: 0.8rem; font-weight: 600;">${queuedBtnLabel}</button>
           `;
         } else {
           // not_rendered
           actionButtonsHtml = `
-            <button class="btn on-demand-render-btn" data-action="render-on-demand" data-clip-rank="${clipRank}" data-clip-index="${index}" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #111; font-weight: 700;">⚡ Render this short</button>
+            <button class="btn on-demand-render-btn" data-action="render-on-demand" data-clip-rank="${clipRank}" data-clip-index="${index}" style="width: 100%; height: 36px; border-radius: 9px; background: linear-gradient(135deg, rgba(255, 215, 120, 0.16) 0%, rgba(180, 115, 20, 0.22) 50%, rgba(20, 15, 10, 0.8) 100%); backdrop-filter: blur(12px); border: 1px solid rgba(255, 215, 120, 0.42); color: #ffdf73; font-weight: 700; font-size: 0.8rem; box-shadow: 0 4px 14px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.25); text-shadow: 0 1px 2px rgba(0,0,0,0.85); cursor: pointer;">⚡ Render this short</button>
           `;
         }
 
@@ -3012,11 +3582,6 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
             <div class="clip-actions">
               ${actionButtonsHtml}
-              ${qualityHtml}
-              <div class="clip-feedback" style="display:inline-block;margin-left:10px">
-                <button class="btn feedback-btn" data-action="useful" data-clip-id="${clip.clip_id}">👍 Useful</button>
-                <button class="btn feedback-btn" data-action="not-useful" data-clip-id="${clip.clip_id}">👎 Not useful</button>
-              </div>
             </div>
             
             <div class="logo-footer">
@@ -3091,6 +3656,26 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
               }
             });
           }
+        }
+
+        const theaterBtn = card.querySelector('[data-action="open-theater"]');
+        if (theaterBtn) {
+          theaterBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openTheaterModal(index);
+          });
+        }
+
+        const hookOverlay = card.querySelector('.hook-glass-overlay');
+        if (hookOverlay && clipStatus === 'ready' && clip.clip_url) {
+          hookOverlay.style.pointerEvents = 'auto';
+          hookOverlay.style.cursor = 'pointer';
+          hookOverlay.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openTheaterModal(index);
+          });
         }
 
         const viewBtn = card.querySelector('[data-action="view"]');
@@ -3218,6 +3803,8 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
             if (json && json.status === 'ok' || json.status === 'ignored') {
               card.dataset.feedbackLocked = "1";
               [usefulBtn, notUsefulBtn].forEach(b => { if (b) b.disabled = true; });
+              if (action === "useful" && usefulBtn) usefulBtn.classList.add('voted-useful');
+              if (action === "not-useful" && notUsefulBtn) notUsefulBtn.classList.add('voted-not-useful');
             }
           } catch (e) {
             console.error('Feedback error', e);
