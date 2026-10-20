@@ -234,7 +234,11 @@
       -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 200, 100, 0.2) transparent;
-      padding-bottom: 12px;
+      padding-top: 26px;
+      padding-bottom: 24px;
+      padding-left: 10px;
+      padding-right: 10px;
+      margin-top: -14px;
     }
 
     .carousel::-webkit-scrollbar {
@@ -257,17 +261,19 @@
       -webkit-backdrop-filter: blur(20px);
       border: 1px solid rgba(255, 215, 120, 0.12);
       box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: all 0.32s cubic-bezier(0.16, 1, 0.3, 1);
       cursor: pointer;
       display: flex;
       flex-direction: column;
       position: relative;
+      will-change: transform, box-shadow;
     }
 
     .clip-card.is-previewing {
       transform: translateY(-8px) scale(1.02);
-      border-color: rgba(255, 215, 120, 0.38);
-      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 45px rgba(255, 190, 80, 0.15);
+      border-color: rgba(255, 215, 120, 0.45);
+      box-shadow: 0 26px 70px rgba(0, 0, 0, 0.85), 0 0 35px rgba(255, 190, 80, 0.2);
+      z-index: 10;
     }
 
     .clip-card.is-best {
@@ -276,8 +282,9 @@
     }
 
     .clip-card.is-best.is-previewing {
-      transform: scale(1.04) translateY(-8px);
-      box-shadow: 0 35px 90px rgba(0, 0, 0, 0.85), 0 0 55px rgba(255, 200, 100, 0.25);
+      transform: translateY(-8px) scale(1.03);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9), 0 0 45px rgba(255, 200, 100, 0.28);
+      z-index: 10;
     }
 
     /* Video preview - Native 9:16 TikTok / Reels Vertical Ratio */
