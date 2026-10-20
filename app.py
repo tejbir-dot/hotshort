@@ -3574,9 +3574,9 @@ def ui_prototype():
         }
     ]
     return render_template('clip_prototype.html', clips=sample_clips)
+@app.route('/pricing')
 @app.route('/subscription')
-@login_required
-def subscription():
+def pricing():
     return render_template('subscription.html', current_user=current_user)
 
 @app.route('/limit-reached')
