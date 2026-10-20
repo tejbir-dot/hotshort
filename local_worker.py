@@ -1156,8 +1156,16 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
             fmt_args = ["-f", "140/bestaudio[ext=m4a]/bestaudio"]
         else:
             fmt_args = [
-                "-S", "res,vcodec:vp9",
-                "--format", "bestvideo[vcodec^=vp9]+140/bestvideo[vcodec^=vp9]+bestaudio[ext=m4a]/bestvideo[vcodec^=vp9]+bestaudio/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                # Cap at 1080p — 4K VP9 is 1.3 GB and stalls L2 for 85+ seconds.
+                # 1080p VP9 is ~100 MB, downloads 10x faster, still high quality.
+                "-S", "res:1080,vcodec:vp9",
+                "--format",
+                "bestvideo[vcodec^=vp9][height<=1080]+140"
+                "/bestvideo[vcodec^=vp9][height<=1080]+bestaudio[ext=m4a]"
+                "/bestvideo[vcodec^=vp9][height<=1080]+bestaudio"
+                "/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]"
+                "/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]"
+                "/best[height<=1080][ext=mp4]/best[height<=1080]/best",
                 "--merge-output-format", "mp4",
             ]
         p_args = player_args if player_args is not None else _player_client_args
@@ -1171,6 +1179,12 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
             "--fragment-retries", "10",
             "--retry-sleep", "3",
             "--socket-timeout", "60",
+            # [SPEED] Download up to 16 fragments in parallel per DASH/HLS stream
+            "--concurrent-fragments", "16",
+            # [SPEED] 10 MB HTTP read chunks for fewer round-trips
+            "--http-chunk-size", "10M",
+            # [SPEED] No .part intermediate files (atomic write = less FS overhead)
+            "--no-part",
             "--no-warnings",
             "--output", dest_path,
             youtube_url,
@@ -1264,7 +1278,9 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
     except Exception:
         pass
 
-    print(f"[SOURCE] fmt={fmt_str} codec={codec_str} WxH={wxh_str} size={size_mb:.2f}MB download_wall_s={dl_wall_s:.2f}s", flush=True)
+    # [TIMER] Explicit wall-clock measured by perf_counter — not estimated
+    speed_mbps = size_mb / dl_wall_s if dl_wall_s > 0 else 0
+    print(f"[TIMER] download_wall_s={dl_wall_s:.2f}s speed={speed_mbps:.1f}MB/s | [SOURCE] fmt={fmt_str} codec={codec_str} WxH={wxh_str} size={size_mb:.2f}MB", flush=True)
 
 
 def _download_via_api(youtube_url: str, dest_path: str):
