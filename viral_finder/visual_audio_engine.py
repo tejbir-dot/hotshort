@@ -56,27 +56,16 @@ def analyze_audio(path: str, sr: int = 16000, frame_length: int = 2048, hop_leng
 
     energies = []
     times = []
-    buf = np.zeros((0,), dtype=np.float32)
-    frame_idx = 0
+    # [PERF] Collect PCM chunks into a list, then stack once — avoids O(n²) concatenation
+    raw_chunks = []
+    read_size = 524288  # 512 KB per read — fewer syscalls on large audio files
 
-    read_size = 65536  # bytes
     try:
         while True:
             chunk = p.stdout.read(read_size)
             if not chunk:
                 break
-            x = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
-            if x.size == 0:
-                continue
-            buf = np.concatenate([buf, x])
-
-            while buf.size >= frame_length:
-                frame = buf[:frame_length]
-                rms = float(np.sqrt(np.mean(frame * frame) + 1e-12))
-                energies.append(rms)
-                times.append(float(frame_idx * hop_length) / float(sr))
-                frame_idx += 1
-                buf = buf[hop_length:]
+            raw_chunks.append(np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0)
 
         p.wait(timeout=10)
     except Exception:
@@ -85,6 +74,21 @@ def analyze_audio(path: str, sr: int = 16000, frame_length: int = 2048, hop_leng
         except Exception:
             pass
         return []
+
+    if not raw_chunks:
+        return []
+
+    # Single stack — O(n) instead of O(n²)
+    buf = np.concatenate(raw_chunks)
+    frame_idx = 0
+    pos = 0
+    while pos + frame_length <= buf.size:
+        frame = buf[pos:pos + frame_length]
+        rms = float(np.sqrt(np.mean(frame * frame) + 1e-12))
+        energies.append(rms)
+        times.append(float(frame_idx * hop_length) / float(sr))
+        frame_idx += 1
+        pos += hop_length
 
     out = [{"time": t, "energy": e} for t, e in zip(times, energies)]
     dt = time.time() - t0
