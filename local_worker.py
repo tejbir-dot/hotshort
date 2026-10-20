@@ -1156,16 +1156,16 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
             fmt_args = ["-f", "140/bestaudio[ext=m4a]/bestaudio"]
         else:
             fmt_args = [
-                # Cap at 1080p — 4K VP9 is 1.3 GB and stalls L2 for 85+ seconds.
-                # 1080p VP9 is ~100 MB, downloads 10x faster, still high quality.
-                "-S", "res:1080,vcodec:vp9",
+                # Full 4K VP9 — downloaded in background while L1/L2 run on lowres.
+                # Do NOT cap to 1080p; final render uses 4K for maximum quality.
+                "-S", "vcodec:vp9",
                 "--format",
-                "bestvideo[vcodec^=vp9][height<=1080]+140"
-                "/bestvideo[vcodec^=vp9][height<=1080]+bestaudio[ext=m4a]"
-                "/bestvideo[vcodec^=vp9][height<=1080]+bestaudio"
+                "bestvideo[vcodec^=vp9]+140"
+                "/bestvideo[vcodec^=vp9]+bestaudio[ext=m4a]"
+                "/bestvideo[vcodec^=vp9]+bestaudio"
                 "/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]"
                 "/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]"
-                "/best[height<=1080][ext=mp4]/best[height<=1080]/best",
+                "/best[ext=mp4]/best",
                 "--merge-output-format", "mp4",
             ]
         p_args = player_args if player_args is not None else _player_client_args
@@ -2366,7 +2366,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
     t_user_start = time.perf_counter()
     try:
         audio_first = os.getenv("HS_AUDIO_FIRST", "1").strip().lower() in ("1", "true", "yes", "on")
-        hs_l2_lowres = os.getenv("HS_L2_LOWRES", "0").strip().lower() in ("1", "true", "yes", "on")
+        # Always True: audio+360p download concurrently, triggering L1+L2 immediately.
+        # 4K video downloads in background — no stall, full quality on final render.
+        hs_l2_lowres = True
         audio_path = None
         lowres_video_path = None
         video_ready_event = None
@@ -2399,14 +2401,21 @@ def _process_job(job: dict, cloudinary_ok: bool):
                 if audio_first:
                     audio_path = os.path.join(tmp, "audio.m4a")
                     if hs_l2_lowres:
-                        lowres_video_path = os.path.join(tmp, "lowres_144p.mp4")
-                        print("[LOCAL_WORKER] [AUDIO_FIRST] Active with HS_L2_LOWRES=1: downloading audio (-f 140) and low-res stream (-f 160) concurrently...", flush=True)
+                        lowres_video_path = os.path.join(tmp, "lowres_480p.mp4")
+                        print(
+                            "[LOCAL_WORKER] [AUDIO_FIRST+L2_LOWRES] Downloading audio (-f 140) + "
+                            "480p proxy (-f 244/243/135/bestvideo[height<=480]) concurrently in 2 threads...",
+                            flush=True,
+                        )
+                        t_lr_start = time.perf_counter()
                         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as dl_ex:
                             fut_a = dl_ex.submit(_download_via_ytdlp, youtube_url, audio_path, is_audio_only=True)
-                            fut_l = dl_ex.submit(_download_via_ytdlp, youtube_url, lowres_video_path, is_audio_only=False, format_override="160/278/394/bestvideo[height<=240]")
+                            fut_l = dl_ex.submit(_download_via_ytdlp, youtube_url, lowres_video_path, is_audio_only=False, format_override="244/243/135/bestvideo[height<=480]")
                             fut_a.result()
                             try:
                                 fut_l.result()
+                                t_lr_done = time.perf_counter() - t_lr_start
+                                print(f"[TIMER] lowres_proxy_wall_s={t_lr_done:.2f}s | [SOURCE] {lowres_video_path} ({os.path.getsize(lowres_video_path)/(1024*1024):.1f}MB)", flush=True)
                             except Exception as e_l:
                                 print(f"[LOCAL_WORKER] [L2_LOWRES] Low-res stream download failed ({e_l}), will fallback to 4K video wait", flush=True)
                                 lowres_video_path = None
