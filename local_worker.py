@@ -751,6 +751,9 @@ def _upload_clip_to_railway(local_path: str, job_id: str) -> str | None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 _RAPID_DL_HOST = "youtube-media-downloader.p.rapidapi.com"
+# Set to True when RapidAPI returns 429 (quota exceeded) — skips all future API calls
+# immediately without any HTTP round-trip, falling straight through to yt-dlp.
+_rapidapi_quota_exceeded: bool = False
 
 
 def _extract_video_id(youtube_url: str) -> str:
@@ -792,6 +795,10 @@ def _rapidapi_fetch_streams(video_id: str) -> dict:
         headers=headers,
         timeout=30,
     )
+    if resp.status_code == 429:
+        global _rapidapi_quota_exceeded
+        _rapidapi_quota_exceeded = True
+        raise RuntimeError(f"RapidAPI /v2/video/details returned 429: {resp.text[:300]}")
     if resp.status_code != 200:
         raise RuntimeError(f"RapidAPI /v2/video/details returned {resp.status_code}: {resp.text[:300]}")
     data = resp.json()
@@ -1286,16 +1293,10 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
 def _download_via_api(youtube_url: str, dest_path: str):
     """
     Download a YouTube video to dest_path using youtube-media-downloader RapidAPI.
-
-    Flow:
-      1. Extract video ID from URL
-      2. Fetch all available streams via /v2/video/details
-      3. Pick best 720p video-only stream + best m4a audio stream
-      4. Download both to temp files
-      5. FFmpeg merge → dest_path (perfect audio/video sync)
-
-    Falls back to 360p+audio single file if no separate streams available.
+    Skips immediately (raises) if quota was already exceeded in this session.
     """
+    if _rapidapi_quota_exceeded:
+        raise RuntimeError("RapidAPI quota exceeded (429 cached) — skipping to yt-dlp")
     # ── 1. Extract video ID ────────────────────────────────────────────────────
     video_id = _extract_video_id(youtube_url)
     print(f"[LOCAL_WORKER] RapidAPI download: videoId={video_id}", flush=True)
