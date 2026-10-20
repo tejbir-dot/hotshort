@@ -3577,7 +3577,7 @@ def ui_prototype():
 @app.route('/pricing')
 @app.route('/subscription')
 def pricing():
-    return render_template('subscription.html', current_user=current_user)
+    return redirect('/?pricing=1')
 
 @app.route('/limit-reached')
 @login_required
@@ -3693,6 +3693,12 @@ import stripe
 stripe.api_key = app.config['STRIPE_SECRET_KEY']
 
 VALID_PLAN_TYPES = {"free", "starter", "pro", "industry", "trial"}
+
+@app.route("/checkout", methods=["GET"])
+@login_required
+def checkout():
+    plan = request.args.get("plan", "pro").strip().lower()
+    return redirect(url_for("create_checkout_session", plan=plan))
 
 @app.route("/create-checkout-session/<plan>", methods=["GET"])
 @login_required

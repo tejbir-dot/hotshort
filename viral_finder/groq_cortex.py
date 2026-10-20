@@ -5,7 +5,7 @@ from viral_finder.cognition import Evidence, IntelligenceArtifact
 import json
 import logging
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 log = logging.getLogger("groq_cortex")
 
@@ -752,8 +752,12 @@ Return JSON ONLY in this exact format:
 
     log.info(f"[SURGEON_ENTER]\ncandidates={len(top_candidates)}")
 
-    for batch_idx, batch in enumerate(batches):
-        log.info(f"[SURGEON_BATCH]\nbatch={batch_idx+1}\ncount={len(batch)}")
+    from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely, get_gemini_api_keys
+    from viral_finder.cognition import Evidence, IntelligenceArtifact
+
+    def _process_batch(batch_idx: int, batch: List[Dict], assigned_key: Optional[str]) -> Tuple[int, List[Dict], Dict[str, Any], List[Dict], bool, Optional[Exception], float]:
+        key_display = (assigned_key or "")[:10] + "..." if assigned_key else "primary"
+        log.info(f"[SURGEON_BATCH] batch={batch_idx+1}/{len(batches)} count={len(batch)} key={key_display}")
         
         groq_input = []
         batch_meta = {}
@@ -834,111 +838,42 @@ Return JSON ONLY in this exact format:
                 "final_score": float(c.get("viral_score", c.get("score", 0.0))),
                 "candidate_tokens": cand_tokens,
                 "context_tokens": ctx_tokens,
-                "original_end_idx": e_idx
+                "original_end_idx": e_idx,
+                "end": e0,
             }
 
-        # --- Build full prompt (system + user merged for Gemini, separate for Groq) ---
-        groq_payload = {
-            "model": _get_groq_model(),
-            "temperature": 0.1,
-            "max_tokens": 2000,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json.dumps(groq_input, indent=2)}
-            ]
-        }
         gemini_prompt = system_prompt + "\n\nHere is the input data:\n" + json.dumps(groq_input, indent=2)
 
-        # --- Batch retry: Try GPT API first, then fallback to Gemini ---
         _SURGEON_RETRY_DELAYS = [2, 4, 8]  # seconds between each retry attempt
         _batch_success = False
+        reports_list = []
+        last_exc = None
+        latency_ms = 0.0
 
         for _retry_attempt in range(len(_SURGEON_RETRY_DELAYS) + 1):  # 1 initial + 3 retries
             try:
-                from viral_finder.gemini_cortex import is_gemini_enabled, post_gemini_completions, parse_gemini_json_safely
                 start_t = time.time()
                 if is_gemini_enabled():
-                    log.info(f"[GEMINI_SURGEON] 🚀 Batch {batch_idx+1}: Routing to Gemini (primary).")
-                    raw_text = post_gemini_completions(prompt=gemini_prompt, response_format_schema={"type": "json_object"})
+                    log.info(f"[GEMINI_SURGEON] 🚀 Batch {batch_idx+1}/{len(batches)} (Attempt {_retry_attempt+1}) on Gemini key: {key_display}")
+                    raw_text = post_gemini_completions(prompt=gemini_prompt, response_format_schema={"type": "json_object"}, api_key=assigned_key)
                     parsed = parse_gemini_json_safely(raw_text)
                     latency = time.time() - start_t
-                    audit_data["total_latency_ms"] += (latency * 1000)
-                    # We don't get token counts from gemini currently in this helper
+                    latency_ms = latency * 1000
                 else:
                     raise Exception("Gemini API is not enabled! Cannot run surgeon.")
 
-                pt_per_cand = 0  # Gemini doesn't expose token count the same way
-
                 reports_list = parsed if isinstance(parsed, list) else parsed.get("surgeon_reports", [])
-                for report in reports_list:
-                    cid = str(report.get("candidate_id", ""))
-                    meta = batch_meta.get(cid, {})
-                    dec = report.get("decision", "REJECT")
-
-                    # Mathematical Extension from Segment Index
-                    try:
-                        payoff_idx = int(report.get("payoff_segment_index", -1))
-                        if payoff_idx >= 0 and payoff_idx < len(full_transcript) and dec in ["KEEP", "EXTEND_RIGHT"]:
-                            new_end = float(full_transcript[payoff_idx].get("end", 0))
-                            orig_end = float(meta.get("end", 0))
-                            if new_end > orig_end:
-                                report["end_adjustment_seconds"] = round(new_end - orig_end, 2)
-                                log.info(f"[SURGEON_EXTENSION] Extended candidate {cid} by +{report['end_adjustment_seconds']}s based on segment [{payoff_idx}]")
-                    except (ValueError, TypeError):
-                        pass
-
-                    audit_data["decisions"][dec] = audit_data["decisions"].get(dec, 0) + 1
-
-                    reason = str(report.get("rejection_reason", "none"))
-                    c_source = str(report.get("core_idea_source", "UNKNOWN"))
-
-                    log.info("\n[SURGEON_FORENSIC_CANDIDATE]")
-                    log.info(f"candidate_id={cid}")
-                    log.info(f"duration={round(meta.get('duration', 0.0), 2)}")
-                    log.info(f"hook_text={meta.get('hook_text', '')}")
-                    log.info(f"payoff_text={meta.get('payoff_text', '')}")
-                    log.info(f"arc_score={round(meta.get('arc_score', 0.0), 4)}")
-                    log.info(f"final_score={round(meta.get('final_score', 0.0), 4)}")
-                    log.info(f"context_tokens={meta.get('context_tokens', 0)}")
-                    log.info(f"candidate_tokens={meta.get('candidate_tokens', 0)}")
-                    log.info(f"prompt_tokens={pt_per_cand}")
-                    log.info(f"core_idea_source={c_source}")
-                    log.info(f"decision={dec}")
-                    if dec in ["REJECT", "KEEP"]:
-                        log.info(f"rejection_reason={reason}")
-
-                    rej_type = str(report.get("rejection_type", "NONE"))
-                    log.info(f"rejection_type={rej_type}")
-
-                    for c in top_candidates:
-                        if str(c.get("id", "")) == cid:
-                            c["groq_surgeon"] = report
-
-                            # Provide intelligence transport for Ranking decision math
-                            from viral_finder.cognition import Evidence, IntelligenceArtifact
-                            artifact = c.get("intelligence")
-                            if not isinstance(artifact, IntelligenceArtifact):
-                                artifact = IntelligenceArtifact()
-                                c["intelligence"] = artifact
-
-                            dev_score = float(report.get("development_score", 0)) / 10.0
-                            res_score = float(report.get("resolution_strength", 0)) / 10.0
-
-                            artifact.evidence_stream.extend([
-                                Evidence(type="usefulness", value=dev_score, producer="groq_surgeon", confidence=0.9),
-                                Evidence(type="completeness", value=res_score, producer="groq_surgeon", confidence=0.9),
-                                Evidence(type="stop_scroll", value=0.95, producer="groq_surgeon", confidence=0.9),
-                                Evidence(type="memorability", value=0.8, producer="groq_surgeon", confidence=0.9),
-                                Evidence(type="shareability", value=0.8, producer="groq_surgeon", confidence=0.9),
-                            ])
-
-                            break
-
-                _batch_success = True
-                break  # Success — exit retry loop
+                if reports_list:
+                    _batch_success = True
+                    break
+                else:
+                    log.warning(f"[GEMINI_SURGEON] Batch {batch_idx+1} returned empty surgeon_reports.")
+                    if _retry_attempt < len(_SURGEON_RETRY_DELAYS):
+                        time.sleep(_SURGEON_RETRY_DELAYS[_retry_attempt])
+                        continue
 
             except Exception as e:
+                last_exc = e
                 is_rate_limit = "429" in str(e) or (
                     hasattr(e, "response") and getattr(e.response, "status_code", None) == 429
                 )
@@ -946,63 +881,157 @@ Return JSON ONLY in this exact format:
                     sleep_s = _SURGEON_RETRY_DELAYS[_retry_attempt]
                     if is_rate_limit:
                         log.warning(
-                            f"[GROQ_SURGEON] Batch {batch_idx+1} rate-limited (429). "
-                            f"Attempt {_retry_attempt+1}/{len(_SURGEON_RETRY_DELAYS)+1}. "
-                            f"Cycling both keys then waiting {sleep_s}s before retry..."
+                            f"[GROQ_SURGEON] Batch {batch_idx+1}/{len(batches)} rate-limited (429) on key {key_display}. "
+                            f"Attempt {_retry_attempt+1}/{len(_SURGEON_RETRY_DELAYS)+1}. Retrying in {sleep_s}s..."
                         )
-                        # Force one full lap of the key pool to reset token counters
-                        for _ in range(len(GroqKeyPool.get_all_keys())):
-                            GroqKeyPool.get_next_key()
                     else:
                         log.warning(
-                            f"[GROQ_SURGEON] Batch {batch_idx+1} failed: {e}. "
-                            f"Attempt {_retry_attempt+1}/{len(_SURGEON_RETRY_DELAYS)+1}. "
-                            f"Retrying in {sleep_s}s..."
+                            f"[GROQ_SURGEON] Batch {batch_idx+1}/{len(batches)} failed on key {key_display}: {e}. "
+                            f"Attempt {_retry_attempt+1}/{len(_SURGEON_RETRY_DELAYS)+1}. Retrying in {sleep_s}s..."
                         )
                     time.sleep(sleep_s)
+
+        if not _batch_success:
+            # All retries exhausted — apply local heuristic fallback
+            log.error(
+                f"[GROQ_SURGEON] Batch {batch_idx+1}/{len(batches)} permanently failed after "
+                f"{len(_SURGEON_RETRY_DELAYS)+1} attempts: {last_exc}. "
+                f"Applying local heuristic fallback for {len(batch)} candidates."
+            )
+            reports_list = []
+            for c in batch:
+                cid = str(c.get("id", ""))
+                meta = batch_meta.get(cid, {})
+                dur = float(meta.get("duration", 0.0))
+                if dur < 35.0:
+                    fallback_dev = 0.6
+                    fallback_res = 0.6
+                    fallback_dec = "KEEP"
                 else:
-                    # All retries exhausted — apply local heuristic fallback so candidates
-                    # are not silently left at completeness floor 0.35.
-                    log.error(
-                        f"[GROQ_SURGEON] Batch {batch_idx+1} permanently failed after "
-                        f"{len(_SURGEON_RETRY_DELAYS)+1} attempts: {e}. "
-                        f"Applying local heuristic fallback for {len(batch)} candidates."
-                    )
-                    from viral_finder.cognition import Evidence, IntelligenceArtifact
-                    for c in batch:
-                        cid = str(c.get("id", ""))
-                        meta = batch_meta.get(cid, {})
-                        dur = float(meta.get("duration", 0.0))
+                    fallback_dev = 0.75
+                    fallback_res = 0.75
+                    fallback_dec = "KEEP"
 
-                        # Short clips (<35s) most likely need extension — give them a KEEP
-                        # with conservative completeness so downstream can still extend.
-                        # Long clips already had NCE contracts — give them full credit.
-                        if dur < 35.0:
-                            fallback_dev = 0.6
-                            fallback_res = 0.6
-                            fallback_dec = "KEEP"
-                        else:
-                            fallback_dev = 0.75
-                            fallback_res = 0.75
-                            fallback_dec = "KEEP"
+                reports_list.append({
+                    "candidate_id": cid,
+                    "decision": fallback_dec,
+                    "rejection_type": "NONE",
+                    "rejection_reason": "none",
+                    "development_score": round(fallback_dev * 10),
+                    "resolution_strength": round(fallback_res * 10),
+                    "core_idea_source": "FALLBACK_HEURISTIC",
+                    "_fallback_reason": "groq_surgeon_batch_rate_limited",
+                })
 
-                        fallback_report = {
-                            "candidate_id": cid,
-                            "decision": fallback_dec,
-                            "rejection_type": "NONE",
-                            "rejection_reason": "none",
-                            "development_score": round(fallback_dev * 10),
-                            "resolution_strength": round(fallback_res * 10),
-                            "core_idea_source": "FALLBACK_HEURISTIC",
-                            "_fallback_reason": "groq_surgeon_batch_rate_limited",
-                        }
-                        c["groq_surgeon"] = fallback_report
+        return (batch_idx, batch, batch_meta, reports_list, _batch_success, last_exc, latency_ms)
 
-                        artifact = c.get("intelligence")
-                        if not isinstance(artifact, IntelligenceArtifact):
-                            artifact = IntelligenceArtifact()
-                            c["intelligence"] = artifact
+    gemini_keys = get_gemini_api_keys() if is_gemini_enabled() else []
+    parallel_flag = os.environ.get("HS_PARALLEL_SURGEON", os.environ.get("HS_PARALLEL_TRIGGERS", "1")).strip() == "1"
+    use_parallel = parallel_flag and is_gemini_enabled() and len(gemini_keys) >= 2 and len(batches) > 1
 
+    batch_results = []
+    if use_parallel:
+        try:
+            max_workers = min(len(gemini_keys), len(batches))
+            log.info(f"[GROQ_SURGEON] ⚡ PARALLEL SURGEON DISPATCH: {len(batches)} batches across {len(gemini_keys)} keys ({max_workers} worker threads)")
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            def _worker_task(args):
+                b_idx, b_candidates = args
+                key = gemini_keys[b_idx % len(gemini_keys)]
+                return _process_batch(b_idx, b_candidates, key)
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(_worker_task, (b_idx, b)) for b_idx, b in enumerate(batches)]
+                for fut in as_completed(futures):
+                    batch_results.append(fut.result())
+
+            # Sort strictly by batch_idx to preserve order
+            batch_results.sort(key=lambda x: x[0])
+
+            # If any batch failed during parallel dispatch (e.g. 429 on secondary key),
+            # fall back immediately by re-attempting failed batches sequentially on primary key
+            failed_in_par = [r[0] for r in batch_results if not r[4]]
+            if failed_in_par:
+                log.warning(f"[GROQ_SURGEON] ⚠️ {len(failed_in_par)} batches failed in parallel dispatch. Falling back sequentially on primary key...")
+                primary_key = gemini_keys[0]
+                for b_idx in failed_in_par:
+                    log.info(f"[GROQ_SURGEON] Sequential fallback re-attempt for batch {b_idx+1}/{len(batches)}...")
+                    time.sleep(1.0)
+                    res = _process_batch(b_idx, batches[b_idx], primary_key)
+                    for r_i, r in enumerate(batch_results):
+                        if r[0] == b_idx:
+                            batch_results[r_i] = res
+                            break
+
+        except Exception as par_err:
+            log.warning(f"[GROQ_SURGEON] ⚠️ Parallel dispatch encountered error ({par_err}). Falling back completely to sequential mode...")
+            batch_results = []
+
+    if not batch_results:
+        primary_key = gemini_keys[0] if gemini_keys else None
+        for b_idx, b in enumerate(batches):
+            if b_idx > 0 and len(gemini_keys) <= 1:
+                time.sleep(1.5)
+            res = _process_batch(b_idx, b, primary_key)
+            batch_results.append(res)
+
+    for b_idx, batch, batch_meta, reports_list, b_success, b_exc, b_lat in batch_results:
+        audit_data["total_latency_ms"] += b_lat
+
+        for report in reports_list:
+            cid = str(report.get("candidate_id", ""))
+            meta = batch_meta.get(cid, {})
+            dec = report.get("decision", "REJECT")
+
+            # Mathematical Extension from Segment Index
+            try:
+                payoff_idx = int(report.get("payoff_segment_index", -1))
+                if payoff_idx >= 0 and payoff_idx < len(full_transcript) and dec in ["KEEP", "EXTEND_RIGHT"]:
+                    new_end = float(full_transcript[payoff_idx].get("end", 0))
+                    orig_end = float(meta.get("end", 0))
+                    if new_end > orig_end:
+                        report["end_adjustment_seconds"] = round(new_end - orig_end, 2)
+                        log.info(f"[SURGEON_EXTENSION] Extended candidate {cid} by +{report['end_adjustment_seconds']}s based on segment [{payoff_idx}]")
+            except (ValueError, TypeError):
+                pass
+
+            audit_data["decisions"][dec] = audit_data["decisions"].get(dec, 0) + 1
+
+            reason = str(report.get("rejection_reason", "none"))
+            c_source = str(report.get("core_idea_source", "UNKNOWN"))
+
+            log.info("\n[SURGEON_FORENSIC_CANDIDATE]")
+            log.info(f"candidate_id={cid}")
+            log.info(f"duration={round(meta.get('duration', 0.0), 2)}")
+            log.info(f"hook_text={meta.get('hook_text', '')}")
+            log.info(f"payoff_text={meta.get('payoff_text', '')}")
+            log.info(f"arc_score={round(meta.get('arc_score', 0.0), 4)}")
+            log.info(f"final_score={round(meta.get('final_score', 0.0), 4)}")
+            log.info(f"context_tokens={meta.get('context_tokens', 0)}")
+            log.info(f"candidate_tokens={meta.get('candidate_tokens', 0)}")
+            log.info(f"prompt_tokens=0")
+            log.info(f"core_idea_source={c_source}")
+            log.info(f"decision={dec}")
+            if dec in ["REJECT", "KEEP"]:
+                log.info(f"rejection_reason={reason}")
+
+            rej_type = str(report.get("rejection_type", "NONE"))
+            log.info(f"rejection_type={rej_type}")
+
+            for c in top_candidates:
+                if str(c.get("id", "")) == cid:
+                    c["groq_surgeon"] = report
+
+                    # Provide intelligence transport for Ranking decision math
+                    artifact = c.get("intelligence")
+                    if not isinstance(artifact, IntelligenceArtifact):
+                        artifact = IntelligenceArtifact()
+                        c["intelligence"] = artifact
+
+                    if report.get("core_idea_source") == "FALLBACK_HEURISTIC":
+                        fallback_dev = float(report.get("development_score", 6)) / 10.0
+                        fallback_res = float(report.get("resolution_strength", 6)) / 10.0
                         artifact.evidence_stream.extend([
                             Evidence(type="usefulness", value=fallback_dev, producer="groq_surgeon_fallback", confidence=0.6),
                             Evidence(type="completeness", value=fallback_res, producer="groq_surgeon_fallback", confidence=0.6),
@@ -1010,17 +1039,19 @@ Return JSON ONLY in this exact format:
                             Evidence(type="memorability", value=0.70, producer="groq_surgeon_fallback", confidence=0.6),
                             Evidence(type="shareability", value=0.70, producer="groq_surgeon_fallback", confidence=0.6),
                         ])
+                    else:
+                        dev_score = float(report.get("development_score", 0)) / 10.0
+                        res_score = float(report.get("resolution_strength", 0)) / 10.0
 
-                        log.info(
-                            f"[SURGEON_FALLBACK] cid={cid} dur={dur:.1f}s "
-                            f"-> decision={fallback_dec} dev={fallback_dev} res={fallback_res} "
-                            f"(heuristic, no Groq)"
-                        )
-                        audit_data["decisions"][fallback_dec] = audit_data["decisions"].get(fallback_dec, 0) + 1
+                        artifact.evidence_stream.extend([
+                            Evidence(type="usefulness", value=dev_score, producer="groq_surgeon", confidence=0.9),
+                            Evidence(type="completeness", value=res_score, producer="groq_surgeon", confidence=0.9),
+                            Evidence(type="stop_scroll", value=0.95, producer="groq_surgeon", confidence=0.9),
+                            Evidence(type="memorability", value=0.8, producer="groq_surgeon", confidence=0.9),
+                            Evidence(type="shareability", value=0.8, producer="groq_surgeon", confidence=0.9),
+                        ])
 
-        # Inter-batch cooldown: only when single-key mode (multi-key pool self-manages via post_groq_completions)
-        if batch_idx < len(batches) - 1 and len(GroqKeyPool.get_all_keys()) <= 1:
-            time.sleep(1.5)
+                    break
 
     total_tokens = audit_data["input_tokens"] + audit_data["output_tokens"]
     c_count = audit_data["candidates_sent"] or 1

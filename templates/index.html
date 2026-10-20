@@ -1242,7 +1242,7 @@
       </a>
       <ul class="nav-links">
         <li><a href="#features" class="active">Features</a></li>
-        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="#pricing" onclick="openPricingNav(event)">Pricing</a></li>
         <li><a href="#" data-backend-link="/auth/login">Login</a></li>
         <li>
           <button
@@ -2059,6 +2059,27 @@
     </div>
   </div>
   <!-- ═══════════════════════════════════════════════════════ -->
+  {% include "pricing_modal.html" %}
+
+  <script>
+    function openPricingNav(e) {
+      if (e) e.preventDefault();
+      if (typeof window.showPricingModal === 'function') {
+        window.showPricingModal();
+      } else {
+        const modal = document.getElementById('pricingModal');
+        if (modal) modal.classList.remove('hidden');
+      }
+    }
+
+    // Auto-open if redirected with ?pricing=1 or hash #pricing
+    document.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('pricing') === '1' || window.location.hash === '#pricing') {
+        setTimeout(openPricingNav, 150);
+      }
+    });
+  </script>
 
 </body>
 </html>

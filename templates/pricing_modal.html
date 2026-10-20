@@ -1,10 +1,11 @@
 <!-- Pricing Modal - Psychologically optimized -->
-<div id="pricingModal" class="pricing-modal hidden">
+<div id="pricingModal" class="pricing-modal {% if not is_standalone %}hidden{% endif %}">
   <!-- Backdrop -->
   <div class="pricing-backdrop"></div>
 
   <!-- Modal Container -->
   <div class="pricing-container">
+    <button type="button" class="pricing-close-btn" onclick="window.hidePricingModal ? window.hidePricingModal() : document.getElementById('pricingModal').classList.add('hidden')" aria-label="Close" style="position:absolute; top:18px; right:20px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,200,100,0.2); color:#ffcf80; font-size:18px; line-height:1; cursor:pointer; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; z-index:10; transition:all 0.2s;">✕</button>
     
     <!-- HEADER SECTION -->
     <div class="pricing-header">
