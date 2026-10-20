@@ -234,11 +234,11 @@
       -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 200, 100, 0.2) transparent;
-      padding-top: 26px;
+      padding-top: 24px;
       padding-bottom: 24px;
-      padding-left: 10px;
-      padding-right: 10px;
-      margin-top: -14px;
+      padding-left: 20px;
+      padding-right: 20px;
+      margin-top: -12px;
     }
 
     .carousel::-webkit-scrollbar {
@@ -261,7 +261,7 @@
       -webkit-backdrop-filter: blur(20px);
       border: 1px solid rgba(255, 215, 120, 0.12);
       box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-      transition: all 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
       cursor: pointer;
       display: flex;
       flex-direction: column;
@@ -270,20 +270,21 @@
     }
 
     .clip-card.is-previewing {
-      transform: translateY(-8px) scale(1.02);
+      transform: translateY(-6px);
       border-color: rgba(255, 215, 120, 0.45);
-      box-shadow: 0 26px 70px rgba(0, 0, 0, 0.85), 0 0 35px rgba(255, 190, 80, 0.2);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(255, 190, 80, 0.2);
       z-index: 10;
     }
 
     .clip-card.is-best {
-      box-shadow: 0 0 40px rgba(255, 200, 100, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      box-shadow: 0 0 35px rgba(255, 200, 100, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05);
       border-color: rgba(255, 215, 120, 0.35);
     }
 
     .clip-card.is-best.is-previewing {
-      transform: translateY(-8px) scale(1.03);
-      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9), 0 0 45px rgba(255, 200, 100, 0.28);
+      transform: translateY(-6px);
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.9), 0 0 45px rgba(255, 200, 100, 0.28);
+      border-color: rgba(255, 225, 140, 0.55);
       z-index: 10;
     }
 
@@ -627,12 +628,16 @@
 
     @media (hover: hover) and (pointer: fine) {
       .clip-card:hover {
-        transform: translateY(-8px) scale(1.02);
-        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 45px rgba(255, 190, 80, 0.08);
+        transform: translateY(-6px);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7), 0 0 35px rgba(255, 190, 80, 0.15);
+        z-index: 10;
       }
 
       .clip-card.is-best:hover {
-        transform: scale(1.06) translateY(-8px);
+        transform: translateY(-6px);
+        box-shadow: 0 28px 70px rgba(0, 0, 0, 0.9), 0 0 45px rgba(255, 200, 100, 0.28);
+        border-color: rgba(255, 225, 140, 0.55);
+        z-index: 10;
       }
 
       .clip-card:hover .clip-preview video {
