@@ -844,12 +844,21 @@
 
     .carousel-track {
       display: flex;
-      gap: 28px;
-      overflow: hidden;
+      gap: 24px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
       scroll-behavior: smooth;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
       flex: 1;
-      justify-content: center;
-      transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+      padding-top: 26px;
+      padding-bottom: 24px;
+      padding-left: 20px;
+      padding-right: 20px;
+      margin-top: -14px;
+    }
+    .carousel-track::-webkit-scrollbar {
+      display: none;
     }
 
     .proof-card {
@@ -886,19 +895,32 @@
       box-shadow: 0 28px 70px rgba(0, 0, 0, 0.9), 0 0 45px rgba(255, 200, 100, 0.35);
     }
 
+    .proof-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      width: 100%;
+    }
+
+    .proof-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: rgba(255, 225, 150, 0.85);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
     .badge {
-      position: absolute;
-      top: 14px;
-      right: 14px;
       background: linear-gradient(135deg, rgba(255, 215, 120, 0.95), rgba(217, 119, 6, 0.95));
       color: #111;
-      padding: 5px 12px;
+      padding: 4px 10px;
       border-radius: 20px;
-      font-size: 11px;
+      font-size: 0.72rem;
       font-weight: 800;
       letter-spacing: 0.3px;
       box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
-      z-index: 10;
+      flex-shrink: 0;
     }
 
     /* 9:16 Vertical Video Frame */
@@ -906,7 +928,7 @@
       width: 100%;
       aspect-ratio: 9 / 16;
       height: auto;
-      background: #050505;
+      background: #000;
       border-radius: 14px;
       margin-bottom: 14px;
       overflow: hidden;
@@ -919,6 +941,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      object-position: top center;
       display: block;
       border-radius: 14px;
       background: #000;
@@ -1324,79 +1347,91 @@
         <button class="carousel-nav prev" aria-label="Previous clip">‹</button>
         
         <div class="carousel-track">
-          <!-- Card 1: TJR Solo Trading Hook (Real 9:16 Master Clip) -->
+          <!-- Card 1: TJR Solo Trading Hook (showcase_tjr_trading.mp4) -->
           <div class="proof-card best">
-            <div class="badge">🏆 96% Viral • Trading Hook</div>
+            <div class="proof-card-header">
+              <span class="proof-tag">Trading Psychology</span>
+              <span class="badge">🏆 96% Viral</span>
+            </div>
             <div class="thumb">
               <video class="showcase-video" src="/static/demo_clips/showcase_tjr_trading.mp4" poster="/static/demo_clips/showcase_tjr_trading.jpg" loop muted playsinline preload="metadata"></video>
               <button class="showcase-sound-btn" title="Toggle Sound">🔊 Tap for sound</button>
               <div class="proof-preview-hint">▶ Hover to play</div>
             </div>
             <div class="meta">
-              <span>Loss Aversion Peak</span>
+              <span>Emotional Regulation Peak</span>
               <span>96% Potential</span>
             </div>
             <div class="bar">
               <div style="width: 96%"></div>
             </div>
-            <div class="reason">"THIS amateur mistake is blowing up your account" • Sudden clarity hook with dynamic 9:16 active framing.</div>
+            <div class="reason">"Every single person, including profitable traders, feel emotions when trading..." • The raw truth on why acting on revenge trading blows up accounts.</div>
             <a href="#inputSection" class="locked-btn">⚡ Create Clips Like This</a>
           </div>
 
-          <!-- Card 2: Double Coverage Podcast Hook (Real 9:16 Master Clip) -->
+          <!-- Card 2: Double Coverage Podcast Hook (showcase_podcast_ngannou.mp4) -->
           <div class="proof-card">
-            <div class="badge">🎙️ 94% Viral • Podcast Cut</div>
+            <div class="proof-card-header">
+              <span class="proof-tag">Fighter Podcast</span>
+              <span class="badge">🎙️ 94% Viral</span>
+            </div>
             <div class="thumb">
               <video class="showcase-video" src="/static/demo_clips/showcase_podcast_ngannou.mp4" poster="/static/demo_clips/showcase_podcast_ngannou.jpg" loop muted playsinline preload="metadata"></video>
               <button class="showcase-sound-btn" title="Toggle Sound">🔊 Tap for sound</button>
               <div class="proof-preview-hint">▶ Hover to play</div>
             </div>
             <div class="meta">
-              <span>Multi-Speaker Climax</span>
+              <span>High-Stakes Tension Peak</span>
               <span>94% Potential</span>
             </div>
             <div class="bar">
               <div style="width: 94%"></div>
             </div>
-            <div class="reason">"Scared for his life watching Ngannou" • Active speaker switching + kinetic subtitles & story tension release.</div>
+            <div class="reason">"You still work with him or?" • Shocking backstage fighter story about being genuinely terrified watching Francis Ngannou up close.</div>
             <a href="#inputSection" class="locked-btn">⚡ Create Clips Like This</a>
           </div>
 
-          <!-- Card 3: TJR Mindset & Reality Check (4a52da96_edited_1_0_101.mp4) -->
+          <!-- Card 3: Content Creation Strategy (showcase_tjr_mindset.mp4) -->
           <div class="proof-card">
-            <div class="badge">🔥 92% Viral • Mindset Hook</div>
+            <div class="proof-card-header">
+              <span class="proof-tag">Content Strategy</span>
+              <span class="badge">🔥 93% Viral</span>
+            </div>
             <div class="thumb">
               <video class="showcase-video" src="/static/demo_clips/showcase_tjr_mindset.mp4" poster="/static/demo_clips/showcase_tjr_mindset.jpg" loop muted playsinline preload="metadata"></video>
               <button class="showcase-sound-btn" title="Toggle Sound">🔊 Tap for sound</button>
               <div class="proof-preview-hint">▶ Hover to play</div>
             </div>
             <div class="meta">
-              <span>Mindset Reality Check</span>
-              <span>92% Potential</span>
+              <span>Original Storytelling Peak</span>
+              <span>93% Potential</span>
             </div>
             <div class="bar">
-              <div style="width: 92%"></div>
+              <div style="width: 93%"></div>
             </div>
-            <div class="reason">"The brutal reality why 90% of traders fail before year one" • Direct-to-camera psychological breakdown with kinetic punch zooms.</div>
+            <div class="reason">"Just make content that is completely original" • Brutal breakdown on why copying creators fails and how original storytelling retains 10x more viewers.</div>
             <a href="#inputSection" class="locked-btn">⚡ Create Clips Like This</a>
           </div>
 
-          <!-- Card 4: TJR Lifestyle & 911 Hook (b686b35f_edited_2_57_124.mp4) -->
+          <!-- Card 4: TJR Income Breakdown (showcase_tjr_porsche.mp4) -->
           <div class="proof-card">
-            <div class="badge">⚡ 92% Viral • Lifestyle Hook</div>
+            <div class="proof-card-header">
+              <span class="proof-tag">Income Breakdown</span>
+              <span class="badge">⚡ 95% Viral</span>
+            </div>
             <div class="thumb">
               <video class="showcase-video" src="/static/demo_clips/showcase_tjr_porsche.mp4" poster="/static/demo_clips/showcase_tjr_porsche.jpg" loop muted playsinline preload="metadata"></video>
               <button class="showcase-sound-btn" title="Toggle Sound">🔊 Tap for sound</button>
               <div class="proof-preview-hint">▶ Hover to play</div>
             </div>
             <div class="meta">
-              <span>High-Stakes Curiosity</span>
-              <span>92% Potential</span>
+              <span>Financial Proof Peak</span>
+              <span>95% Potential</span>
             </div>
             <div class="bar">
-              <div style="width: 92%"></div>
+              <div style="width: 95%"></div>
             </div>
-            <div class="reason">"No, I'm driving the 911" • Fast-paced lifestyle hook with luxury b-roll, kinetic subtitles, and dopamine retention pacing.</div>
+            <div class="reason">"Leading up to November I was probably making at least six figures..." • Raw income disclosure and scaling journey with trading charts & dopamine pacing.</div>
             <a href="#inputSection" class="locked-btn">⚡ Create Clips Like This</a>
           </div>
         </div>
