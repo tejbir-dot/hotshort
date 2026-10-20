@@ -1049,17 +1049,16 @@ _last_cookie_refresh_failed_at = 0.0
 
 def _auto_refresh_cookies() -> bool:
     """
-    On-demand export of fresh cookies from Firefox/Chrome into cookies.txt.
+    On-demand export of fresh cookies from Brave/Chrome/Edge/Firefox into cookies.txt.
     Triggered ONLY when YouTube explicitly requires authentication or cookies are expired.
-    Uses strict 4s timeout per browser to guarantee zero hangs.
+    Uses strict 6s timeout per browser to guarantee zero hangs.
     """
     global _last_cookie_refresh_failed_at
-    if time.time() - _last_cookie_refresh_failed_at < 300:
+    if time.time() - _last_cookie_refresh_failed_at < 60:
         print("[LOCAL_WORKER] Cookie refresh recently failed, skipping browser extraction...", flush=True)
         return False
 
     cookies_file = os.path.join(os.getcwd(), "cookies.txt")
-    has_existing = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100
     tmp_cookies = cookies_file + ".tmp"
 
     if os.path.exists(tmp_cookies):
@@ -1068,8 +1067,9 @@ def _auto_refresh_cookies() -> bool:
         except Exception:
             pass
 
-    for browser in ("firefox", "chrome"):
-        print(f"[LOCAL_WORKER] On-demand cookie extraction from {browser} (fast 4s timeout)...", flush=True)
+    # Check Brave first (unlocked and fast), then Chrome, Edge, Firefox
+    for browser in ("brave", "chrome", "edge", "firefox"):
+        print(f"[LOCAL_WORKER] On-demand cookie extraction from {browser} (fast 6s timeout)...", flush=True)
         try:
             result = subprocess.run(
                 [
@@ -1079,7 +1079,7 @@ def _auto_refresh_cookies() -> bool:
                     "--skip-download", "--quiet",
                     "https://www.youtube.com",
                 ],
-                capture_output=True, timeout=4,
+                capture_output=True, timeout=6,
             )
             if result.returncode == 0 and os.path.exists(tmp_cookies) and os.path.getsize(tmp_cookies) > 100:
                 if os.path.exists(cookies_file):
@@ -1092,7 +1092,7 @@ def _auto_refresh_cookies() -> bool:
                 print(f"[LOCAL_WORKER] Cookies successfully refreshed from {browser} ({sz:.0f} KB) -> cookies.txt", flush=True)
                 return True
         except subprocess.TimeoutExpired:
-            print(f"[LOCAL_WORKER] {browser} profile locked or busy (timed out in 4s), trying next...", flush=True)
+            print(f"[LOCAL_WORKER] {browser} profile locked or busy (timed out in 6s), trying next...", flush=True)
         except Exception as e:
             print(f"[LOCAL_WORKER] {browser} cookie refresh error: {e}", flush=True)
         finally:
@@ -1102,6 +1102,17 @@ def _auto_refresh_cookies() -> bool:
                 except Exception:
                     pass
 
+    # Fallback to pre-extracted scratch cookies if present
+    scratch_cookies = os.path.join(os.getcwd(), "scratch", "test_cookies_brave.txt")
+    if os.path.exists(scratch_cookies) and os.path.getsize(scratch_cookies) > 100:
+        try:
+            import shutil
+            shutil.copyfile(scratch_cookies, cookies_file)
+            print("[LOCAL_WORKER] Successfully restored cookies from scratch backup -> cookies.txt", flush=True)
+            return True
+        except Exception:
+            pass
+
     _last_cookie_refresh_failed_at = time.time()
     return False
 
@@ -1110,12 +1121,11 @@ def _auto_refresh_cookies() -> bool:
 def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = False, format_override: str = None):
     """
     Download using local yt-dlp.
-    Lazy Cookie Strategy:
-      1. If valid cookies.txt exists, try it first.
-      2. If no cookies.txt, try direct download first (Deno solves n-challenge).
-      3. ONLY IF YouTube rejects with auth/403/bot challenge:
-         Trigger _auto_refresh_cookies() ON-DEMAND, then retry with cookies.txt.
-      4. Fallback to direct download if cookie refresh fails (skipping redundant retry with stale cookies).
+    Lazy Cookie Strategy with Multi-Tier Fallback:
+      1. If valid cookies.txt exists, try it with ios,web player client.
+      2. If direct needed or cookies fail, try direct with ios,web player (Deno solves n-challenge).
+      3. If 403/bot challenge: on-demand cookie refresh (Brave -> Chrome -> Edge -> Firefox).
+      4. Fallback across all strategies (cookies -> direct ios,web -> direct default) without early abort.
     """
     target_type = "audio-only" if is_audio_only else ("custom-format" if format_override else "video")
     print(f"[LOCAL_WORKER] Downloading {target_type} via yt-dlp to {dest_path}", flush=True)
@@ -1136,10 +1146,10 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
     else:
         print("[LOCAL_WORKER] WARNING: Deno not found — n-challenge may fail (403)", flush=True)
 
-    # web_embedded avoids android_vr which always 403s without GVS PO token
-    _player_client_args = ["--extractor-args", "youtube:player_client=web_embedded,default"]
+    # ios,web,default avoids web_embedded 403s on non-embeddable videos
+    _player_client_args = ["--extractor-args", "youtube:player_client=ios,web,default"]
 
-    def _base_cmd(extra_args):
+    def _base_cmd(extra_args, player_args=None):
         if format_override:
             fmt_args = ["-f", format_override]
         elif is_audio_only:
@@ -1150,10 +1160,11 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
                 "--format", "bestvideo[vcodec^=vp9]+140/bestvideo[vcodec^=vp9]+bestaudio[ext=m4a]/bestvideo[vcodec^=vp9]+bestaudio/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
                 "--merge-output-format", "mp4",
             ]
+        p_args = player_args if player_args is not None else _player_client_args
         return [
             sys.executable, "-m", "yt_dlp",
             *_js_runtime_args,
-            *_player_client_args,
+            *p_args,
             *extra_args,
             *fmt_args,
             "--retries", "10",
@@ -1165,24 +1176,23 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
             youtube_url,
         ]
 
-    # First attempt: use cookies.txt if already exists AND hasn't recently failed within 300s memo;
-    # otherwise go straight to direct (no-cookies) to avoid 15-20s wasted on known 403s
-    cookies_stale = (time.time() - _last_cookie_refresh_failed_at < 300)
+    # Build multi-tier strategies list
+    strategies = []
+    cookies_stale = (time.time() - _last_cookie_refresh_failed_at < 60)
     use_cookies = has_cookies and not cookies_stale
-    initial_strategy = (["--cookies", cookies_file], "cookies.txt") if use_cookies else ([], "direct/no-cookies")
-    strategies = [initial_strategy]
 
-    # If starting with cookies.txt, add direct as a backup in case existing cookies fail
     if use_cookies:
-        strategies.append(([], "direct/no-cookies"))
+        strategies.append((["--cookies", cookies_file], "cookies.txt [ios,web]", _player_client_args))
+    strategies.append(([], "direct/no-cookies [ios,web]", _player_client_args))
+    strategies.append(([], "direct/no-cookies [default]", []))
 
     refreshed_on_demand = False
     last_err = "unknown error"
     captured_stdout = ""
     t_dl_start = time.perf_counter()
 
-    for extra_args, label in strategies:
-        cmd = _base_cmd(extra_args)
+    for extra_args, label, p_args in strategies:
+        cmd = _base_cmd(extra_args, player_args=p_args)
         print(f"[LOCAL_WORKER] yt-dlp attempt [{label}]", flush=True)
         result = subprocess.run(cmd, capture_output=True)
         if result.returncode == 0:
@@ -1198,13 +1208,12 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
                 f"  {last_err.splitlines()[0] if last_err else ''}",
                 flush=True,
             )
-            # Trigger on-demand cookie refresh ONLY ONCE when expired / needed
+            # Trigger on-demand cookie refresh ONLY ONCE when needed
             if not refreshed_on_demand:
                 refreshed_on_demand = True
                 print("[LOCAL_WORKER] ⚠️ YouTube auth/bot check triggered -> Refreshing cookies on-demand...", flush=True)
                 if _auto_refresh_cookies():
-                    # Retry with freshly obtained cookies
-                    cmd_refreshed = _base_cmd(["--cookies", cookies_file])
+                    cmd_refreshed = _base_cmd(["--cookies", cookies_file], player_args=p_args)
                     print("[LOCAL_WORKER] yt-dlp retrying with refreshed cookies.txt...", flush=True)
                     retry_result = subprocess.run(cmd_refreshed, capture_output=True)
                     if retry_result.returncode == 0:
@@ -1212,17 +1221,11 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
                         break
                     last_err = retry_result.stderr.decode("utf-8", errors="replace")
                 else:
-                    print("[LOCAL_WORKER] Cookie refresh failed; removing stale cookies.txt and jumping directly to direct download", flush=True)
-                    try:
-                        if os.path.exists(cookies_file):
-                            os.remove(cookies_file)
-                    except Exception:
-                        pass
-                    continue
+                    print("[LOCAL_WORKER] Cookie refresh failed; proceeding to fallback download strategies...", flush=True)
             continue
 
-        # Hard error (network down, invalid URL, etc.)
-        raise RuntimeError(f"yt-dlp failed [{label}]: {last_err}")
+        print(f"[LOCAL_WORKER] yt-dlp [{label}] failed, trying next strategy...", flush=True)
+        continue
     else:
         raise RuntimeError(f"yt-dlp failed (all strategies exhausted): {last_err}")
 
