@@ -653,85 +653,135 @@
     }
 
     .proof-card {
-      flex: 0 0 280px;
-      background: linear-gradient(135deg, rgba(255, 215, 128, 0.12) 0%, rgba(255, 179, 71, 0.06) 50%, rgba(227, 227, 227, 0.03) 100%);
-      border: 1px solid rgba(255, 179, 71, 0.2);
-      border-radius: 18px;
-      padding: 18px;
+      flex: 0 0 290px;
+      background: linear-gradient(180deg, rgba(28, 22, 16, 0.85) 0%, rgba(14, 10, 7, 0.96) 100%);
+      border: 1px solid rgba(255, 215, 120, 0.16);
+      border-radius: 20px;
+      padding: 16px;
       position: relative;
-      transition: all 0.35s cubic-bezier(0.2, 0.9, 0.3, 1);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
       backdrop-filter: blur(20px);
-      box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.12), 0 20px 60px rgba(0, 0, 0, 0.6);
-    }
-
-    .proof-card::after {
-      content: '';
-      position: absolute;
-      inset: -1px;
-      border-radius: inherit;
-      background: linear-gradient(120deg, transparent 20%, rgba(255, 200, 120, 0.45), transparent 80%);
-      opacity: 0;
-      transition: opacity 0.4s ease;
-      pointer-events: none;
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
     }
 
     .proof-card:hover {
-      transform: translateY(-6px) scale(1.01);
-      box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.35), 0 30px 80px rgba(255, 180, 80, 0.25);
-    }
-
-    .proof-card:hover::after {
-      opacity: 1;
-    }
-
-    .proof-card.idle {
-      animation: idleFloat 6s ease-in-out infinite;
-    }
-
-    @keyframes idleFloat {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-4px); }
+      transform: translateY(-6px);
+      border-color: rgba(255, 215, 120, 0.45);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(255, 190, 80, 0.2);
     }
 
     .proof-card.best {
-      flex: 0 0 300px;
-      transform: scale(1.06);
-      box-shadow: 0 0 60px rgba(255, 179, 71, 0.4),
-                  inset 0 1px 0 rgba(255, 255, 255, 0.15),
-                  0 0 30px rgba(255, 215, 128, 0.2);
-      border-color: rgba(255, 179, 71, 0.5);
-      background: linear-gradient(135deg, rgba(255, 230, 150, 0.15) 0%, rgba(255, 179, 71, 0.08) 50%, rgba(227, 227, 227, 0.04) 100%);
+      flex: 0 0 290px;
+      transform: none;
+      border-color: rgba(255, 215, 120, 0.35);
+      box-shadow: 0 0 35px rgba(255, 200, 100, 0.25), 0 16px 45px rgba(0, 0, 0, 0.7);
+    }
+
+    .proof-card.best:hover {
+      transform: translateY(-6px);
+      border-color: rgba(255, 225, 140, 0.65);
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.9), 0 0 45px rgba(255, 200, 100, 0.35);
     }
 
     .badge {
       position: absolute;
       top: 14px;
       right: 14px;
-      background: linear-gradient(90deg, #FFD580 0%, #FFB347 100%);
-      color: #0a0e27;
-      padding: 6px 12px;
+      background: linear-gradient(135deg, rgba(255, 215, 120, 0.95), rgba(217, 119, 6, 0.95));
+      color: #111;
+      padding: 5px 12px;
       border-radius: 20px;
-      font-size: 12px;
-      font-weight: 700;
-      box-shadow: 0 4px 12px rgba(255, 179, 71, 0.3);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+      z-index: 10;
     }
 
+    /* 9:16 Vertical Video Frame */
     .thumb {
-      height: 160px;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      height: auto;
+      background: #050505;
       border-radius: 14px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
       overflow: hidden;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
       position: relative;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+      cursor: pointer;
     }
 
-    .thumb::before {
-      content: '';
+    .thumb video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 14px;
+      background: #000;
+      transition: filter 0.25s ease;
+    }
+
+    .proof-card:hover .thumb video {
+      filter: brightness(1.05) contrast(1.02);
+    }
+
+    .showcase-sound-btn {
       position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 30% 30%, rgba(255, 179, 71, 0.1) 0%, transparent 50%);
+      bottom: 10px;
+      left: 10px;
+      background: rgba(14, 10, 7, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 215, 120, 0.35);
+      color: #ffdf73;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s ease;
+      z-index: 10;
+    }
+
+    .showcase-sound-btn:hover {
+      background: rgba(255, 215, 120, 0.25);
+      border-color: rgba(255, 215, 120, 0.65);
+      color: #fff;
+      transform: scale(1.05);
+    }
+
+    .showcase-sound-btn.is-active {
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.85), rgba(21, 128, 61, 0.85));
+      border-color: #4ade80;
+      color: #fff;
+    }
+
+    .proof-preview-hint {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.8);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.68rem;
+      font-weight: 600;
       pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 9;
+    }
+
+    .proof-card:hover .proof-preview-hint {
+      opacity: 0;
     }
 
     .meta {
@@ -1074,49 +1124,61 @@
         <button class="carousel-nav prev" aria-label="Previous clip">‹</button>
         
         <div class="carousel-track">
-          <!-- Card 1: Best Pick -->
+          <!-- Card 1: TJR Solo Trading Hook (Real 9:16 Master Clip) -->
           <div class="proof-card best">
-            <div class="badge">🏆 Best Pick</div>
-            <div class="thumb"></div>
+            <div class="badge">🏆 96% Viral • Trading Hook</div>
+            <div class="thumb">
+              <video class="showcase-video" src="/static/demo_clips/showcase_tjr_trading.mp4" poster="/static/demo_clips/showcase_tjr_trading.jpg" loop muted playsinline preload="metadata"></video>
+              <button class="showcase-sound-btn" title="Toggle Sound">🔊 Tap for sound</button>
+              <div class="proof-preview-hint">▶ Hover to play</div>
+            </div>
             <div class="meta">
-              <span>Emotional Peak</span>
-              <span>94%</span>
+              <span>Loss Aversion Peak</span>
+              <span>96% Potential</span>
+            </div>
+            <div class="bar">
+              <div style="width: 96%"></div>
+            </div>
+            <div class="reason">"THIS amateur mistake is blowing up your account" • Sudden clarity hook with dynamic 9:16 active framing.</div>
+            <a href="#inputSection" class="locked-btn">⚡ Create Clips Like This</a>
+          </div>
+
+          <!-- Card 2: Double Coverage Podcast Hook (Real 9:16 Master Clip) -->
+          <div class="proof-card">
+            <div class="badge">🎙️ 94% Viral • Podcast Cut</div>
+            <div class="thumb">
+              <video class="showcase-video" src="/static/demo_clips/showcase_podcast_ngannou.mp4" poster="/static/demo_clips/showcase_podcast_ngannou.jpg" loop muted playsinline preload="metadata"></video>
+              <button class="showcase-sound-btn" title="Toggle Sound">🔊 Tap for sound</button>
+              <div class="proof-preview-hint">▶ Hover to play</div>
+            </div>
+            <div class="meta">
+              <span>Multi-Speaker Climax</span>
+              <span>94% Potential</span>
             </div>
             <div class="bar">
               <div style="width: 94%"></div>
             </div>
-            <div class="reason">Shock + sudden clarity. Peak dopamine hook at 23s.</div>
-            <button class="locked-btn">🔒 Unlock Clip</button>
+            <div class="reason">"Scared for his life watching Ngannou" • Active speaker switching + kinetic subtitles & story tension release.</div>
+            <a href="#inputSection" class="locked-btn">⚡ Create Clips Like This</a>
           </div>
 
-          <!-- Card 2 -->
+          <!-- Card 3: TJR Mindset & Reality Check (4a52da96_edited_1_0_101.mp4) -->
           <div class="proof-card">
-            <div class="badge">🎬 Recommended</div>
-            <div class="thumb"></div>
+            <div class="badge">🔥 92% Viral • Mindset Hook</div>
+            <div class="thumb">
+              <video class="showcase-video" src="/static/demo_clips/showcase_tjr_mindset.mp4" poster="/static/demo_clips/showcase_tjr_mindset.jpg" loop muted playsinline preload="metadata"></video>
+              <button class="showcase-sound-btn" title="Toggle Sound">🔊 Tap for sound</button>
+              <div class="proof-preview-hint">▶ Hover to play</div>
+            </div>
             <div class="meta">
-              <span>Story Peak</span>
-              <span>87%</span>
+              <span>Mindset Reality Check</span>
+              <span>92% Potential</span>
             </div>
             <div class="bar">
-              <div style="width: 87%"></div>
+              <div style="width: 92%"></div>
             </div>
-            <div class="reason">Rising tension + release. Viewer retention hotspot.</div>
-            <button class="locked-btn">🔒 Unlock Clip</button>
-          </div>
-
-          <!-- Card 3 -->
-          <div class="proof-card">
-            <div class="badge">⭐ Strong</div>
-            <div class="thumb"></div>
-            <div class="meta">
-              <span>Hook Launch</span>
-              <span>81%</span>
-            </div>
-            <div class="bar">
-              <div style="width: 81%"></div>
-            </div>
-            <div class="reason">Cold open with intrigue. Stops scroll-by in first 3s.</div>
-            <button class="locked-btn">🔒 Unlock Clip</button>
+            <div class="reason">"The brutal reality why 90% of traders fail before year one" • Direct-to-camera psychological breakdown with kinetic punch zooms.</div>
+            <a href="#inputSection" class="locked-btn">⚡ Create Clips Like This</a>
           </div>
         </div>
 
