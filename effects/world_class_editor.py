@@ -471,6 +471,7 @@ class ClipEditConfig:
     # ── Format detection & speaker tracking ────────────────────────────────────
     enable_format_detection: bool = True   # detect podcast/monologue/motion_graphic
     podcast_crop_mode: str = "stacked"     # "active" = jump | "wide" = keep both | "stacked" = vstack
+    enable_brainrot: bool = False           # GTA/brainrot bg — ONLY true when user explicitly selects it
     speaker_aware_captions: bool = True    # align captions to active speaker side
     # ── Smart clip ending ────────────────────────────────────────────────────────
     smart_ending: bool = True              # snap out-point to first silence after sentence end
@@ -1109,7 +1110,7 @@ class ClipEditor:
             speaker_positions=[median_x], face_switch_rate=0.0, samples=samples,
         )
 
-    def _get_crop_expression(self, video_fmt, transcript_window, config, clip_path=None, face_cache=None, debug_clip_id=None):
+    def _get_crop_expression(self, video_fmt, transcript_window, config, clip_path=None, face_cache=None, debug_clip_id=None, brainrot_active=False):
         """VideoFormat -> FFmpeg crop_x expression.
         monologue: EMA lerp (smooth, stable).
         podcast active: hard jump at transcript boundaries (true active speaker).
@@ -1780,10 +1781,20 @@ class ClipEditor:
                 # CTO Opt: Skip entirely for monologue. Monologue clips are single
                 # continuous takes — no hard cuts ever happen. Sobel on every frame
                 # is pure CPU waste for this format.
+                #
+                # BRAINROT FIX: When GTA/brainrot is stacked below the podcast crop,
+                # the bottom half generates 60+ false scene cuts per 6 seconds (GTA
+                # gameplay scene changes). Restrict gradient to TOP HALF of frame only
+                # (podcast speakers). Bottom half: y > frame_h//2 is excluded.
                 _is_scene_cut = False
                 if not _is_monologue_mode:
+                    _scene_cut_frame = frame
+                    if brainrot_active:
+                        # Podcast speakers are in top half — crop there only
+                        _fh = frame.shape[0]
+                        _scene_cut_frame = frame[:_fh // 2, :, :]
                     _frame_gray_small = cv2.resize(
-                        cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 64),
+                        cv2.cvtColor(_scene_cut_frame, cv2.COLOR_BGR2GRAY), (64, 64),
                         interpolation=cv2.INTER_AREA
                     )
                     _sobel_x = cv2.Sobel(_frame_gray_small, cv2.CV_32F, 1, 0, ksize=3)
@@ -4359,7 +4370,25 @@ class ClipEditor:
             t0 = time.perf_counter()
             target_wh = self._resolve_ratio(cfg.target_ratio)
             if video_fmt is not None:
-                focus_x = self._get_crop_expression(video_fmt, transcript_window, cfg, work_b, face_cache=precomputed_face_cache)
+                # Pre-detect brainrot eligibility (must match the actual activation gate below).
+                # GTA is demand-only: monologue + stacked mode, or HS_FORCE_GTA=1.
+                # Podcast format → clean split, no GTA → brainrot_active=False always.
+                # GTA eligibility: purely user-controlled (cfg.enable_brainrot=True).
+                # No auto-detection from format_type — user must explicitly select brainrot mode.
+                _brainrot_dir_early = r"c:\Users\n\Documents\hotshort\assets\brain_rot"
+                _brainrot_assets_exist = (
+                    os.path.exists(_brainrot_dir_early)
+                    and any(f.endswith(('.mp4', '.mov', '.webm')) for f in os.listdir(_brainrot_dir_early))
+                )
+                _brainrot_eligible_early = (
+                    _brainrot_assets_exist
+                    and (cfg.enable_brainrot or os.getenv("HS_FORCE_GTA") == "1")
+                )
+                focus_x = self._get_crop_expression(
+                    video_fmt, transcript_window, cfg, work_b,
+                    face_cache=precomputed_face_cache,
+                    brainrot_active=_brainrot_eligible_early,
+                )
             else:
                 focus_x = 0.5
             is_complex_graph, vf = self._build_reframe_filter(work_meta, target_wh, focus_x, cfg, boring_mode)
@@ -4508,7 +4537,14 @@ class ClipEditor:
                 if _br_files:
                     _brainrot_path = random.choice(_br_files)
 
-            if (_is_podcast_clip or os.getenv("HS_FORCE_GTA") == "1") and cfg.podcast_crop_mode == "stacked":
+            # ── GTA Brainrot Activation Gate ────────────────────────────────────────
+            # PURE USER OPT-IN: GTA only fires when cfg.enable_brainrot=True.
+            # This is set exclusively from the UI/API when the user selects
+            # "Brainrot" background style. No auto-detection. No heuristics.
+            # HS_FORCE_GTA=1 env var still works as a dev/test override only.
+            _gta_user_enabled = cfg.enable_brainrot or os.getenv("HS_FORCE_GTA") == "1"
+
+            if _gta_user_enabled:
                 if _brainrot_path and os.path.exists(_brainrot_path):
                     from effects.brainrot_pretranscoder import get_pretranscoded_brainrot
                     _brainrot_path = get_pretranscoded_brainrot(_brainrot_path)
@@ -4517,7 +4553,8 @@ class ClipEditor:
                         vf_render = f"{vf_render};[{{BR_IDX}}:v]setpts=PTS-STARTPTS,scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,fps=30[br_v];[{graph_video_pad}][br_v]overlay=x=0:y=960:eof_action=pass[v_br]"
                         graph_video_pad = "v_br"
                     else:
-                        vf_render = f"{vf_render},[{{BR_IDX}}:v]setpts=PTS-STARTPTS,scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,fps=30[br_v];[0:v][br_v]overlay=x=0:y=960:eof_action=pass"
+                        vf_render = f"[0:v]{vf_render}[v_top];[{{BR_IDX}}:v]setpts=PTS-STARTPTS,scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,fps=30[br_v];[v_top][br_v]overlay=x=0:y=960:eof_action=pass[v_br]"
+                        graph_video_pad = "v_br"
                         is_complex_graph = True
 
 

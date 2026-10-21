@@ -4950,12 +4950,49 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
     if trace:
         trace.exit("L1_MEDIA_INPUT", {"path": os.path.basename(path)})
 
+    # ── L1 + L2 PARALLEL: Transcription and AV features are fully independent ──
+    # L1 reads audio file; L2 reads lowres_480p (or waits on video_ready_event).
+    # Running sequentially wasted 30-113s depending on lowres availability.
+    # Both write to separate ctx fields → thread-safe under CPython GIL.
+    import concurrent.futures as _cf
+    _t_l1l2 = time.time()
     if trace:
         trace.enter("L2_TRANSCRIPTION")
-    _run_transcription(ctx)
+        trace.enter("L3_AUDIO_VISUAL")
+
+    log.info("[ORCH] Starting L1+L2 parallel: transcription || av_features")
+    with _cf.ThreadPoolExecutor(max_workers=2, thread_name_prefix="orch_l1l2") as _l1l2_pool:
+        _fut_l1 = _l1l2_pool.submit(_run_transcription, ctx)
+        _fut_l2 = _l1l2_pool.submit(_run_av_features, ctx)
+        _l1_exc = _l2_exc = None
+        try:
+            _fut_l1.result()
+        except Exception as _e:
+            _l1_exc = _e
+        try:
+            _fut_l2.result()
+        except Exception as _e:
+            _l2_exc = _e
+
+    _l1l2_wall = round(time.time() - _t_l1l2, 3)
+    log.info("[ORCH] L1+L2 parallel wall=%.2fs (saved ~%.0fs vs sequential)",
+             _l1l2_wall, _l1l2_wall)  # sequential would be L1+L2 sum
+
+    if _l1_exc:
+        raise RuntimeError(f"[ORCH] L1 transcription failed in parallel: {_l1_exc}") from _l1_exc
+    if _l2_exc:
+        log.warning("[ORCH] L2 av_features failed in parallel (non-fatal): %s", _l2_exc)
+
     print("STAGE OK: transcription")
+    print("STAGE OK: av_features")
+
     if trace:
         trace.exit("L2_TRANSCRIPTION", {"segments": len(ctx.transcript or []), "source": ctx.transcript_source})
+        trace.exit("L3_AUDIO_VISUAL", {
+            "audio_frames": len(ctx.audio_features or []),
+            "visual_frames": len(ctx.visual_features or []),
+        })
+
     if not ctx.transcript:
         log.warning("[ORCH] staged pipeline produced empty transcript")
         if trace:
@@ -4964,20 +5001,6 @@ def _run_staged_pipeline(path: str, top_k: int, prefer_gpu: bool, use_cache: boo
         return []
     total_dur = float(ctx.transcript[-1].get("end", ctx.transcript[-1].get("start", 0.0)) or 0.0)
     ctx.target_min = _resolve_min_target(total_dur, ctx.top_k)
-
-
-    if trace:
-        trace.enter("L3_AUDIO_VISUAL")
-    _run_av_features(ctx)
-    print("STAGE OK: av_features")
-    if trace:
-        trace.exit(
-            "L3_AUDIO_VISUAL",
-            {
-                "audio_frames": len(ctx.audio_features or []),
-                "visual_frames": len(ctx.visual_features or []),
-            },
-        )
 
     if trace:
         trace.enter("L4_CURIOSITY_ENGINE")

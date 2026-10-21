@@ -321,9 +321,27 @@ class DirectorAutopsy:
             # Keep last 10 ghost events
             self.profile["ghost_history"] = self.profile["ghost_history"][-10:]
 
-        # E: Scene cut miss → lower detection threshold
+        # E: Scene cut calibration — tune threshold in the CORRECT direction.
+        #
+        # SCENE_CUT_MISS flag fires when F1 < 50%. But low F1 has two opposite causes:
+        #   - False positives (detected >> ground_truth, precision low):
+        #       → threshold TOO LOW → TUNE UP (multiply > 1)
+        #   - False negatives (detected << ground_truth, recall low):
+        #       → threshold TOO HIGH → TUNE DOWN (multiply < 1)
+        #
+        # Previous code always did * 0.85 regardless → compounded false positives from
+        # GTA brainrot (60+ spurious fires per 6s), making next run even worse.
         if "SCENE_CUT_MISS" in flags:
-            suggest("HS_SCENE_CUT_THRESHOLD", current("HS_SCENE_CUT_THRESHOLD") * 0.85)
+            _n_detected = report.get("scene_cuts_detected", 0)
+            _n_gt       = report.get("scene_cuts_ground_truth", 1)
+            if _n_detected > _n_gt * 1.5:
+                # Too many false positives → raise threshold
+                suggest("HS_SCENE_CUT_THRESHOLD", current("HS_SCENE_CUT_THRESHOLD") * 1.20)
+                log.info("[AUTOPSY] SCENE_CUT false-positive (detected=%d > gt=%d*1.5) → TUNE UP", _n_detected, _n_gt)
+            else:
+                # True misses → lower threshold
+                suggest("HS_SCENE_CUT_THRESHOLD", current("HS_SCENE_CUT_THRESHOLD") * 0.85)
+                log.info("[AUTOPSY] SCENE_CUT miss (detected=%d <= gt=%d) → TUNE DOWN", _n_detected, _n_gt)
 
         # Reward: if score improved vs avg, slightly relax MIN_SWITCH_FRAMES
         avg_score = self.profile.get("avg_score", 0)

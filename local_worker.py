@@ -2330,6 +2330,7 @@ def _process_job(job: dict, cloudinary_ok: bool):
     job_id      = job["job_id"]
     youtube_url = job.get("youtube_url") or job.get("video_url", "")
     video_format = job.get("video_format", "center_crop")
+    format_mode = job.get("format_mode") or ("brainrot" if video_format == "brainrot" else "center_crop")
     is_free     = False if os.getenv("HS_UNLIMITED_MODE", "1").strip().lower() in ("1", "true", "yes") else job.get("is_free_user", False)
     
     if video_format == "blur_background":
@@ -2527,6 +2528,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
             os.makedirs(_editor_work_dir, exist_ok=True)
             editor_instance = _editor_cls(_editor_work_dir)
             editor_cfg = _config_cls()
+            # ── Brainrot / GTA Gate: ONLY active if user explicitly chose brainrot format ──
+            _brainrot_selected = (
+                format_mode == "brainrot"
+                or video_format == "brainrot"
+                or bool(job.get("enable_brainrot"))
+                or os.getenv("HS_FORCE_GTA") == "1"
+            )
+            editor_cfg.enable_brainrot = _brainrot_selected
+            if _brainrot_selected:
+                print(f"[LOCAL_WORKER] GTA Brainrot background ACTIVE (selected format: {format_mode})", flush=True)
+            else:
+                print(f"[LOCAL_WORKER] GTA Brainrot background DISABLED (clean output, Center Crop TikTok ratio)", flush=True)
             # ── Pass distribution branding config so WCE merges it in-pass ──────
             _branding_on = os.getenv("HS_APPLY_BRANDING", "0") == "1"
             editor_cfg.apply_distribution_branding = _branding_on
@@ -3466,7 +3479,8 @@ def main():
                         help="Local mode: no Railway/server. Process a YouTube URL directly from CLI.")
     parser.add_argument("--url", default=None, help="YouTube URL (used with --local).")
     parser.add_argument("--intent", default=None, help="Creator Intent (used with --local).")
-    parser.add_argument("--format", choices=["center_crop", "blur_background", "original_with_black_bars"], default=None, help="Video Format (used with --local).")
+    parser.add_argument("--format", choices=["center_crop", "blur_background", "original_with_black_bars", "brainrot"], default=None, help="Video Format (used with --local).")
+    parser.add_argument("--brainrot", action="store_true", help="Explicitly enable GTA Brainrot background.")
     parser.add_argument("--clips", type=int, default=int(os.getenv("HS_ORCH_TOP_K", "5")),
                         help="Number of clips to select (default 5).")
     parser.add_argument("--cleanup", action="store_true",
@@ -3507,32 +3521,41 @@ def main():
             youtube_url = input("  YouTube URL: ").strip().strip("'`\"")
             creator_intent = input("  Creator Intent (optional): ").strip()
             print("\n  Select Video Format:")
-            print("  1) center_crop (Dynamic Mode A/B Face Tracking) [DEFAULT]")
+            print("  1) center_crop (TikTok Ratio 9:16 - Face Track & Captions) [DEFAULT]")
             print("  2) blur_background (16:9 Uncropped with Cinematic Blur)")
             print("  3) original_with_black_bars (16:9 Uncropped with Black Padding)")
-            format_choice = input("  Choice [1-3]: ").strip()
+            print("  4) brainrot (GTA V / GenZ Split View)")
+            format_choice = input("  Choice [1-4]: ").strip()
             
             if format_choice == "2":
                 video_format = "blur_background"
+                format_mode = "center_crop"
             elif format_choice == "3":
                 video_format = "original_with_black_bars"
+                format_mode = "center_crop"
+            elif format_choice == "4":
+                video_format = "center_crop"
+                format_mode = "brainrot"
             else:
                 video_format = "center_crop"
+                format_mode = "center_crop"
         else:
             youtube_url = youtube_url.strip().strip("'`\"")
             if not creator_intent:
                 creator_intent = None
             video_format = args.format if args.format else "center_crop"
+            format_mode = "brainrot" if (args.brainrot or video_format == "brainrot") else "center_crop"
 
         if not youtube_url:
             print("[LOCAL_WORKER] No URL provided. Exiting.", flush=True)
             sys.exit(1)
 
         actual_out_dir = os.environ.get("HS_CLIPS_DIR") or _LOCAL_OUT_DIR
+        _mode_label = "GTA Brainrot" if format_mode == "brainrot" else "Center Crop (TikTok Ratio)"
         print(f"\n[LOCAL_WORKER] URL      : {youtube_url}", flush=True)
         if creator_intent:
             print(f"[LOCAL_WORKER] Intent   : {creator_intent}", flush=True)
-        print(f"[LOCAL_WORKER] Format    : {video_format}", flush=True)
+        print(f"[LOCAL_WORKER] Format    : {video_format} ({_mode_label})", flush=True)
         print(f"[LOCAL_WORKER] Clips     : {args.clips}", flush=True)
         print(f"[LOCAL_WORKER] Output    : {actual_out_dir}", flush=True)
 
@@ -3542,6 +3565,8 @@ def main():
             "youtube_url": youtube_url, 
             "creator_intent": creator_intent if creator_intent else None,
             "video_format": video_format,
+            "format_mode": format_mode,
+            "enable_brainrot": (format_mode == "brainrot"),
             "is_free_user": False
         }
 

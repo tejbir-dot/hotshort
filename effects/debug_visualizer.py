@@ -23,9 +23,9 @@ from typing import Optional, List, Dict, Any
 log = logging.getLogger("debug_visualizer")
 
 # ── env config ────────────────────────────────────────────────────────────────
-# Default to ./debug_out so decisions.json is always written locally.
-# Set HS_DEBUG_FRAMES=0 or HS_DEBUG_FRAMES="" to disable on production.
-_dbg_env = os.getenv("HS_DEBUG_FRAMES", "./debug_out").strip()
+# PRODUCTION DEFAULT: disabled. Set HS_DEBUG_FRAMES=./debug_out to enable frame saving.
+# Writing 100+ JPEGs + decisions.json per clip adds ~100-150s cpu_done overhead.
+_dbg_env = os.getenv("HS_DEBUG_FRAMES", "0").strip()
 DEBUG_FRAMES_DIR: Optional[str] = None if _dbg_env in ("0", "", "false", "no", "off") else _dbg_env
 DEBUG_FRAME_INTERVAL: int = int(os.getenv("HS_DEBUG_FRAME_INTERVAL", "15"))  # save every N frames
 DEBUG_ENABLED = DEBUG_FRAMES_DIR is not None

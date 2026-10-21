@@ -51,7 +51,7 @@ def download_video(url: str, dest: str):
     print(f"[STEP 1] Done in {time.perf_counter()-t0:.0f}s — {sz:.0f} MB", flush=True)
 
 
-def process(video_path: str, top_k: int = 5):
+def process(video_path: str, top_k: int = 5, enable_brainrot: bool = False):
     from viral_finder.orchestrator import orchestrate
     from local_worker import FaceCache
 
@@ -116,6 +116,7 @@ def process(video_path: str, top_k: int = 5):
                 os.makedirs(_wd, exist_ok=True)
                 editor = ClipEditor(_wd)
                 cfg    = ClipEditConfig()
+                cfg.enable_brainrot = enable_brainrot or (os.getenv("HS_FORCE_GTA") == "1")
                 edited = raw_path.replace(".mp4", "_edited.mp4")
                 res = editor.process(
                     raw_path,
@@ -153,6 +154,7 @@ def main():
     grp.add_argument("url",   nargs="?", default=None, help="YouTube URL")
     grp.add_argument("--file", help="Local video file")
     parser.add_argument("--clips", type=int, default=5, help="Number of clips (default: 5)")
+    parser.add_argument("--brainrot", action="store_true", help="Enable GTA / Brainrot background")
     args = parser.parse_args()
 
     t_total = time.perf_counter()
@@ -175,7 +177,7 @@ def main():
         print(f"\n[ERROR] File not found: {video_path}")
         sys.exit(1)
 
-    results = process(video_path, top_k=args.clips)
+    results = process(video_path, top_k=args.clips, enable_brainrot=args.brainrot)
 
     total = time.perf_counter() - t_total
     print("\n" + "="*60)

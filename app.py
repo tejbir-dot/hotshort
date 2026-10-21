@@ -2657,6 +2657,7 @@ def analyze():
                         "job_id": job_id,
                         "status": "pending",
                         "source_url": youtube_url,
+                        "format_mode": format_mode,
                         "requested_at": datetime.utcnow().isoformat(),
                     }
                 ),
@@ -2751,6 +2752,9 @@ def analyze_video():
     """
     youtube_url = (request.form.get("youtube_url") or "").strip()
     creator_intent = (request.form.get("creator_intent") or "").strip()
+    format_mode = (request.form.get("format_mode") or "tjr").strip().lower()
+    if format_mode not in {"brainrot", "tjr", "cinematic", "raw_cut"}:
+        format_mode = "tjr"
     if not youtube_url:
         flash("Please provide a YouTube URL", "error")
         return redirect(url_for("dashboard"))
@@ -2803,6 +2807,7 @@ def analyze_video():
                     "job_id": job_id,
                     "status": "pending",
                     "source_url": youtube_url,
+                    "format_mode": format_mode,
                     "requested_at": datetime.utcnow().isoformat(),
                 }
             ),
@@ -2863,6 +2868,9 @@ def v2_analyze():
     job_id = str(uuid.uuid4())[:12]
     profile = (data.get("profile") or DEFAULT_WORKER_PROFILE or "balanced").strip().lower()
     creator_intent = (data.get("creator_intent") or "").strip()
+    format_mode = (data.get("format_mode") or data.get("format") or "tjr").strip().lower()
+    if format_mode not in {"brainrot", "tjr", "cinematic", "raw_cut"}:
+        format_mode = "tjr"
     try:
         job = Job(
             id=job_id,
@@ -2876,6 +2884,7 @@ def v2_analyze():
                     "status": "pending",
                     "source_url": source_url,
                     "profile": profile,
+                    "format_mode": format_mode,
                     "requested_at": datetime.utcnow().isoformat(),
                 }
             ),
@@ -3092,12 +3101,21 @@ def api_jobs_next():
     except Exception:
         pass
 
-    log.info("[WORKER_API] Dispatched job=%s to local worker", job.id)
+    format_mode = "tjr"
+    try:
+        if job.analysis_data:
+            ad = json.loads(job.analysis_data)
+            format_mode = ad.get("format_mode") or "tjr"
+    except Exception:
+        pass
+
+    log.info("[WORKER_API] Dispatched job=%s (format_mode=%s) to local worker", job.id, format_mode)
     return jsonify({
         "job_id": job.id,
         "youtube_url": youtube_url,
         "is_free_user": is_free,
-        "creator_intent": job.creator_intent
+        "creator_intent": job.creator_intent,
+        "format_mode": format_mode,
     })
 
 

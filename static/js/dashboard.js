@@ -563,10 +563,11 @@
      VIBE MODAL (Choose Your Format)
      ===================== */
   const VIBE_NAMES = {
-    brainrot:  "Brainrot / GenZ Mode",
-    tjr:       "TJR / AI TikTok Mode",
-    cinematic: "Cinematic Blur",
-    raw_cut:   "Raw Cut",
+    brainrot:    "Brainrot / GenZ Mode",
+    tjr:         "Center Crop (TikTok Ratio)",
+    center_crop: "Center Crop (TikTok Ratio)",
+    cinematic:   "Cinematic Blur",
+    raw_cut:     "Raw Cut",
   };
   let _vibePendingUrl   = "";
   let _vibeSelected     = null;
