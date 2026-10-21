@@ -21,6 +21,9 @@ tests/payoff_failures.jsonl
 *.webm
 *.part
 *.bat
+!marketing_factory/assets/*.mp4
+marketing_factory/assets/Screenshots/
+marketing_factory/output/
 downloads/
 output/
 temp_*
