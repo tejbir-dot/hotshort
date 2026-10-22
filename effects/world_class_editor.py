@@ -4584,10 +4584,18 @@ class ClipEditor:
                         _timers_6b["subtitles_ass"] += (time.perf_counter() - _t_ass0)
                 fonts_dir_esc = _ffmpeg_filter_path(_FONTS_DIR)
                 ass_esc = _ffmpeg_filter_path(ass_path)
-                if is_complex_graph:
-                    vf_render = f"{vf_render};[{graph_video_pad}]subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}'[v_subs]"
+                
+                # If HS_DISABLE_CROP=1, video is 16:9 intermediate. Burning subtitles here scales them down to tiny font.
+                # HS_BLUR_DEFER_SUBS=1 (default 1) defers burning subtitles to the 9:16 branding pass so they stay sharp & punchy below frame.
+                defer_subs = (os.getenv("HS_DISABLE_CROP", "0") == "1" and os.getenv("HS_BLUR_DEFER_SUBS", "1") != "0")
+                if defer_subs:
+                    log.info("[WCE] HS_DISABLE_CROP=1: Deferring subtitles burn to 9:16 branding pass (preserves 95px punchy font below frame)")
+                    metadata["deferred_ass_path"] = ass_path
                 else:
-                    vf_render = f"{vf_render},subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}'"
+                    if is_complex_graph:
+                        vf_render = f"{vf_render};[{graph_video_pad}]subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}'[v_subs]"
+                    else:
+                        vf_render = f"{vf_render},subtitles='{ass_esc}':fontsdir='{fonts_dir_esc}'"
                     
                 # Debug logging...
                 if os.path.exists(ass_path):
@@ -4598,7 +4606,8 @@ class ClipEditor:
 
             if is_complex_graph:
                 # If we added subtitles, the last pad is [v_subs], otherwise [v_reframe]
-                last_pad = "[v_subs]" if (has_any_overlay or precomputed_ass_path) else f"[{graph_video_pad}]"
+                added_subs = (has_any_overlay or precomputed_ass_path) and not (os.getenv("HS_DISABLE_CROP", "0") == "1" and os.getenv("HS_BLUR_DEFER_SUBS", "1") != "0")
+                last_pad = "[v_subs]" if added_subs else f"[{graph_video_pad}]"
                 vf_render = f"{vf_render};{last_pad}format=yuv420p[v_fmt]"
             else:
                 vf_render = f"{vf_render},format=yuv420p"
@@ -4703,11 +4712,16 @@ class ClipEditor:
                         f";[hs_merged][hs_wm]overlay=W-w-50:H-h-250,format=yuv420p,fps=30,setsar=1[hs_main_v]"
                     )
                 else:
-                    _blur_chain = (
-                        "scale=270:480:force_original_aspect_ratio=increase,"
-                        "crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear"
-                    )
-                    log.info("[WCE_PERF] Fast quarter-res background blur enabled (270x480 -> boxblur 5 -> 1080x1920)")
+                    _fullbleed = os.getenv("HS_BLUR_FULLBLEED", "0").strip().lower() in ("1", "true", "yes", "on")
+                    if _fullbleed:
+                        _blur_chain = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5"
+                        log.info("[WCE_PERF] HS_BLUR_FULLBLEED=1 enabled (direct 1080x1920 -> boxblur 20:5)")
+                    else:
+                        _blur_chain = (
+                            "scale=270:480:force_original_aspect_ratio=increase,"
+                            "crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear"
+                        )
+                        log.info("[WCE_PERF] Fast quarter-res background blur enabled (270x480 -> boxblur 5 -> 1080x1920)")
                     # Build branding chain appended onto [out_v]
                     _brand_chain = (
                         f";[out_v]split=2[hs_blur_src][hs_vid_raw]"

@@ -76,90 +76,62 @@ def create_promo_video(
         .crossfadein(0.3)
     )
 
-    # 4. Center Phone Layer (starts at 3.8s until 13.8s) - HotShort Branded App UI
-    print("[4/6] Compositing HotShort App UI & Programmatic Cursor...")
+    # 4. Center Phone Layer (starts at 3.8s until cta_start) - Real HotShort App & Results Carousel
+    print("[4/6] Compositing Pixel-Perfect iPhone 16 Pro Mockup with Floating Levitation & Results Carousel...")
     ui_start = 3.8
-    ui_end = min(total_duration - 4.2, 14.0)
+    cta_start = 17.5
+    ui_end = cta_start
     ui_duration = ui_end - ui_start
 
-    phone_w = 480
-    screen_w = 434
-    phone_x = (RESOLUTION[0] - phone_w) // 2
-    screen_x = (RESOLUTION[0] - screen_w) // 2
-    phone_y = 70
-    screen_y = phone_y + 10
+    screen_w = 400
+    screen_h = 869 # Exact 440:956 iPhone 16 Pro Max ratio
+    border_w = 8
+    phone_w = screen_w + 2 * border_w # 416
+    phone_h = screen_h + 2 * border_w # 885
 
-    raw_ui = VideoFileClip("marketing_factory/assets/hotshort_screen_demo.mp4").without_audio()
+    screen_x = (RESOLUTION[0] - screen_w) // 2 # 160
+    screen_y = 68
+    phone_x = screen_x - border_w # 152
+    phone_y = screen_y - border_w # 60
+
+    demo_asset = "marketing_factory/assets/real_app_demo.mp4" if os.path.exists("marketing_factory/assets/real_app_demo.mp4") else "marketing_factory/assets/hotshort_screen_demo.mp4"
+    raw_ui = VideoFileClip(demo_asset).without_audio()
     if raw_ui.duration < ui_duration:
-        raw_ui = raw_ui.loop(duration=ui_duration)
+        hold_dur = ui_duration - raw_ui.duration
+        last_frame_clip = raw_ui.to_ImageClip(t=raw_ui.duration - 0.05).set_duration(hold_dur)
+        from moviepy.editor import concatenate_videoclips
+        raw_ui = concatenate_videoclips([raw_ui, last_frame_clip])
     else:
         raw_ui = raw_ui.subclip(0, ui_duration)
 
+    # Load screen mask directly as exact float numpy array (avoids MoviePy mask resize bug)
+    mask_arr = np.array(Image.open("marketing_factory/assets/screen_mask.png").convert("L")).astype('float32') / 255.0
+    screen_mask = ImageClip(mask_arr, ismask=True)
+
+    # Floating levitation physics (sinusoidal gentle bobbing)
+    def float_phone(t):
+        offset_y = 10.0 * math.sin(2.0 * math.pi * 0.40 * t)
+        return (phone_x, int(round(phone_y + offset_y)))
+
+    def float_screen(t):
+        offset_y = 10.0 * math.sin(2.0 * math.pi * 0.40 * t)
+        return (screen_x, int(round(screen_y + offset_y)))
+
     ui_clip = (
-        raw_ui.resize(width=screen_w)
+        raw_ui.resize((screen_w, screen_h))
+        .set_mask(screen_mask)
         .set_start(ui_start)
         .set_duration(ui_duration)
-        .set_pos((screen_x, screen_y))
-        .crossfadein(0.3)
+        .set_pos(float_screen)
+        .crossfadein(0.25)
     )
 
     phone_frame = (
         ImageClip("marketing_factory/assets/phone_frame.png")
-        .resize(width=phone_w)
         .set_start(ui_start)
         .set_duration(ui_duration)
-        .set_pos((phone_x, phone_y))
-        .crossfadein(0.3)
-    )
-
-    # Programmatic Mouse Cursor Animation
-    cursor = ImageClip("marketing_factory/assets/cursor.png").resize(width=52).set_start(ui_start).set_duration(ui_duration)
-
-    def cursor_pos(t):
-        if t < 0.6:
-            return (RESOLUTION[0] - 80, 800)
-        elif 0.6 <= t < 1.8:
-            p = (t - 0.6) / 1.2
-            return (int((RESOLUTION[0] - 80) - p * 220), int(800 - p * 500))
-        elif 1.8 <= t < 3.8:
-            return (360, 300)
-        elif 3.8 <= t < 5.3:
-            p = (t - 3.8) / 1.5
-            return (360, int(300 + p * 330))
-        elif 5.3 <= t < 5.7:
-            return (360, 635)
-        else:
-            return (390, 650)
-
-    cursor = cursor.set_pos(cursor_pos)
-
-    # Click ripple at ignite button
-    ripple_clip = (
-        ImageClip("marketing_factory/assets/click_ripple.png")
-        .resize(width=100)
-        .set_start(ui_start + 5.3)
-        .set_duration(0.6)
-        .set_pos((310, 585))
-        .crossfadein(0.1)
-    )
-
-    # 5. Reveal Clip (starts at ui_end until total_duration - 3.2s)
-    reveal_start = ui_end
-    reveal_end = total_duration - 3.2
-    reveal_duration = max(1.0, reveal_end - reveal_start)
-
-    reveal_raw = VideoFileClip("marketing_factory/assets/reveal_clip.mp4").without_audio()
-    if reveal_raw.duration < reveal_duration:
-        reveal_raw = reveal_raw.loop(duration=reveal_duration)
-    else:
-        reveal_raw = reveal_raw.subclip(0, reveal_duration)
-
-    reveal_scaled = (
-        reveal_raw.resize(width=500)
-        .set_start(reveal_start)
-        .set_duration(reveal_duration)
-        .set_pos(("center", 90))
-        .crossfadein(0.3)
+        .set_pos(float_phone)
+        .crossfadein(0.25)
     )
 
     # 6. Avatar Layer (Animated Cyber Vision Pro Avatar with mask)
@@ -203,8 +175,8 @@ def create_promo_video(
     )
 
     # CTA avatar (cta_start to total_duration)
-    cta_start = total_duration - 3.5
-    cta_duration = 3.5
+    cta_start = 17.5
+    cta_duration = total_duration - cta_start
     cta_clip_start = 3.0
     avatar_cta = (
         animated_avatar.subclip(cta_clip_start, min(raw_avatar_rgb.duration, cta_clip_start + cta_duration))
@@ -214,7 +186,7 @@ def create_promo_video(
         .crossfadein(0.3)
     )
 
-    # 7. CTA Layer (Last 3.5 seconds)
+    # 7. CTA Layer (Last seconds)
     cta_bubble_user = (
         ImageClip("marketing_factory/assets/cta_user_bubble.png")
         .resize(width=250)
@@ -243,15 +215,12 @@ def create_promo_video(
 
         # Place captions nicely:
         # During hook: between cards and avatar (y=500)
-        # During UI: near bottom of screen (y=730)
-        # During reveal: middle bottom (y=660)
+        # During UI: comfortably below the floating phone frame (y=980)
         # During CTA: top/middle (y=200)
         if c_start < hook_duration:
             y_pos = 500
         elif c_start < ui_end:
-            y_pos = 730
-        elif c_start < cta_start:
-            y_pos = 660
+            y_pos = 980
         else:
             y_pos = 200
 
@@ -286,14 +255,27 @@ def create_promo_video(
     # SFX 2: UI transition whoosh
     add_sfx("marketing_factory/assets/sfx/whoosh_fast.mp3", start_t=max(0, ui_start - 0.2), volume=0.40)
 
-    # SFX 3: Mechanical Mouse Click at Ignite button
-    click_time = ui_start + 5.3
-    add_sfx("marketing_factory/assets/sfx/mouse_click_mech.mp3", start_t=click_time, volume=0.85)
+    # SFX 2b: YouTube Speed Share button tap
+    add_sfx("marketing_factory/assets/sfx/pop_bubble.mp3", start_t=ui_start + 0.6, volume=0.60)
 
-    # SFX 4: Reveal transition whoosh
-    add_sfx("marketing_factory/assets/sfx/whoosh_fast.mp3", start_t=max(0, reveal_start - 0.1), volume=0.40)
+    # SFX 2c: YouTube Speed Copy Link tap & Toast notification
+    add_sfx("marketing_factory/assets/sfx/money_ching.mp3", start_t=ui_start + 1.25, volume=0.60)
 
-    # SFX 5: CTA transition whoosh + DM bubble pops + money ching
+    # SFX 2d: Fast transition to HotShort landing page
+    add_sfx("marketing_factory/assets/sfx/whoosh_fast.mp3", start_t=ui_start + 2.5, volume=0.35)
+
+    # SFX 3: Mechanical Mouse Click at Analyze Now button (t = 4.9s in demo)
+    add_sfx("marketing_factory/assets/sfx/mouse_click_mech.mp3", start_t=ui_start + 4.9, volume=0.85)
+
+    # SFX 4: Results Page load whoosh + 100% Viral badge chime
+    add_sfx("marketing_factory/assets/sfx/whoosh_fast.mp3", start_t=ui_start + 5.2, volume=0.40)
+    add_sfx("marketing_factory/assets/sfx/money_ching.mp3", start_t=ui_start + 5.5, volume=0.55)
+
+    # SFX 5: Carousel Smooth Swipes (Card 1 -> Card 2, Card 2 -> Card 3)
+    add_sfx("marketing_factory/assets/sfx/whoosh_fast.mp3", start_t=ui_start + 6.8, volume=0.35)
+    add_sfx("marketing_factory/assets/sfx/whoosh_fast.mp3", start_t=ui_start + 10.0, volume=0.35)
+
+    # SFX 6: CTA transition whoosh + DM bubble pops + money ching
     add_sfx("marketing_factory/assets/sfx/whoosh_swoosh.mp3", start_t=max(0, cta_start - 0.1), volume=0.40)
     add_sfx("marketing_factory/assets/sfx/pop_bubble.mp3", start_t=cta_start + 0.2, volume=0.70)
     add_sfx("marketing_factory/assets/sfx/pop_bubble.mp3", start_t=cta_start + 0.7, volume=0.70)
@@ -327,9 +309,6 @@ def create_promo_video(
             avatar_hook,
             ui_clip,
             phone_frame,
-            cursor,
-            ripple_clip,
-            reveal_scaled,
             avatar_cta,
             *caption_clips,
             cta_bubble_user,

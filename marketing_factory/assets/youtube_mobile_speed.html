@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=440, initial-scale=1.0">
+  <title>YouTube - IShowSpeed</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f0f0f;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      width: 440px;
+      height: 956px;
+      position: relative;
+    }
+
+    /* Top Status & YouTube Header */
+    .yt-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 44px 18px 12px;
+      background: #0f0f0f;
+    }
+    .yt-logo-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .yt-icon {
+      width: 28px;
+      height: 20px;
+      background: #ff0000;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .yt-play-arrow {
+      width: 0;
+      height: 0;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 8px solid #fff;
+      margin-left: 2px;
+    }
+    .yt-logo-text {
+      font-weight: 800;
+      font-size: 1.15rem;
+      letter-spacing: -0.5px;
+    }
+    .yt-top-icons {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-size: 1.1rem;
+      color: #f1f1f1;
+    }
+
+    /* Video Player */
+    .video-player {
+      width: 100%;
+      height: 248px;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+    .video-player img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 25%;
+    }
+    .player-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.3) 0%, transparent 40%, rgba(0,0,0,0.6) 100%);
+    }
+    .live-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      background: #cc0000;
+      color: #fff;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      background: #fff;
+      border-radius: 50%;
+      animation: blink 1.2s infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .player-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: rgba(255,255,255,0.2);
+    }
+    .player-progress-bar {
+      width: 65%;
+      height: 100%;
+      background: #ff0000;
+    }
+
+    /* Video Metadata */
+    .video-info {
+      padding: 14px 16px 8px;
+    }
+    .video-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.35;
+      color: #f1f1f1;
+      margin-bottom: 6px;
+    }
+    .video-stats {
+      font-size: 0.78rem;
+      color: #aaaaaa;
+      font-weight: 500;
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Channel Row */
+    .channel-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .channel-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .channel-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #333;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .channel-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .channel-meta h4 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .verified-badge {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      background: #888;
+      color: #0f0f0f;
+      border-radius: 50%;
+      font-size: 8px;
+      text-align: center;
+      line-height: 12px;
+      font-weight: 900;
+    }
+    .channel-meta p {
+      font-size: 0.72rem;
+      color: #aaa;
+    }
+    .sub-btn {
+      background: #fff;
+      color: #0f0f0f;
+      font-weight: 700;
+      font-size: 0.8rem;
+      padding: 7px 16px;
+      border-radius: 20px;
+      border: none;
+    }
+
+    /* Actions Pill Row */
+    .actions-row {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      overflow-x: auto;
+    }
+    .action-pill {
+      background: #272727;
+      color: #f1f1f1;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .action-pill.is-active, .action-pill:hover {
+      background: #3f3f3f;
+    }
+
+    /* Comments preview */
+    .comments-box {
+      margin: 12px 16px;
+      padding: 12px 14px;
+      background: #272727;
+      border-radius: 12px;
+    }
+    .comments-head {
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #f1f1f1;
+    }
+    .comment-item {
+      font-size: 0.76rem;
+      color: #ccc;
+      line-height: 1.3;
+    }
+
+    /* Bottom Share Sheet Modal */
+    .share-sheet {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #212121;
+      border-top-left-radius: 24px;
+      border-top-right-radius: 24px;
+      padding: 16px 20px 34px;
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.85);
+      border-top: 1px solid rgba(255,255,255,0.1);
+      transform: translateY(105%);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+    }
+    .share-sheet.open {
+      transform: translateY(0);
+    }
+    .sheet-handle {
+      width: 44px;
+      height: 4px;
+      background: #555;
+      border-radius: 4px;
+      margin: 0 auto 16px;
+    }
+    .sheet-title {
+      font-size: 1.0rem;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+    .share-grid {
+      display: flex;
+      gap: 16px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .share-opt {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .opt-circle {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      border: 1px solid rgba(255,255,255,0.12);
+      transition: transform 0.2s, background 0.2s;
+    }
+    .share-opt.highlight .opt-circle {
+      background: linear-gradient(135deg, #ff0055, #ff5500);
+      box-shadow: 0 0 18px rgba(255,0,80,0.5);
+      transform: scale(1.08);
+    }
+    .opt-label {
+      font-size: 0.72rem;
+      color: #ddd;
+      font-weight: 500;
+    }
+
+    /* Copied Toast */
+    .copied-toast {
+      position: absolute;
+      top: 320px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(25, 25, 25, 0.96);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 215, 120, 0.5);
+      color: #ffdf73;
+      padding: 12px 24px;
+      border-radius: 28px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      box-shadow: 0 16px 45px rgba(0,0,0,0.85);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .copied-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top YouTube Header -->
+  <div class="yt-header">
+    <div class="yt-logo-box">
+      <div class="yt-icon"><div class="yt-play-arrow"></div></div>
+      <span class="yt-logo-text">YouTube</span>
+    </div>
+    <div class="yt-top-icons">
+      <span>📡</span>
+      <span>🔔</span>
+      <span>🔍</span>
+      <div style="width:24px;height:24px;border-radius:50%;background:#ff4444;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700;">N</div>
+    </div>
+  </div>
+
+  <!-- Main Video Player -->
+  <div class="video-player">
+    <img id="videoThumb" src="../assets/thumbs/thumb_speed.jpg" alt="IShowSpeed Video">
+    <div class="player-overlay"></div>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      <span>LIVE</span>
+    </div>
+    <div class="player-progress">
+      <div class="player-progress-bar"></div>
+    </div>
+  </div>
+
+  <!-- Video Metadata -->
+  <div class="video-info">
+    <h2 class="video-title">IShowSpeed Travels To Brazil & Meets Fans (INSANE STREAM)</h2>
+    <div class="video-stats">
+      <span>89.4M views</span>
+      <span>•</span>
+      <span>Streamed live</span>
+      <span>•</span>
+      <span style="color:#3ea6ff">#IShowSpeed</span>
+    </div>
+  </div>
+
+  <!-- Channel Row -->
+  <div class="channel-row">
+    <div class="channel-left">
+      <div class="channel-avatar">
+        <img src="../assets/thumbs/thumb_speed.jpg" style="object-position: center 20%;" alt="Speed Avatar">
+      </div>
+      <div class="channel-meta">
+        <h4>IShowSpeed <span class="verified-badge">✓</span></h4>
+        <p>33.8M subscribers</p>
+      </div>
+    </div>
+    <button class="sub-btn">Subscribe</button>
+  </div>
+
+  <!-- Actions Pill Row -->
+  <div class="actions-row">
+    <div class="action-pill">
+      <span>👍</span> <span>1.8M</span> | <span>👎</span>
+    </div>
+    <div class="action-pill is-active" id="sharePill">
+      <span>↗</span> <span>Share</span>
+    </div>
+    <div class="action-pill">
+      <span>✂</span> <span>Remix</span>
+    </div>
+    <div class="action-pill">
+      <span>⬇</span> <span>Download</span>
+    </div>
+  </div>
+
+  <!-- Comments Box -->
+  <div class="comments-box">
+    <div class="comments-head">Comments <span>142K</span></div>
+    <div class="comment-item">
+      <strong>@speedfan99:</strong> Bro this stream had me crying of laughter 💀😭
+    </div>
+  </div>
+
+  <!-- Share Sheet Modal -->
+  <div class="share-sheet" id="shareSheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Share this stream</div>
+    <div class="share-grid">
+      <div class="share-opt highlight" id="copyLinkOpt">
+        <div class="opt-circle">🔗</div>
+        <span class="opt-label">Copy link</span>
+      </div>
+      <div class="share-opt">
+        <div class="opt-circle" style="background:#25D366;color:#fff;">💬</div>
+        <span class="opt-label">WhatsApp</span>
+      </div>
+      <div class="share-opt">
+        <div class="opt-circle" style="background:#E1306C;color:#fff;">📷</div>
+        <span class="opt-label">Instagram</span>
+      </div>
+      <div class="share-opt">
+        <div class="opt-circle" style="background:#000;color:#fff;border-color:#444;">𝕏</div>
+        <span class="opt-label">X</span>
+      </div>
+      <div class="share-opt">
+        <div class="opt-circle" style="background:#0088cc;color:#fff;">✈️</div>
+        <span class="opt-label">Telegram</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="copied-toast" id="copiedToast">
+    <span>✓</span> Link copied to clipboard
+  </div>
+
+</body>
+</html>

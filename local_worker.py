@@ -1349,7 +1349,72 @@ def _download_via_api(youtube_url: str, dest_path: str):
 # Core processing pipeline
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
+def detect_letterbox_crop(video_path: str, sample_times=(2.0, 10.0, 20.0)) -> str:
+    """
+    Runs ffmpeg cropdetect (limit 24, round 2) at sample timestamps to detect baked-in letterbox bars.
+    Returns crop filter string 'crop=w:h:x:y' if letterbox detected, else '' (no-op).
+    """
+    import re
+    import numpy as np
+
+    probe_cmd = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0",
+        video_path
+    ]
+    try:
+        r = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=5)
+        orig_w, orig_h = map(int, r.stdout.strip().split("x"))
+    except Exception as e:
+        print(f"[CROP_DETECT] ffprobe failed: {e}", flush=True)
+        return ""
+
+    crops = []
+    for t in sample_times:
+        cmd = [
+            "ffmpeg", "-y", "-ss", str(t), "-i", video_path,
+            "-vframes", "2",
+            "-vf", "cropdetect=limit=24:round=2:reset=0",
+            "-f", "null", "-"
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+            matches = re.findall(r"crop=([0-9]+):([0-9]+):([0-9]+):([0-9]+)", res.stderr)
+            for m in matches:
+                crops.append(tuple(map(int, m)))
+        except Exception as e:
+            print(f"[CROP_DETECT] sampling at t={t} failed: {e}", flush=True)
+
+    if not crops:
+        return ""
+
+    ws = [c[0] for c in crops]
+    hs = [c[1] for c in crops]
+    xs = [c[2] for c in crops]
+    ys = [c[3] for c in crops]
+
+    w_med = int(np.median(ws)) & ~1
+    h_med = int(np.median(hs)) & ~1
+    x_med = int(np.median(xs)) & ~1
+    y_med = int(np.median(ys)) & ~1
+
+    # Letterbox detected if >= 8px cropped vertically or y offset >= 4
+    is_letterboxed = (orig_h - h_med >= 8) or (y_med >= 4)
+    print(
+        f"[CROP_DETECT] orig={orig_w}x{orig_h} samples={len(crops)} "
+        f"median={w_med}x{h_med}+{x_med}+{y_med} letterboxed={is_letterboxed}",
+        flush=True
+    )
+
+    if is_letterboxed:
+        if orig_w - w_med < 16:
+            w_med = orig_w
+            x_med = 0
+        return f"crop={w_med}:{h_med}:{x_med}:{y_med}"
+    return ""
+
+
+def _apply_distribution_branding(input_path: str, output_path: str, ass_path: str = None) -> bool:
     """
     Apply cinematic blur background + watermark + outro in a SINGLE FFmpeg pass.
 
@@ -1375,17 +1440,56 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
     try:
         print(f"[LOCAL_WORKER] Branding (single pass): blur+watermark{'+ outro' if has_outro else ''}", flush=True)
 
+        # Auto letterbox crop: detects baked-in 2.35:1 scope black bars via ffmpeg cropdetect
+        # Applies crop upfront before split so both fg and bg are 100% full bleed. Default ON ("1").
+        crop_prefix = ""
+        if os.getenv("HS_BLUR_AUTO_LETTERBOX", "1").strip().lower() in ("1", "true", "yes", "on"):
+            crop_rect = detect_letterbox_crop(input_path)
+            if crop_rect:
+                crop_prefix = f"{crop_rect},"
+                print(f"[LOCAL_WORKER] HS_BLUR_AUTO_LETTERBOX=1: applied upfront crop '{crop_rect}' to both fg and bg", flush=True)
+            else:
+                print(f"[LOCAL_WORKER] HS_BLUR_AUTO_LETTERBOX=1: no letterbox detected (no-op)", flush=True)
+
+        # NOTE: HS_BLUR_FULLBLEED=1 performs direct 1080x1920 boxblur=20:5 on CPU which takes ~44.6s (5.3x slower).
+        # Default is OFF (0: fast quarter-res 270x480 -> boxblur 5:1 -> 1080x1920 in ~8.4s).
+        fullbleed = os.getenv("HS_BLUR_FULLBLEED", "0").strip().lower() in ("1", "true", "yes", "on")
+        if fullbleed:
+            bg_filter = "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];"
+            print(f"[LOCAL_WORKER] HS_BLUR_FULLBLEED=1 enabled: using direct 1080x1920 scale-to-cover + boxblur=20:5 (takes ~44.6s)", flush=True)
+        else:
+            bg_filter = "[blur]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear[bg];"
+
+        # Configurable foreground zoom (default 1.20x gives ~40% screen presence instead of distant 31.7%)
+        fg_zoom = float(os.getenv("HS_BLUR_FG_ZOOM", "1.20"))
+        if fg_zoom > 1.0:
+            fg_filter = f"[vid]scale=trunc(1080*{fg_zoom}/2)*2:-2[fg];"
+            print(f"[LOCAL_WORKER] HS_BLUR_FG_ZOOM={fg_zoom:.2f}x enabled: scaling foreground to punchier center frame", flush=True)
+        else:
+            fg_filter = "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+
+        # Punchy subtitles filter burned onto final 1080x1920 canvas below center frame
+        subs_filter = ""
+        if ass_path and os.path.exists(ass_path):
+            fonts_dir = os.path.join(BASE_DIR, "fonts")
+            ass_esc = os.path.abspath(ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+            fonts_esc = os.path.abspath(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+            subs_filter = f",subtitles='{ass_esc}':fontsdir='{fonts_esc}'"
+            print(f"[LOCAL_WORKER] Branding: burning punchy subtitles below center frame onto 9:16 canvas: {ass_path}", flush=True)
+
+        merged_pad = "[merged_subs]" if subs_filter else "[merged]"
+
         if has_outro:
             # ── SINGLE PASS: blur + watermark + outro concat ───────────────────
             filter_complex = (
-                # Main clip: fast quarter-res cinematic blur bg + centered video
-                "[0:v]fps=30,split=2[blur][vid];"
-                "[blur]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear[bg];"
-                "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
-                "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
+                # Main clip: cinematic blur bg + centered video
+                f"[0:v]fps=30,{crop_prefix}split=2[blur][vid];"
+                f"{bg_filter}"
+                f"{fg_filter}"
+                f"[bg][fg]overlay=(W-w)/2:(H-h)/2{subs_filter}{merged_pad};"
                 # Watermark overlay (forced even height with -2 to prevent NVENC -22 invalid argument)
                 "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
-                "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p,setsar=1[main_v];"
+                f"{merged_pad}[wm]overlay=W-w-50:H-h-250,format=yuv420p,setsar=1[main_v];"
                 # Outro: scale to match
                 "[2:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
                 "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[outro_v];"
@@ -1415,12 +1519,12 @@ def _apply_distribution_branding(input_path: str, output_path: str) -> bool:
             # ── NO OUTRO: blur + watermark only (single pass) ──────────────────
             print(f"[LOCAL_WORKER] WARNING: Outro not found at {outro_path}. Watermark only.", flush=True)
             filter_complex = (
-                "[0:v]fps=30,split=2[blur][vid];"
-                "[blur]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear[bg];"
-                "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
-                "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged];"
+                f"[0:v]fps=30,{crop_prefix}split=2[blur][vid];"
+                f"{bg_filter}"
+                f"{fg_filter}"
+                f"[bg][fg]overlay=(W-w)/2:(H-h)/2{subs_filter}{merged_pad};"
                 "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
-                "[merged][wm]overlay=W-w-50:H-h-250,format=yuv420p"
+                f"{merged_pad}[wm]overlay=W-w-50:H-h-250,format=yuv420p"
             )
             cmd = [
                 "ffmpeg", "-y",
@@ -2323,7 +2427,67 @@ class FaceCache:
                     json.dump(_report, _fp, indent=2)
                 print(f"[FACE_CACHE] Report written → {_report_path}", flush=True)
             except Exception as _re:
-                print(f"[FACE_CACHE] Report write failed: {_re}", flush=True)
+                print(f"[FACE_CACHE] Could not write report JSON: {_re}", flush=True)
+
+def _evaluate_motion_route(clip: dict, face_cache, video_path: str = None) -> tuple:
+    """
+    Evaluates pan speed metrics from FaceCache and determines whether high
+    camera / speaker movement would benefit from blur background routing.
+
+    Candidate rule: pan_p50 > HS_BLUR_PAN_P50 (default 90.0 px/s).
+
+    Env flags:
+      HS_AUTO_BLUR_MOTION=1 (default 1: enables analysis and decision logging)
+      HS_AUTO_BLUR_ROUTE=1  (default 1: actively route clip to blur_background)
+      HS_BLUR_PAN_P50=90.0  (configurable threshold in px/s)
+    """
+    if os.getenv("HS_AUTO_BLUR_MOTION", "1").strip().lower() in ("0", "false", "no", "off"):
+        return "normal", 0.0, 0.0
+
+    threshold = float(os.getenv("HS_BLUR_PAN_P50", "90.0"))
+    start = float(clip.get("start", 0.0) or 0.0)
+    end = float(clip.get("end", start) or start)
+    key = (round(start, 2), round(end, 2))
+
+    pts = []
+    if face_cache and hasattr(face_cache, "clip_caches"):
+        cache_data = face_cache.clip_caches.get(key, {})
+        for t_rel, faces in sorted(cache_data.items()):
+            if faces:
+                f0 = faces[0]
+                cx = float(f0.get("x", 0)) + float(f0.get("w", 0)) / 2.0
+                pts.append((float(t_rel), cx))
+
+    p50, p95 = 0.0, 0.0
+    if len(pts) >= 2:
+        speeds = []
+        for k in range(1, len(pts)):
+            dt = pts[k][0] - pts[k - 1][0]
+            if dt > 0.05:
+                dx = abs(pts[k][1] - pts[k - 1][1])
+                speeds.append(dx / dt)
+        if speeds:
+            import numpy as np
+            p50 = float(np.percentile(speeds, 50))
+            p95 = float(np.percentile(speeds, 95))
+
+    would_route = "blur" if p50 > threshold else "normal"
+    clip_id = clip.get("ranking_rank", clip.get("rank", f"{start:.0f}-{end:.0f}"))
+    print(
+        f"[MOTION_ROUTE] clip={clip_id} pan_p50={p50:.1f}px/s pan_p95={p95:.1f}px/s "
+        f"threshold={threshold:.1f} -> would_route={would_route}",
+        flush=True,
+    )
+
+    if os.getenv("HS_AUTO_BLUR_ROUTE", "1").strip().lower() in ("1", "true", "yes", "on"):
+        if would_route == "blur":
+            clip["video_format"] = "blur_background"
+            fmt = clip.get("_fmt")
+            if fmt:
+                fmt.format_type = "motion_graphic"
+            print(f"[MOTION_ROUTE] ACTIVE ROUTING: Switched clip={clip_id} to blur path (blur_background)!", flush=True)
+
+    return would_route, p50, p95
 
 
 def _process_job(job: dict, cloudinary_ok: bool):
@@ -2913,6 +3077,18 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         face_cache.scan_clip(clip, clip_fmt=clip.get("_fmt"), clip_idx=i)
                     _bench.finish(f"4_haar_scan_clip{i}")
 
+                    # ── Motion-Adaptive Format Routing (Auto Blur vs Center Crop) ──
+                    clip_vformat = clip.get("video_format") or video_format
+                    if clip_vformat == "center_crop" and face_cache is not None:
+                        route_decision, p50, p95 = _evaluate_motion_route(clip, face_cache, video_path)
+                        if route_decision == "blur" and os.getenv("HS_AUTO_BLUR_ROUTE", "1").strip().lower() in ("1", "true", "yes", "on"):
+                            clip_vformat = "blur_background"
+                            clip["video_format"] = "blur_background"
+                            clip["_fmt"] = None
+                            clip["director_mode"] = None
+                            clip["focus_x"] = 0.5
+                            print(f"[MOTION_ROUTE] Auto-routed clip {i} -> blur_background (pan_p50={p50:.1f}px/s)", flush=True)
+
                     t_jit_s = time.perf_counter() - t_jit_start
                     clip_res["jit_analysis_s"] = round(t_jit_s, 2)
                     print(f"[PROGRESSIVE] clip={i} jit_analysis_s={t_jit_s:.2f}s", flush=True)
@@ -3009,20 +3185,31 @@ def _process_job(job: dict, cloudinary_ok: bool):
                         _bench.begin(f"6b_wce_clip{i}")
                         with gpu_lock:
                             t0 = time.perf_counter()
-                            edit_result = worker_editor.enhance_pretrimmed_clip(
-                                input_path=raw_path,
-                                output_path=edited_path,
-                                source_start=start,
-                                source_end=end,
-                                transcript=clip_transcript,
-                                config=editor_cfg,
-                                clip_title=clip_title,
-                                precomputed_narrative=clip.get("precomputed_narrative"),
-                                cortex_hints=cortex_hints,
-                                is_free=is_free,
-                                precomputed_face_cache=face_cache.get_clip_cache(clip) if face_cache else {},
-                                precomputed_ass_path=_precomp_ass
-                            )
+                            prev_disable_crop = os.environ.get("HS_DISABLE_CROP")
+                            if clip_vformat == "blur_background":
+                                os.environ["HS_DISABLE_CROP"] = "1"
+                            elif clip_vformat == "center_crop":
+                                os.environ["HS_DISABLE_CROP"] = "0"
+                            try:
+                                edit_result = worker_editor.enhance_pretrimmed_clip(
+                                    input_path=raw_path,
+                                    output_path=edited_path,
+                                    source_start=start,
+                                    source_end=end,
+                                    transcript=clip_transcript,
+                                    config=editor_cfg,
+                                    clip_title=clip_title,
+                                    precomputed_narrative=clip.get("precomputed_narrative"),
+                                    cortex_hints=cortex_hints,
+                                    is_free=is_free,
+                                    precomputed_face_cache=face_cache.get_clip_cache(clip) if face_cache else {},
+                                    precomputed_ass_path=_precomp_ass
+                                )
+                            finally:
+                                if prev_disable_crop is not None:
+                                    os.environ["HS_DISABLE_CROP"] = prev_disable_crop
+                                else:
+                                    os.environ.pop("HS_DISABLE_CROP", None)
                             t_wce = time.perf_counter() - t0
                         _bench.finish(f"6b_wce_clip{i}")
                         edit_ok = bool(
@@ -3162,14 +3349,15 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     _meta = (getattr(edit_result, "metadata", {}) or {}) if edit_result is not None else {}
                     _veg = _meta.get("visual_effect_graph", {}) or {}
                     _wce_branding_merged = bool(_meta.get("branding_merged_into_wce", False) or _veg.get("branding_merged_into_wce", False))
-                    if _wce_branding_merged:
+                    if _wce_branding_merged and clip_vformat != "blur_background":
                         t_branding = 0.0  # merged into WCE — no extra pass needed
                         print(f"[LOCAL_WORKER] Branding merged into WCE pass — 0s extra", flush=True)
-                    elif os.getenv("HS_APPLY_BRANDING", "1") == "1":
+                    elif os.getenv("HS_APPLY_BRANDING", "1") == "1" or clip_vformat == "blur_background":
                         branded_path = os.path.join(tmp, f"branded_{i}_{int(start)}_{int(end)}.mp4")
                         with gpu_lock:
                             t0 = time.perf_counter()
-                            if _apply_distribution_branding(final_path, branded_path):
+                            _deferred_subs = _meta.get("deferred_ass_path") or _precomp_ass
+                            if _apply_distribution_branding(final_path, branded_path, ass_path=_deferred_subs if clip_vformat == "blur_background" else None):
                                 final_path = branded_path
                             t_branding = time.perf_counter() - t0
 
