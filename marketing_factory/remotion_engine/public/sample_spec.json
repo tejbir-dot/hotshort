@@ -1,0 +1,36 @@
+{
+  "id": "hotshort_streamer_hook",
+  "fps": 30,
+  "durationFrames": 900,
+  "resolution": [1080, 1920],
+  "words": [
+    { "text": "HERE'S", "start": 0.0, "end": 0.3, "isEmphasis": false },
+    { "text": "HOW", "start": 0.3, "end": 0.5, "isEmphasis": false },
+    { "text": "I", "start": 0.5, "end": 0.65, "isEmphasis": false },
+    { "text": "MAKE", "start": 0.65, "end": 0.95, "isEmphasis": true },
+    { "text": "THESE", "start": 0.95, "end": 1.2, "isEmphasis": false },
+    { "text": "VIRAL", "start": 1.2, "end": 1.5, "isEmphasis": true },
+    { "text": "STREAMER", "start": 1.5, "end": 1.9, "isEmphasis": false },
+    { "text": "CLIPS", "start": 1.9, "end": 2.3, "isEmphasis": true },
+    { "text": "GENERATING", "start": 2.3, "end": 2.7, "isEmphasis": false },
+    { "text": "MILLIONS", "start": 2.7, "end": 3.0, "isEmphasis": true },
+    { "text": "OF", "start": 3.0, "end": 3.15, "isEmphasis": false },
+    { "text": "VIEWS", "start": 3.15, "end": 3.6, "isEmphasis": true }
+  ],
+  "scenes": [
+    {
+      "type": "hook",
+      "startFrame": 0,
+      "endFrame": 90,
+      "props": {
+        "cards": [
+          { "src": "/card_left.jpg",   "viewCount": 37700000 },
+          { "src": "/card_center.jpg", "viewCount": 34300000 },
+          { "src": "/card_right.jpg",  "viewCount": 42700000 }
+        ],
+        "cardPopFrames": [5, 17, 11],
+        "avatarSlideFrame": 3
+      }
+    }
+  ]
+}

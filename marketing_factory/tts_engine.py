@@ -1,9 +1,24 @@
 import os
+import socket
 import asyncio
 import edge_tts
 import whisper
 
-async def synthesize_edge_tts(text, voice="en-US-ChristopherNeural", output_audio_path="scratch/marketing_factory/voice.mp3"):
+# Robust DNS fallback for Windows local router timeouts
+_orig_getaddrinfo = socket.getaddrinfo
+def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host == "speech.platform.bing.com":
+        try:
+            return _orig_getaddrinfo(host, port, family, type, proto, flags)
+        except Exception:
+            return [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("150.171.27.10", port)),
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("150.171.28.10", port)),
+            ]
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+socket.getaddrinfo = _patched_getaddrinfo
+
+async def synthesize_edge_tts(text, voice="en-US-BrianMultilingualNeural", output_audio_path="scratch/marketing_factory/voice.mp3"):
     os.makedirs(os.path.dirname(output_audio_path), exist_ok=True)
     comm = edge_tts.Communicate(text, voice)
     await comm.save(output_audio_path)
@@ -47,7 +62,7 @@ def group_words_into_captions(words, max_words=2):
         i += max_words
     return chunks
 
-def generate_voiceover(text, voice="en-US-ChristopherNeural", output_path="scratch/marketing_factory/voice.mp3"):
+def generate_voiceover(text, voice="en-US-BrianMultilingualNeural", output_path="scratch/marketing_factory/voice.mp3"):
     asyncio.run(synthesize_edge_tts(text, voice=voice, output_audio_path=output_path))
     words = get_word_timestamps(output_path)
     chunks = group_words_into_captions(words, max_words=2)

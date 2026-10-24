@@ -54,6 +54,8 @@ import queue
 import shutil
 import threading
 import concurrent.futures
+import numpy as np
+import cv2
 
 # ── Pipeline benchmark (one report per job) ────────────────────────────────
 try:
@@ -449,7 +451,7 @@ def _report_clip_progress_sync(job_id: str, clip: dict, total_expected: int, met
             f"{RAILWAY_URL}/api/jobs/{job_id}/progress",
             headers=_HEADERS,
             json=payload,
-            timeout=3,
+            timeout=6,
         )
         dur = time.perf_counter() - t0
         if resp.ok:
@@ -1162,17 +1164,19 @@ def _download_via_ytdlp(youtube_url: str, dest_path: str, is_audio_only: bool = 
         elif is_audio_only:
             fmt_args = ["-f", "140/bestaudio[ext=m4a]/bestaudio"]
         else:
+            max_h = int(os.getenv("HS_MAX_VIDEO_HEIGHT", "1080"))
             fmt_args = [
-                # Full 4K VP9 — downloaded in background while L1/L2 run on lowres.
-                # Do NOT cap to 1080p; final render uses 4K for maximum quality.
-                "-S", "vcodec:vp9",
+                # Capped to 1080p max for 4x-5x faster download speeds (~300MB instead of 2GB).
+                "-S", f"res:{max_h},vcodec:vp9",
                 "--format",
-                "bestvideo[vcodec^=vp9]+140"
-                "/bestvideo[vcodec^=vp9]+bestaudio[ext=m4a]"
-                "/bestvideo[vcodec^=vp9]+bestaudio"
-                "/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]"
-                "/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]"
-                "/best[ext=mp4]/best",
+                f"bestvideo[height<={max_h}][vcodec^=vp9]+140"
+                f"/bestvideo[height<={max_h}][vcodec^=vp9]+bestaudio[ext=m4a]"
+                f"/bestvideo[height<={max_h}][vcodec^=vp9]+bestaudio"
+                f"/bestvideo[height<={max_h}][vcodec^=avc1]+bestaudio[ext=m4a]"
+                f"/bestvideo[height<={max_h}][ext=mp4]+bestaudio[ext=m4a]"
+                f"/bestvideo[height<={max_h}]+bestaudio"
+                f"/best[height<={max_h}]"
+                "/best",
                 "--merge-output-format", "mp4",
             ]
         p_args = player_args if player_args is not None else _player_client_args
@@ -1413,6 +1417,75 @@ def detect_letterbox_crop(video_path: str, sample_times=(2.0, 10.0, 20.0)) -> st
         return f"crop={w_med}:{h_med}:{x_med}:{y_med}"
     return ""
 
+def _apply_blur_background(input_path: str, output_path: str, ass_path: str = None) -> bool:
+    """
+    Apply pure, crystal-clear 9:16 cinematic blur background to horizontal 16:9 video.
+    NO green artifacts (CPU software decode + NVENC hardware encode).
+    Burns punchy subtitles on lower third of canvas if ass_path is provided.
+    """
+    try:
+        ffmpeg_nvenc = False
+        try:
+            r = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-f", "lavfi", "-i",
+                 "nullsrc=s=64x64:d=0.1", "-c:v", "h264_nvenc",
+                 "-preset", "fast", "-f", "null", "-"],
+                capture_output=True, timeout=10,
+            )
+            ffmpeg_nvenc = r.returncode == 0
+        except Exception:
+            pass
+
+        crop_prefix = ""
+        if os.getenv("HS_BLUR_AUTO_LETTERBOX", "1").strip().lower() in ("1", "true", "yes", "on"):
+            crop_rect = detect_letterbox_crop(input_path)
+            if crop_rect:
+                crop_prefix = f"{crop_rect},"
+
+        fullbleed = os.getenv("HS_BLUR_FULLBLEED", "0").strip().lower() in ("1", "true", "yes", "on")
+        if fullbleed:
+            bg_filter = "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.12:contrast=1.12[bg];"
+        else:
+            bg_filter = "[blur]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,boxblur=15:3,scale=1080:1920:flags=bicubic,eq=brightness=-0.12:contrast=1.12[bg];"
+
+        fg_zoom = float(os.getenv("HS_BLUR_FG_ZOOM", "1.0"))
+        if fg_zoom > 1.0:
+            fg_filter = f"[vid]scale=trunc(1080*{fg_zoom}/2)*2:-2:flags=lanczos[fg];"
+        else:
+            fg_filter = "[vid]scale=1080:-2:flags=lanczos[fg];"
+
+        subs_filter = ""
+        if ass_path and os.path.exists(ass_path):
+            fonts_dir = os.path.join(BASE_DIR, "fonts")
+            ass_esc = os.path.abspath(ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+            fonts_esc = os.path.abspath(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+            subs_filter = f",subtitles='{ass_esc}':fontsdir='{fonts_esc}'"
+
+        filter_complex = (
+            f"[0:v]fps=30,{crop_prefix}split=2[blur][vid];"
+            f"{bg_filter}"
+            f"{fg_filter}"
+            f"[bg][fg]overlay=0:(H-h)/2{subs_filter},format=yuv420p"
+        )
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-filter_complex", filter_complex,
+            "-c:v", "h264_nvenc" if ffmpeg_nvenc else "libx264",
+            "-preset", "p6" if ffmpeg_nvenc else "veryfast",
+            "-b:v", "10M",
+            "-maxrate", "14M",
+            "-bufsize", "18M",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=300)
+        return result.returncode == 0
+    except Exception as e:
+        print(f"[LOCAL_WORKER] Error in _apply_blur_background: {e}", flush=True)
+        return False
+
 
 def _apply_distribution_branding(input_path: str, output_path: str, ass_path: str = None) -> bool:
     """
@@ -1440,53 +1513,81 @@ def _apply_distribution_branding(input_path: str, output_path: str, ass_path: st
     try:
         print(f"[LOCAL_WORKER] Branding (single pass): blur+watermark{'+ outro' if has_outro else ''}", flush=True)
 
-        # Auto letterbox crop: detects baked-in 2.35:1 scope black bars via ffmpeg cropdetect
-        # Applies crop upfront before split so both fg and bg are 100% full bleed. Default ON ("1").
-        crop_prefix = ""
-        if os.getenv("HS_BLUR_AUTO_LETTERBOX", "1").strip().lower() in ("1", "true", "yes", "on"):
-            crop_rect = detect_letterbox_crop(input_path)
-            if crop_rect:
-                crop_prefix = f"{crop_rect},"
-                print(f"[LOCAL_WORKER] HS_BLUR_AUTO_LETTERBOX=1: applied upfront crop '{crop_rect}' to both fg and bg", flush=True)
+        # Probe input dimensions to determine if it's horizontal (needs blur) or already vertical
+        is_horizontal = True
+        try:
+            import cv2
+            _cap = cv2.VideoCapture(input_path)
+            _iw = int(_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            _ih = int(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            _cap.release()
+            if _iw > 0 and _ih > 0:
+                is_horizontal = (_iw > _ih)
+        except Exception:
+            pass
+
+        if is_horizontal:
+            # Auto letterbox crop: detects baked-in 2.35:1 scope black bars via ffmpeg cropdetect
+            # Applies crop upfront before split so both fg and bg are 100% full bleed. Default ON ("1").
+            crop_prefix = ""
+            if os.getenv("HS_BLUR_AUTO_LETTERBOX", "1").strip().lower() in ("1", "true", "yes", "on"):
+                crop_rect = detect_letterbox_crop(input_path)
+                if crop_rect:
+                    crop_prefix = f"{crop_rect},"
+                    print(f"[LOCAL_WORKER] HS_BLUR_AUTO_LETTERBOX=1: applied upfront crop '{crop_rect}' to both fg and bg", flush=True)
+                else:
+                    print(f"[LOCAL_WORKER] HS_BLUR_AUTO_LETTERBOX=1: no letterbox detected (no-op)", flush=True)
+
+            fullbleed = os.getenv("HS_BLUR_FULLBLEED", "0").strip().lower() in ("1", "true", "yes", "on")
+            if fullbleed:
+                bg_filter = "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.12:contrast=1.12[bg];"
+                print(f"[LOCAL_WORKER] HS_BLUR_FULLBLEED=1 enabled: using direct 1080x1920 scale-to-cover + boxblur=20:5 (takes ~44.6s)", flush=True)
             else:
-                print(f"[LOCAL_WORKER] HS_BLUR_AUTO_LETTERBOX=1: no letterbox detected (no-op)", flush=True)
+                bg_filter = "[blur]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,boxblur=15:3,scale=1080:1920:flags=bicubic,eq=brightness=-0.12:contrast=1.12[bg];"
 
-        # NOTE: HS_BLUR_FULLBLEED=1 performs direct 1080x1920 boxblur=20:5 on CPU which takes ~44.6s (5.3x slower).
-        # Default is OFF (0: fast quarter-res 270x480 -> boxblur 5:1 -> 1080x1920 in ~8.4s).
-        fullbleed = os.getenv("HS_BLUR_FULLBLEED", "0").strip().lower() in ("1", "true", "yes", "on")
-        if fullbleed:
-            bg_filter = "[blur]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];"
-            print(f"[LOCAL_WORKER] HS_BLUR_FULLBLEED=1 enabled: using direct 1080x1920 scale-to-cover + boxblur=20:5 (takes ~44.6s)", flush=True)
-        else:
-            bg_filter = "[blur]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=5:1,scale=1080:1920:flags=bilinear[bg];"
+            fg_zoom = float(os.getenv("HS_BLUR_FG_ZOOM", "1.0"))
+            if fg_zoom > 1.0:
+                fg_filter = f"[vid]scale=trunc(1080*{fg_zoom}/2)*2:-2:flags=lanczos[fg];"
+                print(f"[LOCAL_WORKER] HS_BLUR_FG_ZOOM={fg_zoom:.2f}x enabled: scaling foreground to punchier center frame", flush=True)
+            else:
+                fg_filter = "[vid]scale=1080:-2:flags=lanczos[fg];"
 
-        # Configurable foreground zoom (default 1.20x gives ~40% screen presence instead of distant 31.7%)
-        fg_zoom = float(os.getenv("HS_BLUR_FG_ZOOM", "1.20"))
-        if fg_zoom > 1.0:
-            fg_filter = f"[vid]scale=trunc(1080*{fg_zoom}/2)*2:-2[fg];"
-            print(f"[LOCAL_WORKER] HS_BLUR_FG_ZOOM={fg_zoom:.2f}x enabled: scaling foreground to punchier center frame", flush=True)
-        else:
-            fg_filter = "[vid]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+            # Punchy subtitles filter burned onto final 1080x1920 canvas below center frame
+            subs_filter = ""
+            if ass_path and os.path.exists(ass_path):
+                fonts_dir = os.path.join(BASE_DIR, "fonts")
+                ass_esc = os.path.abspath(ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+                fonts_esc = os.path.abspath(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+                subs_filter = f",subtitles='{ass_esc}':fontsdir='{fonts_esc}'"
+                print(f"[LOCAL_WORKER] Branding: burning punchy subtitles below center frame onto 9:16 canvas: {ass_path}", flush=True)
 
-        # Punchy subtitles filter burned onto final 1080x1920 canvas below center frame
-        subs_filter = ""
-        if ass_path and os.path.exists(ass_path):
-            fonts_dir = os.path.join(BASE_DIR, "fonts")
-            ass_esc = os.path.abspath(ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-            fonts_esc = os.path.abspath(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-            subs_filter = f",subtitles='{ass_esc}':fontsdir='{fonts_esc}'"
-            print(f"[LOCAL_WORKER] Branding: burning punchy subtitles below center frame onto 9:16 canvas: {ass_path}", flush=True)
+            merged_pad = "[merged_subs]" if subs_filter else "[merged]"
 
-        merged_pad = "[merged_subs]" if subs_filter else "[merged]"
-
-        if has_outro:
-            # ── SINGLE PASS: blur + watermark + outro concat ───────────────────
-            filter_complex = (
-                # Main clip: cinematic blur bg + centered video
+            base_chain = (
                 f"[0:v]fps=30,{crop_prefix}split=2[blur][vid];"
                 f"{bg_filter}"
                 f"{fg_filter}"
-                f"[bg][fg]overlay=(W-w)/2:(H-h)/2{subs_filter}{merged_pad};"
+                f"[bg][fg]overlay=0:(H-h)/2{subs_filter}{merged_pad};"
+            )
+        else:
+            # Input is already vertical 9:16 (e.g. center crop or stacked podcast). Keep raw frame intact!
+            subs_filter = ""
+            if ass_path and os.path.exists(ass_path):
+                fonts_dir = os.path.join(BASE_DIR, "fonts")
+                ass_esc = os.path.abspath(ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+                fonts_esc = os.path.abspath(fonts_dir).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+                subs_filter = f",subtitles='{ass_esc}':fontsdir='{fonts_esc}'"
+
+            merged_pad = "[merged]"
+            base_chain = (
+                f"[0:v]fps=30,scale=1080:1920:force_original_aspect_ratio=decrease,"
+                f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2{subs_filter}{merged_pad};"
+            )
+
+        if has_outro:
+            # ── SINGLE PASS: blur/scale + watermark + outro concat ───────────────────
+            filter_complex = (
+                f"{base_chain}"
                 # Watermark overlay (forced even height with -2 to prevent NVENC -22 invalid argument)
                 "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
                 f"{merged_pad}[wm]overlay=W-w-50:H-h-250,format=yuv420p,setsar=1[main_v];"
@@ -1501,8 +1602,7 @@ def _apply_distribution_branding(input_path: str, output_path: str, ass_path: st
             )
             cmd = [
                 "ffmpeg", "-y",
-                "-hwaccel", "auto",
-                "-i", input_path,        # 0: main clip
+                "-i", input_path,        # 0: main clip (CPU decode: rock solid, no green D3D11VA chroma bug)
                 "-i", watermark_path,    # 1: logo.png
                 "-i", outro_path,        # 2: outro.mp4
                 "-filter_complex", filter_complex,
@@ -1516,20 +1616,16 @@ def _apply_distribution_branding(input_path: str, output_path: str, ass_path: st
                 output_path
             ]
         else:
-            # ── NO OUTRO: blur + watermark only (single pass) ──────────────────
+            # ── NO OUTRO: blur/scale + watermark only (single pass) ──────────────────
             print(f"[LOCAL_WORKER] WARNING: Outro not found at {outro_path}. Watermark only.", flush=True)
             filter_complex = (
-                f"[0:v]fps=30,{crop_prefix}split=2[blur][vid];"
-                f"{bg_filter}"
-                f"{fg_filter}"
-                f"[bg][fg]overlay=(W-w)/2:(H-h)/2{subs_filter}{merged_pad};"
+                f"{base_chain}"
                 "[1:v]scale=180:-2,format=rgba,colorchannelmixer=aa=0.8[wm];"
                 f"{merged_pad}[wm]overlay=W-w-50:H-h-250,format=yuv420p"
             )
             cmd = [
                 "ffmpeg", "-y",
-                "-hwaccel", "auto",
-                "-i", input_path,
+                "-i", input_path,        # 0: main clip (CPU decode: rock solid, no green D3D11VA chroma bug)
                 "-i", watermark_path,
                 "-filter_complex", filter_complex,
                 "-c:v", "h264_nvenc" if ffmpeg_nvenc else "libx264",
@@ -1684,6 +1780,7 @@ class FaceCache:
         self.video_path = video_path
         self.cache = {}
         self.clip_caches = {}
+        self.clip_motion_scores = {}  # (start, end) -> float (pixel motion score)
         self.clip_timelines = {}  # (start, end) -> [{start,end,mode,n_faces},...] from real detection
         self.clips = list(clips or [])
         self._done = False
@@ -1854,6 +1951,13 @@ class FaceCache:
             if key in self.clip_caches:
                 return dict(self.clip_caches[key])
         return self.scan_clip(clip, clip_fmt=self._get_clip_fmt(clip))
+
+    def get_clip_motion(self, clip):
+        start = float(clip.get("start", 0.0) or 0.0)
+        end = float(clip.get("end", start) or start)
+        key = (round(start, 2), round(end, 2))
+        with self._lock:
+            return float(self.clip_motion_scores.get(key, 0.0))
 
     def _precompute_clips_only(self, clips, is_jit_single: bool = False, clip_idx: int = 0):
         _face_cache_start = time.time()
@@ -2235,16 +2339,37 @@ class FaceCache:
                       f"Face Detect ........ {int(t_face * 1000)} ms\n"
                       f"Anchor Build ........ {int(t_anchor * 1000)} ms\n", flush=True)
             finally:
+                # ── Instant In-Memory Pixel Motion Energy across preloaded frames (<2ms) ──
+                pixel_motion = 0.0
+                try:
+                    if len(sampled) >= 2:
+                        p_diffs = []
+                        for i_s in range(1, len(sampled)):
+                            f_prev = sampled[i_s - 1][1]
+                            f_curr = sampled[i_s][1]
+                            if f_prev is not None and f_curr is not None:
+                                s_prev = cv2.resize(f_prev, (96, 54), interpolation=cv2.INTER_NEAREST)
+                                s_curr = cv2.resize(f_curr, (96, 54), interpolation=cv2.INTER_NEAREST)
+                                g_prev = cv2.cvtColor(s_prev, cv2.COLOR_BGR2GRAY)
+                                g_curr = cv2.cvtColor(s_curr, cv2.COLOR_BGR2GRAY)
+                                p_diffs.append(float(np.mean(cv2.absdiff(g_curr, g_prev))))
+                        if p_diffs:
+                            pixel_motion = float(np.percentile(p_diffs, 75))
+                except Exception as _ex_motion:
+                    print(f"[PIXEL_MOTION] [WARN] Motion energy calculation bypassed: {_ex_motion}", flush=True)
+                    pixel_motion = 0.0
+
                 cap.release()
-            return (round(start, 2), round(end, 2)), abs_results, rel_results, _tl_segs
+            return (round(start, 2), round(end, 2)), abs_results, rel_results, _tl_segs, pixel_motion
 
         with ThreadPoolExecutor(max_workers=min(workers, max(1, len(clips)))) as ex:
             futures = [ex.submit(scan_one_clip, clip_idx if is_jit_single else i, clip) for i, clip in enumerate(clips)]
             for future in futures:
-                key, abs_results, rel_results, tl_segs = future.result()
+                key, abs_results, rel_results, tl_segs, pixel_motion = future.result()
                 with self._lock:
                     self.cache.update(abs_results)
                     self.clip_caches[key] = rel_results
+                    self.clip_motion_scores[key] = pixel_motion
                     # Store real-detection timeline for director pre-cognition
                     self.clip_timelines[key] = [
                         {"start": s, "end": e, "mode": m, "n_faces": n}
@@ -2471,11 +2596,16 @@ def _evaluate_motion_route(clip: dict, face_cache, video_path: str = None) -> tu
             p50 = float(np.percentile(speeds, 50))
             p95 = float(np.percentile(speeds, 95))
 
-    would_route = "blur" if p50 > threshold else "normal"
+    pixel_motion = face_cache.get_clip_motion(clip) if (face_cache and hasattr(face_cache, "get_clip_motion")) else 0.0
+    pixel_threshold = float(os.getenv("HS_PIXEL_MOTION_THRESHOLD", "22.0"))
+
+    # Auto-route to blur if camera pan is fast OR whole-frame pixel motion is high (streamers / jumping / fast action)
+    is_high_motion = (p50 > threshold) or (pixel_motion >= pixel_threshold)
+    would_route = "blur" if is_high_motion else "normal"
     clip_id = clip.get("ranking_rank", clip.get("rank", f"{start:.0f}-{end:.0f}"))
     print(
-        f"[MOTION_ROUTE] clip={clip_id} pan_p50={p50:.1f}px/s pan_p95={p95:.1f}px/s "
-        f"threshold={threshold:.1f} -> would_route={would_route}",
+        f"[MOTION_ROUTE] clip={clip_id} pan_p50={p50:.1f}px/s pixel_motion={pixel_motion:.1f} "
+        f"(pan_thresh={threshold:.1f}, px_thresh={pixel_threshold:.1f}) -> would_route={would_route}",
         flush=True,
     )
 
@@ -2941,35 +3071,39 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     _full_transcript = clips_to_render[0].get("transcript") or clips_to_render[0].get("captions")
                     
                     def gen_cap(clip, idx):
-                        start = float(clip.get("start", 0))
-                        end   = float(clip.get("end", start + 30))
-                        clip_transcript = clip.get("transcript") or clip.get("captions") or _full_transcript or []
-                        clip_title = clip.get("opening_caption") or clip.get("title") or clip.get("text", "")
-                        cortex_hints = None
-                        if clip.get("cortex_enabled") or clip.get("b_roll_prompt") or clip.get("b_roll_keywords"):
-                            cortex_hints = {
-                                "cortex_enabled": True,
-                                "editing_notes": clip.get("editing_notes", {}),
-                                "opening_caption": clip.get("opening_caption", ""),
-                                "title": clip.get("title", ""),
-                                "hook_type": clip.get("hook_type", ""),
-                                "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {}),
-                                "content_genre": clip.get("content_genre", ""),
-                                "b_roll_prompt": clip.get("b_roll_prompt", ""),
-                                "b_roll_keywords": clip.get("b_roll_keywords", []),
-                                "b_roll_timestamp": clip.get("b_roll_timestamp", 1.0)
-                            }
-                        ass_path = editor_instance.generate_caption_file(
-                            input_path=video_path,
-                            source_start=start,
-                            source_end=end,
-                            transcript=clip_transcript,
-                            config=editor_cfg,
-                            clip_title=clip_title,
-                            cortex_hints=cortex_hints,
-                            precomputed_narrative=clip.get("precomputed_narrative")
-                        )
-                        return idx, ass_path
+                        try:
+                            start = float(clip.get("start", 0))
+                            end   = float(clip.get("end", start + 30))
+                            clip_transcript = clip.get("transcript") or clip.get("captions") or _full_transcript or []
+                            clip_title = clip.get("opening_caption") or clip.get("title") or clip.get("text", "")
+                            cortex_hints = None
+                            if clip.get("cortex_enabled") or clip.get("b_roll_prompt") or clip.get("b_roll_keywords"):
+                                cortex_hints = {
+                                    "cortex_enabled": True,
+                                    "editing_notes": clip.get("editing_notes", {}),
+                                    "opening_caption": clip.get("opening_caption", ""),
+                                    "title": clip.get("title", ""),
+                                    "hook_type": clip.get("hook_type", ""),
+                                    "learning_signal_for_hotshort": clip.get("learning_signal_for_hotshort", {}),
+                                    "content_genre": clip.get("content_genre", ""),
+                                    "b_roll_prompt": clip.get("b_roll_prompt", ""),
+                                    "b_roll_keywords": clip.get("b_roll_keywords", []),
+                                    "b_roll_timestamp": clip.get("b_roll_timestamp", 1.0)
+                                }
+                            ass_path = editor_instance.generate_caption_file(
+                                input_path=video_path,
+                                source_start=start,
+                                source_end=end,
+                                transcript=clip_transcript,
+                                config=editor_cfg,
+                                clip_title=clip_title,
+                                cortex_hints=cortex_hints,
+                                precomputed_narrative=clip.get("precomputed_narrative")
+                            )
+                            return idx, ass_path
+                        except Exception as e_cap:
+                            print(f"[LOCAL_WORKER] [WARN] gen_cap pregen failed for clip {idx}: {e_cap}", flush=True)
+                            return idx, None
 
                     ex = ThreadPoolExecutor(max_workers=4)
                     for i, c in enumerate(clips_to_render):
@@ -3179,7 +3313,15 @@ def _process_job(job: dict, cloudinary_ok: bool):
 
                         _measure_6b = os.getenv("HS_MEASURE_6B_TIMERS", "0").strip().lower() in ("1", "true", "yes", "on")
                         _t_prec_join_start = time.perf_counter() if _measure_6b else 0.0
-                        _precomp_ass = precomputed_captions[i].result()[1] if precomputed_captions.get(i) else None
+                        _precomp_ass = None
+                        if precomputed_captions.get(i):
+                            try:
+                                _res_cap = precomputed_captions[i].result()
+                                if _res_cap and len(_res_cap) > 1:
+                                    _precomp_ass = _res_cap[1]
+                            except Exception as _e_cap:
+                                print(f"[LOCAL_WORKER] [WARN] Precomputed captions unavailable for clip {i}: {_e_cap}. WCE will build ASS on the fly.", flush=True)
+                                _precomp_ass = None
                         _t_prec_join_s = (time.perf_counter() - _t_prec_join_start) if _measure_6b else 0.0
 
                         _bench.begin(f"6b_wce_clip{i}")

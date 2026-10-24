@@ -1,0 +1,14 @@
+node_modules/
+.remotion/
+build/
+*.jpg
+*.png
+*.wav
+*.mp4
+*.webm
+public/**/*.mp4
+public/**/*.webm
+public/*.mp4
+public/*.webm
+!public/**/*.png
+!public/**/*.jpg

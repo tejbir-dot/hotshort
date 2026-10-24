@@ -635,6 +635,17 @@ class ClipEditor:
         return out
 
     def _probe_video(self, path: str) -> Dict[str, Any]:
+        default_meta = {
+            "width": 1920,
+            "height": 1080,
+            "duration": 0.0,
+            "fps": 30.0,
+            "has_audio": True,
+        }
+        if not path or not os.path.exists(path):
+            log.warning("[WCE] _probe_video called with non-existent or empty path: %s", path)
+            return default_meta
+
         cmd = [
             "ffprobe",
             "-v",
@@ -645,18 +656,67 @@ class ClipEditor:
             "-show_format",
             path,
         ]
-        out = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        payload = json.loads(out.stdout or "{}")
-        streams = payload.get("streams", [])
-        v = next((s for s in streams if s.get("codec_type") == "video"), {})
-        duration = _safe_float(v.get("duration"), _safe_float(payload.get("format", {}).get("duration"), 0.0))
-        return {
-            "width": int(_safe_float(v.get("width"), 1920)),
-            "height": int(_safe_float(v.get("height"), 1080)),
-            "duration": max(0.0, duration),
-            "fps": self._parse_fps(v.get("r_frame_rate", "30/1")),
-            "has_audio": any(s.get("codec_type") == "audio" for s in streams),
-        }
+        payload = None
+        for attempt in range(3):
+            try:
+                out = subprocess.run(
+                    cmd,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=15,
+                )
+                payload = json.loads(out.stdout or "{}")
+                if payload and ("streams" in payload or "format" in payload):
+                    break
+            except Exception as e:
+                err_text = getattr(e, "stderr", str(e))
+                log.warning("[WCE] ffprobe attempt %d failed on %s: %s", attempt + 1, path, str(err_text).strip())
+                if attempt < 2:
+                    time.sleep(0.4)
+
+        if payload and isinstance(payload, dict):
+            streams = payload.get("streams", [])
+            v = next((s for s in streams if s.get("codec_type") == "video"), {})
+            duration = _safe_float(v.get("duration"), _safe_float(payload.get("format", {}).get("duration"), 0.0))
+            w = int(_safe_float(v.get("width"), 1920))
+            h = int(_safe_float(v.get("height"), 1080))
+            fps = self._parse_fps(v.get("r_frame_rate", "30/1"))
+            has_audio = any(s.get("codec_type") == "audio" for s in streams)
+            return {
+                "width": w if w > 0 else 1920,
+                "height": h if h > 0 else 1080,
+                "duration": max(0.0, duration),
+                "fps": fps if fps > 0 else 30.0,
+                "has_audio": has_audio,
+            }
+
+        # Fallback to OpenCV if ffprobe failed or timed out
+        try:
+            if cv2 is not None:
+                cap = cv2.VideoCapture(path)
+                if cap.isOpened():
+                    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1920)
+                    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1080)
+                    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+                    cnt = float(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0)
+                    dur = (cnt / fps) if fps > 0 else 0.0
+                    cap.release()
+                    log.info("[WCE] _probe_video fallback cv2 succeeded on %s: %dx%d, dur=%.2fs, fps=%.1f", path, w, h, dur, fps)
+                    return {
+                        "width": w if w > 0 else 1920,
+                        "height": h if h > 0 else 1080,
+                        "duration": max(0.0, dur),
+                        "fps": fps if fps > 0 else 30.0,
+                        "has_audio": True,
+                    }
+        except Exception as cv_err:
+            log.warning("[WCE] cv2 probe fallback failed: %s", cv_err)
+
+        log.error("[WCE] All probe methods failed for %s. Returning default metadata.", path)
+        return default_meta
 
     def _parse_fps(self, value: str) -> float:
         if not value:
@@ -3646,8 +3706,11 @@ class ClipEditor:
             elif pacing_note == "slow":
                 cfg.max_caption_words = 9
 
-        base_meta = self._probe_video(input_path)
-        clip_duration = max(0.01, float(base_meta.get("duration") or 0.0))
+        if source_end > source_start:
+            clip_duration = max(0.01, float(source_end - source_start))
+        else:
+            base_meta = self._probe_video(input_path) if (input_path and os.path.exists(input_path)) else {}
+            clip_duration = max(0.01, float(base_meta.get("duration") or 0.0))
         
         if precomputed_narrative and isinstance(precomputed_narrative, dict):
             transcript_window = list(precomputed_narrative.get("transcript_window") or [])

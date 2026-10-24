@@ -81,3 +81,37 @@ Overnight_Factory/Cookies_Vault/*/*.json
 
 # ── Screenshot debug files ───────────────────────────────────────────────────
 Overnight_Factory/whop_debug_screenshot.png
+
+# ── Personal / sensitive documents ──────────────────────────────────────────
+assets/broll_assets/money_assets/*.pdf
+cookies.txt
+
+# ── Temporary worker / debug queues ──────────────────────────────────────────
+Overnight_Factory/Pending_Videos/
+_test_realdc_tmp/
+channel_profiles/
+git_log_history*.txt
+stash.diff
+
+# ── Local generated static assets & thumbnails ───────────────────────────────
+static/thumbnails/
+static/clean_clips/
+static/demo_clips/
+static/exports/
+*.vtt
+surgeon_fix_proof.md
+
+# ── Marketing factory scratch frames & dumps ─────────────────────────────────
+marketing_factory/scratch_*
+marketing_factory/test_*
+marketing_factory/inshot_*
+marketing_factory/ref_yt_*
+marketing_factory/*.jpg
+marketing_factory/*.png
+marketing_factory/cards_dump.txt
+marketing_factory/video_box_dump.txt
+marketing_factory/archive/
+marketing_factory/clip_check/
+hotshort_local_mobile.png
+
+

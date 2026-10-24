@@ -1,0 +1,342 @@
+{
+  "campaign_name": "HotShort_10x_God_Tier_Promos",
+  "version": "2.0.0",
+  "engine_target": "marketing_factory.engine",
+  "global_settings": {
+    "resolution": [720, 1280],
+    "fps": 30,
+    "voice": "en-US-BrianMultilingualNeural",
+    "bg_video": "marketing_factory/assets/bg_generativo.mp4",
+    "avatar_video": "marketing_factory/assets/Man_speaking_with_VR_headset_20261021215440.mp4",
+    "avatar_mask": "marketing_factory/assets/avatar_mask.mp4",
+    "bg_music": "marketing_factory/assets/bg_music_trap.mp3",
+    "music_volume": 0.12,
+    "brand_link": "https://hotshort.ai"
+  },
+  "clips": [
+    {
+      "id": "clip_01_time_stealer",
+      "index": 1,
+      "title": "The Time-Stealer Hack",
+      "keyword": "TIME",
+      "psychology": "Pain avoidance + extreme efficiency contrast",
+      "hook": {
+        "audio": "Stop editing for 5 hours. Watch me do it in 15 seconds.",
+        "duration_estimate": 4.2,
+        "visual": "Center screen shows a cluttered Premiere Pro timeline slamming shut. Red deadline stress bar turns into sleek dark HotShort UI."
+      },
+      "body": {
+        "audio": "First, grab any long stream link. Paste it into HotShort and hit ignite. In just seconds, its AI tracks faces, auto-crops, and renders viral shorts with punchy captions.",
+        "duration_estimate": 10.5,
+        "visual": "Programmatic cursor pastes YouTube link into HotShort input, clicks golden Analyze Now button with ripple ring, and instantly reveals 100% viral rated Speed short."
+      },
+      "cta": {
+        "audio": "Comment TIME, and I will DM you the cheat code for free.",
+        "duration_estimate": 4.0,
+        "bubble_user": "\"TIME\"",
+        "bubble_reply": "https://hotshort.ai 🚀"
+      },
+      "full_script": "Stop editing for five hours. Watch me do it in fifteen seconds. First, grab any long stream link. Paste it into HotShort and hit ignite. In just seconds, its AI tracks faces, auto-crops, and renders crystal-clear viral shorts with punchy captions. Comment TIME, and I will DM you the cheat code for free.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "pop_bubble", "t": 4.2, "volume": 0.60},
+        {"type": "mouse_click_mech", "t": 8.5, "volume": 0.85},
+        {"type": "money_ching", "t": 11.0, "volume": 0.55},
+        {"type": "whoosh_fast", "t": 15.0, "volume": 0.40},
+        {"type": "pop_bubble", "t": 16.0, "volume": 0.70},
+        {"type": "money_ching", "t": 17.5, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_02_brutal_trading",
+      "index": 2,
+      "title": "The Brutal Trading Reality",
+      "keyword": "TRUTH",
+      "psychology": "Ego punch + harsh reality check (TJR style)",
+      "hook": {
+        "audio": "You don't have a trading edge, you have a gambling addiction.",
+        "duration_estimate": 4.0,
+        "visual": "Red crashing Candlestick chart with flashing margin call warning, aggressively wiping into HotShort AI processing a Trading Psychology podcast."
+      },
+      "body": {
+        "audio": "Top traders don't watch 4-hour charts. They feed the stream into HotShort, and let AI hunt the highest-conviction mindset hooks with zero emotion.",
+        "duration_estimate": 9.5,
+        "visual": "HotShort UI scans audio frequencies, highlights emotional trigger points, and exports a 60-second raw mindset clip with dynamic yellow captions."
+      },
+      "cta": {
+        "audio": "Comment TRUTH, and I'll send you the exact AI system.",
+        "duration_estimate": 3.8,
+        "bubble_user": "\"TRUTH\"",
+        "bubble_reply": "https://hotshort.ai/trader ⚡"
+      },
+      "full_script": "You do not have a trading edge, you have a gambling addiction. Top traders don't watch four-hour charts. They feed the stream into HotShort, and let AI hunt the highest-conviction mindset hooks with zero emotion. Comment TRUTH, and I will send you the exact AI system.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "whoosh_fast", "t": 4.0, "volume": 0.50},
+        {"type": "mouse_click_mech", "t": 7.8, "volume": 0.80},
+        {"type": "money_ching", "t": 10.2, "volume": 0.60},
+        {"type": "pop_bubble", "t": 14.5, "volume": 0.70},
+        {"type": "money_ching", "t": 15.8, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_03_four_hour_bypass",
+      "index": 3,
+      "title": "The 4-Hour Bypass",
+      "keyword": "STEAL",
+      "psychology": "Shortcut dopamine + ethical content theft",
+      "hook": {
+        "audio": "How to steal the best one minute from a four-hour podcast.",
+        "duration_estimate": 3.8,
+        "visual": "A YouTube 4:18:22 video scrubber fast-forwarding at 10x speed with glowing heat-map spikes."
+      },
+      "body": {
+        "audio": "Never scrub manually again. Paste the episode URL into HotShort. The AI pinpoints the exact conversational dopamine spike and splits it into 3 ready-to-post shorts.",
+        "duration_estimate": 10.2,
+        "visual": "Cursor pastes link, HotShort cortex generates 3 vertical cards with 98% viral probability and auto-reframe."
+      },
+      "cta": {
+        "audio": "Comment STEAL, and I will DM you the direct tool link.",
+        "duration_estimate": 3.9,
+        "bubble_user": "\"STEAL\"",
+        "bubble_reply": "https://hotshort.ai/steal 🚀"
+      },
+      "full_script": "How to steal the best one minute from a four-hour podcast. Never scrub manually again. Paste the episode URL into HotShort. The AI pinpoints the exact conversational dopamine spike and splits it into three ready-to-post shorts. Comment STEAL, and I will DM you the direct tool link.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "money_ching", "t": 1.5, "volume": 0.50},
+        {"type": "mouse_click_mech", "t": 6.8, "volume": 0.85},
+        {"type": "money_ching", "t": 9.5, "volume": 0.60},
+        {"type": "pop_bubble", "t": 14.0, "volume": 0.70},
+        {"type": "money_ching", "t": 15.5, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_04_algorithm_secret",
+      "index": 4,
+      "title": "The Algorithm Secret",
+      "keyword": "ALGO",
+      "psychology": "FOMO + insider knowledge + algorithm hacking",
+      "hook": {
+        "audio": "The algorithm is hiding this from you. Not all clips go viral.",
+        "duration_estimate": 4.1,
+        "visual": "Cyber green Matrix rain code stream dissolving into HotShort Groq Cortex neural decision tree."
+      },
+      "body": {
+        "audio": "Only clips with high-tension psychology survive the FYP. HotShort scores every second for retention, auto-crops faces with zero blur, and generates Hormozi captions in seconds.",
+        "duration_estimate": 10.4,
+        "visual": "HotShort Studio UI highlighting 97%, 94%, and 88% confidence scores bouncing upward with neon green glow."
+      },
+      "cta": {
+        "audio": "Comment ALGO, and I'll send you the algorithm bypass.",
+        "duration_estimate": 3.8,
+        "bubble_user": "\"ALGO\"",
+        "bubble_reply": "https://hotshort.ai/algo 🔓"
+      },
+      "full_script": "The algorithm is hiding this from you. Not all clips go viral. Only clips with high-tension psychology survive the FYP. HotShort scores every second for retention, auto-crops faces with zero blur, and generates Hormozi captions in seconds. Comment ALGO, and I will send you the algorithm bypass.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "whoosh_fast", "t": 4.2, "volume": 0.40},
+        {"type": "money_ching", "t": 7.0, "volume": 0.55},
+        {"type": "mouse_click_mech", "t": 9.8, "volume": 0.85},
+        {"type": "pop_bubble", "t": 14.8, "volume": 0.70},
+        {"type": "money_ching", "t": 16.2, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_05_faceless_wealth",
+      "index": 5,
+      "title": "The Faceless Wealth Trap",
+      "keyword": "HUSTLE",
+      "psychology": "Year-specific timing (2026) + effortless passive income",
+      "hook": {
+        "audio": "This is the only side hustle working in 2026. And no one is talking about it.",
+        "duration_estimate": 4.5,
+        "visual": "Rapid TikTok swipe displaying faceless accounts with 14.2M, 28.5M, and 33.1M views."
+      },
+      "body": {
+        "audio": "Instead of showing your face, grab viral streamer moments, feed them into HotShort, and let AI track the motion and generate hyper-engaging shorts while you sleep.",
+        "duration_estimate": 10.0,
+        "visual": "Cursor clicks 'Ignite Viral Clips' in HotShort, and full 1080p crystal-clear vertical video plays with 0% green glitch."
+      },
+      "cta": {
+        "audio": "Comment HUSTLE, and I’ll send you the full roadmap.",
+        "duration_estimate": 3.7,
+        "bubble_user": "\"HUSTLE\"",
+        "bubble_reply": "https://hotshort.ai/hustle 💰"
+      },
+      "full_script": "This is the only side hustle working in 2026. And no one is talking about it. Instead of showing your face, grab viral streamer moments, feed them into HotShort, and let AI track the motion and generate hyper-engaging shorts while you sleep. Comment HUSTLE, and I will send you the full roadmap.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "money_ching", "t": 2.0, "volume": 0.60},
+        {"type": "whoosh_fast", "t": 4.5, "volume": 0.40},
+        {"type": "mouse_click_mech", "t": 8.5, "volume": 0.85},
+        {"type": "pop_bubble", "t": 14.5, "volume": 0.70},
+        {"type": "money_ching", "t": 16.0, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_06_competitor_kill",
+      "index": 6,
+      "title": "The Competitor Kill",
+      "keyword": "SPEED",
+      "psychology": "Competitive dominance + unfair automation advantage",
+      "hook": {
+        "audio": "Your faceless channel is dead, because you are moving too slow.",
+        "duration_estimate": 4.0,
+        "visual": "Side-by-side comparison screen. Left side: Exhausted editor manually resizing 16:9 boxes. Right side: HotShort batch-processing at 60fps."
+      },
+      "body": {
+        "audio": "While you spend an hour on one clip, HotShort exports ten viral shorts simultaneously with pixel motion tracking and active captions. Speed wins the algorithm.",
+        "duration_estimate": 10.1,
+        "visual": "HotShort export progress bar hitting 100% across 5 videos in parallel with rapid green checkmarks."
+      },
+      "cta": {
+        "audio": "Comment SPEED, to unlock ten-x faster clipping.",
+        "duration_estimate": 3.7,
+        "bubble_user": "\"SPEED\"",
+        "bubble_reply": "https://hotshort.ai/speed ⚡"
+      },
+      "full_script": "Your faceless channel is dead, because you are moving too slow. While you spend an hour on one clip, HotShort exports ten viral shorts simultaneously with pixel motion tracking and active captions. Speed wins the algorithm. Comment SPEED, to unlock ten times faster clipping.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "whoosh_fast", "t": 4.0, "volume": 0.45},
+        {"type": "mouse_click_mech", "t": 8.0, "volume": 0.85},
+        {"type": "money_ching", "t": 10.5, "volume": 0.60},
+        {"type": "pop_bubble", "t": 14.2, "volume": 0.70},
+        {"type": "money_ching", "t": 15.6, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_07_money_printer",
+      "index": 7,
+      "title": "The Money Printer Aesthetic",
+      "keyword": "GLITCH",
+      "psychology": "Curiosity gap + high-ticket financial incentive",
+      "hook": {
+        "audio": "I found a legal glitch in the creator economy.",
+        "duration_estimate": 3.4,
+        "visual": "Blurred emerald green Stripe payout dashboard ($24,850.00) dissolving into sleek dark HotShort interface."
+      },
+      "body": {
+        "audio": "Creators pay 500 dollars a week for daily shorts. I paste their podcast into HotShort, let the AI create the week's content in 2 minutes, and keep all the profit.",
+        "duration_estimate": 9.8,
+        "visual": "HotShort batch results carousel displaying 7 processed short reels ready to download in 1 click."
+      },
+      "cta": {
+        "audio": "Comment GLITCH, and I will DM you the blueprint.",
+        "duration_estimate": 3.6,
+        "bubble_user": "\"GLITCH\"",
+        "bubble_reply": "https://hotshort.ai/agency 💸"
+      },
+      "full_script": "I found a legal glitch in the creator economy. Creators pay five hundred dollars a week for daily shorts. I paste their podcast into HotShort, let the AI create the week's content in two minutes, and keep all the profit. Comment GLITCH, and I will DM you the blueprint.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "money_ching", "t": 1.2, "volume": 0.65},
+        {"type": "whoosh_fast", "t": 3.5, "volume": 0.40},
+        {"type": "mouse_click_mech", "t": 7.5, "volume": 0.85},
+        {"type": "money_ching", "t": 10.0, "volume": 0.60},
+        {"type": "pop_bubble", "t": 13.5, "volume": 0.70},
+        {"type": "money_ching", "t": 15.0, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_08_lazy_genius",
+      "index": 8,
+      "title": "The Lazy Genius",
+      "keyword": "LAZY",
+      "psychology": "Zero-effort automation + AI empowerment",
+      "hook": {
+        "audio": "Work smart, not hard. Watch this AI print content.",
+        "duration_estimate": 3.5,
+        "visual": "VR Anime Avatar bouncing subtly to bass drop while mouse cursor moves autonomously on the screen."
+      },
+      "body": {
+        "audio": "No timeline scrubbing. No manual subtitle typing. Just drop a YouTube link, and HotShort tracks faces, crops vertical, and delivers viral-ready shorts on autopilot.",
+        "duration_estimate": 9.8,
+        "visual": "Autonomously typing YouTube link, auto-selecting best viral hooks, and generating vertical short with dynamic word captions."
+      },
+      "cta": {
+        "audio": "Comment LAZY, to automate your content today.",
+        "duration_estimate": 3.6,
+        "bubble_user": "\"LAZY\"",
+        "bubble_reply": "https://hotshort.ai/lazy 🛋️"
+      },
+      "full_script": "Work smart, not hard. Watch this AI print content. No timeline scrubbing. No manual subtitle typing. Just drop a YouTube link, and HotShort tracks faces, crops vertical, and delivers viral-ready shorts on autopilot. Comment LAZY, to automate your content today.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "money_ching", "t": 1.8, "volume": 0.50},
+        {"type": "whoosh_fast", "t": 3.6, "volume": 0.40},
+        {"type": "mouse_click_mech", "t": 7.6, "volume": 0.85},
+        {"type": "pop_bubble", "t": 13.5, "volume": 0.70},
+        {"type": "money_ching", "t": 15.0, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_09_dont_share",
+      "index": 9,
+      "title": "The 'Don't Share' Reverse Psychology",
+      "keyword": "SECRET",
+      "psychology": "Scarcity + reverse psychology + gatekeeping threat",
+      "hook": {
+        "audio": "Do NOT share this tool. It will completely ruin the market.",
+        "duration_estimate": 4.0,
+        "visual": "Bold RED 'CLASSIFIED / RESTRICTED' warning overlay dissolving to reveal HotShort VIP dashboard."
+      },
+      "body": {
+        "audio": "Agencies are using HotShort behind closed doors to charge thousands. One URL creates ten high-motion shorts with crystal blur and auto captions before you even finish your coffee.",
+        "duration_estimate": 10.5,
+        "visual": "Mouse hovering over golden 'Batch Export All' with live thumbnail previews flashing with high engagement signals."
+      },
+      "cta": {
+        "audio": "Comment SECRET, before this gets taken down.",
+        "duration_estimate": 3.8,
+        "bubble_user": "\"SECRET\"",
+        "bubble_reply": "https://hotshort.ai/secret 🤫"
+      },
+      "full_script": "Do not share this tool. It will completely ruin the market. Agencies are using HotShort behind closed doors to charge thousands. One URL creates ten high-motion shorts with crystal blur and auto captions before you even finish your coffee. Comment SECRET, before this gets taken down.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "pop_bubble", "t": 2.0, "volume": 0.50},
+        {"type": "whoosh_fast", "t": 4.0, "volume": 0.40},
+        {"type": "mouse_click_mech", "t": 8.0, "volume": 0.85},
+        {"type": "money_ching", "t": 10.5, "volume": 0.60},
+        {"type": "pop_bubble", "t": 14.8, "volume": 0.70},
+        {"type": "money_ching", "t": 16.2, "volume": 0.65}
+      ]
+    },
+    {
+      "id": "clip_10_ultimate_proof",
+      "index": 10,
+      "title": "The Ultimate Proof",
+      "keyword": "FIX",
+      "psychology": "Direct diagnosis of failure + immediate visual fix",
+      "hook": {
+        "audio": "Not getting views? Your hooks are trash. Let AI fix it.",
+        "duration_estimate": 4.1,
+        "visual": "A flat, boring video with 12 views and gray text, instantly transitioning into a vibrant HotShort viral short."
+      },
+      "body": {
+        "audio": "Stop guessing. HotShort's Cortex AI scans the video's highest-energy emotional peaks, tracks faces with pixel motion, and adds Hormozi bold glowing captions that hook viewers instantly.",
+        "duration_estimate": 10.3,
+        "visual": "Dynamic punch-zoom into bright neon Hormozi bold captions highlighting yellow and cyan words with bouncing text tracking."
+      },
+      "cta": {
+        "audio": "Comment FIX, to upgrade your content right now.",
+        "duration_estimate": 3.7,
+        "bubble_user": "\"FIX\"",
+        "bubble_reply": "https://hotshort.ai/fix 🚀"
+      },
+      "full_script": "Not getting views? Your hooks are trash. Let AI fix it. Stop guessing. HotShort's Cortex AI scans the video's highest-energy emotional peaks, tracks faces with pixel motion, and adds Hormozi bold glowing captions that hook viewers instantly. Comment FIX, to upgrade your content right now.",
+      "sfx_cues": [
+        {"type": "whoosh_swoosh", "t": 0.0, "volume": 0.45},
+        {"type": "pop_bubble", "t": 1.5, "volume": 0.55},
+        {"type": "whoosh_fast", "t": 4.2, "volume": 0.40},
+        {"type": "mouse_click_mech", "t": 8.5, "volume": 0.85},
+        {"type": "money_ching", "t": 10.8, "volume": 0.60},
+        {"type": "pop_bubble", "t": 14.5, "volume": 0.70},
+        {"type": "money_ching", "t": 16.0, "volume": 0.65}
+      ]
+    }
+  ]
+}

@@ -24,7 +24,6 @@ filter_complex = (
 
 cmd = [
     "ffmpeg", "-y",
-    "-hwaccel", "auto",
     "-i", "dummy_main.mp4",
     "-i", "dummy_logo.png",
     "-i", "dummy_outro.mp4",
