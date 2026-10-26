@@ -68,43 +68,63 @@ async def record_masterpiece_full():
         trim_offset_1 = t_home_ready - t_start_c1
         print(f"Homepage ready at offset {trim_offset_1:.3f}s", flush=True)
         
-        # 0.0s - 3.0s: Type URL
+        # 0.0s - 1.9s: Type URL smoothly
         if input_el:
             await input_el.click()
-            await page1.wait_for_timeout(100)
+            await page1.wait_for_timeout(60)
             yt_url = "https://youtube.com/watch?v=speed_stream"
-            await page1.keyboard.type(yt_url, delay=52)
+            await page1.keyboard.type(yt_url, delay=34)
             
         elapsed = time.time() - t_home_ready
-        if elapsed < 3.0:
-            await page1.wait_for_timeout(int((3.0 - elapsed) * 1000))
+        if elapsed < 1.90:
+            await page1.wait_for_timeout(int((1.90 - elapsed) * 1000))
             
-        # 3.0s - 4.0s: Tap Analyze Now -> Opens Vibe Modal!
-        print("Part 1: Tapping Analyze Now at 3.0s...", flush=True)
+        # 1.90s (frame 57): Tap Analyze Now with tactile button press -> Opens Vibe Modal!
+        print("Part 1: Tapping Analyze Now at 1.90s...", flush=True)
         analyze_btn = await page1.wait_for_selector("#homeAnalyzeBtn, button.btn-primary", timeout=5000)
         if analyze_btn:
+            await page1.evaluate("""() => {
+                const b = document.getElementById("homeAnalyzeBtn") || document.querySelector("button.btn-primary");
+                if (b) {
+                    b.style.transform = "scale(0.96)";
+                    b.style.filter = "brightness(1.18)";
+                    setTimeout(() => {
+                        b.style.transform = "";
+                        b.style.filter = "";
+                    }, 180);
+                }
+            }""")
             await analyze_btn.click()
             
         elapsed = time.time() - t_home_ready
-        if elapsed < 4.2:
-            await page1.wait_for_timeout(int((4.2 - elapsed) * 1000))
+        if elapsed < 2.90:
+            await page1.wait_for_timeout(int((2.90 - elapsed) * 1000))
             
-        # 4.2s - 6.0s: Vibe select modal (Select Center Crop card)
-        print("Part 1: Selecting Center Crop vibe...", flush=True)
+        # 2.90s (frame 87): Vibe select modal (Select Center Crop card)
+        print("Part 1: Selecting Center Crop vibe at 2.90s...", flush=True)
         await page1.wait_for_selector(".vibe-card.tjr", timeout=5000)
         await page1.evaluate("""() => {
             const card = document.querySelector(".vibe-card.tjr");
             if (card) selectVibe(card);
         }""")
-        await page1.wait_for_timeout(900)
         
-        # Visual tap effect on modal Analyze button (no page redirect)
+        elapsed = time.time() - t_home_ready
+        if elapsed < 3.86:
+            await page1.wait_for_timeout(int((3.86 - elapsed) * 1000))
+        
+        # 3.86s (frame 116): Visual tap effect on modal Analyze button (presses down firmly!)
+        print("Part 1: Tapping modal Analyze Now button at 3.86s...", flush=True)
         await page1.evaluate("""() => {
             const btn = document.getElementById("vibeGoBtn");
             if (btn) {
                 btn.disabled = false;
-                btn.style.transform = "scale(0.96)";
-                btn.style.boxShadow = "0 0 35px rgba(255, 180, 50, 0.9)";
+                btn.style.transform = "scale(0.95)";
+                btn.style.filter = "brightness(1.22)";
+                btn.style.boxShadow = "0 0 35px rgba(255, 180, 50, 0.95)";
+                setTimeout(() => {
+                    btn.style.transform = "";
+                    btn.style.filter = "";
+                }, 220);
             }
         }""")
         
@@ -146,8 +166,8 @@ async def record_masterpiece_full():
         await page2.goto("http://127.0.0.1:5000/results/99cdb3e7-169", wait_until="networkidle")
         await page2.wait_for_selector("#carousel .clip-card", timeout=15000)
         
-        # Inject 4 clean clips with object-fit: cover and seamless background blur
-        print("Injecting 4 clean clips into carousel...", flush=True)
+        # Inject clean Speed clips with smooth running playback and single caption
+        print("Injecting clean Speed clips into carousel...", flush=True)
         await page2.evaluate("""async () => {
             const carousel = document.getElementById('carousel');
             if (!carousel) return;
@@ -155,18 +175,22 @@ async def record_masterpiece_full():
             const existingCards = Array.from(carousel.querySelectorAll('.clip-card'));
             if (existingCards.length === 0) return;
             
-            const cleanClips = [
-                { vid: '/static/clean_clips/b1d60a78_branded_0_50_118.mp4', poster: '/static/clean_clips/poster_0.jpg' },
-                { vid: '/static/clean_clips/a3f63caa_branded_1_388_467.mp4', poster: '/static/clean_clips/poster_1.jpg' },
-                { vid: '/static/clean_clips/b1d60a78_branded_1_1_68.mp4', poster: '/static/clean_clips/poster_2.jpg' },
-                { vid: '/static/clean_clips/99cdb3e7_branded_3_102_189.mp4', poster: '/static/clean_clips/poster_3.jpg' }
+            const cleanSpeedClips = [
+                { vid: '/static/speed_clips/speed_clip_0.mp4', poster: '/static/speed_clips/poster_0.jpg' },
+                { vid: '/static/speed_clips/speed_clip_1.mp4', poster: '/static/speed_clips/poster_1.jpg' },
+                { vid: '/static/speed_clips/speed_clip_2.mp4', poster: '/static/speed_clips/poster_2.jpg' },
+                { vid: '/static/speed_clips/speed_clip_3.mp4', poster: '/static/speed_clips/poster_3.jpg' },
+                { vid: '/static/speed_clips/speed_clip_4.mp4', poster: '/static/speed_clips/poster_4.jpg' },
+                { vid: '/static/speed_clips/speed_clip_5.mp4', poster: '/static/speed_clips/poster_5.jpg' }
             ];
             
             const viralMeta = [
-                { tag: '🏆 Best Pick', score: '99% Viral', hook: 'Speed In India Meets Craziest Fans', ending: 'Clean Ending', pot: '99%' },
-                { tag: '🔥 Most Viral', score: '98% Viral', hook: 'How I Built A 7-Figure Business', ending: 'Dopamine Peak', pot: '98%' },
-                { tag: '⚡ High Energy', score: '97% Viral', hook: 'Trading Psychology & Risk Secret', ending: 'Curiosity Gap', pot: '97%' },
-                { tag: '🧠 Mindset Peak', score: '95% Viral', hook: 'The Brutal Truth About 9-to-5', ending: 'Dopamine Loop', pot: '95%' }
+                { tag: '🏆 Best Pick', score: '99% Viral', hook: 'Kai Cenat & Speed In Horror House', ending: 'Peak Panic', pot: '99%' },
+                { tag: '🔥 Most Viral', score: '98% Viral', hook: 'Speed Tries WWE Moves For Real', ending: 'Dopamine Peak', pot: '98%' },
+                { tag: '⚡ High Energy', score: '97% Viral', hook: 'Randy Orton WWE Ring Slam', ending: 'Curiosity Gap', pot: '97%' },
+                { tag: '🎯 Hook King', score: '96% Viral', hook: 'Speed Royal Rumble Impossible Jump', ending: 'Shock Value', pot: '96%' },
+                { tag: '💥 Shock Drop', score: '95% Viral', hook: 'This Is The Hardest I Got Hit', ending: 'Clean Ending', pot: '95%' },
+                { tag: '🧠 Mindset Peak', score: '95% Viral', hook: 'Speed Down On The WWE Mat', ending: 'Dopamine Loop', pot: '95%' }
             ];
             
             const style = document.createElement('style');
@@ -208,7 +232,7 @@ async def record_masterpiece_full():
             const tplCard = existingCards[0].cloneNode(true);
             carousel.innerHTML = '';
             
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 18; i++) {
                 const card = tplCard.cloneNode(true);
                 card.classList.remove('is-best');
                 card.classList.remove('is-previewing');
@@ -217,16 +241,16 @@ async def record_masterpiece_full():
                     card.classList.add('is-previewing');
                 }
                 
-                const meta = viralMeta[i];
+                const meta = viralMeta[i % viralMeta.length];
                 const clipNum = i + 1;
-                const clipData = cleanClips[i];
+                const clipData = cleanSpeedClips[i % cleanSpeedClips.length];
                 
                 const badgeGroup = card.querySelector('.badge-group');
                 if (badgeGroup) {
                     badgeGroup.innerHTML = `
                         <div class=\"status-chip chip-ready\"><span class=\"chip-dot\"></span> Ready</div>
                         <div class=\"badge best\" style=\"background: rgba(255,180,0,0.18); border-color: rgba(255,200,0,0.4); color: #ffd070;\">${meta.tag}</div>
-                        <span class=\"clip-duration-badge\">⏱️ 1:${(15 + i * 14).toString().padStart(2, '0')}</span>
+                        <span class=\"clip-duration-badge\">⏱️ 1:${(15 + (i * 7) % 45).toString().padStart(2, '0')}</span>
                         <span class=\"viral-score-pill\" style=\"background: rgba(255,120,0,0.18); border-color: rgba(255,140,0,0.4); color: #ff9838;\">🔥 ${meta.score}</span>
                     `;
                 }
@@ -258,7 +282,6 @@ async def record_masterpiece_full():
                     vid.loop = true;
                     vid.playsInline = true;
                     vid.autoplay = true;
-                    vid.currentTime = 0.5;
                     vid.style.filter = 'none';
                     vid.style.objectFit = 'cover';
                     vid.style.width = '100%';
@@ -270,22 +293,19 @@ async def record_masterpiece_full():
             }
         }""")
         
-        # Center carousel and disable snap for instantaneous jump cuts
+        # Center carousel and disable snap for silky smooth continuous glide
         await page2.evaluate("""() => {
             const c = document.getElementById('carousel');
             if (c) {
                 c.scrollIntoView({ behavior: 'auto', block: 'center' });
                 c.style.scrollSnapType = 'none';
                 c.style.scrollBehavior = 'auto';
-            }
-            const cards = document.querySelectorAll('#carousel .clip-card');
-            if (cards.length > 0) {
-                cards[0].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' });
+                c.scrollLeft = 0;
             }
         }""")
         
         # Preload and wait until videos are ready and playing
-        await page2.wait_for_timeout(600)
+        await page2.wait_for_timeout(800)
         
         # ─────────────────────────────────────────────────────────────
         # MARK T_START FOR PART 2 (Start timing exactly here!)
@@ -294,46 +314,50 @@ async def record_masterpiece_full():
         trim_offset_2 = t_results_ready - t_start_c2
         print(f"Part 2 results ready at offset {trim_offset_2:.3f}s", flush=True)
         
-        # Hold on Card #1 for exactly 1.20s
-        print("Part 2: Card #1 centered (1.20s)...", flush=True)
-        await page2.wait_for_timeout(1200)
+        # Hold on Card #1 for 0.90s to let user admire first viral Speed clip
+        print("Part 2: Card #1 centered (0.90s)...", flush=True)
+        await page2.wait_for_timeout(900)
         
-        # Jump cut to Card #2
-        print("Part 2: Jump cut to Card #2 (1.20s)...", flush=True)
+        # Continuous smooth scroll result flex across running Speed clips (~5.0s)
+        print("Part 2: Gliding forward smoothly through Speed clips...", flush=True)
         await page2.evaluate("""() => {
-            const cards = document.querySelectorAll('#carousel .clip-card');
-            if (cards.length > 1) {
-                cards[1].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' });
-                cards[1].classList.add('is-previewing');
-            }
+            return new Promise((resolve) => {
+                const carousel = document.getElementById('carousel');
+                if (!carousel) return resolve();
+                
+                let current = 0;
+                const target = 1850; // smooth glide across ~6 cards
+                const speed = 6.2;   // ~380px per second for buttery glide
+                
+                const timer = setInterval(() => {
+                    current += speed;
+                    carousel.scrollLeft = current;
+                    
+                    // Keep visible running videos playing continuously
+                    const vids = carousel.querySelectorAll('video');
+                    vids.forEach(v => {
+                        const rect = v.getBoundingClientRect();
+                        if (rect.right > -100 && rect.left < window.innerWidth + 100) {
+                            if (v.paused) v.play().catch(() => {});
+                        }
+                    });
+                    
+                    if (current >= target) {
+                        clearInterval(timer);
+                        resolve();
+                    }
+                }, 16);
+            });
         }""")
-        await page2.wait_for_timeout(1200)
         
-        # Jump cut to Card #3
-        print("Part 2: Jump cut to Card #3 (1.20s)...", flush=True)
-        await page2.evaluate("""() => {
-            const cards = document.querySelectorAll('#carousel .clip-card');
-            if (cards.length > 2) {
-                cards[2].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' });
-                cards[2].classList.add('is-previewing');
-            }
-        }""")
-        await page2.wait_for_timeout(1200)
-        
-        # Jump cut to Card #4
-        print("Part 2: Jump cut to Card #4 (3.20s)...", flush=True)
-        await page2.evaluate("""() => {
-            const cards = document.querySelectorAll('#carousel .clip-card');
-            if (cards.length > 3) {
-                cards[3].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' });
-                cards[3].classList.add('is-previewing');
-            }
-        }""")
-        await page2.wait_for_timeout(3200)
+        # Settle on final card before transition
+        elapsed = time.time() - t_results_ready
+        if elapsed < 6.80:
+            await page2.wait_for_timeout(int((6.80 - elapsed) * 1000))
         
         await context2.close()
         await browser.close()
-        print("Part 2 recorded cleanly!", flush=True)
+        print("Part 2 recorded cleanly with smooth Speed glide!", flush=True)
 
     # ═══════════════════════════════════════════════════════════════
     # STEP 3: Trim Part 1 to 6.00s and Part 2 to 6.80s, then Concat

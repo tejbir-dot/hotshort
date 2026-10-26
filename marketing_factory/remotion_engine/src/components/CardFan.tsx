@@ -52,7 +52,6 @@ const SingleCard: React.FC<CardProps> = ({
   });
 
   // Fast exit animation
-  const exitProgress = frame >= exitFrame ? (frame - exitFrame) / 5 : 0;
   const exitScale = frame >= exitFrame ? interpolate(frame, [exitFrame, exitFrame + 5], [1, 0.4], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
   const exitOpacity = frame >= exitFrame ? interpolate(frame, [exitFrame, exitFrame + 5], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
   const exitY = frame >= exitFrame ? interpolate(frame, [exitFrame, exitFrame + 5], [0, -350], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;

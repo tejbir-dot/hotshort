@@ -11,15 +11,20 @@ import {
 } from "remotion";
 import { PhoneMock } from "./PhoneMock";
 import { FakeCursor } from "./FakeCursor";
+import { WordPopSequence } from "./WordPop";
 
 export interface YouTubeBrowseSceneProps {
   searchQuery?: string;
   videoSrc?: string;
+  audioSrc?: string;
+  words?: Array<{ text: string; start: number; end: number }>;
 }
 
 export const YouTubeBrowseScene: React.FC<YouTubeBrowseSceneProps> = ({
   searchQuery = "ishowspeed",
   videoSrc = "yt_search.mp4",
+  audioSrc,
+  words = [],
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -146,9 +151,13 @@ export const YouTubeBrowseScene: React.FC<YouTubeBrowseSceneProps> = ({
       }}
     >
       {/* ── EXACT SYNCHRONIZED VOICEOVER & SFX ── */}
-      <Sequence from={5} durationInFrames={105}>
-        <Audio src={staticFile("vo/vo_scene2.mp3")} volume={1.0} />
-      </Sequence>
+      {audioSrc ? (
+        <Audio src={audioSrc.startsWith("/") ? audioSrc : staticFile(audioSrc)} volume={1.0} />
+      ) : (
+        <Sequence from={0} durationInFrames={110}>
+          <Audio src={staticFile("vo/vo_scene2.mp3")} volume={1.0} />
+        </Sequence>
+      )}
       <Sequence from={55} durationInFrames={15}>
         <Audio src={staticFile("sfx/mouse_click_mech.mp3")} volume={0.7} />
       </Sequence>
@@ -513,6 +522,30 @@ export const YouTubeBrowseScene: React.FC<YouTubeBrowseSceneProps> = ({
           </PhoneMock>
         </div>
       </div>
+
+      {/* Word Pop Captions overlay */}
+      {words.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+            zIndex: 400,
+          }}
+        >
+          <WordPopSequence
+            words={words.map((w) => ({
+              text: w.text,
+              startFrame: Math.round(w.start * fps),
+              endFrame: Math.round(w.end * fps),
+            }))}
+            forceWhite={true}
+          />
+        </div>
+      )}
     </div>
   );
 };

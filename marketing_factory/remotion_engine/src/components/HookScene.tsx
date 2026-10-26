@@ -5,6 +5,7 @@ import { CardFan } from "./CardFan";
 import { ProofCardsPop, ProofCardItem } from "./ProofCardsPop";
 import { AvatarTalker } from "./AvatarTalker";
 import { WordPopSequence, WordTimestamp } from "./WordPop";
+import { WatchCountdown } from "./WatchCountdown";
 
 export interface HookSceneProps {
   words: Array<{ text: string; start: number; end: number; isEmphasis?: boolean }>;
@@ -16,6 +17,8 @@ export interface HookSceneProps {
   avatarVideoSrc?: string;
   audioSrc?: string;
   whooshSfxSrc?: string;
+  showWatchCountdown?: boolean;
+  watchStartFrame?: number;
 }
 
 // 3D Spiral Wireframe Grid Motion Background (Pure White Lines on Deep Black)
@@ -66,16 +69,24 @@ export const HookScene: React.FC<HookSceneProps> = ({
   avatarVideoSrc,
   audioSrc,
   whooshSfxSrc = staticFile("sfx/whoosh_fast.mp3"),
+  showWatchCountdown = false,
+  watchStartFrame = 22,
 }) => {
   const { fps } = useVideoConfig();
 
   // Convert word timestamps (seconds) to frames
-  const wordFrames: WordTimestamp[] = words.map((w) => ({
-    text: w.text,
-    startFrame: Math.round(w.start * fps),
-    endFrame: Math.round(w.end * fps),
-    isEmphasis: w.isEmphasis,
-  }));
+  const wordFrames: WordTimestamp[] = words.map((w) => {
+    const startFrame = Math.round(w.start * fps);
+    const endFrame = Math.round(w.end * fps);
+    const top = showWatchCountdown && startFrame >= watchStartFrame ? "20%" : "50%";
+    return {
+      text: w.text,
+      startFrame,
+      endFrame,
+      isEmphasis: w.isEmphasis,
+      top,
+    };
+  });
 
   return (
     <div
@@ -106,8 +117,13 @@ export const HookScene: React.FC<HookSceneProps> = ({
         <CardFan
           cards={cards}
           popFrames={[cardPopFrames[0], cardPopFrames[1], cardPopFrames[2]]}
-          exitFrame={phaseTransitionFrame}
+          exitFrame={showWatchCountdown ? watchStartFrame : phaseTransitionFrame}
         />
+      )}
+
+      {/* Layer 2b: Apple Watch countdown overlay (pops up at watchStartFrame) */}
+      {showWatchCountdown && (
+        <WatchCountdown startFrame={watchStartFrame} />
       )}
 
       {/* Layer 3: Phase 2 Proof Cards (cascades in at frames 68, 78, 89 with pop SFX) */}
@@ -116,7 +132,7 @@ export const HookScene: React.FC<HookSceneProps> = ({
       {/* Layer 4: Avatar at bottom (exits downward at phaseTransitionFrame) */}
       <AvatarTalker
         slideInFrame={avatarSlideFrame}
-        exitFrame={phaseTransitionFrame - 1}
+        exitFrame={showWatchCountdown ? watchStartFrame : phaseTransitionFrame - 1}
         videoSrc={avatarVideoSrc}
       />
 

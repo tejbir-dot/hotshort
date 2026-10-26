@@ -10,7 +10,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
     "noUnusedLocals": true
   },
-  "exclude": ["remotion.config.ts"]
+  "exclude": ["remotion.config.ts", "record_yt.ts"]
 }

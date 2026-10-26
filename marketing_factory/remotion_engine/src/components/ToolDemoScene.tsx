@@ -11,44 +11,46 @@ import {
 } from "remotion";
 import { PhoneMock } from "./PhoneMock";
 import { FakeCursor } from "./FakeCursor";
+import { WordPopSequence } from "./WordPop";
 
 export interface ToolDemoSceneProps {
   videoSrc?: string;
+  audioSrc?: string;
+  words?: Array<{ text: string; start: number; end: number }>;
+  videoStartFrom?: number;
+  hideCtaModal?: boolean;
 }
 
 export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
   videoSrc = "hotshort_demo.mp4",
+  audioSrc,
+  words = [],
+  videoStartFrom,
+  hideCtaModal = false,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   // ─────────────────────────────────────────────────────────────
-  // 1. DYNAMIC CAMERA PUNCH-INS ON PhoneMock CONTAINER (Spring, 1.0 -> 1.7)
+  // 1. DYNAMIC CAMERA PUNCH-INS ON PhoneMock CONTAINER (Spring, 1.0 -> 1.30)
   // Always scales the WHOLE PhoneMock container so bezel stays partly visible!
   // No full-bleed crops of the inner screen!
   // ─────────────────────────────────────────────────────────────
-  // Punch-in 1 (frames 0 - 85, 0.0s - 2.83s): URL Input typing (1.0 -> 1.30)
+  // Punch-in 1 (frames 0 - 48): URL Input typing (1.0 -> 1.25, translateY 0 -> 60)
   const punch1Spring = spring({
     frame: frame - 0,
     fps,
     config: { damping: 14, stiffness: 110 },
   });
 
-  // Punch-in 2 (frames 85 - 115, 2.83s - 3.83s): Analyze Now button tap
-  const punch2Spring = spring({
-    frame: frame - 85,
+  // Punch-in 2 (frames 60 - 155): "Choose Your Vibe" sheet centered (1.25 -> 1.30, translateY 60 -> -140)
+  const vibeSpring = spring({
+    frame: frame - 60,
     fps,
-    config: { damping: 12, stiffness: 140 },
+    config: { damping: 15, stiffness: 120 },
   });
 
-  // Punch-in 3 (frames 115 - 155, 3.83s - 5.17s): Vibe selection (Center Crop TikTok)
-  const punch3Spring = spring({
-    frame: frame - 115,
-    fps,
-    config: { damping: 14, stiffness: 120 },
-  });
-
-  // Pull-back (frames 155 - 180, 5.17s - 6.00s): Smooth spring pull back to full phone view
+  // Pull-back (frames 155 - 180): Smooth spring pull back to full phone view
   const pullBackSpring = spring({
     frame: frame - 155,
     fps,
@@ -59,25 +61,27 @@ export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
   let cameraScale = 1.0;
   let cameraTranslateY = 0;
 
-  if (frame < 85) {
-    // Zooming into URL input (scale 1.0 -> 1.30, translateY 0 -> 240px)
-    // Scale 1.30 keeps PhoneMock width at 1092px (only 6px cropped at edges, bezel stays fully visible)
-    // Centers the URL input target with ample margins and zero empty dark void at the top!
-    cameraScale = interpolate(punch1Spring, [0, 1], [1.0, 1.30]);
-    cameraTranslateY = interpolate(punch1Spring, [0, 1], [0, 240]);
-  } else if (frame < 115) {
-    // Subtle button-press punch bounce on Analyze Now tap
-    const tapBounce = Math.sin((frame - 85) * 0.4) * 0.02;
-    cameraScale = 1.30 + tapBounce;
-    cameraTranslateY = interpolate(punch2Spring, [0, 1], [240, 200]);
+  if (videoStartFrom !== undefined && videoStartFrom > 0) {
+    cameraScale = 1.0;
+    cameraTranslateY = 0;
+  } else if (frame < 57) {
+    // Zooming into URL input (scale 1.0 -> 1.25, translateY 0 -> 60px)
+    cameraScale = interpolate(punch1Spring, [0, 1], [1.0, 1.25]);
+    cameraTranslateY = interpolate(punch1Spring, [0, 1], [0, 60]);
+  } else if (frame < 65) {
+    // Tactile button-press punch bounce on Analyze Now tap at frame 57
+    const tapBounce = Math.sin((frame - 57) * 0.7) * 0.02;
+    cameraScale = 1.25 + tapBounce;
+    cameraTranslateY = 60;
   } else if (frame < 155) {
-    // Focus on Vibe card (Center Crop TikTok)
-    cameraScale = 1.30;
-    cameraTranslateY = interpolate(punch3Spring, [0, 1], [200, 110]);
+    // Focus on "Choose Your Vibe" sheet: translateY=-140 centers the sheet in canvas!
+    // Eliminates the empty dark void at the top while keeping phone bezel visible
+    cameraScale = interpolate(vibeSpring, [0, 1], [1.25, 1.30]);
+    cameraTranslateY = interpolate(vibeSpring, [0, 1], [60, -140]);
   } else if (frame < 185) {
     // Smooth cinematic spring pull back to 1.00 full phone view
     cameraScale = interpolate(pullBackSpring, [0, 1], [1.30, 1.0]);
-    cameraTranslateY = interpolate(pullBackSpring, [0, 1], [110, 0]);
+    cameraTranslateY = interpolate(pullBackSpring, [0, 1], [-140, 0]);
   } else {
     // Full view for Results & 4 Jump Cuts (PhoneMock width = ~80%, bezel fully visible)
     cameraScale = interpolate(frame, [185, 373], [1.0, 1.015], {
@@ -87,99 +91,128 @@ export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
   }
 
   // ─────────────────────────────────────────────────────────────
-  // 2. 6-FRAME WHIP-BLUR BETWEEN JUMP CUTS (Cut 1: f205, Cut 2: f241, Cut 3: f277)
+  // 2. SMOOTH CONTINUOUS GLIDE ACROSS SPEED RUNNING CLIPS (Crystal clear, 0 blur)
   // ─────────────────────────────────────────────────────────────
-  let whipBlur = 0;
-  let whipX = 0;
-
-  if (frame >= 202 && frame <= 208) {
-    // Cut 1: Card 1 -> Card 2 (frame 205)
-    whipBlur = interpolate(frame, [202, 205, 208], [0, 20, 0], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-    whipX = interpolate(frame, [202, 205, 208], [0, -35, 0], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-  } else if (frame >= 238 && frame <= 244) {
-    // Cut 2: Card 2 -> Card 3 (frame 241)
-    whipBlur = interpolate(frame, [238, 241, 244], [0, 20, 0], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-    whipX = interpolate(frame, [238, 241, 244], [0, -35, 0], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-  } else if (frame >= 274 && frame <= 280) {
-    // Cut 3: Card 3 -> Card 4 (frame 277)
-    whipBlur = interpolate(frame, [274, 277, 280], [0, 20, 0], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-    whipX = interpolate(frame, [274, 277, 280], [0, -35, 0], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-  }
+  const whipBlur = 0;
+  const whipX = 0;
 
   // ─────────────────────────────────────────────────────────────
   // 3. "34+ VIRAL SHORTS GENERATED" BADGE (OUTSIDE PhoneMock, ABOVE BEZEL)
   // ─────────────────────────────────────────────────────────────
   const badgeSpring = spring({
-    frame: frame - 170,
+    frame: (videoStartFrom !== undefined && videoStartFrom > 0) ? frame : frame - 170,
     fps,
     config: { damping: 14, stiffness: 120 },
   });
 
-  const badgeOpacity = interpolate(frame, [168, 180], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
+  const badgeOpacity = (videoStartFrom !== undefined && videoStartFrom > 0)
+    ? 1
+    : interpolate(frame, [168, 180], [0, 1], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
 
   // Animated clip counter badge from 1 to 34+
   const clipCount = Math.min(
     34,
-    Math.max(1, Math.floor(interpolate(frame, [172, 230], [1, 34], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    })))
+    Math.max(1, Math.floor(interpolate(
+      (videoStartFrom !== undefined && videoStartFrom > 0) ? frame : frame,
+      (videoStartFrom !== undefined && videoStartFrom > 0) ? [0, 35] : [172, 230],
+      [1, 34],
+      {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      }
+    )))
   );
 
   // ─────────────────────────────────────────────────────────────
   // 4. FAKE CURSOR (Synced to UI interaction inside PhoneMock screen)
+  // URL Input (f0-48) -> Analyze Now tap (f57) -> Center Crop tap (f102) -> Modal Submit (f130)
   // ─────────────────────────────────────────────────────────────
   let cursorX = 320;
-  let cursorY = 412;
+  let cursorY = 503;
   let cursorOpacity = 0;
   let cursorScale = 1.0;
+  let rippleScale = 0;
+  let rippleOpacity = 0;
+  let rippleX = 320;
+  let rippleY = 570;
 
-  if (frame < 85) {
-    // Typing in URL input box
-    cursorX = interpolate(frame, [0, 75], [280, 500], { extrapolateRight: "clamp" });
-    cursorY = 412;
+  if (videoStartFrom !== undefined && videoStartFrom > 0) {
+    cursorOpacity = 0;
+  } else if (frame < 48) {
+    // Typing in URL input box (y=503)
+    cursorX = interpolate(frame, [0, 46], [240, 480], { extrapolateRight: "clamp" });
+    cursorY = 503;
     cursorOpacity = 1;
     cursorX += Math.sin(frame * 0.8) * 1.5;
-  } else if (frame < 115) {
-    // Move to "Analyze Now" button
-    cursorX = interpolate(frame, [85, 93], [500, 320], { extrapolateRight: "clamp" });
-    cursorY = interpolate(frame, [85, 93], [412, 485], { extrapolateRight: "clamp" });
+  } else if (frame < 65) {
+    // Glide to Analyze Now button center (x=320, y=570) and tap at frame 57
+    cursorX = interpolate(frame, [48, 56], [480, 320], { extrapolateRight: "clamp" });
+    cursorY = interpolate(frame, [48, 56], [503, 570], { extrapolateRight: "clamp" });
     cursorOpacity = 1;
-    if (frame >= 93 && frame <= 98) {
-      cursorScale = 0.86; // Tap press
+    if (frame >= 57 && frame <= 62) {
+      cursorScale = interpolate(frame, [57, 59, 63], [1.0, 0.78, 1.0], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
     }
-  } else if (frame < 155) {
-    // Move to "Center Crop" card in modal (x=440, y=720) then modal button
-    cursorX = interpolate(frame, [115, 126, 138, 146], [320, 440, 440, 440], { extrapolateRight: "clamp" });
-    cursorY = interpolate(frame, [115, 126, 138, 146], [485, 720, 720, 860], { extrapolateRight: "clamp" });
+    if (frame >= 57 && frame <= 65) {
+      rippleX = 320;
+      rippleY = 570;
+      rippleScale = interpolate(frame, [57, 65], [0.5, 1.9], { extrapolateRight: "clamp" });
+      rippleOpacity = interpolate(frame, [57, 60, 65], [0.85, 0.6, 0], { extrapolateRight: "clamp" });
+    }
+  } else if (frame < 98) {
+    // Move up to "Center Crop (TikTok Ratio)" card (x=451, y=625) and tap at frame 88
+    cursorX = interpolate(frame, [65, 85], [320, 451], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    cursorY = interpolate(frame, [65, 85], [570, 625], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
     cursorOpacity = 1;
-    if ((frame >= 126 && frame <= 130) || (frame >= 146 && frame <= 150)) {
-      cursorScale = 0.86;
+    if (frame >= 87 && frame <= 91) {
+      cursorScale = interpolate(frame, [87, 89, 92], [1.0, 0.82, 1.0], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
+    }
+    if (frame >= 88 && frame <= 95) {
+      rippleX = 451;
+      rippleY = 625;
+      rippleScale = interpolate(frame, [88, 95], [0.5, 1.8], { extrapolateRight: "clamp" });
+      rippleOpacity = interpolate(frame, [88, 91, 95], [0.85, 0.5, 0], { extrapolateRight: "clamp" });
+    }
+  } else if (frame < 135) {
+    // Move directly onto the golden "Analyze Now 🚀" button (x=474, y=984) and tap firmly at frame 116
+    cursorX = interpolate(frame, [95, 114], [451, 474], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    cursorY = interpolate(frame, [95, 114], [625, 984], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+    cursorOpacity = 1;
+    if (frame >= 115 && frame <= 120) {
+      cursorScale = interpolate(frame, [115, 117, 121], [1.0, 0.78, 1.0], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
+    }
+    if (frame >= 116 && frame <= 124) {
+      rippleX = 474;
+      rippleY = 984;
+      rippleScale = interpolate(frame, [116, 124], [0.5, 1.9], { extrapolateRight: "clamp" });
+      rippleOpacity = interpolate(frame, [116, 119, 124], [0.90, 0.5, 0], { extrapolateRight: "clamp" });
     }
   } else {
-    // Fade out as results page loads
-    cursorOpacity = interpolate(frame, [155, 165], [1, 0], {
+    // Smooth fade out as results page loads
+    cursorOpacity = interpolate(frame, [125, 145], [1, 0], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
@@ -203,39 +236,58 @@ export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
       {/* ─────────────────────────────────────────────────────────────
           SYNCHRONIZED VOICEOVER & SFX TRACKS
           ───────────────────────────────────────────────────────────── */}
-      {/* Voice 1: Step 1 (URL + Vibe): "Paste it into HotShort, choose your TikTok vibe, and tap Analyze." */}
-      <Sequence from={5} durationInFrames={140}>
-        <Audio src={staticFile("vo/vo_scene3_step1.mp3")} volume={1.0} />
+      {audioSrc ? (
+        <Audio src={audioSrc.startsWith("/") ? audioSrc : staticFile(audioSrc)} volume={1.0} />
+      ) : (
+        <>
+          {/* Voice 1: Step 1 (URL + Vibe): "Paste it into HotShort, choose your TikTok vibe, and tap Analyze." */}
+          <Sequence from={5} durationInFrames={140}>
+            <Audio src={staticFile("vo/vo_scene3_step1.mp3")} volume={1.0} />
+          </Sequence>
+
+          {/* Voice 2: 34 Clips: "In seconds, it generates over thirty viral shorts with auto-synced captions and face tracking!" */}
+          <Sequence from={170} durationInFrames={150}>
+            <Audio src={staticFile("vo/vo_scene3_glide.mp3")} volume={1.0} />
+          </Sequence>
+
+          {/* Voice 3: End CTA: "Comment AI below right now, and I will DM you the private link for free!" */}
+          <Sequence from={325} durationInFrames={48}>
+            <Audio src={staticFile("vo/vo_cta.mp3")} volume={1.0} />
+          </Sequence>
+        </>
+      )}
+
+      {/* SFX: only when running full flow without manual audio */}
+      {!audioSrc && (
+        <>
+          <Sequence from={5} durationInFrames={44}>
+            <Audio src={staticFile("sfx/mouse_click.mp3")} volume={0.22} />
+          </Sequence>
+          <Sequence from={57} durationInFrames={15}>
+            <Audio src={staticFile("sfx/mouse_click_mech.mp3")} volume={0.95} />
+          </Sequence>
+          <Sequence from={88} durationInFrames={15}>
+            <Audio src={staticFile("sfx/pop_card_2.wav")} volume={0.8} />
+          </Sequence>
+          <Sequence from={116} durationInFrames={15}>
+            <Audio src={staticFile("sfx/mouse_click_mech.mp3")} volume={0.95} />
+          </Sequence>
+        </>
+      )}
+
+      {/* SFX: Analyze Now button tap - EXACTLY SYNCED AT FRAME 57 */}
+      <Sequence from={57} durationInFrames={15}>
+        <Audio src={staticFile("sfx/mouse_click_mech.mp3")} volume={0.95} />
       </Sequence>
 
-      {/* Voice 2: 34 Clips: "In seconds, it generates over thirty viral shorts with auto-synced captions and face tracking!" */}
-      <Sequence from={170} durationInFrames={150}>
-        <Audio src={staticFile("vo/vo_scene3_glide.mp3")} volume={1.0} />
+      {/* SFX: Vibe card selection tap - EXACTLY SYNCED AT FRAME 88 */}
+      <Sequence from={88} durationInFrames={15}>
+        <Audio src={staticFile("sfx/pop_card_2.wav")} volume={0.8} />
       </Sequence>
 
-      {/* Voice 3: End CTA: "Comment AI below right now, and I will DM you the private link for free!" */}
-      <Sequence from={325} durationInFrames={48}>
-        <Audio src={staticFile("vo/vo_cta.mp3")} volume={1.0} />
-      </Sequence>
-
-      {/* SFX: Typing mechanical clicks */}
-      <Sequence from={5} durationInFrames={75}>
-        <Audio src={staticFile("sfx/mouse_click.mp3")} volume={0.22} />
-      </Sequence>
-
-      {/* SFX: Analyze Now button tap */}
-      <Sequence from={93} durationInFrames={15}>
-        <Audio src={staticFile("sfx/mouse_click_mech.mp3")} volume={0.8} />
-      </Sequence>
-
-      {/* SFX: Vibe card selection tap */}
-      <Sequence from={126} durationInFrames={15}>
-        <Audio src={staticFile("sfx/pop_card_2.wav")} volume={0.75} />
-      </Sequence>
-
-      {/* SFX: Modal Analyze Now tap */}
-      <Sequence from={146} durationInFrames={15}>
-        <Audio src={staticFile("sfx/pop_click.mp3")} volume={0.7} />
+      {/* SFX: Modal Analyze Now tap - EXACTLY SYNCED AT FRAME 116 */}
+      <Sequence from={116} durationInFrames={15}>
+        <Audio src={staticFile("sfx/mouse_click_mech.mp3")} volume={0.95} />
       </Sequence>
 
       {/* SFX: Camera pull-back swoosh */}
@@ -248,19 +300,9 @@ export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
         <Audio src={staticFile("sfx/money_ching.mp3")} volume={0.85} />
       </Sequence>
 
-      {/* SFX: 6-frame whip whoosh on Cut 1 */}
-      <Sequence from={203} durationInFrames={12}>
-        <Audio src={staticFile("sfx/whoosh_fast.mp3")} volume={0.5} />
-      </Sequence>
-
-      {/* SFX: 6-frame whip whoosh on Cut 2 */}
-      <Sequence from={239} durationInFrames={12}>
-        <Audio src={staticFile("sfx/whoosh_fast.mp3")} volume={0.5} />
-      </Sequence>
-
-      {/* SFX: 6-frame whip whoosh on Cut 3 */}
-      <Sequence from={275} durationInFrames={12}>
-        <Audio src={staticFile("sfx/whoosh_fast.mp3")} volume={0.5} />
+      {/* SFX: Silky reel glide swipe as carousel smooth scrolls */}
+      <Sequence from={205} durationInFrames={20}>
+        <Audio src={staticFile("sfx/whoosh_fast.mp3")} volume={0.4} />
       </Sequence>
 
       {/* SFX: CTA Card pop on frame 325 */}
@@ -409,6 +451,7 @@ export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
             >
               <OffthreadVideo
                 src={staticFile(videoSrc)}
+                startFrom={videoStartFrom || 0}
                 style={{
                   width: "100%",
                   height: "100%",
@@ -416,6 +459,27 @@ export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
                 }}
               />
             </div>
+
+            {/* Tactile Touch Click Ripple */}
+            {rippleOpacity > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: (rippleX / 640) * 820 - 36,
+                  top: (rippleY / 1386) * 1801 - 36,
+                  width: 72,
+                  height: 72,
+                  borderRadius: "50%",
+                  border: "2.5px solid rgba(255, 205, 80, 0.95)",
+                  backgroundColor: "rgba(255, 185, 45, 0.30)",
+                  transform: `scale(${rippleScale})`,
+                  opacity: rippleOpacity,
+                  pointerEvents: "none",
+                  zIndex: 195,
+                  boxShadow: "0 0 25px rgba(255, 190, 50, 0.75)",
+                }}
+              />
+            )}
 
             {/* Synchronized Fake Cursor Overlay inside phone screen */}
             {cursorOpacity > 0 && (
@@ -442,7 +506,7 @@ export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
           END CALL-TO-ACTION (CTA) POPUP: "COMMENT 'AI' FOR LINK"
           Appears at frame >= 325 with spring animation & glassmorphism
           ───────────────────────────────────────────────────────────── */}
-      {frame >= 325 && (() => {
+      {!hideCtaModal && frame >= 325 && (() => {
         // Snappy 6-frame spring punch-in (0.2s)
         const ctaSpring = spring({
           frame: frame - 325,
@@ -670,6 +734,30 @@ export const ToolDemoScene: React.FC<ToolDemoSceneProps> = ({
           </div>
         );
       })()}
+
+      {/* Word Pop Captions overlay */}
+      {words && words.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+            zIndex: 400,
+          }}
+        >
+          <WordPopSequence
+            words={words.map((w) => ({
+              text: w.text,
+              startFrame: Math.round(w.start * fps),
+              endFrame: Math.round(w.end * fps),
+            }))}
+            forceWhite={true}
+          />
+        </div>
+      )}
     </div>
   );
 };

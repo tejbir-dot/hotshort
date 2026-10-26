@@ -8,6 +8,7 @@ interface WordPopProps {
   endFrame: number;
   isEmphasis?: boolean;
   forceWhite?: boolean;
+  top?: string | number;
 }
 
 export const WordPop: React.FC<WordPopProps> = ({
@@ -16,6 +17,7 @@ export const WordPop: React.FC<WordPopProps> = ({
   endFrame,
   isEmphasis = false,
   forceWhite = true, // Hook words are ALL white per rule 4
+  top = "50%",
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -53,7 +55,7 @@ export const WordPop: React.FC<WordPopProps> = ({
         position: "absolute",
         left: 0,
         right: 0,
-        top: "50%",
+        top: top,
         transform: `translateY(-50%) scale(${scale})`,
         display: "flex",
         justifyContent: "center",
@@ -88,16 +90,19 @@ export interface WordTimestamp {
   startFrame: number;
   endFrame: number;
   isEmphasis?: boolean;
+  top?: string | number;
 }
 
 interface WordPopSequenceProps {
   words: WordTimestamp[];
   forceWhite?: boolean;
+  top?: string | number;
 }
 
 export const WordPopSequence: React.FC<WordPopSequenceProps> = ({
   words,
   forceWhite = true,
+  top,
 }) => {
   const frame = useCurrentFrame();
   const activeWords = words.filter((w) => frame >= w.startFrame && frame < w.endFrame);
@@ -110,6 +115,7 @@ export const WordPopSequence: React.FC<WordPopSequenceProps> = ({
       endFrame={activeWord.endFrame}
       isEmphasis={activeWord.isEmphasis}
       forceWhite={forceWhite}
+      top={activeWord.top || top || "50%"}
     />
   );
 };

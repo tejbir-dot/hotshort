@@ -1,0 +1,156 @@
+{
+  "id": "hotshort_1min_ad",
+  "title": "How to Start Clipping in Less than 1 Minute with HotShort",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "bgMusic": {
+    "src": "bg_music.mp3",
+    "volume": 0.14,
+    "loop": true
+  },
+  "scenes": [
+    {
+      "id": "scene1_hook",
+      "type": "HOOK_CARD_FAN",
+      "durationInFrames": 62,
+      "props": {
+        "showWatchCountdown": true,
+        "watchStartFrame": 22,
+        "audioSrc": "vo_ref2/vo_scene1.mp3",
+        "avatarVideoSrc": "avatar_animated.webm",
+        "avatarSlideFrame": 3,
+        "phaseTransitionFrame": 62,
+        "cardPopFrames": [4, 10, 16],
+        "cards": [
+          { "src": "cards/card_left.mp4", "viewCount": 37700000 },
+          { "src": "cards/card_center.mp4", "viewCount": 34300000 },
+          { "src": "cards/card_right.mp4", "viewCount": 42700000 }
+        ],
+        "words": [
+          { "text": "HOW", "start": 0.0, "end": 0.14 },
+          { "text": "TO", "start": 0.14, "end": 0.24 },
+          { "text": "START", "start": 0.24, "end": 0.46 },
+          { "text": "CLIPPING", "start": 0.46, "end": 0.74 },
+          { "text": "IN", "start": 0.74, "end": 0.98 },
+          { "text": "LESS", "start": 0.98, "end": 1.16 },
+          { "text": "THAN", "start": 1.16, "end": 1.36 },
+          { "text": "ONE", "start": 1.36, "end": 1.58 },
+          { "text": "MINUTE.", "start": 1.58, "end": 1.86 }
+        ]
+      }
+    },
+    {
+      "id": "scene2_youtube",
+      "type": "PHONE_BROWSE",
+      "durationInFrames": 97,
+      "props": {
+        "videoSrc": "yt_search.mp4",
+        "audioSrc": "vo_ref2/vo_scene2.mp3",
+        "searchQuery": "ishowspeed",
+        "words": [
+          { "text": "FIRST,", "start": 0.0, "end": 0.32 },
+          { "text": "FIND", "start": 0.62, "end": 0.76 },
+          { "text": "ANY", "start": 0.76, "end": 1.04 },
+          { "text": "TRENDING", "start": 1.04, "end": 1.3 },
+          { "text": "STREAM", "start": 1.3, "end": 1.62 },
+          { "text": "ON", "start": 1.62, "end": 1.76 },
+          { "text": "YOUTUBE", "start": 1.76, "end": 2.04 },
+          { "text": "AND", "start": 2.04, "end": 2.34 },
+          { "text": "COPY", "start": 2.34, "end": 2.6 },
+          { "text": "THE", "start": 2.6, "end": 2.76 },
+          { "text": "LINK.", "start": 2.76, "end": 3.02 }
+        ]
+      }
+    },
+    {
+      "id": "scene3_tooldemo",
+      "type": "TOOL_DEMO",
+      "durationInFrames": 217,
+      "props": {
+        "videoSrc": "hotshort_demo.mp4",
+        "audioSrc": "vo_ref2/vo_scene3.mp3",
+        "hideCtaModal": true,
+        "words": [
+          { "text": "SECOND,", "start": 0.0, "end": 0.42 },
+          { "text": "PASTE", "start": 0.92, "end": 1.08 },
+          { "text": "IT", "start": 1.08, "end": 1.24 },
+          { "text": "INTO", "start": 1.24, "end": 1.42 },
+          { "text": "HOT", "start": 1.42, "end": 1.6 },
+          { "text": "SHORT", "start": 1.6, "end": 1.86 },
+          { "text": "AND", "start": 1.86, "end": 2.1 },
+          { "text": "TAP", "start": 2.1, "end": 2.3 },
+          { "text": "ANALYZE.", "start": 2.3, "end": 2.76 },
+          { "text": "OUR", "start": 3.3, "end": 3.42 },
+          { "text": "AI", "start": 3.42, "end": 3.64 },
+          { "text": "INSTANTLY", "start": 3.64, "end": 4.14 },
+          { "text": "FINDS", "start": 4.14, "end": 4.5 },
+          { "text": "THE", "start": 4.5, "end": 4.68 },
+          { "text": "MOST", "start": 4.68, "end": 4.86 },
+          { "text": "VIRAL", "start": 4.86, "end": 5.14 },
+          { "text": "MOMENTS", "start": 5.14, "end": 5.44 },
+          { "text": "WITH", "start": 5.44, "end": 5.66 },
+          { "text": "THE", "start": 5.66, "end": 5.78 },
+          { "text": "HIGHEST", "start": 5.78, "end": 6.04 },
+          { "text": "VIRALITY", "start": 6.04, "end": 6.48 },
+          { "text": "SCORES.", "start": 6.48, "end": 6.82 }
+        ]
+      }
+    },
+    {
+      "id": "scene4_glide",
+      "type": "TOOL_DEMO",
+      "durationInFrames": 114,
+      "props": {
+        "videoSrc": "hotshort_demo.mp4",
+        "videoStartFrom": 170,
+        "audioSrc": "vo_ref2/vo_scene4.mp3",
+        "hideCtaModal": true,
+        "words": [
+          { "text": "AND", "start": 0.0, "end": 0.12 },
+          { "text": "IN", "start": 0.12, "end": 0.18 },
+          { "text": "SECONDS,", "start": 0.18, "end": 0.58 },
+          { "text": "YOU", "start": 1.0, "end": 1.06 },
+          { "text": "GET", "start": 1.06, "end": 1.2 },
+          { "text": "DOZENS", "start": 1.2, "end": 1.52 },
+          { "text": "OF", "start": 1.52, "end": 1.72 },
+          { "text": "FULLY", "start": 1.72, "end": 1.98 },
+          { "text": "EDITED", "start": 1.98, "end": 2.24 },
+          { "text": "VIRAL", "start": 2.24, "end": 2.62 },
+          { "text": "CLIPS", "start": 2.62, "end": 2.92 },
+          { "text": "LIKE", "start": 2.92, "end": 3.16 },
+          { "text": "THIS.", "start": 3.16, "end": 3.4 }
+        ]
+      }
+    },
+    {
+      "id": "scene5_cta",
+      "type": "DM_BUBBLE_CTA",
+      "durationInFrames": 101,
+      "props": {
+        "audioSrc": "vo_ref2/vo_scene5.mp3",
+        "avatarVideoSrc": "avatar_animated.webm",
+        "words": [
+          { "text": "WANT", "start": 0.0, "end": 0.14 },
+          { "text": "TO", "start": 0.14, "end": 0.22 },
+          { "text": "TRY", "start": 0.22, "end": 0.36 },
+          { "text": "IT?", "start": 0.36, "end": 0.52 },
+          { "text": "COMMENT", "start": 0.66, "end": 0.9 },
+          { "text": "A", "start": 0.9, "end": 1.1 },
+          { "text": ".I.", "start": 1.1, "end": 1.2 },
+          { "text": "BELOW", "start": 1.24, "end": 1.44 },
+          { "text": "AND", "start": 1.44, "end": 1.76 },
+          { "text": "I", "start": 1.76, "end": 1.82 },
+          { "text": "WILL", "start": 1.82, "end": 1.92 },
+          { "text": "DM", "start": 1.92, "end": 2.12 },
+          { "text": "YOU", "start": 2.12, "end": 2.26 },
+          { "text": "THE", "start": 2.26, "end": 2.36 },
+          { "text": "PRIVATE", "start": 2.36, "end": 2.58 },
+          { "text": "LINK", "start": 2.58, "end": 2.78 },
+          { "text": "FOR", "start": 2.78, "end": 2.94 },
+          { "text": "FREE.", "start": 2.94, "end": 3.14 }
+        ]
+      }
+    }
+  ]
+}

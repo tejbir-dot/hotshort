@@ -68,6 +68,7 @@ export const AvatarTalker: React.FC<AvatarTalkerProps> = ({
       {videoSrc ? (
         <Video
           src={videoSrc}
+          muted
           style={{
             width: "100%",
             height: "100%",

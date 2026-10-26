@@ -1,0 +1,64 @@
+{
+  "id": "master_viral_streamer_ad",
+  "title": "How I Make Viral Streamer Clips with HotShort",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "bgMusic": {
+    "src": "bg_music.mp3",
+    "volume": 0.14,
+    "loop": true
+  },
+  "scenes": [
+    {
+      "id": "scene1_hook",
+      "type": "HOOK_CARD_FAN",
+      "durationInFrames": 100,
+      "props": {
+        "audioSrc": "audio.mp3",
+        "avatarVideoSrc": "avatar_animated.webm",
+        "avatarSlideFrame": 3,
+        "phaseTransitionFrame": 64,
+        "cardPopFrames": [5, 17, 11],
+        "cards": [
+          { "src": "cards/card_left.mp4", "viewCount": 37700000 },
+          { "src": "cards/card_center.mp4", "viewCount": 34300000 },
+          { "src": "cards/card_right.mp4", "viewCount": 42700000 }
+        ],
+        "words": [
+          { "text": "HERE'S", "start": 0.0, "end": 0.26 },
+          { "text": "HOW", "start": 0.26, "end": 0.34 },
+          { "text": "I", "start": 0.34, "end": 0.42 },
+          { "text": "MAKE", "start": 0.42, "end": 0.58 },
+          { "text": "THESE", "start": 0.58, "end": 0.82 },
+          { "text": "VIRAL", "start": 0.82, "end": 1.1 },
+          { "text": "STREAMER", "start": 1.1, "end": 1.46 },
+          { "text": "CLIPS", "start": 1.46, "end": 1.66 },
+          { "text": "THAT", "start": 1.66, "end": 1.86 },
+          { "text": "ARE", "start": 1.86, "end": 1.94 },
+          { "text": "GENERATING", "start": 1.94, "end": 2.3 },
+          { "text": "MILLIONS", "start": 2.3, "end": 2.62 },
+          { "text": "OF", "start": 2.62, "end": 2.88 },
+          { "text": "VIEWS", "start": 2.88, "end": 3.08 }
+        ]
+      }
+    },
+    {
+      "id": "scene2_youtube",
+      "type": "PHONE_BROWSE",
+      "durationInFrames": 110,
+      "props": {
+        "searchQuery": "ishowspeed",
+        "videoSrc": "yt_search.mp4"
+      }
+    },
+    {
+      "id": "scene3_tooldemo",
+      "type": "TOOL_DEMO",
+      "durationInFrames": 373,
+      "props": {
+        "videoSrc": "hotshort_demo.mp4"
+      }
+    }
+  ]
+}

@@ -1,16 +1,16 @@
 import React from "react";
 
 interface FakeCursorProps {
-  x: number;
-  y: number;
+  x?: number;
+  y?: number;
   scale?: number;
   opacity?: number;
   isClicking?: boolean;
 }
 
 export const FakeCursor: React.FC<FakeCursorProps> = ({
-  x,
-  y,
+  x = 0,
+  y = 0,
   scale = 1.0,
   opacity = 1.0,
 }) => {
