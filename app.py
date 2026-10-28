@@ -765,18 +765,18 @@ def _wait_for_runpod_completion(
             queue_wait_s = time.time() - _in_queue_since
             log_step(f"RUNPOD STATUS: {status} (queue_wait={queue_wait_s:.0f}s)")
 
-            if queue_wait_s > 60:
+            if queue_wait_s > 180:
                 health = _check_runpod_health(endpoint, headers)
                 workers = health.get("workers", {})
                 if workers:
                     active = workers.get("initializing", 0) + workers.get("running", 0) + workers.get("ready", 0)
                     if active == 0:
-                        raise RuntimeError(f"RunPod Capacity Error ({task_label}): Job stuck in queue for >60s and no workers are scaling up.")
+                        raise RuntimeError(f"RunPod Capacity Error ({task_label}): Job stuck in queue for >180s and no workers are scaling up.")
             
-            # Fail-fast: If the job is stuck in queue for >180 seconds, even with active workers, 
+            # Fail-fast: If the job is stuck in queue for >360 seconds, even with active workers, 
             # it means the worker is likely crash-looping (OOM) and returning the job to the queue.
-            if queue_wait_s > 180:
-                raise RuntimeError(f"RunPod Crash Loop Error ({task_label}): Job stuck in IN_QUEUE for >180s. The worker is likely experiencing an Out-Of-Memory (OOM) crash and continuously dropping the task.")
+            if queue_wait_s > 360:
+                raise RuntimeError(f"RunPod Crash Loop Error ({task_label}): Job stuck in IN_QUEUE for >360s. The worker is likely experiencing an Out-Of-Memory (OOM) crash and continuously dropping the task.")
 
             # Resubmission disabled: queue delays are normal; the UI should show "processing…"
         else:
