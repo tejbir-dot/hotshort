@@ -3592,9 +3592,13 @@ def ui_prototype():
         }
     ]
     return render_template('clip_prototype.html', clips=sample_clips)
+WHOP_CHECKOUT_URL = os.getenv("WHOP_CHECKOUT_URL", "https://whop.com/hotshort/vip-beta-access/")
+
 @app.route('/pricing')
 @app.route('/subscription')
 def pricing():
+    if WHOP_CHECKOUT_URL:
+        return redirect(WHOP_CHECKOUT_URL)
     return redirect('/?pricing=1')
 
 @app.route('/limit-reached')
@@ -3708,13 +3712,14 @@ def api_runpod_download():
                 log.warning("[RUNPOD] Failed to stop pod in finalizer: %s", e)
 
 import stripe
-stripe.api_key = app.config['STRIPE_SECRET_KEY']
+stripe.api_key = app.config.get('STRIPE_SECRET_KEY') or os.getenv('STRIPE_SECRET_KEY', '')
 
 VALID_PLAN_TYPES = {"free", "starter", "pro", "industry", "trial"}
 
 @app.route("/checkout", methods=["GET"])
-@login_required
 def checkout():
+    if WHOP_CHECKOUT_URL:
+        return redirect(WHOP_CHECKOUT_URL)
     plan = request.args.get("plan", "pro").strip().lower()
     return redirect(url_for("create_checkout_session", plan=plan))
 

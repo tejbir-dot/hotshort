@@ -222,6 +222,26 @@ def blur_old_captions(frame: np.ndarray, boxes: list[tuple[int, int, int, int]])
     return output
 
 
+def draw_premium_widget(frame: np.ndarray) -> np.ndarray:
+    """Cover a centre-burned caption with an intentional, polished UI panel."""
+    height, width = frame.shape[:2]
+    left, right = round(width * 0.06), round(width * 0.94)
+    top, bottom = round(height * 0.48), round(height * 0.67)
+    radius = round(width * 0.035)
+    mask = np.zeros((height, width), dtype=np.uint8)
+    cv2.rectangle(mask, (left + radius, top), (right - radius, bottom), 255, -1)
+    cv2.rectangle(mask, (left, top + radius), (right, bottom - radius), 255, -1)
+    for center in ((left + radius, top + radius), (right - radius, top + radius),
+                   (left + radius, bottom - radius), (right - radius, bottom - radius)):
+        cv2.circle(mask, center, radius, 255, -1)
+    output = frame.copy()
+    # A solid panel is deliberate UI treatment; any transparency would let the
+    # original burned-in card remain readable underneath.
+    output[mask > 0] = (31, 31, 33)
+    cv2.line(output, (left + radius, top), (right - radius, top), (105, 105, 108), 2, cv2.LINE_AA)
+    return output
+
+
 def locate_font(font_path: str | None) -> Path | None:
     if font_path:
         path = Path(font_path)
@@ -255,17 +275,36 @@ def draw_caption(frame: np.ndarray, caption: Caption | None, seconds: float, fon
     active_index = min(len(caption.words) - 1, next(
         (index for index, word in enumerate(caption.words) if word.start <= seconds <= word.end), 0))
     tokens = [word.text.upper() for word in caption.words]
-    widths = [draw.textbbox((0, 0), token, font=font, stroke_width=3)[2] for token in tokens]
     spacing = font_size // 3
-    total_width = sum(widths) + spacing * (len(tokens) - 1)
-    x = (frame.shape[1] - total_width) // 2
     # Reels/TikTok reserve much of the bottom quarter for UI. Keep captions in
     # the lower-middle safe zone instead of the source subtitle area.
-    y = int(frame.shape[0] * vertical_position)
+    max_line_width = int(frame.shape[1] * 0.80)
+    lines: list[list[tuple[int, str]]] = []
+    line: list[tuple[int, str]] = []
     for index, token in enumerate(tokens):
-        color = (255, 218, 0, 255) if index == active_index else (255, 255, 255, 255)
-        draw.text((x, y), token, font=font, fill=color, stroke_width=6, stroke_fill=(0, 0, 0, 255))
-        x += widths[index] + spacing
+        candidate = line + [(index, token)]
+        candidate_text = " ".join(value for _word_index, value in candidate)
+        candidate_width = draw.textbbox((0, 0), candidate_text, font=font, stroke_width=6)[2]
+        if line and candidate_width > max_line_width:
+            lines.append(line)
+            line = [(index, token)]
+        else:
+            line = candidate
+    if line:
+        lines.append(line)
+
+    line_height = round(font_size * 1.16)
+    total_height = line_height * len(lines)
+    y = round(frame.shape[0] * vertical_position - total_height / 2)
+    for row in lines:
+        widths = [draw.textbbox((0, 0), token, font=font, stroke_width=3)[2] for _index, token in row]
+        total_width = sum(widths) + spacing * (len(row) - 1)
+        x = (frame.shape[1] - total_width) // 2
+        for (index, token), token_width in zip(row, widths):
+            color = (255, 218, 0, 255) if index == active_index else (255, 255, 255, 255)
+            draw.text((x, y), token, font=font, fill=color, stroke_width=6, stroke_fill=(0, 0, 0, 255))
+            x += token_width + spacing
+        y += line_height
     return cv2.cvtColor(np.asarray(image.convert("RGB")), cv2.COLOR_RGB2BGR)
 
 
@@ -308,9 +347,11 @@ def process_video(source: Path, silent_output: Path, captions: list[Caption], fo
             if reader is not None and seconds - last_ocr_time >= ocr_interval:
                 boxes = detect_text_boxes(reader, frame)
                 last_ocr_time = seconds
+            caption, caption_index = caption_for_time(captions, seconds, caption_index)
             if legacy_mask == "glass":
                 frame = blur_old_captions(frame, boxes)
-            caption, caption_index = caption_for_time(captions, seconds, caption_index)
+            elif legacy_mask == "widget" and caption is not None:
+                frame = draw_premium_widget(frame)
             writer.write(draw_caption(frame, caption, seconds, font_path, caption_y))
             written += 1
             if written % int(max(1, source_fps * 10)) == 0:
@@ -351,7 +392,7 @@ def parse_args() -> argparse.Namespace:
                         help="Top-anchor a strong crop to cut burned-in bottom captions off-screen")
     parser.add_argument("--smart-crop-scale", type=float, default=1.36,
                         help="Static scale used by --smart-crop; 1.36 is tuned for bottom subtitles")
-    parser.add_argument("--legacy-mask", choices=("glass", "none"), default="glass",
+    parser.add_argument("--legacy-mask", choices=("glass", "widget", "none"), default="glass",
                         help="How to handle old captions that remain in-frame")
     parser.add_argument("--caption-y", type=float, default=0.61,
                         help="Caption vertical position as frame height (default 0.61 is Reels/TikTok safe)")

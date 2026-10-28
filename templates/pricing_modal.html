@@ -50,25 +50,25 @@
 
         <!-- PRO PLAN -->
         <div class="plan-card creator-plan recommended">
-          <div class="plan-badge">MOST POPULAR</div>
+          <div class="plan-badge">MOST POPULAR • SAVE 20%</div>
           <div class="plan-header">
-            <div class="plan-name">⚡ Pro</div>
-            <div class="plan-price">$6<span class="plan-period"> / month</span></div>
+            <div class="plan-name">⚡ VIP Beta Access</div>
+            <div class="plan-price">$9.99<span class="plan-period"> / month</span></div>
           </div>
-          <p class="plan-description">$6/month — Built for serious creators</p>
+          <p class="plan-description">Built for serious creators — cancel anytime</p>
 
           <div class="plan-features">
             <div class="feature">✓ No watermark</div>
-            <div class="feature">✓ Unlimited clips</div>
-            <div class="feature">✓ Quality Mode export</div>
-            <div class="feature">✓ Faster processing</div>
-            <div class="feature">✓ Cancel anytime</div>
+            <div class="feature">✓ Unlimited viral clips</div>
+            <div class="feature">✓ 1080p Full HD export</div>
+            <div class="feature">✓ Fast GPU processing</div>
+            <div class="feature">✓ Auto captions & face tracking</div>
           </div>
 
           <button class="plan-cta plan-cta-creator" data-plan="pro" data-checkout="1">
-            Unlock Pro
+            Unlock VIP Access ($9.99)
           </button>
-          <p class="plan-flexibility">Cancel anytime</p>
+          <p class="plan-flexibility">Cancel anytime • Instant access</p>
         </div>
 
         <!-- CREATOR PLAN -->
@@ -116,7 +116,7 @@
 
     <!-- FOOTER BUTTONS -->
     <div class="pricing-footer">
-      <button class="btn-primary" id="unlockBtn">Unlock Pro — $6/month</button>
+      <button class="btn-primary" id="unlockBtn">Unlock VIP Beta Access ($9.99/mo)</button>
       <button class="btn-secondary" id="viewPlansBtn">View all plans</button>
     </div>
 
@@ -547,9 +547,8 @@
       btn.style.background = 'linear-gradient(90deg, #FFD277, #FFB84D)';
       btn.style.color = '#111';
       if (btn.dataset.checkout === '1') {
-        const pageJobId = document.querySelector('[data-job-id]')?.getAttribute('data-job-id');
-        const checkoutUrl = `/checkout?plan=${selectedPlan}${pageJobId ? '&job_id=' + pageJobId : ''}`;
-        window.location.href = checkoutUrl;
+        const checkoutUrl = 'https://whop.com/hotshort/vip-beta-access/';
+        window.open(checkoutUrl, '_blank') || (window.location.href = checkoutUrl);
       }
     });
   });
@@ -557,10 +556,9 @@
   // Unlock button - navigate to checkout
   if (unlockBtn) {
     unlockBtn.addEventListener('click', () => {
-      const pageJobId = document.querySelector('[data-job-id]')?.getAttribute('data-job-id');
-      const checkoutUrl = `/checkout?plan=pro${pageJobId ? '&job_id=' + pageJobId : ''}`;
-      console.log('[PRICING] Navigating to checkout:', checkoutUrl);
-      window.location.href = checkoutUrl;
+      const checkoutUrl = 'https://whop.com/hotshort/vip-beta-access/';
+      console.log('[PRICING] Navigating to Whop checkout:', checkoutUrl);
+      window.open(checkoutUrl, '_blank') || (window.location.href = checkoutUrl);
     });
   }
 
