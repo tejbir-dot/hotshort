@@ -16,6 +16,32 @@ except ImportError:
 
 load_dotenv()
 
+def _init_youtube_cookies():
+    """Ensure /app/cookies.txt exists and can be securely loaded from env variables without committing to git."""
+    raw = os.getenv("YOUTUBE_COOKIES") or os.getenv("YOUTUBE_COOKIES_BASE64")
+    target_path = "/app/cookies.txt" if os.path.exists("/app") else "cookies.txt"
+    if raw:
+        try:
+            import base64
+            try:
+                decoded = base64.b64decode(raw).decode("utf-8")
+                content = decoded if ("\t" in decoded or "Netscape" in decoded) else raw
+            except Exception:
+                content = raw
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"[WORKER] Successfully initialized {target_path} from environment variable", flush=True)
+        except Exception as e:
+            print(f"[WORKER] Warning: failed to parse cookies from env: {e}", flush=True)
+    elif not os.path.exists(target_path):
+        try:
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write("# Netscape HTTP Cookie File\n")
+        except Exception:
+            pass
+
+_init_youtube_cookies()
+
 groq_present = "GROQ_API_KEY" in os.environ and bool(os.environ["GROQ_API_KEY"].strip())
 print(f"GROQ_API_KEY present={str(groq_present).lower()}", flush=True)
 
@@ -293,7 +319,7 @@ def handler(event):
                     "nocheckcertificate": True,
                     "socket_timeout": 30,
                     "retries": 3,
-                    "cookiefile": "/app/cookies.txt" if os.path.exists("/app/cookies.txt") else "cookies.txt" if os.path.exists("cookies.txt") else None,
+                    "cookiefile": "/app/cookies.txt" if (os.path.exists("/app/cookies.txt") and os.path.getsize("/app/cookies.txt") > 20) else "cookies.txt" if (os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 20) else None,
                     # Android client bypasses YouTube 403s on datacenter IPs
                     "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
                     "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

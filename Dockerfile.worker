@@ -46,12 +46,13 @@ RUN pip install -U yt-dlp
 
 # Copy source (filtered by .dockerignore)
 COPY . .
-COPY cookies.txt /app/cookies.txt
+
+# Ensure /app/cookies.txt exists without failing build on clean git clone
+RUN touch /app/cookies.txt
 
 # Pre-download the Whisper model at build time so workers start instantly
 # (avoids slow cold-start download on every new worker boot)
 ARG WHISPER_MODEL=medium
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('${WHISPER_MODEL}', device='cpu', compute_type='int8')" || true
 
-CMD ["python", "runpodworker.py"]
-# cookies.txt is committed and copied via COPY . . (build trigger v3 - android client + latest yt-dlp)
+CMD ["python", "runpodworker.py"]
