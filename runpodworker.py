@@ -215,6 +215,12 @@ def handler(event):
             "gpu": _gpu_alive(),
         }
 
+    if task == "warmup":
+        # Lightweight boot job: just wakes the container, returns immediately.
+        # The GPU is now loaded; the next real job (orchestrate) will start instantly.
+        print("[WORKER] Warmup job received — GPU container is now warm. Returning immediately.")
+        return {"status": "warm", "gpu": _gpu_alive()}
+
     if task in {"download", "transcribe_youtube", "orchestrate"} and not youtube_url and not media_url:
         return {"error": f"Invalid task '{task}': missing youtube_url or video_url"}
 

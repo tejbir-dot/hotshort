@@ -2553,6 +2553,60 @@ def run_process_video_safe(job_id: str, analyze_lock=None, file_lock_path: str |
     except Exception as e:
         app.logger.exception(f"[PROCESS_VIDEO_CRASH] job={job_id} error={e}")
 
+@app.route("/api/warmup", methods=["POST", "GET"])
+@login_required
+def api_warmup():
+    """
+    Pre-warm the RunPod GPU container silently when the user lands on the page.
+    Called by the frontend immediately on page load so the cold-start (60-90s boot)
+    completes before the user finishes pasting their URL and clicking Submit.
+
+    Strategy: fire a lightweight RunPod health check. If workers.ready == 0, send a
+    minimal dummy job (task="warmup") so RunPod spins up the GPU container.
+    The dummy job will be ignored by the worker (it returns immediately).
+    Response is always fast (< 1s) — we never wait for the GPU boot here.
+    """
+    try:
+        endpoint = (os.getenv("RUNPOD_ENDPOINT_ID") or "").strip()
+        api_key = (os.getenv("RUNPOD_API_KEY") or "").strip()
+        if not endpoint or not api_key:
+            return jsonify({"status": "skipped", "reason": "runpod_not_configured"}), 200
+
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+        # 1. Check current worker health
+        health = _check_runpod_health(endpoint, headers)
+        workers = health.get("workers", {})
+        ready = workers.get("ready", 0)
+        initializing = workers.get("initializing", 0)
+
+        if ready > 0 or initializing > 0:
+            # GPU already warm — nothing to do
+            log.info("[WARMUP] GPU already warm (ready=%s initializing=%s)", ready, initializing)
+            return jsonify({"status": "already_warm", "ready": ready, "initializing": initializing}), 200
+
+        # 2. GPU is cold — fire a minimal warmup job in a background thread so we return instantly
+        def _fire_warmup_job():
+            try:
+                import requests as _req
+                url = _runpod_task_url(endpoint)
+                payload = {"input": {"task": "warmup"}}
+                resp = _req.post(url, json=payload, headers=headers, timeout=8)
+                log.info("[WARMUP] Warmup job sent: status=%s body=%s", resp.status_code, resp.text[:120])
+            except Exception as ex:
+                log.warning("[WARMUP] Warmup job fire failed: %s", ex)
+
+        t = threading.Thread(target=_fire_warmup_job, daemon=True)
+        t.start()
+
+        log.info("[WARMUP] Cold GPU detected — warmup job dispatched in background")
+        return jsonify({"status": "warming_up", "ready": ready, "initializing": initializing}), 200
+
+    except Exception as e:
+        log.warning("[WARMUP] Warmup endpoint error: %s", e)
+        return jsonify({"status": "error", "reason": str(e)}), 200  # Always 200 — never block UX
+
+
 @app.route("/analyze", methods=["POST"])
 @login_required
 def analyze():

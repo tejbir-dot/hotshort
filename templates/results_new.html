@@ -2407,12 +2407,13 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
     // 🚀 ELITE LIVE AI PIPELINE CONTROLLER (Glassmorphic Experience)
     // =========================================================================
     const PIPELINE_STAGES = [
-      { id: 'audio', label: 'Extracting audio payload (CUDA)...', targetSec: 3 },
-      { id: 'transcribe', label: 'Transcribing 14,000 words with Whisper GPU...', targetSec: 10 },
-      { id: 'framing', label: 'Isolate & Auto-Frame 9:16 (MediaPipe Active)...', targetSec: 24 },
-      { id: 'hooks', label: 'Scanning 443 viral triggers & hook psychology...', targetSec: 38 },
-      { id: 'broll', label: 'Directing 4K Cinematic B-Roll & Phonk audio...', targetSec: 55 },
-      { id: 'render', label: 'Hollywood NVENC Studio 60fps video export...', targetSec: 75 },
+      { id: 'boot',      label: '🔥 Waking up NVIDIA A40 GPU... (cold start)', targetSec: 0 },
+      { id: 'audio',     label: 'Extracting audio payload (CUDA)...', targetSec: 90 },
+      { id: 'transcribe',label: 'Transcribing 14,000 words with Whisper GPU...', targetSec: 105 },
+      { id: 'framing',   label: 'Isolate & Auto-Frame 9:16 (MediaPipe Active)...', targetSec: 120 },
+      { id: 'hooks',     label: 'Scanning 443 viral triggers & hook psychology...', targetSec: 135 },
+      { id: 'broll',     label: 'Directing 4K Cinematic B-Roll & Phonk audio...', targetSec: 155 },
+      { id: 'render',    label: 'Hollywood NVENC Studio 60fps video export...', targetSec: 175 },
     ];
 
     const VIRAL_SECRETS = [
@@ -3067,6 +3068,8 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         document.getElementById('processingState').style.display = 'block';
         _startPipelineExperience();
         if (jobId) pollJobUntilDone(jobId);
+        // 🔥 Silently pre-warm GPU so cold start is done before job actually starts
+        fetch('/api/warmup', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
       }
     } else {
       renderCarousel();

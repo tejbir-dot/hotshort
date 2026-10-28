@@ -1711,7 +1711,21 @@
         if(timeout) box._t = setTimeout(()=> box.style.display = 'none', timeout);
       }
 
+      // 🔥 GPU Pre-warm: fire warmup the moment user touches the URL input
+      // so the GPU cold-start (60-90s) completes before they hit Submit.
+      let _warmupFired = false;
+      function _fireWarmup() {
+        if (_warmupFired) return;
+        _warmupFired = true;
+        fetch('/api/warmup', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+      }
+      document.querySelectorAll('input[name="youtube_url"]').forEach((inp) => {
+        inp.addEventListener('focus', _fireWarmup, { once: true });
+        inp.addEventListener('input', _fireWarmup, { once: true });
+      });
+
       forms.forEach((form) => {
+
         form.addEventListener('submit', async (e)=>{
           // VIBE MODAL INTERCEPT
           const _url = (form.elements['youtube_url'] && form.elements['youtube_url'].value || '').trim();
