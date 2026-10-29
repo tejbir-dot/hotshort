@@ -2359,8 +2359,14 @@ def ensure_worker_ready(timeout_seconds: int | None = None, retry_interval_secon
 # 🎯 HELPER: Unlimited Try Mode & Free Status
 # ============================================
 def _is_unlimited_mode() -> bool:
-    """Check if unlimited try / test mode is active (via env flag or localhost / local IP)."""
-    if os.getenv("HS_UNLIMITED_MODE", "1").strip().lower() in ("1", "true", "yes"):
+    """Check if unlimited try / test mode is active (via env flag or localhost / local IP).
+    
+    PRODUCTION: HS_UNLIMITED_MODE defaults to '0' — limits are ENFORCED unless explicitly set.
+    LOCAL DEV: .env.local sets HS_UNLIMITED_MODE=1 so you never hit limits while testing.
+    """
+    # Explicit env override (prod=0 unless Railway sets it, local=1 via .env.local)
+    env_val = os.getenv("HS_UNLIMITED_MODE", "0").strip().lower()
+    if env_val in ("1", "true", "yes"):
         return True
     try:
         from flask import has_request_context, request
@@ -2403,10 +2409,11 @@ def get_free_status(user):
                 "claimed_clip_ids": []
             }
         
-        # Check if user has paid plan
+        # Check if user has paid plan (case-insensitive status check)
+        _status = (user.subscription_status or "").strip().lower()
         is_paid = (
             user.plan_type in ("starter", "pro", "industry", "creator") and
-            user.subscription_status == "active"
+            _status == "active"
         ) or user.subscription_plan in ("pro", "creator", "industry")
         
         if is_paid:
@@ -2642,17 +2649,23 @@ def analyze():
         if not youtube_url:
             return jsonify({"error": "Missing youtube_url"}), 400
         
-        # 2. Check free tier limits
+        # 2. Check free tier limits (3 free generations, then pricing gate)
         free_status = get_free_status(current_user)
-        free_tier_limit = int(os.environ.get("FREE_GENERATION_LIMIT", 1))
+        free_tier_limit = int(os.environ.get("FREE_GENERATION_LIMIT", 3))
         used = free_status.get("free_clips_used", 0)
-        app.logger.info("[LIMIT] user_id=%s used=%s limit=%s", getattr(current_user, "id", None), used, free_tier_limit)
+        left = free_status.get("free_clips_left", 0)
+        app.logger.info("[LIMIT] user_id=%s used=%s left=%s limit=%s is_paid=%s",
+                        getattr(current_user, "id", None), used, left, free_tier_limit,
+                        free_status.get("is_paid"))
         
-        if not free_status.get("is_paid") and free_status.get("free_clips_left", 0) <= 0:
-            # User has exhausted free tier quota
+        if not free_status.get("is_paid") and left <= 0:
+            # User has exhausted free tier quota — show pricing
+            app.logger.info("[LIMIT] GATE: user_id=%s blocked — limit reached", getattr(current_user, "id", None))
             return jsonify({
                 "action": "show_pricing_modal",
-                "reason": "free_limit_reached"
+                "reason": "free_limit_reached",
+                "used": used,
+                "limit": free_tier_limit,
             }), 402  # Payment required
         
         # 3. Acquire per-user concurrency slots (in-memory + cross-process file lock)

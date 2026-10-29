@@ -1780,22 +1780,22 @@
               data.results_url ||
               (data.job_id ? `/results/${encodeURIComponent(data.job_id)}` : '')
             );
-            if (data.ok && nextRedirect) {
+            if ((data.success || data.ok) && nextRedirect) {
               const nextUrl = /^https?:\/\//i.test(nextRedirect) ? nextRedirect : backendUrl(nextRedirect);
               window.location.href = nextUrl;
               return;
             }
 
             if (data && data.action === 'show_pricing_modal') {
-              const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0';
-              if (!isLocal) {
-                if (typeof window.showPricingModal === 'function') {
-                  window.showPricingModal();
-                } else {
-                  showMessage(form, 'Upgrade required to continue.');
-                }
-                return;
+              // Server gated this request — show pricing modal unconditionally
+              if (typeof window.showPricingModal === 'function') {
+                window.showPricingModal();
+              } else {
+                const modal = document.getElementById('pricingModal');
+                if (modal) modal.classList.remove('hidden');
+                else showMessage(form, '🔒 Upgrade to continue — free limit reached!');
               }
+              return;
             }
 
             if (data.error) {
@@ -1985,17 +1985,15 @@
           data.redirect || data.redirect_url || data.results_url ||
           (data.job_id ? '/results/' + encodeURIComponent(data.job_id) : '')
         );
-        if (data.ok && nextRedirect) {
+        if ((data.success || data.ok) && nextRedirect) {
           const nextUrl = /^https?:\/\//i.test(nextRedirect) ? nextRedirect : backendUrl(nextRedirect);
           window.location.href = nextUrl;
           return;
         }
         if (data && data.action === 'show_pricing_modal') {
-          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0';
-          if (!isLocal) {
-            if (typeof window.showPricingModal === 'function') window.showPricingModal();
-            else if (msgBox) { msgBox.textContent = 'Upgrade required.'; }
-          }
+          if (typeof window.showPricingModal === 'function') window.showPricingModal();
+          else { const m = document.getElementById('pricingModal'); if (m) m.classList.remove('hidden'); else if (msgBox) msgBox.textContent = 'Upgrade to continue.'; }
+          return;
         }
         if (data && data.error) {
           if (msgBox) { msgBox.textContent = data.error; }
