@@ -4170,6 +4170,53 @@ def stripe_webhook():
                 log.exception("[STRIPE] Failed to mark user %s subscription_status=Active", user.id)
 
     return jsonify({"received": True}), 200
+
+@app.route("/whop/webhook", methods=["POST"])
+def whop_webhook():
+    """
+    Whop Webhook: Listens for membership.went_valid / payment.succeeded / membership.went_invalid
+    and automatically marks user.plan_type = 'pro' in the database.
+    """
+    try:
+        from sqlalchemy import func
+        payload = request.get_json(force=True, silent=True) or {}
+        action = payload.get("action") or payload.get("type") or ""
+        log.info("[WHOP_WEBHOOK] Received action=%s", action)
+
+        data = payload.get("data") or payload
+        user_info = data.get("user") or {}
+        email = (
+            user_info.get("email")
+            or data.get("email")
+            or payload.get("email")
+        )
+
+        if email:
+            email_clean = str(email).strip().lower()
+            user = User.query.filter(func.lower(User.email) == email_clean).first()
+            if user:
+                if action in ("membership.went_valid", "payment.succeeded", "order.created"):
+                    user.plan_type = "pro"
+                    user.subscription_plan = "Pro"
+                    user.subscription_status = "active"
+                    db.session.commit()
+                    log.info("[WHOP_WEBHOOK] Successfully upgraded user %s (%s) to PRO!", user.id, user.email)
+                elif action in ("membership.went_invalid", "membership.cancelled"):
+                    user.plan_type = "trial"
+                    user.subscription_status = "cancelled"
+                    db.session.commit()
+                    log.info("[WHOP_WEBHOOK] Downgraded user %s (%s) due to cancellation", user.id, user.email)
+            else:
+                log.warning("[WHOP_WEBHOOK] User with email %s not found in DB", email_clean)
+        else:
+            log.warning("[WHOP_WEBHOOK] No email found in payload: %s", payload)
+
+    except Exception as e:
+        log.exception("[WHOP_WEBHOOK] Exception processing webhook: %s", e)
+        db.session.rollback()
+
+    return jsonify({"received": True}), 200
+
 @app.route('/dashboard', methods=['GET', 'POST'])
 @login_required
 def dashboard():
