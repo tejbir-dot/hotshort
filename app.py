@@ -495,32 +495,56 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         except ImportError:
             raise RuntimeError("cloudinary package not installed on Railway — add to requirements.railway.txt")
 
-    # 1. Get the final proxy MP4 URL
-    raw_mp4_url = _download_via_api(youtube_url)
-    if not raw_mp4_url:
-        raise RuntimeError(f"Failed to get direct MP4 URL from Proxy API for: {youtube_url}")
-
     with tempfile.TemporaryDirectory() as tmp:
         video_path = os.path.join(tmp, "video.mp4")
+        downloaded = False
         
-        log_step(f"[RAILWAY] Downloading direct MP4 from Proxy URL: {raw_mp4_url[:120]}...")
-        
-        # 2. Download the video from the proxy server
-        browser_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://www.youtube.com/"
-        }
-        
+        # 1. Primary: Try RapidAPI proxy (bypasses Google datacenter bot-checks)
         try:
-            with requests.Session() as session:
-                with session.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
-                    r.raise_for_status()
-                    with open(video_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
+            raw_mp4_url = _download_via_api(youtube_url)
+            if raw_mp4_url:
+                log_step(f"[RAILWAY] Downloading direct MP4 from Proxy URL: {raw_mp4_url[:120]}...")
+                browser_headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Referer": "https://www.youtube.com/"
+                }
+                with requests.Session() as session:
+                    with session.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
+                        r.raise_for_status()
+                        with open(video_path, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                if os.path.exists(video_path) and os.path.getsize(video_path) > 1024:
+                    downloaded = True
         except Exception as e:
-            raise RuntimeError(f"Failed to download direct MP4 video from API URL: {e}")
+            log_step(f"[RAILWAY] Proxy download failed ({e}), trying yt-dlp fallback...")
+
+        # 2. Secondary Fallback: Direct yt-dlp on Railway (if RapidAPI limit hit or down)
+        if not downloaded:
+            log_step("[RAILWAY] RapidAPI limit reached or failed — attempting direct yt-dlp fallback on Railway...")
+            try:
+                from yt_dlp import YoutubeDL
+                ydl_opts = {
+                    "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    "outtmpl": os.path.join(tmp, "ytdlp_dl.%(ext)s"),
+                    "merge_output_format": "mp4",
+                    "quiet": True,
+                    "no_warnings": True,
+                }
+                with YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([youtube_url])
+                
+                candidates = [f for f in os.listdir(tmp) if f.endswith(".mp4")]
+                if candidates:
+                    video_path = os.path.join(tmp, candidates[0])
+                    downloaded = True
+                    log_step(f"[RAILWAY] yt-dlp fallback succeeded: {os.path.basename(video_path)}")
+            except Exception as e:
+                log_step(f"[RAILWAY] yt-dlp fallback failed: {e}")
+
+        if not downloaded or not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
+            raise RuntimeError(f"Could not download video via RapidAPI or yt-dlp fallback for: {youtube_url}")
             
         original_size_mb = os.path.getsize(video_path) / (1024 * 1024)
         upload_path = video_path
@@ -593,7 +617,11 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
     # touching YouTube directly, so datacenter IP blocks don't apply.
     storage_name = "Cloudflare R2" if _is_r2_configured() else "Cloudinary"
     log.info(f"[RUNPOD] Relay mode: downloading on Railway then sending {storage_name} URL to RunPod")
-    video_url = _download_to_cloudinary(youtube_url)
+    video_url = None
+    try:
+        video_url = _download_to_cloudinary(youtube_url)
+    except Exception as e:
+        log.warning(f"[RUNPOD] Railway relay failed ({e}). RunPod will attempt direct download...")
     # ────────────────────────────────────────────────────────────────────────
 
     url = _runpod_task_url(endpoint)
