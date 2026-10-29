@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "local_worker.py"
       - "runpodworker.py"
       - "Dockerfile.worker"
       - "requirements_worker.txt"

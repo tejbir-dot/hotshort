@@ -7,6 +7,8 @@ soundfile
 cloudinary
 boto3
 python-dotenv
+requests
+opencv-python-headless
 
 # Optional but useful:
 ctranslate2
@@ -16,4 +18,4 @@ scenedetect
 webrtcvad
 llvmlite==0.42.0
 numba==0.59.1
-librosa
+librosa
