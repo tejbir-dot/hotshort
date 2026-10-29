@@ -2354,7 +2354,9 @@ def worker_alive():
     if local_worker_url:
         return bool(_local_worker_status(local_worker_url, timeout=2).get("alive"))
 
-    log.warning("[WAKE] LOCAL_WORKER_URL is not configured; treating worker as offline")
+    if os.getenv("RUNPOD_ENDPOINT_ID") and os.getenv("USE_LOCAL_WORKER", "0").strip() != "1":
+        return True
+
     return False
 
 
@@ -2531,7 +2533,7 @@ def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = N
         # When USE_LOCAL_WORKER=1 (or WORKER_SECRET is set), leave the job as "pending"
         # so local_worker.py can poll /api/jobs/next and process it with the local RTX GPU.
         # The background thread exits immediately — no blocking on Railway.
-        if os.getenv("USE_LOCAL_WORKER", "0").strip() == "1" or os.getenv("WORKER_SECRET"):
+        if os.getenv("USE_LOCAL_WORKER", "0").strip() == "1":
             job.status = "pending"
             db.session.commit()
             print(f"\n{'='*60}\n[PIPELINE] job={job_id} HANDED OFF to local_worker.py!\n[PIPELINE] local_worker.py will process this job with tuned GPU settings.\n{'='*60}\n", flush=True)
@@ -3146,6 +3148,8 @@ def _record_worker_heartbeat():
 
 def is_worker_online() -> bool:
     if os.getenv("HS_LOCAL_MODE", "0") == "1":
+        return True
+    if os.getenv("RUNPOD_ENDPOINT_ID") and os.getenv("USE_LOCAL_WORKER", "0").strip() != "1":
         return True
     if _last_worker_poll_time > 0 and (time.time() - _last_worker_poll_time) < 45.0:
         return True
