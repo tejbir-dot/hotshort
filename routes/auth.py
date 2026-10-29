@@ -11,6 +11,16 @@ from models.user import User, db
 
 auth = Blueprint('auth', __name__)
 
+DISPOSABLE_DOMAINS = {
+    "mailinator.com", "guerrillamail.com", "10minutemail.com", "tempmail.com",
+    "trashmail.com", "yopmail.com", "sharklasers.com", "getairmail.com",
+    "throwawaymail.com", "temp-mail.org", "fakeinbox.com", "dispostable.com",
+    "generator.email", "mohmal.com", "mytemp.email", "nada.ltd", "burnermail.io",
+    "emailondeck.com", "tempail.com", "crazymailing.com"
+}
+_signup_ip_history = {}
+
+
 
 def _cookie_secure() -> bool:
     return bool(current_app.config.get("SESSION_COOKIE_SECURE"))
@@ -152,9 +162,26 @@ def signup():
         password = request.form.get('password')
 
         # Validation
+        email = (email or '').strip().lower()
         if not email or not password:
             flash('Please fill all fields.', 'error')
             return render_template('signup.html', next_target=next_target, template_id=template_id)
+
+        # ── Abuse Prevention: Disposable Email Blocker ──
+        domain = email.split('@')[-1] if '@' in email else ''
+        if domain in DISPOSABLE_DOMAINS or any(sub in domain for sub in ("tempmail", "10minute", "disposable", "throwaway", "fakemail")):
+            flash('Please use a permanent email address (e.g. Gmail, Outlook, Yahoo) to sign up.', 'error')
+            return render_template('signup.html', next_target=next_target, template_id=template_id)
+
+        # ── Abuse Prevention: Per-IP Signup Rate Limit (max 5/hr) ──
+        import time as _time
+        client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        now_ts = _time.time()
+        _signup_ip_history[client_ip] = [t for t in _signup_ip_history.get(client_ip, []) if now_ts - t < 3600]
+        if len(_signup_ip_history[client_ip]) >= 5:
+            flash('Too many accounts created from your network. Please try again later.', 'error')
+            return render_template('signup.html', next_target=next_target, template_id=template_id)
+        _signup_ip_history[client_ip].append(now_ts)
 
         if User.query.filter_by(email=email).first():
             flash('This email is already registered.', 'error')

@@ -372,6 +372,26 @@ def _orchestrate_via_local_gpu(youtube_url: str, job_id: str | None = None, time
     return out
 
 
+def _get_youtube_duration_fast(youtube_url: str) -> float | None:
+    """Fast pre-check to get YouTube video duration in seconds before downloading."""
+    try:
+        from yt_dlp import YoutubeDL
+        ydl_opts = {
+            "extract_flat": True,
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "socket_timeout": 8,
+        }
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+            if info and "duration" in info and info["duration"]:
+                return float(info["duration"])
+    except Exception as e:
+        log.debug("[DURATION_CHECK] yt-dlp fast extract failed: %s", e)
+    return None
+
+
 def _download_via_api(youtube_url):
     clean_url = youtube_url.split("?si=")[0].split("&si=")[0]
     print(f"[INFO] Bypassing Google CDN... Requesting Proxy MP4 link for: {clean_url}", flush=True)
@@ -470,7 +490,7 @@ def _upload_to_r2(local_path: str, object_key: str, content_type: str = "video/m
     return f"https://{bucket}.r2.cloudflarestorage.com/{object_key}"
 
 
-def _download_to_cloudinary(youtube_url: str) -> str:
+def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
     """
     Step 1 of the Railway→Cloudflare R2 (or Cloudinary)→RunPod pipeline.
 
@@ -549,6 +569,20 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         original_size_mb = os.path.getsize(video_path) / (1024 * 1024)
         upload_path = video_path
 
+        # Duration verification on downloaded video (defense-in-depth)
+        try:
+            dur_s = get_video_duration(video_path)
+            max_allowed = 5400.0 if not is_free_user else float(os.getenv("MAX_FREE_VIDEO_DURATION_SECONDS", 1200))
+            if dur_s > max_allowed:
+                dur_m = round(dur_s / 60)
+                max_m = int(max_allowed / 60)
+                tier_label = "Pro" if is_free_user else "maximum allowed"
+                raise RuntimeError(f"Video is {dur_m} minutes long, which exceeds the {max_m}-minute limit. Please choose a shorter video or upgrade to {tier_label}.")
+        except RuntimeError:
+            raise
+        except Exception as _e:
+            log.warning(f"[DURATION_VERIFY] Could not check duration via ffprobe: {_e}")
+
         # 3. Upload to Cloudflare R2 (preferred) or Cloudinary
         if use_r2:
             log_step(f"[RAILWAY] Uploading {original_size_mb:.1f}MB to Cloudflare R2…")
@@ -619,7 +653,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
     log.info(f"[RUNPOD] Relay mode: downloading on Railway then sending {storage_name} URL to RunPod")
     video_url = None
     try:
-        video_url = _download_to_cloudinary(youtube_url)
+        video_url = _download_to_cloudinary(youtube_url, is_free_user=is_free_user)
     except Exception as e:
         log.warning(f"[RUNPOD] Railway relay failed ({e}). RunPod will attempt direct download...")
     # ────────────────────────────────────────────────────────────────────────
@@ -2733,11 +2767,12 @@ def analyze():
         free_tier_limit = int(os.environ.get("FREE_GENERATION_LIMIT", 3))
         used = free_status.get("free_clips_used", 0)
         left = free_status.get("free_clips_left", 0)
+        is_paid = bool(free_status.get("is_paid"))
         app.logger.info("[LIMIT] user_id=%s used=%s left=%s limit=%s is_paid=%s",
                         getattr(current_user, "id", None), used, left, free_tier_limit,
-                        free_status.get("is_paid"))
+                        is_paid)
         
-        if not free_status.get("is_paid") and left <= 0:
+        if not is_paid and left <= 0:
             # User has exhausted free tier quota — show pricing
             app.logger.info("[LIMIT] GATE: user_id=%s blocked — limit reached", getattr(current_user, "id", None))
             return jsonify({
@@ -2746,37 +2781,59 @@ def analyze():
                 "used": used,
                 "limit": free_tier_limit,
             }), 402  # Payment required
+
+        # ── Abuse Prevention: Video Duration Cap (Save GPU & Cloudflare credits) ──
+        # Free users: max 20 mins (1,200s). Paid users: max 90 mins (5,400s)
+        max_duration_s = 5400.0 if is_paid else float(os.getenv("MAX_FREE_VIDEO_DURATION_SECONDS", 1200))
+        video_duration_s = _get_youtube_duration_fast(youtube_url)
+        if video_duration_s and video_duration_s > max_duration_s:
+            dur_mins = round(video_duration_s / 60)
+            max_mins = int(max_duration_s / 60)
+            if not is_paid:
+                app.logger.warning("[ABUSE_PREVENT] Free user %s submitted %dm video (max %dm)", getattr(current_user, "id", None), dur_mins, max_mins)
+                return jsonify({
+                    "action": "show_pricing_modal",
+                    "reason": "video_too_long",
+                    "error": f"This video is {dur_mins} minutes long. Free plan supports videos up to {max_mins} minutes. Upgrade to Pro for longform podcasts up to 90 minutes!",
+                    "duration": video_duration_s,
+                    "max_duration": max_duration_s,
+                }), 400
+            else:
+                return jsonify({
+                    "error": f"This video is {dur_mins} minutes long. Maximum supported duration is {max_mins} minutes."
+                }), 400
         
         # 3. Acquire per-user concurrency slots (in-memory + cross-process file lock)
         user_id = _effective_user_id_for_request()
         if not user_id:
             return jsonify({"error": "Missing user context"}), 401
 
-        if not _is_unlimited_mode():
-            active_job = Job.query.filter(
+        # Auto-expire stale jobs older than 10 minutes so user is never locked out
+        try:
+            stale_cutoff = datetime.utcnow() - timedelta(minutes=10)
+            stale_jobs = Job.query.filter(
                 Job.user_id == user_id,
-                Job.status.in_(["queued", "processing", "in_progress", "pending"])
-            ).first()
-            if active_job:
-                return jsonify({
-                    "action": "show_pricing_modal",
-                    "error": "You already have one video processing. Please wait until it finishes."
-                }), 429
-        else:
-            # On localhost / unlimited mode: auto-expire stale jobs older than 3 minutes so user is never locked out
-            try:
-                stale_cutoff = datetime.utcnow() - timedelta(minutes=3)
-                stale_jobs = Job.query.filter(
-                    Job.user_id == user_id,
-                    Job.status.in_(["queued", "processing", "in_progress", "pending"]),
-                    Job.created_at < stale_cutoff
-                ).all()
-                for sj in stale_jobs:
-                    sj.status = "failed"
-                if stale_jobs:
-                    db.session.commit()
-            except Exception:
-                db.session.rollback()
+                Job.status.in_(["queued", "processing", "in_progress", "pending"]),
+                Job.created_at < stale_cutoff
+            ).all()
+            for sj in stale_jobs:
+                sj.status = "failed"
+                sj.analysis_data = json.dumps({"error": "Job timed out after 10 minutes."})
+            if stale_jobs:
+                db.session.commit()
+                app.logger.info("[LIMIT] Auto-failed %d stale jobs for user %s", len(stale_jobs), user_id)
+        except Exception:
+            db.session.rollback()
+
+        active_job = Job.query.filter(
+            Job.user_id == user_id,
+            Job.status.in_(["queued", "processing", "in_progress", "pending"])
+        ).first()
+        if active_job:
+            return jsonify({
+                "action": "show_pricing_modal",
+                "error": "You already have one video processing. Please wait until it finishes."
+            }), 429
 
         analyze_lock = _acquire_analyze_lock_for_user(user_id)
         if analyze_lock is None:
