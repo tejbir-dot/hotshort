@@ -707,6 +707,53 @@ def _configure_cloudinary() -> bool:
         return False
 
 
+
+def _is_r2_configured() -> bool:
+    try:
+        import boto3
+        return bool(
+            os.getenv("R2_ACCOUNT_ID") and
+            os.getenv("R2_ACCESS_KEY_ID") and
+            os.getenv("R2_SECRET_ACCESS_KEY") and
+            os.getenv("R2_BUCKET_NAME")
+        )
+    except ImportError:
+        return False
+
+
+def _upload_clip_to_r2(local_path: str) -> str | None:
+    if not _is_r2_configured():
+        return None
+    account_id = (os.getenv("R2_ACCOUNT_ID") or "").strip()
+    access_key = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
+    secret_key = (os.getenv("R2_SECRET_ACCESS_KEY") or "").strip()
+    bucket = (os.getenv("R2_BUCKET_NAME") or "").strip()
+    public_base = (os.getenv("R2_PUBLIC_URL") or "").strip().rstrip("/")
+
+    import uuid, boto3
+    key = f"hotshort_clips/{uuid.uuid4().hex[:12]}_{os.path.basename(local_path)}"
+
+    try:
+        s3 = boto3.client(
+            service_name="s3",
+            endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name="auto",
+        )
+        s3.upload_file(
+            Filename=local_path,
+            Bucket=bucket,
+            Key=key,
+            ExtraArgs={"ContentType": "video/mp4"}
+        )
+        if public_base:
+            return f"{public_base}/{key}"
+        return f"https://{bucket}.r2.cloudflarestorage.com/{key}"
+    except Exception as e:
+        print(f"[LOCAL_WORKER] R2 upload failed: {e}", flush=True)
+        return None
+
 def _upload_clip_to_cloudinary(local_path: str) -> str | None:
     try:
         import cloudinary.uploader
@@ -3530,7 +3577,9 @@ def _process_job(job: dict, cloudinary_ok: bool):
                             t_cap_end = time.perf_counter() - t_job_start
                             print(f"[MEASURE_6C] clip={i} sub=caption_blocking start={t_cap_start:.2f}s end={t_cap_end:.2f}s dur={t_cap_end - t_cap_start:.3f}s", flush=True)
                     else:
-                        if cloudinary_ok:
+                        if _is_r2_configured():
+                            url = _upload_clip_to_r2(final_path)
+                        if url is None and cloudinary_ok:
                             url = _upload_clip_to_cloudinary(final_path)
                         if url is None:
                             url = _upload_clip_to_railway(final_path, job_id)

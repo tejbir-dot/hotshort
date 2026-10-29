@@ -90,6 +90,51 @@ def _upload_to_cloudinary(local_path: str) -> str | None:
         print("Cloudinary upload failed:", e)
         return None
 
+def _is_r2_configured() -> bool:
+    return bool(
+        boto3 is not None and
+        os.getenv("R2_ACCOUNT_ID") and
+        os.getenv("R2_ACCESS_KEY_ID") and
+        os.getenv("R2_SECRET_ACCESS_KEY") and
+        os.getenv("R2_BUCKET_NAME")
+    )
+
+
+def _upload_to_r2(local_path: str, object_key: str | None = None, content_type: str = "video/mp4") -> str | None:
+    if not _is_r2_configured():
+        return None
+    account_id = (os.getenv("R2_ACCOUNT_ID") or "").strip()
+    access_key = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
+    secret_key = (os.getenv("R2_SECRET_ACCESS_KEY") or "").strip()
+    bucket = (os.getenv("R2_BUCKET_NAME") or "").strip()
+    public_base = (os.getenv("R2_PUBLIC_URL") or "").strip().rstrip("/")
+
+    if not object_key:
+        import uuid
+        object_key = f"hotshort_clips/{uuid.uuid4().hex[:12]}_{os.path.basename(local_path)}"
+
+    try:
+        s3 = boto3.client(
+            service_name="s3",
+            endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name="auto",
+        )
+        s3.upload_file(
+            Filename=local_path,
+            Bucket=bucket,
+            Key=object_key,
+            ExtraArgs={"ContentType": content_type}
+        )
+        if public_base:
+            return f"{public_base}/{object_key}"
+        return f"https://{bucket}.r2.cloudflarestorage.com/{object_key}"
+    except Exception as e:
+        print(f"[WORKER] R2 upload failed for {local_path}: {e}")
+        return None
+
+
 
 def _gpu_alive() -> bool:
     try:
@@ -200,11 +245,21 @@ def handler(event):
     cloud_provider = input_data.get("cloud_provider", {})
     if cloud_provider and isinstance(cloud_provider, dict):
         if cloud_provider.get("cloud_name"):
-            os.environ["CLOUDINARY_CLOUD_NAME"] = cloud_provider.get("cloud_name", "")
+            os.environ["CLOUDINARY_CLOUD_NAME"] = str(cloud_provider.get("cloud_name", ""))
         if cloud_provider.get("api_key"):
-            os.environ["CLOUDINARY_API_KEY"] = cloud_provider.get("api_key", "")
+            os.environ["CLOUDINARY_API_KEY"] = str(cloud_provider.get("api_key", ""))
         if cloud_provider.get("api_secret"):
-            os.environ["CLOUDINARY_API_SECRET"] = cloud_provider.get("api_secret", "")
+            os.environ["CLOUDINARY_API_SECRET"] = str(cloud_provider.get("api_secret", ""))
+        if cloud_provider.get("account_id"):
+            os.environ["R2_ACCOUNT_ID"] = str(cloud_provider.get("account_id", ""))
+        if cloud_provider.get("access_key_id"):
+            os.environ["R2_ACCESS_KEY_ID"] = str(cloud_provider.get("access_key_id", ""))
+        if cloud_provider.get("secret_access_key"):
+            os.environ["R2_SECRET_ACCESS_KEY"] = str(cloud_provider.get("secret_access_key", ""))
+        if cloud_provider.get("bucket_name"):
+            os.environ["R2_BUCKET_NAME"] = str(cloud_provider.get("bucket_name", ""))
+        if cloud_provider.get("public_url"):
+            os.environ["R2_PUBLIC_URL"] = str(cloud_provider.get("public_url", ""))
 
     if not task:
         return {"error": "Invalid task: missing task"}
@@ -344,7 +399,7 @@ def handler(event):
             # ── End video acquisition ────────────────────────────────────────────
 
             if task == "download":
-                video_url = _upload_to_cloudinary(video_path) or _upload_to_s3(video_path)
+                video_url = _upload_to_r2(video_path) or _upload_to_cloudinary(video_path) or _upload_to_s3(video_path)
                 if not video_url:
                     return {
                         "error": "Upload failed (no cloud provider configured), cannot provide a public video_url."
@@ -526,32 +581,41 @@ def handler(event):
 
                     clips_to_upload.append((i, clip, final_clip_path))
 
-                # Step 3: Parallel uploads using ThreadPoolExecutor
-                if cloudinary_ok and clips_to_upload:
+                # Step 3: Parallel uploads using ThreadPoolExecutor (Cloudflare R2 preferred, Cloudinary fallback)
+                r2_ok = _is_r2_configured()
+                cloudinary_ok = _configure_cloudinary()
+
+                if (r2_ok or cloudinary_ok) and clips_to_upload:
                     from concurrent.futures import ThreadPoolExecutor
-                    print(f"[WORKER] Uploading {len(clips_to_upload)} clips to Cloudinary in parallel…")
+                    provider_name = "Cloudflare R2" if r2_ok else "Cloudinary"
+                    print(f"[WORKER] Uploading {len(clips_to_upload)} clips to {provider_name} in parallel…")
                     
                     def _upload_fn(item):
                         idx, clp, filepath = item
                         url = None
                         try:
-                            print(f"[WORKER] Thread starting upload for clip {idx}…")
-                            up = cloudinary.uploader.upload(
-                                filepath,
-                                resource_type="video",
-                                folder="hotshort_clips",
-                            )
-                            url = up.get("secure_url")
+                            print(f"[WORKER] Thread starting upload for clip {idx} to {provider_name}…")
+                            if r2_ok:
+                                import uuid
+                                clip_key = f"hotshort_clips/{uuid.uuid4().hex[:12]}_{idx}_{os.path.basename(filepath)}"
+                                url = _upload_to_r2(filepath, object_key=clip_key)
+                            if not url and cloudinary_ok:
+                                up = cloudinary.uploader.upload(
+                                    filepath,
+                                    resource_type="video",
+                                    folder="hotshort_clips",
+                                )
+                                url = up.get("secure_url")
                             print(f"[WORKER] Thread finished upload for clip {idx}: {url}")
                         except Exception as e:
-                            print(f"[WORKER] Cloudinary upload clip {idx} failed: {e}")
+                            print(f"[WORKER] Upload clip {idx} failed: {e}")
                         return (idx, {**clp, "clip_url": url})
 
                     with ThreadPoolExecutor(max_workers=min(6, len(clips_to_upload))) as executor:
                         upload_results = list(executor.map(_upload_fn, clips_to_upload))
                     processed_clips.extend(upload_results)
                 else:
-                    # Cloudinary not configured or nothing to upload, keep None urls
+                    # No cloud storage configured or nothing to upload, keep None urls
                     for idx, clp, filepath in clips_to_upload:
                         processed_clips.append((idx, {**clp, "clip_url": None}))
 

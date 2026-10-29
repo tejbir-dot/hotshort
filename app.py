@@ -435,29 +435,65 @@ def _download_via_api(youtube_url):
         return None
 
 
+def _is_r2_configured() -> bool:
+    return bool(
+        os.getenv("R2_ACCOUNT_ID") and
+        os.getenv("R2_ACCESS_KEY_ID") and
+        os.getenv("R2_SECRET_ACCESS_KEY") and
+        os.getenv("R2_BUCKET_NAME")
+    )
+
+
+def _upload_to_r2(local_path: str, object_key: str, content_type: str = "video/mp4") -> str:
+    account_id = (os.getenv("R2_ACCOUNT_ID") or "").strip()
+    access_key = (os.getenv("R2_ACCESS_KEY_ID") or "").strip()
+    secret_key = (os.getenv("R2_SECRET_ACCESS_KEY") or "").strip()
+    bucket = (os.getenv("R2_BUCKET_NAME") or "").strip()
+    public_base = (os.getenv("R2_PUBLIC_URL") or "").strip().rstrip("/")
+
+    import boto3
+    s3 = boto3.client(
+        service_name="s3",
+        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name="auto",
+    )
+    s3.upload_file(
+        Filename=local_path,
+        Bucket=bucket,
+        Key=object_key,
+        ExtraArgs={"ContentType": content_type}
+    )
+    if public_base:
+        return f"{public_base}/{object_key}"
+    return f"https://{bucket}.r2.cloudflarestorage.com/{object_key}"
+
+
 def _download_to_cloudinary(youtube_url: str) -> str:
     """
-    Step 1 of the Railway→Cloudinary→RunPod pipeline.
+    Step 1 of the Railway→Cloudflare R2 (or Cloudinary)→RunPod pipeline.
 
     Downloads the YouTube video on Railway via the SavNow proxy API (bypassing Google block)
-    then uploads it to Cloudinary and returns the public CDN URL.
-    RunPod will then fetch from Cloudinary.
+    then uploads it to Cloudflare R2 (or Cloudinary fallback) and returns the public CDN URL.
+    RunPod will then fetch from storage.
     """
     import tempfile
     
-    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
-    api_key_c = os.getenv("CLOUDINARY_API_KEY")
-    api_secret = os.getenv("CLOUDINARY_API_SECRET")
-    if not (cloud_name and api_key_c and api_secret):
-        raise RuntimeError("Cloudinary credentials not configured (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET)")
+    use_r2 = _is_r2_configured()
+    if not use_r2:
+        cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+        api_key_c = os.getenv("CLOUDINARY_API_KEY")
+        api_secret = os.getenv("CLOUDINARY_API_SECRET")
+        if not (cloud_name and api_key_c and api_secret):
+            raise RuntimeError("Storage credentials not configured (neither Cloudflare R2 nor Cloudinary found)")
 
-    try:
-        import cloudinary
-        import cloudinary.uploader
-    except ImportError:
-        raise RuntimeError("cloudinary package not installed on Railway — add to requirements.railway.txt")
-
-    cloudinary.config(cloud_name=cloud_name, api_key=api_key_c, api_secret=api_secret)
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            cloudinary.config(cloud_name=cloud_name, api_key=api_key_c, api_secret=api_secret)
+        except ImportError:
+            raise RuntimeError("cloudinary package not installed on Railway — add to requirements.railway.txt")
 
     # 1. Get the final proxy MP4 URL
     raw_mp4_url = _download_via_api(youtube_url)
@@ -486,9 +522,16 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         except Exception as e:
             raise RuntimeError(f"Failed to download direct MP4 video from API URL: {e}")
             
-        # 2.5 Compress if too large
         original_size_mb = os.path.getsize(video_path) / (1024 * 1024)
         upload_path = video_path
+
+        # 3. Upload to Cloudflare R2 (preferred) or Cloudinary
+        if use_r2:
+            log_step(f"[RAILWAY] Uploading {original_size_mb:.1f}MB to Cloudflare R2…")
+            object_key = f"hotshort_relay/{uuid.uuid4().hex[:12]}_{int(time.time())}.mp4"
+            cdn_url = _upload_to_r2(upload_path, object_key, content_type="video/mp4")
+            log_step(f"[RAILWAY] Cloudflare R2 relay URL: {cdn_url}")
+            return cdn_url
         
         if original_size_mb > 95:
             log_step(f"[RAILWAY] Video size {original_size_mb:.1f}MB > 95MB. Compressing...")
@@ -535,7 +578,6 @@ def _download_to_cloudinary(youtube_url: str) -> str:
         return cdn_url
 
 
-
 def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 600, is_free_user: bool = False) -> dict:
     endpoint = (os.getenv("RUNPOD_ENDPOINT_ID") or "").strip()
     if not endpoint:
@@ -545,24 +587,31 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
     if not api_key:
         raise RuntimeError("RUNPOD_API_KEY not configured")
 
-    # ── Railway → Cloudinary → RunPod pipeline ──────────────────────────────
+    # ── Railway → Storage (R2/Cloudinary) → RunPod pipeline ───────────────────
     # Railway downloads the video (its IPs aren't datacenter-blocked by YouTube)
-    # and uploads to Cloudinary. RunPod then fetches from Cloudinary — never
+    # and uploads to R2/Cloudinary. RunPod then fetches from CDN — never
     # touching YouTube directly, so datacenter IP blocks don't apply.
-    log.info("[RUNPOD] Relay mode: downloading on Railway then sending Cloudinary URL to RunPod")
+    storage_name = "Cloudflare R2" if _is_r2_configured() else "Cloudinary"
+    log.info(f"[RUNPOD] Relay mode: downloading on Railway then sending {storage_name} URL to RunPod")
     video_url = _download_to_cloudinary(youtube_url)
     # ────────────────────────────────────────────────────────────────────────
 
     url = _runpod_task_url(endpoint)
     task_input = {
         "task": "orchestrate",
-        "video_url": video_url,      # ← Cloudinary URL, NOT youtube_url
+        "video_url": video_url,      # ← Storage URL (R2 or Cloudinary), NOT youtube_url
         "youtube_url": youtube_url,  # kept for logging / metadata only
-        # Cloudinary creds so RunPod can upload the cut clips back
+        # Cloud credentials so RunPod can upload the cut clips back
         "cloud_provider": {
-            "cloud_name": os.getenv("CLOUDINARY_CLOUD_NAME"),
-            "api_key":    os.getenv("CLOUDINARY_API_KEY"),
-            "api_secret": os.getenv("CLOUDINARY_API_SECRET"),
+            "provider": "r2" if _is_r2_configured() else "cloudinary",
+            "account_id": os.getenv("R2_ACCOUNT_ID", ""),
+            "access_key_id": os.getenv("R2_ACCESS_KEY_ID", ""),
+            "secret_access_key": os.getenv("R2_SECRET_ACCESS_KEY", ""),
+            "bucket_name": os.getenv("R2_BUCKET_NAME", ""),
+            "public_url": os.getenv("R2_PUBLIC_URL", ""),
+            "cloud_name": os.getenv("CLOUDINARY_CLOUD_NAME", ""),
+            "api_key":    os.getenv("CLOUDINARY_API_KEY", ""),
+            "api_secret": os.getenv("CLOUDINARY_API_SECRET", ""),
         },
         "is_free_user": is_free_user,
     }
