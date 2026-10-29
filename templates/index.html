@@ -1787,13 +1787,17 @@
             }
 
             if (data && data.action === 'show_pricing_modal') {
-              // Server gated this request — show pricing modal unconditionally
+              const isTooLong = data.reason === 'video_too_long';
+              const errorMsg = data.error || (isTooLong ? '⏳ Video exceeds free 20-min limit. Upgrade to Pro for longer videos!' : '🔒 Free tier limit reached — upgrade to continue!');
+              showMessage(form, errorMsg, 6000);
               if (typeof window.showPricingModal === 'function') {
-                window.showPricingModal();
+                window.showPricingModal({
+                  title: isTooLong ? '⏳ Video Exceeds Free 20-Min Limit' : 'You’ve unlocked your free clips 🚀',
+                  subtitle: data.error || (isTooLong ? 'Free plan supports videos up to 20 minutes. Upgrade to Pro for full podcasts up to 90 minutes!' : 'Upgrade to remove the watermark and create without limits.')
+                });
               } else {
                 const modal = document.getElementById('pricingModal');
                 if (modal) modal.classList.remove('hidden');
-                else showMessage(form, '🔒 Upgrade to continue — free limit reached!');
               }
               return;
             }
@@ -1991,8 +1995,18 @@
           return;
         }
         if (data && data.action === 'show_pricing_modal') {
-          if (typeof window.showPricingModal === 'function') window.showPricingModal();
-          else { const m = document.getElementById('pricingModal'); if (m) m.classList.remove('hidden'); else if (msgBox) msgBox.textContent = 'Upgrade to continue.'; }
+          const isTooLong = data.reason === 'video_too_long';
+          const errorMsg = data.error || (isTooLong ? '⏳ Video exceeds free 20-min limit. Upgrade to Pro for longer videos!' : '🔒 Free tier limit reached — upgrade to continue!');
+          if (msgBox) { msgBox.textContent = errorMsg; }
+          if (typeof window.showPricingModal === 'function') {
+            window.showPricingModal({
+              title: isTooLong ? '⏳ Video Exceeds Free 20-Min Limit' : 'You’ve unlocked your free clips 🚀',
+              subtitle: data.error || (isTooLong ? 'Free plan supports videos up to 20 minutes. Upgrade to Pro for full podcasts up to 90 minutes!' : 'Upgrade to remove the watermark and create without limits.')
+            });
+          } else {
+            const m = document.getElementById('pricingModal');
+            if (m) m.classList.remove('hidden');
+          }
           return;
         }
         if (data && data.error) {

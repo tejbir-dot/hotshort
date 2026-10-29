@@ -579,11 +579,23 @@
     }
   });
 
-  // Export function to show pricing modal
-  window.showPricingModal = function() {
+  // Export function to show pricing modal with dynamic reason
+  window.showPricingModal = function(options) {
     if (pricingModal) {
+      const titleEl = pricingModal.querySelector('.pricing-title');
+      const subEl = pricingModal.querySelector('.pricing-subtitle');
+      if (options && options.title && titleEl) {
+        titleEl.textContent = options.title;
+      } else if (titleEl) {
+        titleEl.textContent = 'You’ve unlocked your free clips 🚀';
+      }
+      if (options && options.subtitle && subEl) {
+        subEl.textContent = options.subtitle;
+      } else if (subEl) {
+        subEl.textContent = 'Upgrade to remove the watermark and create without limits.';
+      }
       pricingModal.classList.remove('hidden');
-      console.log('[PRICING] Modal opened');
+      console.log('[PRICING] Modal opened', options || {});
     }
   };
 
