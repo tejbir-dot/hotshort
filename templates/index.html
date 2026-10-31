@@ -1103,26 +1103,89 @@
 
     @media (max-width: 768px) {
       .proof-section {
-        padding: 50px 16px;
+        padding: 36px 0 24px;
+        overflow: hidden;
+      }
+
+      .proof-section .section-title {
+        padding: 0 16px;
+        margin-bottom: 20px;
       }
 
       .proof-section h2 {
-        font-size: 30px;
+        font-size: 26px;
+      }
+
+      .proof-carousel {
+        position: relative;
+        display: block;
+        width: 100%;
+        max-width: 100vw;
+        padding: 0;
+        margin: 0;
+        gap: 0;
       }
 
       .carousel-nav {
+        position: absolute;
+        top: 38%;
+        transform: translateY(-50%);
+        z-index: 20;
         width: 38px;
         height: 38px;
-        font-size: 16px;
+        font-size: 18px;
+        background: rgba(18, 12, 8, 0.92);
+        border: 1px solid rgba(255, 179, 71, 0.45);
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
       }
 
-      .proof-card {
-        flex: 0 0 260px;
+      .carousel-nav.prev {
+        left: 8px;
       }
 
+      .carousel-nav.next {
+        right: 8px;
+      }
+
+      .carousel-track {
+        display: flex;
+        gap: 14px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+        padding: 10px calc((100vw - min(280px, 78vw)) / 2) 24px;
+        margin: 0;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      .carousel-track::-webkit-scrollbar {
+        display: none;
+      }
+
+      .proof-card,
       .proof-card.best {
-        flex: 0 0 260px;
-        transform: none;
+        flex: 0 0 min(280px, 78vw);
+        width: min(280px, 78vw);
+        scroll-snap-align: center;
+        scroll-snap-stop: always;
+        transform: none !important;
+        margin: 0;
+      }
+
+      .proof-preview-hint {
+        display: none;
+      }
+
+      .thumb video {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 9 / 16;
+        border-radius: 14px;
+        object-fit: cover;
       }
     }
 
@@ -1829,28 +1892,34 @@
       const track = document.querySelector('.carousel-track');
       const prevBtn = document.querySelector('.carousel-nav.prev');
       const nextBtn = document.querySelector('.carousel-nav.next');
-      const cardWidth = 320; // 280px card + 40px gap
 
       if (track && prevBtn && nextBtn) {
+        const getStep = () => {
+          const card = track.querySelector('.proof-card');
+          return card ? (card.offsetWidth + 16) : 300;
+        };
+
         prevBtn.addEventListener('click', () => {
           track.scrollBy({
-            left: -cardWidth,
+            left: -getStep(),
             behavior: 'smooth'
           });
         });
 
         nextBtn.addEventListener('click', () => {
           track.scrollBy({
-            left: cardWidth,
+            left: getStep(),
             behavior: 'smooth'
           });
         });
       }
     })();
 
-    // Showcase Video Hover & Sound Controller
+        // Showcase Video Hover, Mobile Auto-Play & Sound Controller
     (() => {
       const cards = document.querySelectorAll('.proof-card');
+      if (!cards.length) return;
+
       cards.forEach(card => {
         const video = card.querySelector('.showcase-video');
         const soundBtn = card.querySelector('.showcase-sound-btn');
@@ -1870,7 +1939,9 @@
         });
 
         card.addEventListener('mouseleave', () => {
-          video.pause();
+          if (window.innerWidth > 768) {
+            video.pause();
+          }
         });
 
         if (soundBtn) {
@@ -1899,6 +1970,24 @@
           });
         }
       });
+
+      // Mobile: Automatically play the centered card when swiping
+      if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+          if (window.innerWidth > 768) return;
+          entries.forEach(entry => {
+            const vid = entry.target.querySelector('.showcase-video');
+            if (!vid) return;
+            if (entry.isIntersecting && entry.intersectionRatio >= 0.55) {
+              vid.play().catch(() => {});
+            } else {
+              vid.pause();
+            }
+          });
+        }, { threshold: [0.2, 0.55, 0.8] });
+
+        cards.forEach(card => observer.observe(card));
+      }
     })();
   
     // ═══════════════ CHOOSE YOUR VIBE MODAL ═══════════════════════════════════
