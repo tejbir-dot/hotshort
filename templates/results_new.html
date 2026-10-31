@@ -1808,6 +1808,135 @@
       }
     }
   </style>
+
+<style>
+.inapp-download-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.inapp-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+}
+.inapp-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: linear-gradient(135deg, rgba(28, 24, 20, 0.98) 0%, rgba(14, 12, 10, 0.99) 100%);
+  border: 1px solid rgba(255, 215, 120, 0.35);
+  border-radius: 20px;
+  padding: 24px 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 30px rgba(245, 158, 11, 0.15);
+  text-align: center;
+  z-index: 1;
+}
+.inapp-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.inapp-icon-wrap {
+  font-size: 2.2rem;
+  margin-bottom: 8px;
+}
+.inapp-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+.inapp-subtitle {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+.inapp-instruction-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.inapp-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: #e5e5e5;
+  line-height: 1.35;
+}
+.step-badge {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+  font-weight: 800;
+  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.inapp-cta-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.btn-inapp-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffdf73 0%, #f59e0b 100%);
+  color: #121008;
+  font-weight: 800;
+  font-size: 0.88rem;
+  text-decoration: none;
+  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+}
+.btn-inapp-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+</style>
+
 </head>
 
 <body>
@@ -1918,6 +2047,42 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
                 <button id="theaterNextBtn" class="btn-secondary">Next Clip →</button>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      
+      <!-- In-App Browser Download Modal (For Instagram / TikTok / Facebook in-app webviews) -->
+      <div id="inAppDownloadModal" class="inapp-download-modal" style="display: none;" role="dialog" aria-modal="true" aria-label="Save Video">
+        <div class="inapp-backdrop" onclick="closeInAppDownloadModal()"></div>
+        <div class="inapp-dialog">
+          <button class="inapp-close" onclick="closeInAppDownloadModal()" aria-label="Close">✕</button>
+          <div class="inapp-icon-wrap">📲</div>
+          <h3 class="inapp-title">Save Video to Photos</h3>
+          <p class="inapp-subtitle">Instagram in-app browser blocks direct file downloads. Here's how to save your short:</p>
+          
+          <div class="inapp-instruction-card">
+            <div class="inapp-step">
+              <span class="step-badge">1</span>
+              <span>Tap <strong>⋯ (three dots)</strong> or <strong>Share</strong> at the top right of Instagram.</span>
+            </div>
+            <div class="inapp-step">
+              <span class="step-badge">2</span>
+              <span>Tap <strong>"Open in Chrome"</strong> or <strong>"Open in Safari"</strong> for instant download.</span>
+            </div>
+            <div class="inapp-step">
+              <span class="step-badge">3</span>
+              <span>Or tap below to open the video, then tap <strong>Share > Save Video</strong>.</span>
+            </div>
+          </div>
+
+          <div class="inapp-cta-group">
+            <a id="inAppDirectStreamBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn-inapp-primary">
+              <span>▶️ Open Video in New Tab</span>
+            </a>
+            <button id="inAppCopyLinkBtn" class="btn-inapp-secondary" onclick="copyInAppVideoLink()">
+              <span>📋 Copy Direct Video Link</span>
+            </button>
           </div>
         </div>
       </div>
@@ -2243,6 +2408,54 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
   <script id="free-status-json" type="application/json">{{ free_status_json | tojson }}</script>
   <script id="worker-envelope-json" type="application/json">{{ (worker_envelope or {}) | tojson }}</script>
   <script>
+
+    let currentInAppVideoUrl = '';
+
+    function showInAppDownloadHelp(videoUrl, cleanTitle, downloadUrl) {
+      currentInAppVideoUrl = videoUrl || downloadUrl || '';
+      const modal = document.getElementById('inAppDownloadModal');
+      const directBtn = document.getElementById('inAppDirectStreamBtn');
+      if (directBtn) {
+        directBtn.href = downloadUrl || videoUrl || '#';
+      }
+      if (modal) {
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    function closeInAppDownloadModal() {
+      const modal = document.getElementById('inAppDownloadModal');
+      if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+      }
+    }
+
+    async function copyInAppVideoLink() {
+      if (!currentInAppVideoUrl) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(currentInAppVideoUrl);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = currentInAppVideoUrl;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        const copyBtn = document.getElementById('inAppCopyLinkBtn');
+        if (copyBtn) copyBtn.innerHTML = '<span>✅ Copied Link to Clipboard!</span>';
+        setTimeout(() => {
+          const copyBtn = document.getElementById('inAppCopyLinkBtn');
+          if (copyBtn) copyBtn.innerHTML = '<span>📋 Copy Direct Video Link</span>';
+        }, 2500);
+      } catch (err) {
+        alert('Video link: ' + currentInAppVideoUrl);
+      }
+    }
+
     // Read server-provided clips JSON from a safe application/json script tag
     (function () {
       try {
@@ -3204,12 +3417,24 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
       if (snippet) snippet.textContent = clip.transcript_snippet || clip.transcript_window || '';
 
       const clipIdNum = parseInt(clip.clip_id, 10);
+      const cleanTitle = (clip.exact_hook || clip.hook_line || clip.title || ('Viral_Clip_' + (index + 1)))
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '_') || ('Viral_Clip_' + (index + 1));
+      const theaterDlUrl = clip.clip_url
+        ? `/download-by-path?clip_url=${encodeURIComponent(clip.clip_url)}&title=${encodeURIComponent(cleanTitle)}`
+        : (Number.isFinite(clipIdNum) ? `/download/${clipIdNum}` : (clip.clip_url || ''));
       if (downloadBtn) {
-        if (Number.isFinite(clipIdNum)) {
-          downloadBtn.href = `/download/${clipIdNum}`;
-        } else {
-          downloadBtn.href = clip.clip_url;
-        }
+        downloadBtn.href = theaterDlUrl || clip.clip_url || '#';
+        downloadBtn.setAttribute('download', `${cleanTitle}.mp4`);
+        downloadBtn.onclick = (e) => {
+          const isInstagramOrInApp = /Instagram|FBAN|FBAV|TikTok|MicroMessenger/i.test(navigator.userAgent);
+          if (isInstagramOrInApp) {
+            e.preventDefault();
+            window.open(theaterDlUrl || clip.clip_url, '_blank') || (window.location.href = theaterDlUrl || clip.clip_url);
+            showInAppDownloadHelp(clip.clip_url, cleanTitle, theaterDlUrl);
+          }
+        };
       }
 
       // Check if there's any other ready clip
@@ -3404,17 +3629,21 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         const claimed = claimedSet();
         const clipIdNum = parseInt(clip.clip_id, 10);
         const rawClipUrl = (typeof clip.clip_url === 'string') ? clip.clip_url : '';
-        const legacyDownloadHref = rawClipUrl ? `/download-by-path?clip_url=${encodeURIComponent(rawClipUrl)}` : '';
+        const cleanTitle = (clip.exact_hook || clip.hook_line || clip.title || ('Viral_Clip_' + (index + 1)))
+          .replace(/[^\w\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '_') || ('Viral_Clip_' + (index + 1));
+        const legacyDownloadHref = rawClipUrl ? `/download-by-path?clip_url=${encodeURIComponent(rawClipUrl)}&title=${encodeURIComponent(cleanTitle)}` : '';
         if (Number.isFinite(clipIdNum)) {
           card.setAttribute('data-clip-id', String(clipIdNum));
         }
         const isClaimed = Number.isFinite(clipIdNum) && claimed.has(clipIdNum);
         const showFreeStamp = (!s.is_paid) && (s.free_clips_left > 0 || isClaimed);
 
-        const downloadHref = Number.isFinite(clipIdNum) ? (`/download/${clipIdNum}`) : legacyDownloadHref;
+        const downloadHref = rawClipUrl ? legacyDownloadHref : (Number.isFinite(clipIdNum) ? `/download/${clipIdNum}` : '');
         const downloadClass = (!downloadHref) ? 'is-disabled' : '';
         const downloadAttrs = (downloadHref)
-          ? `href="${downloadHref}"`
+          ? `href="${downloadHref}" download="${cleanTitle}.mp4" target="_blank" rel="noopener noreferrer"`
           : `aria-disabled="true"`;
         const qualityHtml = (s.is_paid && downloadHref)
           ? `<a class="btn" data-action="quality" href="${downloadHref}?quality=1" target="_blank" rel="noopener noreferrer">✨ Quality</a>`
@@ -3745,82 +3974,86 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         const downloadBtn = card.querySelector('[data-action="download"]');
         if (downloadBtn) {
           downloadBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
             const ariaDisabled = (downloadBtn.getAttribute('aria-disabled') || '') === 'true';
-            if (ariaDisabled) return;
+            if (ariaDisabled) {
+              e.preventDefault();
+              return;
+            }
+
+            if (Number.isFinite(clipIdNum) && shouldGateDownload(clipIdNum)) {
+              e.preventDefault();
+              openPricingModal({ clip_id: clipIdNum, source: 'download_button', trigger: 'client_gate' });
+              return;
+            }
+
+            const clipVideoUrl = clip.clip_url || (video ? video.src : '');
+            if (!clipVideoUrl) {
+              e.preventDefault();
+              if (typeof window.showToast === 'function') window.showToast('Clip video is not ready yet', 'info');
+              return;
+            }
 
             if (downloadBtn.dataset.busy === '1') return;
             downloadBtn.dataset.busy = '1';
+
             try {
-              if (Number.isFinite(clipIdNum)) {
-                analyticsPing('download_click', {
-                  clip_id: clipIdNum,
-                  quality: false,
-                  job_id: currentJobId(),
-                });
-                if (shouldGateDownload(clipIdNum)) {
-                  analyticsPing('download_blocked', {
-                    reason: 'free_limit_client',
-                    clip_id: clipIdNum,
-                    quality: false,
-                    job_id: currentJobId(),
-                  });
-                  openPricingModal({ clip_id: clipIdNum, source: 'download_button', trigger: 'client_gate' });
-                  return;
-                }
+              const formatSelect = document.getElementById('exportFormat_' + clipIdNum);
+              const formatType = formatSelect ? formatSelect.value : 'tiktok';
+              const targetDlUrl = `/download-by-path?clip_url=${encodeURIComponent(clipVideoUrl)}&title=${encodeURIComponent(cleanTitle)}&format=${encodeURIComponent(formatType)}`;
 
-                const formatSelect = document.getElementById('exportFormat_' + clipIdNum);
-                const formatType = formatSelect ? formatSelect.value : 'tiktok';
+              analyticsPing('download_click', {
+                clip_id: Number.isFinite(clipIdNum) ? clipIdNum : null,
+                quality: false,
+                job_id: currentJobId(),
+              });
 
-                try {
-                  const response = await fetch('/export_clip', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clip_id: clipIdNum, format: formatType, is_pro: false })
-                  });
+              // Instant button feedback
+              const originalBtnContent = downloadBtn.innerHTML;
+              downloadBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin 0.8s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                <span>Downloading…</span>
+              `;
 
-                  if (response.ok) {
-                    const data = await response.json();
-                    if (data.url) {
-                      const a = document.createElement('a');
-                      a.href = data.url;
-                      a.download = `clip_${clipIdNum}_${formatType}.mp4`;
-                      document.body.appendChild(a);
-                      a.click();
-                      a.remove();
-                    } else {
-                      alert("Export failed: " + (data.error || "Unknown"));
-                    }
-                  } else {
-                    alert("Export failed.");
-                  }
-                } catch (e) {
-                  console.error(e);
-                }
+              const isInstagramOrInApp = /Instagram|FBAN|FBAV|TikTok|MicroMessenger/i.test(navigator.userAgent);
+
+              if (isInstagramOrInApp) {
+                // In-App browser: trigger download and open mobile guide modal
+                e.preventDefault();
+                window.open(targetDlUrl, '_blank') || (window.location.href = targetDlUrl);
+                showInAppDownloadHelp(clipVideoUrl, cleanTitle, targetDlUrl);
               } else {
-                analyticsPing('download_click', {
-                  clip_id: null,
-                  quality: false,
-                  job_id: currentJobId(),
-                });
-                if (shouldGateDownload(NaN)) {
-                  analyticsPing('download_blocked', {
-                    reason: 'free_limit_client',
-                    clip_id: null,
-                    quality: false,
-                    job_id: currentJobId(),
-                  });
-                  openPricingModal({ source: 'download_button', trigger: 'client_gate' });
-                  return;
+                // Standard desktop / mobile browser
+                e.preventDefault();
+                const tempLink = document.createElement('a');
+                tempLink.href = targetDlUrl;
+                tempLink.download = `${cleanTitle}.mp4`;
+                tempLink.target = '_blank';
+                tempLink.rel = 'noopener noreferrer';
+                document.body.appendChild(tempLink);
+                tempLink.click();
+                setTimeout(() => tempLink.remove(), 250);
+
+                if (typeof window.showToast === 'function') {
+                  window.showToast('⬇️ Download started!', 'success', 2500);
                 }
-                const href = downloadBtn.getAttribute('href') || '';
-                if (href) await requestDownloadFromUrl(href, 'hotshort_clip.mp4', {
-                  clip_id: null,
-                  quality: false,
-                });
               }
+
+              setTimeout(() => {
+                downloadBtn.innerHTML = `
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <span>Downloaded!</span>
+                `;
+                setTimeout(() => {
+                  downloadBtn.innerHTML = originalBtnContent;
+                }, 2200);
+              }, 900);
+
               setTimeout(refreshFreeStatus, 500);
+            } catch (err) {
+              console.error('Download error:', err);
+              window.location.href = clipVideoUrl;
             } finally {
               delete downloadBtn.dataset.busy;
             }

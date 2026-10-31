@@ -45,7 +45,7 @@ gpt_present = "GPT_API" in os.environ and bool(os.environ["GPT_API"].strip())
 print(f"GPT_API present={str(gpt_present).lower()}", flush=True)
 
 import flask
-from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app
+from flask import Flask, render_template, request, redirect, url_for, Response, send_file, session, flash, jsonify, after_this_request, g, current_app, stream_with_context
 from flask_login import LoginManager, current_user, login_required, login_user
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -4776,54 +4776,223 @@ def results(job_id):
 
 
 # ---------------------------------------------------------
-# PHASE 13: PLATFORM EXPORT API (UPDATED WITH EXPORTS HISTORY)
+# BULLETPROOF CLIP DOWNLOAD & STREAMING (MOBILE + IN-APP + DESKTOP)
 # ---------------------------------------------------------
-@app.route("/export_clip", methods=["POST"])
-@login_required
-def export_clip():
+@app.route('/download-by-path', methods=['GET', 'POST'])
+def download_by_path():
+    """
+    Direct proxy download endpoint that streams or redirects video files
+    with Content-Disposition: attachment so that mobile browsers (iOS/Android/Instagram)
+    and desktop cleanly trigger an actual file download with a friendly filename.
+    """
+    clip_url = request.args.get("clip_url") or request.form.get("clip_url")
+    title = request.args.get("title") or request.form.get("title") or "HotShort_Viral_Clip"
+    format_type = request.args.get("format") or request.form.get("format") or "tiktok"
+
+    if not clip_url and request.is_json:
+        data = request.get_json(silent=True) or {}
+        clip_url = data.get("clip_url")
+        title = data.get("title") or title
+        format_type = data.get("format") or format_type
+
+    if not clip_url:
+        return jsonify({"error": "Missing clip_url parameter"}), 400
+
+    clip_url = str(clip_url).strip()
+
+    # Clean filename of unsafe chars
+    clean_title = "".join(c for c in title if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+    if not clean_title:
+        clean_title = "HotShort_Viral_Clip"
+    filename = f"{clean_title}.mp4" if not clean_title.lower().endswith(".mp4") else clean_title
+
+    # 1. Handle remote URLs (e.g., Cloudflare R2, S3, or external worker)
+    if clip_url.startswith("http://") or clip_url.startswith("https://"):
+        try:
+            req = requests.get(clip_url, stream=True, timeout=60, headers={"User-Agent": "HotShort/1.0"})
+            if req.status_code >= 400:
+                log.warning(f"[DOWNLOAD] Upstream {clip_url} returned {req.status_code}, redirecting")
+                return redirect(clip_url, code=302)
+
+            def generate_stream():
+                for chunk in req.iter_content(chunk_size=65536):
+                    if chunk:
+                        yield chunk
+
+            resp_headers = {
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "video/mp4",
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=86400",
+            }
+            if "content-length" in req.headers:
+                resp_headers["Content-Length"] = req.headers["content-length"]
+
+            return Response(
+                stream_with_context(generate_stream()),
+                headers=resp_headers,
+                mimetype="video/mp4"
+            )
+        except Exception as e:
+            log.warning(f"[DOWNLOAD] Streaming remote clip failed: {e}, falling back to redirect")
+            return redirect(clip_url, code=302)
+
+    # 2. Handle local files
+    raw_path = clip_url.lstrip("/")
+    candidates = [
+        os.path.join(BASE_DIR, raw_path),
+        os.path.join(BASE_DIR, "static", raw_path),
+        os.path.join(BASE_DIR, "output", raw_path),
+        os.path.join(BASE_DIR, "static", "clip_files", os.path.basename(raw_path)),
+    ]
+    for p in candidates:
+        if os.path.exists(p) and os.path.isfile(p):
+            return send_file(p, as_attachment=True, download_name=filename, mimetype="video/mp4")
+
+    # If file not found locally, redirect if it looks like a URL
+    return jsonify({"error": "Clip file not found on server", "path": clip_url}), 404
+
+
+@app.route('/download/<clip_id>', methods=['GET'])
+def download_clip_route(clip_id):
+    """
+    Download route by clip_id.
+    Finds the clip URL from database or recent jobs, then redirects to /download-by-path.
+    """
+    title = request.args.get("title") or f"HotShort_Clip_{clip_id}"
+    quality = request.args.get("quality") == "1"
+    
+    clip_url = None
+    # 1. Search Clip model
     try:
-        data = request.json
+        from models.job import Clip
+        c = Clip.query.filter_by(id=clip_id).first()
+        if c and c.file_path:
+            clip_url = "/" + c.file_path.lstrip("/")
+            title = c.title or title
+    except Exception:
+        pass
+
+    # 2. Search recent Job analysis_data
+    if not clip_url:
+        try:
+            from models.job import Job
+            import json as _json
+            jobs = Job.query.order_by(Job.created_at.desc()).limit(20).all()
+            for j in jobs:
+                if not j.analysis_data:
+                    continue
+                data = _json.loads(j.analysis_data)
+                clips = data.get("clips", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                for idx, item in enumerate(clips):
+                    cid = str(item.get("clip_id") or "")
+                    if cid == str(clip_id) or str(idx + 1) == str(clip_id) or f"clip_{idx}" == str(clip_id):
+                        clip_url = item.get("clip_url") or item.get("video_url")
+                        title = item.get("title") or item.get("exact_hook") or title
+                        break
+                if clip_url:
+                    break
+        except Exception as e:
+            log.warning(f"[DOWNLOAD] Job analysis search error: {e}")
+
+    if clip_url:
+        from urllib.parse import quote
+        safe_title = "".join(c for c in title if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+        return redirect(f"/download-by-path?clip_url={quote(clip_url)}&title={quote(safe_title)}")
+
+    return jsonify({"error": f"Clip {clip_id} not found"}), 404
+
+
+@app.route("/export_clip", methods=["POST"])
+def export_clip():
+    """
+    Export & download endpoint.
+    Supports both local ffmpeg rendering (if input_path exists)
+    and instant remote R2 streaming without 404 crashes.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
         format_type = data.get("format", "tiktok")
         clip_id = str(data.get("clip_id", "0"))
         is_pro = data.get("is_pro", False)
+        clip_url = (data.get("clip_url") or "").strip()
         
+        # 1. Check if local input file exists on server
         input_path = os.path.join(BASE_DIR, "output", f"hotshort_clip_{clip_id}.mp4")
-        if not os.path.exists(input_path):
-            return jsonify({"error": "Clip not found"}), 404
+        if os.path.exists(input_path):
+            export_dir = os.path.join(BASE_DIR, "static", "exports")
+            os.makedirs(export_dir, exist_ok=True)
+            filename = f"export_{format_type}_{clip_id}_{int(time.time())}.mp4"
+            output_path = os.path.join(export_dir, filename)
             
-        export_dir = os.path.join(BASE_DIR, "static", "exports")
-        os.makedirs(export_dir, exist_ok=True)
-        
-        filename = f"export_{format_type}_{clip_id}_{int(time.time())}.mp4"
-        output_path = os.path.join(export_dir, filename)
-        
-        from effects.smart_cutting_engine import render_platform_clip
-        final_path = render_platform_clip(input_path, output_path, format_type, is_pro)
-        
-        # Get duration for history
-        import subprocess
-        dur = 0.0
-        try:
-            cmd_dur = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", final_path]
-            dur = float(subprocess.check_output(cmd_dur).strip())
-        except Exception:
-            pass
+            from effects.smart_cutting_engine import render_platform_clip
+            final_path = render_platform_clip(input_path, output_path, format_type, is_pro)
             
-        # Save to history
-        from models.user import UserExport, db
-        new_export = UserExport(
-            user_id=current_user.id,
-            clip_id=clip_id,
-            clip_name=f"Clip {clip_id}",
-            platform_format=format_type,
-            duration=dur,
-            file_path=f"/static/exports/{filename}"
-        )
-        db.session.add(new_export)
-        db.session.commit()
-        
-        return jsonify({"url": f"/static/exports/{filename}", "success": True})
+            dur = 0.0
+            try:
+                import subprocess
+                cmd_dur = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", final_path]
+                dur = float(subprocess.check_output(cmd_dur).strip())
+            except Exception:
+                pass
+                
+            if current_user and getattr(current_user, "is_authenticated", False):
+                try:
+                    from models.user import UserExport, db
+                    new_export = UserExport(
+                        user_id=current_user.id,
+                        clip_id=clip_id,
+                        clip_name=f"Clip {clip_id}",
+                        platform_format=format_type,
+                        duration=dur,
+                        file_path=f"/static/exports/{filename}"
+                    )
+                    db.session.add(new_export)
+                    db.session.commit()
+                except Exception as ex:
+                    log.warning(f"[EXPORT_CLIP] Failed to save history: {ex}")
+            
+            return jsonify({
+                "url": f"/static/exports/{filename}",
+                "download_url": f"/download-by-path?clip_url=/static/exports/{filename}&title=export_{format_type}_{clip_id}",
+                "success": True
+            })
+
+        # 2. Remote / Cloudflare R2 resolution
+        if not clip_url:
+            try:
+                from models.job import Job
+                import json as _json
+                jobs = Job.query.order_by(Job.created_at.desc()).limit(15).all()
+                for j in jobs:
+                    if not j.analysis_data:
+                        continue
+                    jdata = _json.loads(j.analysis_data)
+                    clips = jdata.get("clips", []) if isinstance(jdata, dict) else (jdata if isinstance(jdata, list) else [])
+                    for idx, item in enumerate(clips):
+                        cid = str(item.get("clip_id") or "")
+                        if cid == str(clip_id) or str(idx + 1) == str(clip_id) or f"clip_{idx}" == str(clip_id):
+                            clip_url = item.get("clip_url") or item.get("video_url") or ""
+                            break
+                    if clip_url:
+                        break
+            except Exception as e:
+                log.warning(f"[EXPORT_CLIP] Lookup error: {e}")
+
+        if clip_url:
+            from urllib.parse import quote
+            safe_title = f"HotShort_Clip_{clip_id}_{format_type}"
+            download_endpoint = f"/download-by-path?clip_url={quote(clip_url)}&title={quote(safe_title)}&format={format_type}"
+            return jsonify({
+                "url": download_endpoint,
+                "direct_url": clip_url,
+                "download_url": download_endpoint,
+                "success": True
+            })
+
+        return jsonify({"error": f"Clip {clip_id} not found"}), 404
     except Exception as e:
+        log.error(f"[EXPORT_CLIP] Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/export_all", methods=["POST"])
