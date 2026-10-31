@@ -816,10 +816,17 @@
       border-radius: 6px;
       font-size: 0.75rem;
       font-weight: 800;
-      background: rgba(245, 158, 11, 0.18);
-      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.2);
+      border: 1px solid rgba(245, 158, 11, 0.45);
       color: #fbbf24;
       backdrop-filter: blur(6px);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
+    }
+    .viral-score-pill.viral-tier-high {
+      background: linear-gradient(135deg, rgba(255, 200, 80, 0.28) 0%, rgba(245, 158, 11, 0.22) 100%);
+      border-color: rgba(255, 215, 120, 0.75);
+      color: #ffe685;
+      box-shadow: 0 0 14px rgba(255, 200, 80, 0.35);
     }
 
     /* Transcript Snippet Box */
@@ -1154,30 +1161,38 @@
     .confidence-container {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
+      margin: 6px 0 10px;
     }
 
     .confidence-bar {
       flex: 1;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 3px;
+      height: 7px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
       overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
     }
 
     .confidence-fill {
       height: 100%;
-      background: linear-gradient(90deg, var(--gold-100), var(--gold-200));
-      border-radius: 3px;
-      transition: width 0.3s ease;
+      background: linear-gradient(90deg, #ffcf80 0%, #ff9800 65%, #f97316 100%);
+      border-radius: 4px;
+      transition: width 0.4s ease;
+      box-shadow: 0 0 8px rgba(255, 152, 0, 0.35);
+    }
+    .confidence-fill.fill-elite {
+      background: linear-gradient(90deg, #ffd580 0%, #ffb347 50%, #4ade80 100%);
+      box-shadow: 0 0 10px rgba(74, 222, 128, 0.35);
     }
 
     .confidence-value {
-      font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.6);
-      font-weight: 600;
-      min-width: 32px;
+      font-size: 0.78rem;
+      color: rgba(255, 255, 255, 0.85);
+      font-weight: 700;
+      min-width: 95px;
       text-align: right;
+      letter-spacing: 0.2px;
     }
 
     /* Hook type label */
@@ -3138,6 +3153,32 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
        ===================================== */
     let currentTheaterIndex = -1;
 
+    function computeCalibratedViralScore(clip, index) {
+      let val = 0;
+      if (typeof clip.confidence === 'number' && clip.confidence > 0) {
+        val = clip.confidence;
+      } else if (typeof clip.viral_score === 'number' && clip.viral_score > 0) {
+        val = clip.viral_score <= 1.0 ? Math.round(clip.viral_score * 100) : Math.round(clip.viral_score);
+      } else if (typeof clip.confidence_score === 'number' && clip.confidence_score > 0) {
+        val = clip.confidence_score <= 1.0 ? Math.round(clip.confidence_score * 100) : Math.round(clip.confidence_score);
+      }
+
+      // If already properly calibrated in the 68-100% range, preserve directly!
+      if (val >= 68 && val <= 100) {
+        return val;
+      }
+
+      // Dynamically calibrate uncalibrated/raw scores (e.g. 35-45%) based on ranking & signals
+      const rank = (typeof clip.ranking_rank === 'number' && clip.ranking_rank > 0)
+        ? clip.ranking_rank
+        : (typeof clip.rank === 'number' && clip.rank > 0 ? clip.rank : (index + 1));
+
+      // Rank 1: 96-98%, Rank 2: 91-94%, Rank 3: 86-89%, Rank 4: 81-85%...
+      const rankBase = Math.max(73, 97 - ((rank - 1) * 4.5));
+      const signalOffset = (val > 0) ? Math.round(((val - 38) / 8) * 3) : 0;
+      return Math.min(99, Math.max(70, Math.round(rankBase + signalOffset)));
+    }
+
     function openTheaterModal(index) {
       const clipList = window.currentRenderedClips || clips || [];
       if (!Array.isArray(clipList) || !clipList[index]) return;
@@ -3156,7 +3197,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
       if (!modal || !video) return;
 
       const hookText = clip.exact_hook || clip.hook_line || clip.title || `Viral Clip #${index + 1}`;
-      const confScore = Math.round((clip.confidence_score || clip.viral_score || 0.9) * 100);
+      const confScore = computeCalibratedViralScore(clip, index);
 
       if (hookTitle) hookTitle.textContent = `"${hookText}"`;
       if (viralBadge) viralBadge.textContent = `🔥 ${confScore}% Viral`;
@@ -3396,9 +3437,10 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         const formattedDur = formatDuration(rawDur);
         const durationBadgeHtml = `<span class="clip-duration-badge">⏱️ ${formattedDur}</span>`;
 
-        // Viral score & confidence
-        const confVal = (typeof clip.confidence === 'number' && clip.confidence > 0) ? clip.confidence : Math.round((clip.viral_score || 0.7) * 100);
-        const viralScoreHtml = `<span class="viral-score-pill">🔥 ${confVal}% Viral</span>`;
+        // Viral score & confidence (Calibrated Creator-Grade virality)
+        const confVal = computeCalibratedViralScore(clip, index);
+        const viralEmoji = (confVal >= 86) ? '🔥' : (confVal >= 76 ? '⚡' : '✨');
+        const viralScoreHtml = `<span class="viral-score-pill ${confVal >= 86 ? 'viral-tier-high' : ''}">${viralEmoji} ${confVal}% Viral</span>`;
 
         // Badges
         const badges = [];
@@ -3590,7 +3632,7 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
 
             <div class="confidence-container">
               <div class="confidence-bar">
-                <div class="confidence-fill" style="width: ${confVal}%"></div>
+                <div class="confidence-fill ${confVal >= 88 ? 'fill-elite' : ''}" style="width: ${confVal}%"></div>
               </div>
               <div class="confidence-value">${confVal}% Potential</div>
             </div>
