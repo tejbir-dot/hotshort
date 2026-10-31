@@ -202,18 +202,122 @@
       gap: 14px;
       margin-bottom: 28px;
     }
-    @media (max-width: 600px) {
-      #vibeOverlay { overflow-y: auto; align-items: center; padding: 12px; }
-      .vibe-modal { padding: 22px 16px 18px; border-radius: 20px; max-height: 92vh; overflow-y: auto; }
-      .vibe-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
-      .vibe-card { padding: 14px 12px 10px; border-radius: 14px; }
-      .vibe-card-icon { font-size: 26px; margin-bottom: 6px; }
-      .vibe-card-title { font-size: 13px; margin-bottom: 3px; }
-      .vibe-card-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 11px; line-height: 1.35; }
-      .vibe-tags { display: none; }
-      .vibe-sub { margin-bottom: 16px; font-size: 13px; }
-      .vibe-title { font-size: 20px; }
-      .vibe-go-btn { padding: 12px 24px; font-size: 14px; }
+    /* Mobile Phone Perfection for Vibe/Crop Modal */
+    @media (max-width: 680px) {
+      #vibeOverlay {
+        align-items: flex-start !important;
+        padding: 10px 8px 16px !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior: contain !important;
+      }
+      .vibe-modal {
+        margin: auto 0 !important;
+        max-height: calc(100dvh - 20px) !important;
+        padding: 18px 14px 12px !important;
+        border-radius: 20px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+      }
+      .vibe-header {
+        flex-shrink: 0 !important;
+        margin-bottom: 6px !important;
+      }
+      .vibe-eyebrow {
+        font-size: 10px !important;
+        margin-bottom: 4px !important;
+      }
+      .vibe-title {
+        font-size: 19px !important;
+        margin-bottom: 2px !important;
+      }
+      .vibe-sub {
+        font-size: 11.5px !important;
+        margin-bottom: 8px !important;
+        line-height: 1.35 !important;
+      }
+      .vibe-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+        margin-bottom: 6px !important;
+        flex: 1 1 auto !important;
+        min-height: 120px !important;
+        max-height: 52vh !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior: contain !important;
+        padding: 2px 2px 100px !important; /* Bottom padding for mobile bar */
+        touch-action: pan-y !important;
+      }
+      .vibe-card {
+        padding: 10px 8px 8px !important;
+        border-radius: 13px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        -webkit-tap-highlight-color: transparent !important;
+        touch-action: manipulation !important;
+      }
+      .vibe-card-icon {
+        font-size: 24px !important;
+        margin-bottom: 4px !important;
+      }
+      .vibe-card-title {
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        margin-bottom: 2px !important;
+        line-height: 1.2 !important;
+      }
+      .vibe-card-desc {
+        font-size: 10px !important;
+        line-height: 1.3 !important;
+        display: -webkit-box !important;
+        -webkit-line-clamp: 2 !important;
+        -webkit-box-orient: vertical !important;
+        overflow: hidden !important;
+        color: #999 !important;
+      }
+      .vibe-tags {
+        display: none !important;
+      }
+      .vibe-cta-row {
+        flex-shrink: 0 !important;
+        position: sticky !important;
+        bottom: 0 !important;
+        background: linear-gradient(180deg, rgba(14, 8, 36, 0.7) 0%, rgba(10, 6, 28, 0.98) 40%, #0a061c 100%) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        padding-top: 10px !important;
+        padding-bottom: 2px !important;
+        margin-top: 4px !important;
+        border-top: 1px solid rgba(255, 200, 80, 0.15) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 8px !important;
+        z-index: 25 !important;
+      }
+      .vibe-selected-label {
+        font-size: 11px !important;
+        line-height: 1.2 !important;
+        max-width: 50% !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+      .vibe-skip {
+        font-size: 11px !important;
+        padding: 6px !important;
+      }
+      .vibe-go-btn {
+        padding: 12px 18px !important;
+        font-size: 13.5px !important;
+        font-weight: 800 !important;
+        border-radius: 12px !important;
+        letter-spacing: 0.2px !important;
+        box-shadow: 0 6px 20px rgba(255,179,71,0.5) !important;
+      }
     }
 
     .vibe-card {
@@ -2144,9 +2248,11 @@
   <!-- ═══════════════ CHOOSE YOUR VIBE MODAL ═══════════════ -->
   <div id="vibeOverlay" role="dialog" aria-modal="true" aria-label="Choose your clip format">
     <div class="vibe-modal">
-      <div class="vibe-eyebrow"><div class="vibe-eyebrow-dot"></div>Step 2 of 2 &nbsp;·&nbsp; Format Selection</div>
-      <div class="vibe-title">Choose Your <span class="gold">Vibe</span> ✨</div>
-      <p class="vibe-sub">Pick how you want your clips to look. You can change this later per clip too.</p>
+      <div class="vibe-header">
+        <div class="vibe-eyebrow"><div class="vibe-eyebrow-dot"></div>Step 2 of 2 &nbsp;·&nbsp; Format Selection</div>
+        <div class="vibe-title">Choose Your <span class="gold">Vibe</span> ✨</div>
+        <p class="vibe-sub">Pick how you want your clips to look. You can change this later per clip too.</p>
+      </div>
 
       <div class="vibe-grid" id="vibeGrid">
 
