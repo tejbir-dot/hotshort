@@ -2970,7 +2970,29 @@ def _process_job(job: dict, cloudinary_ok: bool):
                     except Exception:
                         cached_clips = None
 
-                if cached_clips:
+                approved_clips = job.get("approved_clips")
+                if approved_clips and isinstance(approved_clips, list) and len(approved_clips) > 0:
+                    print(f"\n{'='*60}\n[LOCAL_WORKER] [AGENTIC] Received {len(approved_clips)} approved clips from Agentic Planner!\n[LOCAL_WORKER] Bypassing heuristic orchestrator — rendering approved moments directly.\n{'='*60}\n", flush=True)
+                    clips = []
+                    for idx, ac in enumerate(approved_clips):
+                        s = float(ac.get("start_s") if ac.get("start_s") is not None else ac.get("start", 0.0))
+                        e = float(ac.get("end_s") if ac.get("end_s") is not None else ac.get("end", 0.0))
+                        hook = ac.get("hook_text") or ac.get("title") or f"Viral Clip {idx+1}"
+                        vscore = float(ac.get("virality_score", 90))
+                        clips.append({
+                            "start": s,
+                            "end": e,
+                            "title": hook,
+                            "score": vscore / 100.0,
+                            "viral_score": vscore / 100.0,
+                            "score_enriched": vscore / 100.0,
+                            "ranking_score": vscore,
+                            "ranking_rank": idx + 1,
+                            "arc_type": ac.get("arc_type", "viral_moment"),
+                            "why": [ac.get("reasoning", "Agentic curated high-virality moment with complete payoff")],
+                            "text": hook,
+                        })
+                elif cached_clips:
                     clips = cached_clips
                 else:
                     print(f"[LOCAL_WORKER] Running orchestrator...", flush=True)

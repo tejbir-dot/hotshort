@@ -2290,6 +2290,8 @@ from routes.admin import admin_bp
 app.register_blueprint(admin_bp, url_prefix="/admin")
 from routes.partners import partners_bp
 app.register_blueprint(partners_bp, url_prefix="/partners")
+from routes.agentic import agentic_bp
+app.register_blueprint(agentic_bp)
 
 # Vanity short URL: /vip/<code> -> click tracker
 @app.route("/vip/<code>")
@@ -2591,18 +2593,19 @@ def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = N
             db.session.commit()
             return
 
-        # ── Local Worker Mode ─────────────────────────────────────────────────
-        # When USE_LOCAL_WORKER=1 (or WORKER_SECRET is set), leave the job as "pending"
-        # so local_worker.py can poll /api/jobs/next and process it with the local RTX GPU.
-        # The background thread exits immediately — no blocking on Railway.
-        if os.getenv("USE_LOCAL_WORKER", "0").strip() == "1":
+        # ── Local Worker First → RunPod Failover ─────────────────────────────
+        # 1. First priority: Check if local worker is actively polling (localhost / server)
+        is_local_online = (_last_worker_poll_time > 0 and (time.time() - _last_worker_poll_time) < 45.0)
+
+        if is_local_online:
             job.status = "pending"
             db.session.commit()
-            print(f"\n{'='*60}\n[PIPELINE] job={job_id} HANDED OFF to local_worker.py!\n[PIPELINE] local_worker.py will process this job with tuned GPU settings.\n{'='*60}\n", flush=True)
-            app.logger.info(
-                "[PIPELINE] job=%s handed off to local worker", job_id
-            )
+            print(f"\n{'='*60}\n[PIPELINE] job={job_id} ASSIGNED TO LOCAL WORKER (Localhost Active)!\n[PIPELINE] local_worker.py will process this job with local GPU.\n{'='*60}\n", flush=True)
+            app.logger.info("[PIPELINE] job=%s handed off to active local worker", job_id)
             return  # local_worker.py takes it from here
+        else:
+            print(f"\n{'='*60}\n[PIPELINE] Local worker is OFFLINE. Auto-failing over to RunPod GPU!\n{'='*60}\n", flush=True)
+            app.logger.info("[PIPELINE] Local worker offline. Failing over to RunPod for job=%s", job_id)
         # ─────────────────────────────────────────────────────────────────────
 
         job.status = "processing"
@@ -3230,13 +3233,18 @@ _last_worker_poll_time = 0.0
 def _record_worker_heartbeat():
     global _last_worker_poll_time
     _last_worker_poll_time = time.time()
+    try:
+        app.config["_LAST_WORKER_POLL_TIME"] = _last_worker_poll_time
+    except Exception:
+        pass
 
 def is_worker_online() -> bool:
     if os.getenv("HS_LOCAL_MODE", "0") == "1":
         return True
     if os.getenv("RUNPOD_ENDPOINT_ID") and os.getenv("USE_LOCAL_WORKER", "0").strip() != "1":
         return True
-    if _last_worker_poll_time > 0 and (time.time() - _last_worker_poll_time) < 45.0:
+    last_poll = app.config.get("_LAST_WORKER_POLL_TIME", _last_worker_poll_time)
+    if last_poll > 0 and (time.time() - last_poll) < 45.0:
         return True
     try:
         return worker_alive()
@@ -3307,20 +3315,23 @@ def api_jobs_next():
         pass
 
     format_mode = "tjr"
+    approved_clips = None
     try:
         if job.analysis_data:
             ad = json.loads(job.analysis_data)
             format_mode = ad.get("format_mode") or "tjr"
+            approved_clips = ad.get("approved_clips")
     except Exception:
         pass
 
-    log.info("[WORKER_API] Dispatched job=%s (format_mode=%s) to local worker", job.id, format_mode)
+    log.info("[WORKER_API] Dispatched job=%s (format_mode=%s, approved_clips=%s) to local worker", job.id, format_mode, len(approved_clips) if approved_clips else 0)
     return jsonify({
         "job_id": job.id,
         "youtube_url": youtube_url,
         "is_free_user": is_free,
         "creator_intent": job.creator_intent,
         "format_mode": format_mode,
+        "approved_clips": approved_clips,
     })
 
 
@@ -5179,4 +5190,4 @@ if __name__ == "__main__":
     # Replace before_first_request with direct execution in app context
     with app.app_context():
         initialize_database()
-    app.run(port=5000, debug=True)
+    app.run(port=5000, debug=True, use_reloader=False)

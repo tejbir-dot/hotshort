@@ -24,8 +24,7 @@ def is_gemini_enabled() -> bool:
 def _get_gemini_fallback_chain() -> List[str]:
     return [
         "gemini-3.5-flash-lite",  # Primary: Ultra-fast (~1.5s), reliable, no 504 timeouts
-        "gemini-3.5-flash",       # Secondary fallback
-        "gemini-3.8-flash",       # Tertiary fallback
+        "gemini-3.5-flash",       # Secondary fallback: High stability
     ]
 
 def post_gemini_completions(prompt: str, response_format_schema: Dict = None, api_key: str = None) -> str:

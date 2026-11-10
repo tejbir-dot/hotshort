@@ -634,6 +634,10 @@
       toast("Please paste a YouTube link.");
       return;
     }
+    if (window._isAgenticMode && typeof window.runAgenticPlan === "function") {
+      window.runAgenticPlan(ytUrl);
+      return;
+    }
     // Open Vibe Modal first — actual analyze fires from submitWithVibe()
     openDashVibeModal(ytUrl);
   }
