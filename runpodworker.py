@@ -228,9 +228,10 @@ def _upload_to_s3(local_path: str) -> str | None:
 
 def handler(event):
     print("[WORKER] REQUEST RECEIVED")
-    print(event)
     input_data = event.get("input", {})
     task = input_data.get("task")
+    safe_keys = sorted(k for k in input_data.keys() if k not in {"cloud_provider", "youtube_url", "video_url", "media_url", "audio_url", "url"})
+    print(f"[WORKER] task={task or 'unknown'} input_keys={safe_keys}", flush=True)
     youtube_url = input_data.get("youtube_url") or input_data.get("url")
     media_url = (
         input_data.get("media_url")
@@ -348,7 +349,7 @@ def handler(event):
             # (no YouTube IP blocks), so yt-dlp never runs on the datacenter IP.
             if media_url:
                 # Path A: Cloudinary / pre-uploaded URL → simple HTTP download
-                print(f"[WORKER] Downloading from relay URL: {media_url}")
+                print("[WORKER] Downloading video from relay storage")
                 try:
                     import requests as _requests
                 except Exception as e:
@@ -369,7 +370,7 @@ def handler(event):
 
             else:
                 # Path B: Direct yt-dlp (fallback for local dev / non-RunPod environments)
-                print(f"[WORKER] Falling back to yt-dlp download: {youtube_url}")
+                print("[WORKER] Falling back to direct yt-dlp download")
                 ydl_opts = {
                     "format": "best[ext=mp4]/best",
                     "merge_output_format": "mp4",

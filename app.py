@@ -523,7 +523,9 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
         try:
             raw_mp4_url = _download_via_api(youtube_url)
             if raw_mp4_url:
-                log_step(f"[RAILWAY] Downloading direct MP4 from Proxy URL: {raw_mp4_url[:120]}...")
+                from urllib.parse import urlparse
+                proxy_host = urlparse(raw_mp4_url).netloc
+                log_step(f"[RAILWAY] Downloading direct MP4 from proxy host: {proxy_host}")
                 browser_headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                     "Referer": "https://www.youtube.com/"
@@ -588,7 +590,7 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
             log_step(f"[RAILWAY] Uploading {original_size_mb:.1f}MB to Cloudflare R2…")
             object_key = f"hotshort_relay/{uuid.uuid4().hex[:12]}_{int(time.time())}.mp4"
             cdn_url = _upload_to_r2(upload_path, object_key, content_type="video/mp4")
-            log_step(f"[RAILWAY] Cloudflare R2 relay URL: {cdn_url}")
+            log_step("[RAILWAY] Cloudflare R2 video relay ready")
             return cdn_url
         
         if original_size_mb > 95:
@@ -632,7 +634,7 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
         if not cdn_url:
             raise RuntimeError("Cloudinary upload succeeded but returned no URL")
             
-        log_step(f"[RAILWAY] Cloudinary relay URL: {cdn_url}")
+        log_step("[RAILWAY] Cloudinary video relay ready")
         return cdn_url
 
 
@@ -686,8 +688,7 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
     }
     _validate_runpod_capacity(endpoint, headers, task_label="orchestrate")
 
-    print("[RAILWAY] SENDING RUNPOD REQUEST")
-    print(payload)
+    print("[RAILWAY] SENDING RUNPOD ORCHESTRATION REQUEST")
     log.info("[RUNPOD] Sending orchestrate request with Cloudinary video_url")
     resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
     if resp.status_code != 200:
@@ -919,7 +920,7 @@ def _wait_for_runpod_completion(
 
 
 def send_transcription_request(youtube_url: str) -> List[Dict]:
-    """Send YouTube URL to RunPod GPU for download, audio extraction, and transcription."""
+    """Relay the video through Railway storage, then transcribe it on RunPod."""
     import requests
 
     endpoint = os.getenv("RUNPOD_ENDPOINT_ID")
@@ -928,18 +929,16 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
 
     url = _runpod_task_url(endpoint)
 
-    # Prepare request with YouTube URL + cloud provider config for worker upload
+    # RunPod datacenter IPs often receive YouTube 403s. Railway already has a
+    # resilient proxy/yt-dlp downloader, so relay a public storage URL instead.
+    video_url = _download_to_cloudinary(youtube_url, is_free_user=False)
+
     data = {
         'task': 'transcribe_youtube',
         'youtube_url': youtube_url,
+        'video_url': video_url,
         'model': os.environ.get("HS_TRANSCRIPT_MODEL", "base"),
         'include_visual': True,
-        'cloud_provider': {
-            'provider': 'cloudinary',
-            'cloud_name': os.environ.get('CLOUDINARY_CLOUD_NAME'),
-            'api_key': os.environ.get('CLOUDINARY_API_KEY'),
-            'api_secret': os.environ.get('CLOUDINARY_API_SECRET'),
-        }
     }
     payload = {"input": data}
 
@@ -956,7 +955,7 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
         raise RuntimeError(f"RunPod transcription failed: {response.status_code} - {response.text}")
 
     result = response.json()
-    log.info("[RUNPOD] transcription response: %s", result)
+    log.info("[RUNPOD] transcription accepted: status=%s id=%s", result.get("status"), result.get("id"))
     result = _wait_for_runpod_completion(
         endpoint=endpoint,
         headers=headers,
