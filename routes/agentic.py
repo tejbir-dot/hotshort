@@ -101,6 +101,27 @@ def _get_segments_from_url(youtube_url: str) -> List[Dict]:
         except Exception as e:
             log.warning(f"[AGENTIC] Error reading cached transcript: {e}")
 
+    # Prefer the configured GPU worker for production requests. Running the
+    # small Whisper model on the Railway web CPU can outlive Gunicorn's request
+    # timeout and make Railway's proxy return 502 before this route responds.
+    if (
+        os.getenv("RUNPOD_ENDPOINT_ID")
+        and os.getenv("RUNPOD_API_KEY")
+        and os.getenv("USE_LOCAL_WORKER", "0").strip() != "1"
+    ):
+        from app import send_transcription_request
+
+        log.info(f"[AGENTIC] Sending transcription for {vid_id} to configured RunPod worker")
+        segments = send_transcription_request(youtube_url)
+        if segments:
+            try:
+                with open(cache_json, "w", encoding="utf-8") as f:
+                    json.dump(segments, f)
+            except Exception as e:
+                log.warning(f"[AGENTIC] Failed to save RunPod transcript cache: {e}")
+        log.info(f"[AGENTIC] RunPod transcription returned {len(segments)} segments for {vid_id}")
+        return segments
+
     # 2. Download audio to static/cache (persistent)
     audio_dir = os.path.join("static", "cache")
     os.makedirs(audio_dir, exist_ok=True)
