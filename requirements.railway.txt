@@ -35,6 +35,8 @@ python-dotenv==1.0.1
 stripe==9.3.0
 yt-dlp>=2025.1.26
 youtube-transcript-api==0.6.2
+# /api/agentic/plan transcribes on the Railway web service, so it needs a local backend.
+faster-whisper
 psutil==6.1.0
 python-dateutil==2.9.0.post0
 six==1.17.0
