@@ -5131,49 +5131,61 @@ def init_db():
             # Use the safe retry-logic wrapper
             _db_create_all_safe()
             
-            # Safe schema migrations for new columns
-            from sqlalchemy import text
-            try:
-                db.session.execute(text("ALTER TABLE user ADD COLUMN google_sub VARCHAR(255)"))
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-                
-            try:
-                db.session.execute(text("ALTER TABLE user ADD COLUMN free_generations_used INTEGER DEFAULT 0 NOT NULL"))
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
+            # Idempotently add legacy columns when an existing database predates
+            # the current models. Quote identifiers ("user" is reserved in
+            # PostgreSQL) and use the PostgreSQL concurrency-safe IF NOT EXISTS.
+            from sqlalchemy import inspect, text
 
-            try:
-                db.session.execute(text("ALTER TABLE job ADD COLUMN usage_counted BOOLEAN DEFAULT 0 NOT NULL"))
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
+            legacy_columns = {
+                "user": {
+                    "google_sub": "VARCHAR(255)",
+                    "free_generations_used": "INTEGER DEFAULT 0 NOT NULL",
+                },
+                "job": {
+                    "usage_counted": "BOOLEAN DEFAULT FALSE NOT NULL",
+                    "creator_intent": "TEXT",
+                },
+                "partner": {
+                    "channel_url": "VARCHAR(300)",
+                    "platform": "VARCHAR(50)",
+                    "payout_method": "VARCHAR(20)",
+                    "payout_info": "VARCHAR(300)",
+                    "last_click_at": "TIMESTAMP",
+                    "last_signup_at": "TIMESTAMP",
+                    "last_click_email_at": "TIMESTAMP",
+                    "last_loss_aversion_at": "TIMESTAMP",
+                    "last_tier_nudge_at": "TIMESTAMP",
+                },
+            }
+            inspector = inspect(db.engine)
+            existing_tables = set(inspector.get_table_names())
+            dialect = db.engine.dialect
+            quote = dialect.identifier_preparer.quote
+            if_not_exists = " IF NOT EXISTS" if dialect.name == "postgresql" else ""
 
-            try:
-                db.session.execute(text("ALTER TABLE job ADD COLUMN creator_intent TEXT"))
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-
-            # Partner table migrations
-            for col_sql in [
-                "ALTER TABLE partner ADD COLUMN channel_url VARCHAR(300)",
-                "ALTER TABLE partner ADD COLUMN platform VARCHAR(50)",
-                "ALTER TABLE partner ADD COLUMN payout_method VARCHAR(20)",
-                "ALTER TABLE partner ADD COLUMN payout_info VARCHAR(300)",
-                "ALTER TABLE partner ADD COLUMN last_click_at DATETIME",
-                "ALTER TABLE partner ADD COLUMN last_signup_at DATETIME",
-                "ALTER TABLE partner ADD COLUMN last_click_email_at DATETIME",
-                "ALTER TABLE partner ADD COLUMN last_loss_aversion_at DATETIME",
-                "ALTER TABLE partner ADD COLUMN last_tier_nudge_at DATETIME",
-            ]:
-                try:
-                    db.session.execute(text(col_sql))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
+            for table, columns in legacy_columns.items():
+                if table not in existing_tables:
+                    continue
+                existing_columns = {column["name"] for column in inspect(db.engine).get_columns(table)}
+                for column_name, column_type in columns.items():
+                    if column_name in existing_columns:
+                        continue
+                    statement = (
+                        f"ALTER TABLE {quote(table)} ADD COLUMN{if_not_exists} "
+                        f"{quote(column_name)} {column_type}"
+                    )
+                    try:
+                        db.session.execute(text(statement))
+                        db.session.commit()
+                        existing_columns.add(column_name)
+                    except Exception as migration_error:
+                        db.session.rollback()
+                        app.logger.warning(
+                            "[DB-INIT] Could not add legacy column %s.%s: %s",
+                            table,
+                            column_name,
+                            migration_error,
+                        )
 
     except (OperationalError, Exception) as e:
         # Ignore "table already exists" or "locked" errors during multi-worker boot

@@ -66,6 +66,20 @@ def _get_plan(key: str) -> Dict | None:
         return _plan_store.get(key)
 
 
+def _has_agentic_llm_key() -> bool:
+    return any(
+        (os.getenv(name) or "").strip()
+        for name in (
+            "GEMINI_API_KEY",
+            "GEMINI_API_KEY_2",
+            "GEMINI_API_KEY_3",
+            "GOOGLE_API_KEY",
+            "OPENROUTER_API_KEY",
+            "GPT_API",
+        )
+    )
+
+
 # ─── Transcript Helper ────────────────────────────────────────────────────────
 
 def _extract_video_id(url: str) -> str:
@@ -231,6 +245,12 @@ def agentic_plan():
 
     if not youtube_url and not pre_segments:
         return jsonify({"ok": False, "error": "Missing youtube_url or segments"}), 400
+
+    if not _has_agentic_llm_key():
+        return jsonify({
+            "ok": False,
+            "error": "Agentic planner needs GEMINI_API_KEY or OPENROUTER_API_KEY in the Railway web service Variables.",
+        }), 503
 
     t_start = time.time()
 
