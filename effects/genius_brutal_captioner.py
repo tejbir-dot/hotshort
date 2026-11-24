@@ -154,7 +154,19 @@ TRANSCRIPT:
 
     # ─────────────────────────────────────────────────────────────────────────
     def _try_gemini(self, prompt: str) -> str | None:
-        """Try all Gemini models in order. Returns text or None."""
+        """Try all Gemini models in order with multi-key rotation and cooldowns. Returns text or None."""
+        try:
+            from viral_finder.gemini_cortex import post_gemini_completions, is_gemini_enabled
+            if is_gemini_enabled():
+                t_call0 = time.perf_counter()
+                res = post_gemini_completions(prompt)
+                dur = time.perf_counter() - t_call0
+                if res and res.strip() and res.strip() != "{}":
+                    print(f"[CAPTIONER] Gemini multi-key pool success in {dur:.2f}s.", flush=True)
+                    return res.replace("**", "").replace("*", "").strip()
+        except Exception as e:
+            print(f"[CAPTIONER] Gemini pool call failed: {e}", flush=True)
+
         if not self.gemini_client:
             return None
         for model_name in _GEMINI_MODELS:

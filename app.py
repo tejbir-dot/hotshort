@@ -40,6 +40,9 @@ load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 _local_env = os.path.join(BASE_DIR, ".env.local")
 if os.path.exists(_local_env):
     load_dotenv(dotenv_path=_local_env, override=True)
+_worker_env = os.path.join(BASE_DIR, ".env.worker")
+if os.path.exists(_worker_env):
+    load_dotenv(dotenv_path=_worker_env, override=False)
 
 gpt_present = "GPT_API" in os.environ and bool(os.environ["GPT_API"].strip())
 print(f"GPT_API present={str(gpt_present).lower()}", flush=True)
@@ -2593,17 +2596,31 @@ def process_video(job_id: str, analyze_lock=None, file_lock_path: str | None = N
             return
 
         # ── Local Worker First → RunPod Failover ─────────────────────────────
-        # 1. First priority: Check if local worker is actively polling (localhost / server)
-        is_local_online = (_last_worker_poll_time > 0 and (time.time() - _last_worker_poll_time) < 45.0)
+        # 1. First priority: Check if local worker is actively polling (cross-process heartbeat)
+        last_poll = _get_shared_worker_poll_time()
+        is_local_online = (last_poll > 0 and (time.time() - last_poll) < 45.0)
 
         if is_local_online:
             job.status = "pending"
             db.session.commit()
-            print(f"\n{'='*60}\n[PIPELINE] job={job_id} ASSIGNED TO LOCAL WORKER (Localhost Active)!\n[PIPELINE] local_worker.py will process this job with local GPU.\n{'='*60}\n", flush=True)
+            print(f"\n{'='*60}\n[PIPELINE] job={job_id} ASSIGNED TO LOCAL WORKER (Heartbeat: {time.time()-last_poll:.1f}s ago)!\n[PIPELINE] local_worker.py will process this job with local GPU.\n{'='*60}\n", flush=True)
             app.logger.info("[PIPELINE] job=%s handed off to active local worker", job_id)
             return  # local_worker.py takes it from here
         else:
-            print(f"\n{'='*60}\n[PIPELINE] Local worker is OFFLINE. Auto-failing over to RunPod GPU!\n{'='*60}\n", flush=True)
+            # 2. Grace window: If local worker was polling recently or just connecting, give it 12s to claim from pending queue
+            app.logger.info("[PIPELINE] Local worker not immediately detected (last_poll=%.1fs ago). Waiting up to 12s for local pickup before RunPod failover...", (time.time() - last_poll) if last_poll > 0 else 999.0)
+            for _ in range(12):
+                time.sleep(1.0)
+                try:
+                    db.session.expire(job)
+                    job_check = Job.query.filter_by(id=job_id).first()
+                    if job_check and job_check.status in ("processing", "completed"):
+                        app.logger.info("[PIPELINE] Local worker claimed job=%s during grace window! Aborting RunPod failover.", job_id)
+                        return
+                except Exception:
+                    pass
+
+            print(f"\n{'='*60}\n[PIPELINE] Local worker is OFFLINE after grace window. Auto-failing over to RunPod GPU!\n{'='*60}\n", flush=True)
             app.logger.info("[PIPELINE] Local worker offline. Failing over to RunPod for job=%s", job_id)
         # ─────────────────────────────────────────────────────────────────────
 
@@ -2689,6 +2706,12 @@ def api_warmup():
     Response is always fast (< 1s) — we never wait for the GPU boot here.
     """
     try:
+        # 0. If local worker is active, DO NOT wake up RunPod GPU! Save cost ($).
+        last_poll = _get_shared_worker_poll_time()
+        if last_poll > 0 and (time.time() - last_poll) < 45.0:
+            log.info("[WARMUP] Local worker is active (last_poll=%.1fs ago) — skipping RunPod warmup to save GPU credits.", time.time() - last_poll)
+            return jsonify({"status": "skipped", "reason": "local_worker_active"}), 200
+
         endpoint = (os.getenv("RUNPOD_ENDPOINT_ID") or "").strip()
         api_key = (os.getenv("RUNPOD_API_KEY") or "").strip()
         if not endpoint or not api_key:
@@ -3184,7 +3207,8 @@ def v2_result(job_id: str):
 # @login_required
 def api_worker_status():
     online = is_worker_online()
-    last_seen = round(time.time() - _last_worker_poll_time, 1) if _last_worker_poll_time > 0 else None
+    last_poll = _get_shared_worker_poll_time()
+    last_seen = round(time.time() - last_poll, 1) if last_poll > 0 else None
     return jsonify({
         "ok": True,
         "alive": online,
@@ -3227,23 +3251,49 @@ def api_worker_wake():
 # 🏭 LOCAL WORKER API  (authenticated via X-Worker-Secret header)
 # ============================================================================
 
+_HEARTBEAT_FILE = os.path.join(tempfile.gettempdir(), "hotshort_worker_heartbeat.txt")
 _last_worker_poll_time = 0.0
 
 def _record_worker_heartbeat():
     global _last_worker_poll_time
-    _last_worker_poll_time = time.time()
+    now = time.time()
+    _last_worker_poll_time = now
     try:
-        app.config["_LAST_WORKER_POLL_TIME"] = _last_worker_poll_time
+        app.config["_LAST_WORKER_POLL_TIME"] = now
     except Exception:
         pass
+    try:
+        with open(_HEARTBEAT_FILE, "w") as f:
+            f.write(str(now))
+    except Exception:
+        pass
+
+def _get_shared_worker_poll_time() -> float:
+    global _last_worker_poll_time
+    best_time = _last_worker_poll_time
+    try:
+        app_time = app.config.get("_LAST_WORKER_POLL_TIME", 0.0)
+        if app_time > best_time:
+            best_time = app_time
+    except Exception:
+        pass
+    try:
+        if os.path.exists(_HEARTBEAT_FILE):
+            with open(_HEARTBEAT_FILE, "r") as f:
+                val = float(f.read().strip())
+                if val > best_time:
+                    best_time = val
+    except Exception:
+        pass
+    return best_time
 
 def is_worker_online() -> bool:
     if os.getenv("HS_LOCAL_MODE", "0") == "1":
         return True
-    if os.getenv("RUNPOD_ENDPOINT_ID") and os.getenv("USE_LOCAL_WORKER", "0").strip() != "1":
-        return True
-    last_poll = app.config.get("_LAST_WORKER_POLL_TIME", _last_worker_poll_time)
+    last_poll = _get_shared_worker_poll_time()
     if last_poll > 0 and (time.time() - last_poll) < 45.0:
+        return True
+    if os.getenv("RUNPOD_ENDPOINT_ID") and os.getenv("USE_LOCAL_WORKER", "0").strip() != "1":
         return True
     try:
         return worker_alive()
