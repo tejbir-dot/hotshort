@@ -1375,10 +1375,10 @@
     }
 
     #agenticChatStream {
-      height: min(34svh, 300px) !important;
-      min-height: 220px;
-      padding: 12px !important;
-      gap: 10px !important;
+      height: min(52svh, 440px) !important;
+      min-height: 280px;
+      padding: 10px 12px !important;
+      gap: 8px !important;
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
     }
@@ -1478,7 +1478,7 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    #agenticChatStream { height: min(32svh, 270px) !important; }
+    #agenticChatStream { height: min(45svh, 380px) !important; }
   }
 </style>
 
@@ -1957,11 +1957,11 @@ function renderCandidatesInChat(data) {
   _selectedIndices = new Set();
 
   let html = `
-    <div style="margin-bottom:12px;">
-      🔥 <strong>Found ${candidates.length} high-retention viral bangers</strong> in this ${durMin}m video (${stats.wall_time_s || 19}s)!<br>
-      <span style="font-size:12px; color:#aaa;">I pre-selected the top 2 clips. Click any card to select/deselect, or chat with me to find specific scenes:</span>
+    <div style="margin-bottom:8px; font-size:12.5px; color:#cbd5e1; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+      <span>🔥 <strong>${candidates.length} viral hooks identified</strong></span>
+      <span style="font-size:10.5px; color:#94a3b8; background:rgba(255,255,255,0.05); padding:2px 7px; border-radius:6px; border:1px solid rgba(255,255,255,0.08);">${durMin}m video • ${stats.wall_time_s || 19}s</span>
     </div>
-    <div id="agCardStreamList" style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+    <div id="agCardStreamList" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
   `;
 
   candidates.forEach((c, idx) => {
@@ -1973,32 +1973,39 @@ function renderCandidatesInChat(data) {
 
     html += `
       <div id="chatCard_${idx}" onclick="toggleChatCard(${idx})" style="
-        padding:14px 16px; border-radius:14px; cursor:pointer;
-        background:${isDefault ? 'rgba(255,200,80,0.08)' : 'rgba(255,255,255,0.03)'};
-        border:1px solid ${isDefault ? 'rgba(255,200,80,0.45)' : 'rgba(255,255,255,0.08)'};
-        transition:all 0.2s; display:flex; gap:12px; align-items:flex-start;
+        padding:9px 12px; border-radius:12px; cursor:pointer;
+        background:${isDefault ? 'rgba(255,200,80,0.07)' : 'rgba(255,255,255,0.025)'};
+        border:1px solid ${isDefault ? 'rgba(255,200,80,0.4)' : 'rgba(255,255,255,0.07)'};
+        transition:all 0.18s ease; display:flex; gap:10px; align-items:flex-start;
       " data-selected="${isDefault ? 'true' : 'false'}">
         <div id="chatCheck_${idx}" style="
-          width:22px; height:22px; border-radius:6px; flex-shrink:0; margin-top:2px;
-          border:2px solid ${isDefault ? '#FFD580' : 'rgba(255,255,255,0.22)'};
+          width:18px; height:18px; border-radius:5px; flex-shrink:0; margin-top:2px;
+          border:1.5px solid ${isDefault ? '#FFD580' : 'rgba(255,255,255,0.2)'};
           background:${isDefault ? '#FFD580' : 'transparent'};
           color:#07031a; display:flex; align-items:center; justify-content:center;
-          font-size:13px; font-weight:900;
+          font-size:11px; font-weight:900; transition:all 0.15s ease;
         ">${isDefault ? '✓' : ''}</div>
         <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:5px; flex-wrap:wrap;">
-            <span style="font-size:11.5px; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(0,0,0,0.45); color:${scoreColor}; border:1px solid ${scoreColor}40;">
-              🔥 ${c.virality_score}/100
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:3px;">
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="font-size:10.5px; font-weight:800; padding:1.5px 6px; border-radius:5px; background:rgba(0,0,0,0.45); color:${scoreColor}; border:1px solid ${scoreColor}40; letter-spacing:0.2px;">
+                🔥 ${c.virality_score}
+              </span>
+              <span style="font-size:11.5px; color:#e2e8f0; font-weight:600; font-variant-numeric:tabular-nums;">
+                ⏱️ ${mins(c.start_s)}–${mins(c.end_s)}
+              </span>
+              <span style="font-size:10px; color:#94a3b8; background:rgba(255,255,255,0.06); padding:1px 5px; border-radius:4px; font-weight:600;">
+                ${Math.round(c.duration_s || (c.end_s-c.start_s))}s
+              </span>
+            </div>
+            <span style="font-size:9.5px; color:#a1a1aa; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); padding:1.5px 6px; border-radius:4px; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; white-space:nowrap;">
+              ${(c.arc_type || 'HOOK').replace(/_/g, ' ')}
             </span>
-            <span style="font-size:12px; color:#aaa; font-weight:600;">
-              ⏱️ ${mins(c.start_s)} – ${mins(c.end_s)} <span style="color:#666;">(${Math.round(c.duration_s || (c.end_s-c.start_s))}s)</span>
-            </span>
-            <span style="font-size:10.5px; color:#888; text-transform:uppercase; letter-spacing:0.5px;">${c.arc_type || 'hook'}</span>
           </div>
-          <div style="font-size:13.5px; color:#fff; font-weight:700; line-height:1.45; margin-bottom:4px;">
+          <div style="font-size:12.5px; color:#f8fafc; font-weight:600; line-height:1.4; margin:3px 0; border-left:2px solid rgba(255,200,80,0.4); padding-left:7px;">
             "${escapeHtml(c.hook_text)}"
           </div>
-          <div style="font-size:11.5px; color:#999; line-height:1.4;">
+          <div style="font-size:11px; color:#94a3b8; line-height:1.35; padding-left:7px; opacity:0.85;">
             💡 ${escapeHtml(c.reasoning || '')}
           </div>
         </div>
@@ -2008,16 +2015,16 @@ function renderCandidatesInChat(data) {
 
   html += `
     </div>
-    <div style="margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); display:flex; gap:10px; align-items:center;">
+    <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); display:flex; gap:8px; align-items:center;">
       <button id="chatRenderBtn" type="button" onclick="renderApprovedClips()" style="
-        flex:1; padding:12px 22px; border-radius:12px; border:none; cursor:pointer;
+        flex:1; padding:10px 18px; border-radius:10px; border:none; cursor:pointer;
         background:linear-gradient(135deg,#FFD580,#FFB347); color:#07031a;
-        font-size:14px; font-weight:800; box-shadow:0 4px 18px rgba(255,179,71,0.4);
+        font-size:13px; font-weight:800; box-shadow:0 3px 14px rgba(255,179,71,0.35);
         transition:transform 0.15s;
       ">🚀 Render ${_selectedIndices.size} Selected Clips on GPU</button>
       <button type="button" onclick="selectAllChatCards()" style="
-        padding:11px 16px; border-radius:12px; border:1px solid rgba(255,255,255,0.12);
-        background:rgba(255,255,255,0.05); color:#aaa; font-size:12px; font-weight:700; cursor:pointer;
+        padding:9px 13px; border-radius:10px; border:1px solid rgba(255,255,255,0.12);
+        background:rgba(255,255,255,0.05); color:#aaa; font-size:11.5px; font-weight:700; cursor:pointer;
       ">Select All</button>
     </div>
   `;
@@ -2037,8 +2044,8 @@ function toggleChatCard(idx) {
 
   if (newSelected) {
     _selectedIndices.add(idx);
-    card.style.background = 'rgba(255,200,80,0.08)';
-    card.style.borderColor = 'rgba(255,200,80,0.45)';
+    card.style.background = 'rgba(255,200,80,0.07)';
+    card.style.borderColor = 'rgba(255,200,80,0.4)';
     if (check) {
       check.style.background = '#FFD580';
       check.style.borderColor = '#FFD580';
@@ -2046,11 +2053,11 @@ function toggleChatCard(idx) {
     }
   } else {
     _selectedIndices.delete(idx);
-    card.style.background = 'rgba(255,255,255,0.03)';
-    card.style.borderColor = 'rgba(255,255,255,0.08)';
+    card.style.background = 'rgba(255,255,255,0.025)';
+    card.style.borderColor = 'rgba(255,255,255,0.07)';
     if (check) {
       check.style.background = 'transparent';
-      check.style.borderColor = 'rgba(255,255,255,0.22)';
+      check.style.borderColor = 'rgba(255,255,255,0.2)';
       check.textContent = '';
     }
   }
