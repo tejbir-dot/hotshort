@@ -790,6 +790,107 @@ class ClipEditor:
         clean = (text or "").strip().rstrip('"\'')
         return clean.endswith(('.', '?', '!', '…', '...', '—'))
 
+    @staticmethod
+    def _weak_prefix_len(tokens: list, idx: int) -> int:
+        """
+        Return number of filler/continuation tokens to skip at `idx` (0 if content word).
+        Handles single continuation tokens ("And", "So", "But", "Like,", "Um") as well
+        as multi-word continuation phrases ("as well as", "kind of", "sort of", "you know", "i mean").
+        """
+        if idx >= len(tokens):
+            return 0
+
+        def _norm(tok: str) -> str:
+            return re.sub(r"^[^a-zA-Z0-9']+|[^a-zA-Z0-9']+$", "", (tok or "").lower())
+
+        w0 = _norm(tokens[idx])
+        w1 = _norm(tokens[idx + 1]) if (idx + 1) < len(tokens) else ""
+        w2 = _norm(tokens[idx + 2]) if (idx + 2) < len(tokens) else ""
+
+        if not w0:
+            return 1
+
+        # Multi-word weak continuation / conversational filler phrases
+        if (w0, w1, w2) == ("as", "well", "as"):
+            return 3
+        if (w0, w1) in {("kind", "of"), ("sort", "of"), ("you", "know"), ("i", "mean"), ("to", "be")}:
+            if (w0, w1) == ("to", "be") and w2 != "honest":
+                return 0
+            return 3 if (w0, w1, w2) == ("to", "be", "honest") else 2
+
+        if w0 in {
+            "um", "uh", "erm", "hmm", "uhh", "umm",
+            "and", "but", "because", "cause", "yeah", "yes",
+            "well", "right", "okay", "ok", "anyway", "basically",
+            "maybe",
+        }:
+            return 1
+        if w0 in {"guys", "bro", "man", "hey", "listen"} and ("," in str(tokens[idx]) or idx > 0):
+            return 1
+        if w0 == "so":
+            return 0 if w1 in {"many", "much", "far", "few", "fast", "hard", "good", "bad", "long", "big", "little", "often", "real", "true", "crazy"} else 1
+        if w0 == "like":
+            has_comma = "," in str(tokens[idx] or "")
+            return 1 if (has_comma or w1 in {"i", "we", "you", "they", "he", "she", "it", "what", "why", "how", "when", "if", "honestly", "literally", "kind", "maybe"}) else 0
+        return 0
+
+    @staticmethod
+    def _is_weak_opener_token(raw_tok: str, next_tok: str = "") -> bool:
+        return ClipEditor._weak_prefix_len([raw_tok, next_tok], 0) > 0
+
+    def _trim_leading_weak_start(self, trim_in: float, trim_out: float, all_words: list) -> float:
+        """
+        Advance `trim_in` past leading filler/conjunction openers ("And", "So", "As well as", "Like,", "Um")
+        using word-level timestamps so clips start cleanly on a strong hook word.
+        """
+        if not all_words:
+            return trim_in
+
+        opening_words = [
+            w for w in all_words
+            if float(w.get("end", w.get("start", 0.0)) or 0.0) >= trim_in - 0.05
+        ]
+        if len(opening_words) < 8:
+            return trim_in
+
+        token_texts = [str(w.get("word") or w.get("text") or "").strip() for w in opening_words]
+        skip_count = 0
+        max_skip = min(6, len(opening_words) - 6)
+        while skip_count < max_skip:
+            step = self._weak_prefix_len(token_texts, skip_count)
+            if step <= 0 or (skip_count + step) > len(opening_words) - 6:
+                break
+            nxt_start = float(opening_words[skip_count + step].get("start", trim_in) or trim_in)
+            if (nxt_start - trim_in) > 3.0 or (trim_out - nxt_start) < 12.0:
+                break
+            skip_count += step
+
+        if skip_count == 0:
+            return trim_in
+
+        target_start = float(opening_words[skip_count].get("start", trim_in) or trim_in)
+        return max(trim_in, round(target_start - 0.04, 3))
+
+    def _sanitize_hook_banner_text(self, text: str) -> str:
+        """Strip leading continuation fillers ("And", "So", "As well as", "Like,") and trailing ',...' from top hook overlays."""
+        raw = " ".join(str(text or "").split()).strip()
+        if not raw:
+            return ""
+        tokens = raw.split(" ")
+        skip = 0
+        max_skip = min(6, max(0, len(tokens) - 4))
+        while skip < max_skip:
+            step = self._weak_prefix_len(tokens, skip)
+            if step <= 0 or (skip + step) > len(tokens) - 4:
+                break
+            skip += step
+        cleaned = " ".join(tokens[skip:]).strip()
+        cleaned = re.sub(r",\s*\.\.\.$", "...", cleaned)
+        cleaned = cleaned.rstrip(",").strip()
+        if not cleaned:
+            cleaned = raw
+        return cleaned[0].upper() + cleaned[1:] if len(cleaned) > 1 else cleaned.upper()
+
     def _smart_trim_out(
         self,
         clip_path: str,
@@ -4260,6 +4361,13 @@ class ClipEditor:
                     log.info(f"[CAPTION_SNAP] end={trim_out:.2f} -> snapped={snapped_out:.2f} (word: '{cw.get('word', cw.get('text', ''))}')")
                     trim_out = snapped_out
 
+                # Strip weak continuation/filler openers ("And", "So", "But", "Like,", "Yeah", "Um")
+                # from the clip start so shorts open cleanly on the core hook word.
+                adj_in = self._trim_leading_weak_start(trim_in, trim_out, all_words)
+                if adj_in > trim_in + 0.02:
+                    log.info(f"[SMART_START] trimmed weak opener {trim_in:.2f}s -> {adj_in:.2f}s")
+                    trim_in = adj_in
+
             metadata["trim"] = {"in": round(trim_in, 3), "out": round(trim_out, 3)}
 
             work_a = input_path
@@ -4419,8 +4527,8 @@ class ClipEditor:
                         self.gen_dur = time.perf_counter() - _tc0
             
             _is_podcast_early = (video_fmt is not None and video_fmt.format_type == "podcast")
-            if precomputed_ass_path and _is_podcast_early:
-                log.info("[WCE-CAPTION] Podcast clip detected early — discarding precomputed ASS to trigger thread regeneration.")
+            if precomputed_ass_path and (_is_podcast_early or trim_in > 0.08):
+                log.info("[WCE-CAPTION] Podcast/trimmed clip (trim_in=%.2fs) — discarding precomputed ASS to regenerate aligned captions.", trim_in)
                 precomputed_ass_path = None
 
             cap_thread = None
@@ -4521,6 +4629,16 @@ class ClipEditor:
                 log.info("[WCE-CORTEX] Using Groq title as hook: %s", hook_line[:60])
             else:
                 hook_line = clip_title.strip() if clip_title else (captions[0].text if captions else "")
+                # If raw clip_title still contains stale pre-trim prefix words cut out at trim_in / HOOK_REPAIR,
+                # advance to the synced spoken caption opening so banner & audio never disagree.
+                if hook_line and captions:
+                    first_cap_clean = re.sub(r"\s+", " ", str(getattr(captions[0], "text", "") or "").strip())
+                    cap_anchor = " ".join(first_cap_clean.split(" ")[:3]).strip()
+                    if cap_anchor and len(cap_anchor) >= 6:
+                        pos = hook_line.lower().find(cap_anchor.lower())
+                        if pos > 4:
+                            hook_line = hook_line[pos:].strip()
+            hook_line = self._sanitize_hook_banner_text(hook_line)
 
             # CTA: derive context-aware CTA from Groq's hook_type / why_this_clip_works
             if _cortex_active:

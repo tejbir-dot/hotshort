@@ -493,11 +493,11 @@ def _upload_to_r2(local_path: str, object_key: str, content_type: str = "video/m
     return f"https://{bucket}.r2.cloudflarestorage.com/{object_key}"
 
 
-def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
+def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True, audio_only: bool = False) -> str:
     """
     Step 1 of the Railway→Cloudflare R2 (or Cloudinary)→RunPod pipeline.
 
-    Downloads the YouTube video on Railway via the SavNow proxy API (bypassing Google block)
+    Downloads the YouTube video (or audio-only stream when audio_only=True) on Railway
     then uploads it to Cloudflare R2 (or Cloudinary fallback) and returns the public CDN URL.
     RunPod will then fetch from storage.
     """
@@ -519,31 +519,56 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
             raise RuntimeError("cloudinary package not installed on Railway — add to requirements.railway.txt")
 
     with tempfile.TemporaryDirectory() as tmp:
-        video_path = os.path.join(tmp, "video.mp4")
+        ext = "m4a" if audio_only else "mp4"
+        video_path = os.path.join(tmp, f"video.{ext}")
         downloaded = False
-        
-        # 1. Primary: Try RapidAPI proxy (bypasses Google datacenter bot-checks)
-        try:
-            raw_mp4_url = _download_via_api(youtube_url)
-            if raw_mp4_url:
-                from urllib.parse import urlparse
-                proxy_host = urlparse(raw_mp4_url).netloc
-                log_step(f"[RAILWAY] Downloading direct MP4 from proxy host: {proxy_host}")
-                browser_headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Referer": "https://www.youtube.com/"
+
+        # When audio_only=True (transcription only), try lightweight audio stream via yt-dlp first (~15MB vs 1GB+)
+        if audio_only:
+            try:
+                from yt_dlp import YoutubeDL
+                ydl_opts = {
+                    "format": "bestaudio[ext=m4a]/bestaudio/best",
+                    "outtmpl": os.path.join(tmp, "ytdlp_audio.%(ext)s"),
+                    "quiet": True,
+                    "no_warnings": True,
+                    "socket_timeout": 30,
                 }
-                with requests.Session() as session:
-                    with session.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
-                        r.raise_for_status()
-                        with open(video_path, 'wb') as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
-                if os.path.exists(video_path) and os.path.getsize(video_path) > 1024:
+                with YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([youtube_url])
+                candidates = [f for f in os.listdir(tmp) if os.path.getsize(os.path.join(tmp, f)) > 1024]
+                if candidates:
+                    video_path = os.path.join(tmp, candidates[0])
+                    ext = os.path.splitext(video_path)[1].lstrip(".") or "m4a"
                     downloaded = True
-        except Exception as e:
-            log_step(f"[RAILWAY] Proxy download failed ({e}), trying yt-dlp fallback...")
+                    log_step(f"[RAILWAY] Audio-only yt-dlp download succeeded: {os.path.basename(video_path)}")
+            except Exception as ae:
+                log_step(f"[RAILWAY] Audio-only yt-dlp failed ({ae}), falling back to proxy MP4...")
+        
+        # 1. Primary (video) / Fallback (audio): RapidAPI proxy (bypasses Google datacenter bot-checks)
+        if not downloaded:
+            try:
+                raw_mp4_url = _download_via_api(youtube_url)
+                if raw_mp4_url:
+                    from urllib.parse import urlparse
+                    proxy_host = urlparse(raw_mp4_url).netloc
+                    log_step(f"[RAILWAY] Downloading direct MP4 from proxy host: {proxy_host}")
+                    browser_headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Referer": "https://www.youtube.com/"
+                    }
+                    with requests.Session() as session:
+                        with session.get(raw_mp4_url, stream=True, headers=browser_headers, timeout=120) as r:
+                            r.raise_for_status()
+                            with open(video_path, 'wb') as f:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    if chunk:
+                                        f.write(chunk)
+                    if os.path.exists(video_path) and os.path.getsize(video_path) > 1024:
+                        ext = "mp4"
+                        downloaded = True
+            except Exception as e:
+                log_step(f"[RAILWAY] Proxy download failed ({e}), trying yt-dlp fallback...")
 
         # 2. Secondary Fallback: Direct yt-dlp on Railway (if RapidAPI limit hit or down)
         if not downloaded:
@@ -551,18 +576,19 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
             try:
                 from yt_dlp import YoutubeDL
                 ydl_opts = {
-                    "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    "format": "bestaudio/best" if audio_only else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
                     "outtmpl": os.path.join(tmp, "ytdlp_dl.%(ext)s"),
-                    "merge_output_format": "mp4",
+                    **({} if audio_only else {"merge_output_format": "mp4"}),
                     "quiet": True,
                     "no_warnings": True,
                 }
                 with YoutubeDL(ydl_opts) as ydl:
                     ydl.download([youtube_url])
                 
-                candidates = [f for f in os.listdir(tmp) if f.endswith(".mp4")]
+                candidates = [f for f in os.listdir(tmp) if os.path.getsize(os.path.join(tmp, f)) > 1024]
                 if candidates:
                     video_path = os.path.join(tmp, candidates[0])
+                    ext = os.path.splitext(video_path)[1].lstrip(".") or "mp4"
                     downloaded = True
                     log_step(f"[RAILWAY] yt-dlp fallback succeeded: {os.path.basename(video_path)}")
             except Exception as e:
@@ -591,8 +617,9 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
         # 3. Upload to Cloudflare R2 (preferred) or Cloudinary
         if use_r2:
             log_step(f"[RAILWAY] Uploading {original_size_mb:.1f}MB to Cloudflare R2…")
-            object_key = f"hotshort_relay/{uuid.uuid4().hex[:12]}_{int(time.time())}.mp4"
-            cdn_url = _upload_to_r2(upload_path, object_key, content_type="video/mp4")
+            object_key = f"hotshort_relay/{uuid.uuid4().hex[:12]}_{int(time.time())}.{ext}"
+            ctype = "audio/mp4" if (audio_only and ext == "m4a") else "video/mp4"
+            cdn_url = _upload_to_r2(upload_path, object_key, content_type=ctype)
             log_step("[RAILWAY] Cloudflare R2 video relay ready")
             return cdn_url
         
@@ -641,6 +668,109 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True) -> str:
         return cdn_url
 
 
+def _slice_approved_clips_to_storage(youtube_url: str, approved_clips: list) -> list | None:
+    """
+    Download ONLY the tiny approved clip intervals (using HTTP range seek via ffmpeg)
+    and upload them to R2/Cloudinary so RunPod never downloads/processes a 90-min video.
+    Returns an updated list of clip dicts with `clip_source_url` & `source_offset_s`,
+    or None if slicing could not complete for all approved clips.
+    """
+    if not approved_clips:
+        return None
+
+    import subprocess
+    import tempfile
+
+    use_r2 = _is_r2_configured()
+    cloudinary_uploader = None
+    if not use_r2:
+        cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+        api_key_c = os.getenv("CLOUDINARY_API_KEY")
+        api_secret = os.getenv("CLOUDINARY_API_SECRET")
+        if not (cloud_name and api_key_c and api_secret):
+            return None
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            cloudinary.config(cloud_name=cloud_name, api_key=api_key_c, api_secret=api_secret)
+            cloudinary_uploader = cloudinary.uploader
+        except ImportError:
+            return None
+
+    # Obtain direct streamable MP4 URL once (RapidAPI proxy primary -> yt-dlp -g fallback)
+    stream_url = None
+    try:
+        stream_url = _download_via_api(youtube_url)
+    except Exception as e:
+        log_step(f"[SLICE_RELAY] RapidAPI stream URL failed ({e}), trying yt-dlp -g...")
+
+    if not stream_url:
+        try:
+            from yt_dlp import YoutubeDL
+            with YoutubeDL({"format": "best[ext=mp4]/best", "quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+                stream_url = info.get("url") if isinstance(info, dict) else None
+        except Exception as e:
+            log_step(f"[SLICE_RELAY] yt-dlp stream URL failed: {e}")
+
+    if not stream_url:
+        return None
+
+    sliced_clips = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for idx, clip in enumerate(approved_clips):
+            if not isinstance(clip, dict):
+                return None
+            orig_s = float(clip.get("start_s") if clip.get("start_s") is not None else clip.get("start", 0.0))
+            orig_e = float(clip.get("end_s") if clip.get("end_s") is not None else clip.get("end", orig_s + 30.0))
+            pad_s = max(0.0, orig_s - 2.0)
+            pad_dur = max(1.0, (orig_e + 2.0) - pad_s)
+            slice_path = os.path.join(tmp, f"slice_{idx}.mp4")
+
+            cmd = [
+                "ffmpeg", "-y", "-nostdin",
+                "-ss", f"{pad_s:.3f}",
+                "-i", stream_url,
+                "-t", f"{pad_dur:.3f}",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+                slice_path,
+            ]
+            try:
+                res = subprocess.run(cmd, capture_output=True, timeout=150)
+                if res.returncode != 0 or not os.path.exists(slice_path) or os.path.getsize(slice_path) < 10_000:
+                    err_tail = (res.stderr or b"").decode("utf-8", errors="ignore")[-200:]
+                    log_step(f"[SLICE_RELAY] ffmpeg slice {idx} failed: {err_tail}")
+                    return None
+            except Exception as fe:
+                log_step(f"[SLICE_RELAY] ffmpeg slice {idx} exception: {fe}")
+                return None
+
+            try:
+                if use_r2:
+                    obj_key = f"hotshort_relay/slice_{uuid.uuid4().hex[:10]}_{idx}.mp4"
+                    cdn_url = _upload_to_r2(slice_path, obj_key, content_type="video/mp4")
+                else:
+                    up = cloudinary_uploader.upload_large(slice_path, resource_type="video", folder="hotshort_relay")
+                    cdn_url = up.get("secure_url")
+                if not cdn_url:
+                    return None
+            except Exception as ue:
+                log_step(f"[SLICE_RELAY] upload slice {idx} failed: {ue}")
+                return None
+
+            c_copy = dict(clip)
+            c_copy["start"] = orig_s
+            c_copy["end"] = orig_e
+            c_copy["clip_source_url"] = cdn_url
+            c_copy["source_offset_s"] = pad_s
+            sliced_clips.append(c_copy)
+            log_step(f"[SLICE_RELAY] Clip {idx} ({orig_s:.1f}s-{orig_e:.1f}s) sliced & uploaded ({os.path.getsize(slice_path)/1024/1024:.1f}MB)")
+
+    return sliced_clips
+
+
 def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout: int = 600, is_free_user: bool = False) -> dict:
     endpoint = (os.getenv("RUNPOD_ENDPOINT_ID") or "").strip()
     if not endpoint:
@@ -650,25 +780,55 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
     if not api_key:
         raise RuntimeError("RUNPOD_API_KEY not configured")
 
-    # ── Railway → Storage (R2/Cloudinary) → RunPod pipeline ───────────────────
-    # Railway downloads the video (its IPs aren't datacenter-blocked by YouTube)
-    # and uploads to R2/Cloudinary. RunPod then fetches from CDN — never
-    # touching YouTube directly, so datacenter IP blocks don't apply.
+    # Inspect Job for pre-approved clips from Agentic Mode so we skip full-video orchestration!
+    approved_clips = None
+    format_mode = "tjr"
+    if job_id:
+        try:
+            job = Job.query.filter_by(id=job_id).first()
+            if job and job.analysis_data:
+                ad = json.loads(job.analysis_data)
+                if isinstance(ad, dict):
+                    approved_clips = ad.get("approved_clips") or None
+                    format_mode = str(ad.get("format_mode") or "tjr").strip().lower()
+        except Exception:
+            pass
+
     storage_name = "Cloudflare R2" if _is_r2_configured() else "Cloudinary"
-    log.info(f"[RUNPOD] Relay mode: downloading on Railway then sending {storage_name} URL to RunPod")
     video_url = None
-    try:
-        video_url = _download_to_cloudinary(youtube_url, is_free_user=is_free_user)
-    except Exception as e:
-        log.warning(f"[RUNPOD] Railway relay failed ({e}). RunPod will attempt direct download...")
-    # ────────────────────────────────────────────────────────────────────────
+    sliced_ok = False
+
+    if approved_clips and isinstance(approved_clips, list):
+        log.info(f"[RUNPOD] Agentic render detected ({len(approved_clips)} clips): attempting fast section-slice relay")
+        sliced = _slice_approved_clips_to_storage(youtube_url, approved_clips)
+        if sliced:
+            approved_clips = sliced
+            sliced_ok = True
+            log.info("[RUNPOD] Section-slice relay succeeded — skipping full-video download!")
+
+    if not sliced_ok:
+        # Guard: if slicing failed and this is a long free video (>20m), abort before downloading full MP4!
+        if approved_clips and is_free_user:
+            max_allowed = float(os.getenv("MAX_FREE_VIDEO_DURATION_SECONDS", 1200))
+            dur_s = _get_youtube_duration_fast(youtube_url)
+            if dur_s and dur_s > max_allowed:
+                raise RuntimeError(
+                    f"Fast clip section slicing was blocked for this {round(dur_s/60)}-minute video. "
+                    f"Please retry with Local Worker active or choose a video under {int(max_allowed/60)} minutes."
+                )
+
+        log.info(f"[RUNPOD] Relay mode: downloading on Railway then sending {storage_name} URL to RunPod")
+        try:
+            video_url = _download_to_cloudinary(youtube_url, is_free_user=is_free_user)
+        except Exception as e:
+            log.warning(f"[RUNPOD] Railway relay failed ({e}). RunPod will attempt direct download...")
 
     url = _runpod_task_url(endpoint)
     task_input = {
         "task": "orchestrate",
-        "video_url": video_url,      # ← Storage URL (R2 or Cloudinary), NOT youtube_url
-        "youtube_url": youtube_url,  # kept for logging / metadata only
-        # Cloud credentials so RunPod can upload the cut clips back
+        "video_url": video_url,      # ← Storage URL (R2 or Cloudinary) or None when section-sliced
+        "youtube_url": youtube_url,
+        "format_mode": format_mode,
         "cloud_provider": {
             "provider": "r2" if _is_r2_configured() else "cloudinary",
             "account_id": os.getenv("R2_ACCOUNT_ID", ""),
@@ -682,6 +842,8 @@ def _orchestrate_via_runpod(youtube_url: str, job_id: str | None = None, timeout
         },
         "is_free_user": is_free_user,
     }
+    if approved_clips:
+        task_input["approved_clips"] = approved_clips
     if job_id:
         task_input["job_id"] = job_id
     payload = {"input": task_input}
@@ -933,8 +1095,8 @@ def send_transcription_request(youtube_url: str) -> List[Dict]:
     url = _runpod_task_url(endpoint)
 
     # RunPod datacenter IPs often receive YouTube 403s. Railway already has a
-    # resilient proxy/yt-dlp downloader, so relay a public storage URL instead.
-    video_url = _download_to_cloudinary(youtube_url, is_free_user=False)
+    # resilient proxy/yt-dlp downloader, so relay audio-only (~15MB vs 1GB+ MP4) instead.
+    video_url = _download_to_cloudinary(youtube_url, is_free_user=False, audio_only=True)
 
     data = {
         'task': 'transcribe_youtube',

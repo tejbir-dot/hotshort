@@ -240,6 +240,8 @@ def handler(event):
         or (input_data.get("url") if task == "transcribe_url" else None)
     )
     transcript = input_data.get("transcript") or []
+    approved_clips = input_data.get("approved_clips") or None
+    format_mode = str(input_data.get("format_mode") or "tjr").strip().lower()
     is_free_user = input_data.get("is_free_user", False)
     creator_intent = input_data.get("creator_intent")
 
@@ -343,11 +345,16 @@ def handler(event):
 
                 return {"status": "ok", "segments": transcript}
 
-            # ── Video acquisition: prefer Cloudinary relay URL over direct yt-dlp ──
-            # When Railway has already downloaded and uploaded the video to Cloudinary,
-            # it passes `video_url` in the payload. RunPod downloads from Cloudinary
-            # (no YouTube IP blocks), so yt-dlp never runs on the datacenter IP.
-            if media_url:
+            # ── Video acquisition: skip full download if every approved clip already carries clip_source_url ──
+            has_pre_sliced_clips = (
+                task == "orchestrate"
+                and isinstance(approved_clips, list)
+                and len(approved_clips) > 0
+                and all(isinstance(c, dict) and c.get("clip_source_url") for c in approved_clips)
+            )
+            if has_pre_sliced_clips:
+                print(f"[WORKER] Section-sliced mode active ({len(approved_clips)} clips): skipping full-video download!")
+            elif media_url:
                 # Path A: Cloudinary / pre-uploaded URL → simple HTTP download
                 print("[WORKER] Downloading video from relay storage")
                 try:
@@ -430,29 +437,55 @@ def handler(event):
                 return {"status": "ok", "segments": transcript}
 
             if task == "orchestrate":
-                try:
-                    from viral_finder.orchestrator import orchestrate
-                except Exception as e:
-                    return {"error": f"Failed to import orchestrator: {e}"}
+                if approved_clips and isinstance(approved_clips, list) and len(approved_clips) > 0:
+                    print(f"[WORKER] [AGENTIC] Rendering {len(approved_clips)} approved clip(s) — bypassing orchestrator()")
+                    clips = []
+                    for idx, ac in enumerate(approved_clips):
+                        s = float(ac.get("start_s") if ac.get("start_s") is not None else ac.get("start", 0.0))
+                        e = float(ac.get("end_s") if ac.get("end_s") is not None else ac.get("end", s + 30.0))
+                        hook = ac.get("hook_text") or ac.get("title") or f"Viral Clip {idx + 1}"
+                        vscore = float(ac.get("virality_score", 90))
+                        c_item = dict(ac)
+                        c_item.update({
+                            "start": s,
+                            "end": e,
+                            "title": hook,
+                            "hook_line": hook,
+                            "score": vscore / 100.0,
+                            "viral_score": vscore / 100.0,
+                            "ranking_score": vscore,
+                            "ranking_rank": idx + 1,
+                            "text": hook,
+                        })
+                        clips.append(c_item)
+                    video_duration = 0.0
+                else:
+                    try:
+                        from viral_finder.orchestrator import orchestrate
+                    except Exception as e:
+                        return {"error": f"Failed to import orchestrator: {e}"}
 
-                clips = orchestrate(
-                    video_path,
-                    top_k=int(os.environ.get("HS_ORCH_TOP_K", "8")),
-                    prefer_gpu=True,
-                    use_cache=True,
-                    allow_fallback=False,
-                    pipeline_mode=os.environ.get("HS_ORCH_PIPELINE_MODE", None),
-                    creator_intent=creator_intent,
-                )
+                    clips = orchestrate(
+                        video_path,
+                        top_k=int(os.environ.get("HS_ORCH_TOP_K", "8")),
+                        prefer_gpu=True,
+                        use_cache=True,
+                        allow_fallback=False,
+                        pipeline_mode=os.environ.get("HS_ORCH_PIPELINE_MODE", None),
+                        creator_intent=creator_intent,
+                    )
 
-                video_duration = get_video_duration(video_path)
+                    video_duration = get_video_duration(video_path)
                 # Trust dynamic arc-based boundaries and do not apply format_viral_clips padding
 
                 # ── Lazy-load world_class_editor (captions + reframe + audio polish) ──
                 _wce_editor_cls = None
                 _wce_config_cls = None
                 _wce_enabled = os.environ.get("HS_WORKER_EDITOR_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
-                if _wce_enabled:
+                if format_mode == "raw_cut":
+                    _wce_enabled = False
+                    print("[WORKER] format_mode=raw_cut — skipping editor, outputting clean cut")
+                elif _wce_enabled:
                     try:
                         from effects.world_class_editor import ClipEditor as _WCE, ClipEditConfig as _WCC
                         _wce_editor_cls = _WCE
@@ -468,7 +501,7 @@ def handler(event):
                 if clips and isinstance(clips[0], dict):
                     _full_transcript = clips[0].get("transcript") or clips[0].get("captions") or None
 
-                # ── Cut each clip + apply editor + upload to Cloudinary ──────────────
+                # ── Cut each clip + apply editor + upload to Cloudinary/R2 ──────────
                 print(f"[WORKER] Orchestration done: {len(clips or [])} clips — cutting + editing + uploading…")
                 cloudinary_ok = _configure_cloudinary()
 
@@ -483,15 +516,37 @@ def handler(event):
                     clip_filename = f"clip_{i}_{int(start)}_{int(end)}.mp4"
                     clip_path = os.path.join(temp_dir, clip_filename)
 
-                    # Step 1: Raw fast cut (stream copy)
-                    print(f"[WORKER] ffmpeg cut clip {i}: {start:.1f}s → {end:.1f}s")
+                    clip_input_path = video_path
+                    cut_start = start
+                    slice_url = clip.get("clip_source_url")
+                    if slice_url:
+                        try:
+                            import requests as _req
+                            slice_local = os.path.join(temp_dir, f"src_slice_{i}.mp4")
+                            sresp = _req.get(str(slice_url), stream=True, timeout=180)
+                            if sresp.status_code != 200:
+                                raise RuntimeError(f"slice download HTTP {sresp.status_code}")
+                            with open(slice_local, "wb") as sf:
+                                for schunk in sresp.iter_content(chunk_size=2 * 1024 * 1024):
+                                    if schunk:
+                                        sf.write(schunk)
+                            clip_input_path = slice_local
+                            cut_start = max(0.0, start - float(clip.get("source_offset_s", 0.0) or 0.0))
+                            print(f"[WORKER] Clip {i} downloaded pre-slice ({os.path.getsize(slice_local)/1024/1024:.1f}MB), cut_start={cut_start:.2f}s")
+                        except Exception as _se:
+                            print(f"[WORKER] Clip {i} slice download failed: {_se}")
+                            processed_clips.append((i, {**clip, "clip_url": None, "error": str(_se)}))
+                            continue
+
+                    # Step 1: Raw fast cut
+                    print(f"[WORKER] ffmpeg cut clip {i}: {cut_start:.1f}s → {cut_start + (end - start):.1f}s (orig {start:.1f}s → {end:.1f}s)")
                     try:
-                        duration = end - start
+                        duration = max(1.0, end - start)
                         result = subprocess.run(
                             [
                                 "ffmpeg", "-y", "-nostdin",
-                                "-ss", str(start),
-                                "-i", video_path,
+                                "-ss", str(cut_start),
+                                "-i", clip_input_path,
                                 "-t", str(duration),
                                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
                                 "-c:a", "aac", "-async", "1",
@@ -534,6 +589,9 @@ def handler(event):
                                 enhance_visuals=True,
                                 enhance_audio=True,
                                 target_ratio="9:16",
+                                enable_brainrot=(format_mode == "brainrot"),
+                                podcast_crop_mode=("wide" if format_mode == "cinematic" else "stacked"),
+                                enable_active_speaker=(format_mode != "cinematic"),
                             )
 
                             # Build cortex_hints from Groq Cortex data if present on this clip
@@ -745,5 +803,5 @@ if os.getenv("LOCAL_HTTP_WORKER") == "1":
 
     print("Local HTTP worker running on http://localhost:5000/run")
     app.run(host="0.0.0.0", port=5000, threaded=True)
-else:
+elif __name__ == "__main__":
     runpod.serverless.start({"handler": handler})

@@ -1746,6 +1746,7 @@
 ═══════════════════════════════════════════════════════════ */
 
 window._isAgenticMode = true;
+window._selectedFormatMode = 'tjr';
 let _agenticPlanId = null;
 let _agenticCandidates = [];
 let _selectedIndices = new Set();
@@ -1916,7 +1917,18 @@ window.runAgenticPlan = async function(url) {
 
     if (!res.ok || !data || !data.ok) {
       const err = (data && data.error) || ('Server returned HTTP ' + res.status);
-      addChatBot(`❌ <strong>Oops!</strong> ${err}<br><small style="color:#888;">Make sure the video is public and accessible.</small>`);
+      addChatBot(`❌ <strong>Notice:</strong> ${escapeHtml(err)}`);
+      if (data && data.action === 'show_pricing_modal') {
+        if (typeof window.showPricingModal === 'function') {
+          window.showPricingModal({
+            title: data.reason === 'video_too_long' ? '⏳ Video Exceeds Plan Limit' : 'You’ve unlocked your free clips 🚀',
+            subtitle: err,
+          });
+        } else {
+          const modal = document.getElementById('pricingModal');
+          if (modal) modal.classList.remove('hidden');
+        }
+      }
       if (mainBtn) {
         mainBtn.disabled = false;
         mainBtn.innerHTML = '⚡ Find Viral Moments';
@@ -2221,7 +2233,8 @@ async function renderApprovedClips() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         plan_id: _agenticPlanId,
-        approved_indices: indices
+        approved_indices: indices,
+        format_mode: window._selectedFormatMode || 'tjr'
       })
     });
 
@@ -2240,13 +2253,50 @@ async function renderApprovedClips() {
         window.location.href = `/results/${encodeURIComponent(data.job_id)}`;
       }, 1500);
     } else {
-      addChatBot(`❌ Error queuing render: ${(data && data.error) || 'Failed'}`);
+      const errMsg = (data && data.error) || 'Failed';
+      addChatBot(`❌ Error queuing render: ${escapeHtml(errMsg)}`);
+      if (data && data.action === 'show_pricing_modal') {
+        if (typeof window.showPricingModal === 'function') {
+          window.showPricingModal({
+            title: 'You’ve unlocked your free clips 🚀',
+            subtitle: errMsg,
+          });
+        } else {
+          const modal = document.getElementById('pricingModal');
+          if (modal) modal.classList.remove('hidden');
+        }
+      }
     }
   } catch (err) {
     removeChatTyping(tid);
     addChatBot(`❌ Connection error submitting render request.`);
   }
 }
+
+// ── Auto-hydrate ?yt= and ?vibe= passed from homepage / login redirect ──
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const ytParam = (params.get('yt') || '').trim();
+    const vibeParam = (params.get('vibe') || '').trim().toLowerCase();
+    if (vibeParam && ['brainrot', 'tjr', 'cinematic', 'raw_cut'].includes(vibeParam)) {
+      window._selectedFormatMode = vibeParam;
+    }
+    if (ytParam) {
+      const ytInput = document.getElementById('yt');
+      if (ytInput) ytInput.value = ytParam;
+      if (window.history && window.history.replaceState) {
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+      setTimeout(() => {
+        if (typeof window.runAgenticPlan === 'function') {
+          window.runAgenticPlan(ytParam);
+        }
+      }, 250);
+    }
+  } catch (e) {}
+});
 </script>
 
 {% endblock %}

@@ -4660,47 +4660,51 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
                     log.info(f"accuracy={acc}%\n")
                     
                     log.info("[GROQ_SURGEON] Phase 2: MOVE_HOOK execution active.")
+                    _WEAK_HOOK_STARTERS = ("and ", "so ", "but ", "because ", "cause ", "like ", "like,", "yeah ", "yeah,", "um ", "uh ", "well ")
                     for c in groq_result:
                         surgeon = c.get("groq_surgeon")
                         if surgeon:
                             dec = surgeon.get("decision", "")
                             try:
-                                conf = float(surgeon.get("confidence", 0.0))
-                            except ValueError:
-                                conf = 0.0
-                                
-                            # We are allowing the Surgeon to mutate the hook timestamp because 
-                            # the base L6C engine frequently breaks sentences in half.
-                            if dec == "MOVE_HOOK":
-                                try:
-                                    hook_idx = int(surgeon.get("hook_segment_index", -1))
-                                except ValueError:
-                                    hook_idx = -1
-                                    
-                                log.info(f"[SURGEON_MOVE_HOOK_EVAL] cid={c.get('cid', '?')} conf={conf} required=0.75 hook_idx={hook_idx} valid_bounds={0 <= hook_idx < len(full_transcript)}")
-                                
-                                if 0 <= hook_idx < len(full_transcript):
-                                    old_start = float(c.get("start", 0.0))
-                                    new_start = float(full_transcript[hook_idx].get("start", 0.0))
-                                    
-                                    move_distance = abs(old_start - new_start)
-                                    
-                                    old_text = ""
-                                    for seg in full_transcript:
-                                        ss = float(seg.get("start", 0.0))
-                                        ee = float(seg.get("end", ss))
-                                        if ss <= old_start <= max(ss, ee):
-                                            old_text = str(seg.get("text", "")).strip()
-                                            break
-                                            
-                                    new_text = str(full_transcript[hook_idx].get("text", "")).strip()
+                                raw_conf = surgeon.get("confidence", None)
+                                conf = float(raw_conf) if raw_conf is not None else 0.85
+                            except (ValueError, TypeError):
+                                conf = 0.85
+
+                            # Allow Surgeon to repair weak mid-sentence starts EVEN when also extending right / keeping.
+                            try:
+                                hook_idx = int(surgeon.get("hook_segment_index", -1))
+                            except (ValueError, TypeError):
+                                hook_idx = -1
+
+                            if dec in ("MOVE_HOOK", "EXTEND_RIGHT", "KEEP") and 0 <= hook_idx < len(full_transcript):
+                                old_start = float(c.get("start", 0.0))
+                                new_start = float(full_transcript[hook_idx].get("start", 0.0))
+                                move_distance = new_start - old_start
+
+                                old_text = ""
+                                for seg in full_transcript:
+                                    ss = float(seg.get("start", 0.0))
+                                    ee = float(seg.get("end", ss))
+                                    if ss <= old_start <= max(ss, ee):
+                                        old_text = str(seg.get("text", "")).strip()
+                                        break
+
+                                new_text = str(full_transcript[hook_idx].get("text", "")).strip()
+                                old_starts_weak = old_text.lower().startswith(_WEAK_HOOK_STARTERS)
+                                new_starts_weak = new_text.lower().startswith(_WEAK_HOOK_STARTERS)
+                                should_try_hook = (dec == "MOVE_HOOK") or (old_starts_weak and not new_starts_weak and move_distance > 0.2)
+
+                                if should_try_hook:
                                     cid = c.get("id", c.get("cid", "?"))
-                                    
-                                    if (conf >= 0.75 
-                                        and move_distance <= 8.0 
-                                        and new_text != old_text 
-                                        and len(new_text.split()) >= 4):
-                                        
+                                    log.info(f"[SURGEON_MOVE_HOOK_EVAL] cid={cid} dec={dec} conf={conf} required=0.75 hook_idx={hook_idx} dist={move_distance:.2f}s")
+                                    if (
+                                        conf >= 0.75
+                                        and abs(move_distance) <= 8.0
+                                        and new_text != old_text
+                                        and len(new_text.split()) >= 4
+                                        and (float(c.get("end", 0.0)) - new_start) >= 12.0
+                                    ):
                                         log.info("\n[HOOK_REPAIR]")
                                         log.info(f"candidate_id={cid}")
                                         log.info(f"old_start={old_start}")
@@ -4708,27 +4712,38 @@ def _run_groq_surgeon(ctx: PipelineContext) -> None:
                                         log.info(f"old_hook_text={old_text}")
                                         log.info(f"new_hook_text={new_text}")
                                         log.info(f"confidence={conf}\n")
-                                    
-                                        
+
                                         c["start"] = new_start
+                                        end_lim = float(c.get("end", new_start + 30.0))
+                                        repaired_segs = [
+                                            str(seg.get("text", "")).strip()
+                                            for seg in full_transcript[hook_idx:]
+                                            if float(seg.get("start", 0.0) or 0.0) <= end_lim + 0.5
+                                        ]
+                                        repaired_text = " ".join(t for t in repaired_segs if t).strip() or new_text
+                                        c["text"] = repaired_text
+                                        c["hook_text"] = new_text
+                                        c["exact_hook"] = new_text
+                                        c["title"] = new_text
                                         _audit_field_mutation(c, "start", old_start, new_start, "_run_groq_surgeon()", inspect.currentframe().f_lineno)
-                                        
-                                        # The candidates in groq_result are copies of final_candidates
-                                        # We must write the repaired boundary back to the original objects
                                         for fc in final_candidates:
                                             if fc.get("cid") == cid and cid != "?":
                                                 fc["start"] = new_start
+                                                fc["text"] = repaired_text
+                                                fc["hook_text"] = new_text
+                                                fc["exact_hook"] = new_text
+                                                fc["title"] = new_text
                                                 _audit_field_mutation(fc, "start", old_start, new_start, "_run_groq_surgeon()", inspect.currentframe().f_lineno)
                                                 from viral_finder.system_observer import get_observer
                                                 try:
-                                                    get_observer().modify_candidate(cid, "surgeon_cortex", {"start": new_start})
+                                                    get_observer().modify_candidate(cid, "surgeon_cortex", {"start": new_start, "title": new_text})
                                                 except Exception:
                                                     pass
                                                 break
                                     else:
                                         log.info(f"[HOOK_REPAIR_BLOCKED] cid={cid} conf={conf} dist={move_distance}s old_text='{old_text}' new_text='{new_text}'")
-                                            
-                            elif dec == "EXTEND_RIGHT":
+
+                            if dec == "EXTEND_RIGHT":
                                 try:
                                     payoff_idx = int(surgeon.get("payoff_segment_index", -1))
                                 except ValueError:

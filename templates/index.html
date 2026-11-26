@@ -1487,15 +1487,15 @@
              alt="HotShort"
              class="hero-logo">
         <div class="stats-badge hero-badge">
-          <strong>20M+</strong>
-          <span>hours analyzed</span>
+          <strong>⚡ Early Beta</strong>
+          <span>AI Hook + Clip Engine</span>
         </div>
       </div>
       <h1>
         Transform Your Content Into<br>
         <span class="gradient-text">Viral Goldmine</span>
       </h1>
-      <p>AI-powered viral clip detection. Analyze videos in seconds. Get clips that engage 1M+ viewers instantly.</p>
+      <p>Paste any YouTube video or podcast. Gemini finds the sharpest viral hooks in ~20s — pick your favorites and export 9:16 shorts with auto-captions.</p>
 
       <!-- CTA Form -->
       <div class="cta-section">
@@ -1878,18 +1878,7 @@
         if(timeout) box._t = setTimeout(()=> box.style.display = 'none', timeout);
       }
 
-      // 🔥 GPU Pre-warm: fire warmup the moment user touches the URL input
-      // so the GPU cold-start (60-90s) completes before they hit Submit.
-      let _warmupFired = false;
-      function _fireWarmup() {
-        if (_warmupFired) return;
-        _warmupFired = true;
-        fetch('/api/warmup', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
-      }
-      document.querySelectorAll('input[name="youtube_url"]').forEach((inp) => {
-        inp.addEventListener('focus', _fireWarmup, { once: true });
-        inp.addEventListener('input', _fireWarmup, { once: true });
-      });
+      // Warmup only on explicit GPU render actions, never on anonymous URL focus
 
       forms.forEach((form) => {
 
@@ -1907,76 +1896,25 @@
           const url = (form.elements['youtube_url'] && form.elements['youtube_url'].value || '').trim();
           if(!url){ showMessage(form, 'Please paste a valid YouTube link.'); return; }
 
-          // If not logged in, send to login (preserve next param)
-          // Logged-in: send JSON-style POST and handle redirect gracefully
+          const dashUrl = '/dashboard?yt=' + encodeURIComponent(url);
           try{
             if(btn){
               btn.classList.add('thinking', 'loading');
               btn.disabled = true;
             }
             document.body.classList.add('aurora-active');
-            showMessage(form, 'Analyzing... sit tight - this takes ~30-60s', 5000);
-
-            await new Promise((resolve) => {
-              requestAnimationFrame(() => setTimeout(resolve, 60));
-            });
-
-            const res = await fetch(`${BACKEND}/analyze`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-              credentials: 'include',
-              body: new URLSearchParams({ youtube_url: url })
-            });
-
-            // If we get a redirect (login page) or an auth failure, follow it.
-            if (res.redirected || res.status === 401 || res.status === 403) {
-              window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent('/dashboard'));
-              return;
-            }
-
-            const data = await res.json().catch(() => null);
-            // If response is HTML (login page), it'll fail to parse as JSON; redirect.
-            if (!data) {
-              window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent('/dashboard'));
-              return;
-            }
-
-            const nextRedirect = data && (
-              data.redirect ||
-              data.redirect_url ||
-              data.results_url ||
-              (data.job_id ? `/results/${encodeURIComponent(data.job_id)}` : '')
-            );
-            if ((data.success || data.ok) && nextRedirect) {
-              const nextUrl = /^https?:\/\//i.test(nextRedirect) ? nextRedirect : backendUrl(nextRedirect);
-              window.location.href = nextUrl;
-              return;
-            }
-
-            if (data && data.action === 'show_pricing_modal') {
-              const isTooLong = data.reason === 'video_too_long';
-              const errorMsg = data.error || (isTooLong ? '⏳ Video exceeds free 20-min limit. Upgrade to Pro for longer videos!' : '🔒 Free tier limit reached — upgrade to continue!');
-              showMessage(form, errorMsg, 6000);
-              if (typeof window.showPricingModal === 'function') {
-                window.showPricingModal({
-                  title: isTooLong ? '⏳ Video Exceeds Free 20-Min Limit' : 'You’ve unlocked your free clips 🚀',
-                  subtitle: data.error || (isTooLong ? 'Free plan supports videos up to 20 minutes. Upgrade to Pro for full podcasts up to 90 minutes!' : 'Upgrade to remove the watermark and create without limits.')
-                });
-              } else {
-                const modal = document.getElementById('pricingModal');
-                if (modal) modal.classList.remove('hidden');
-              }
-              return;
-            }
-
-            if (data.error) {
-              showMessage(form, 'Error: ' + data.error);
+            showMessage(form, 'Opening HotShort AI Partner...', 4000);
+            const sessRes = await fetch(`${BACKEND}/api/session-status`, { credentials: 'include' });
+            const sessData = await sessRes.json().catch(() => null);
+            if (sessData && sessData.logged_in) {
+              window.location.href = backendUrl(dashUrl);
             } else {
-              showMessage(form, 'Analysis started - opening results.');
+              window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent(dashUrl));
             }
+            return;
           }catch(err){
-            showMessage(form, 'Network error. Please try again.');
-            console.error('Analyze error', err);
+            window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent(dashUrl));
+            return;
           }finally{
             if (form.dataset.nativeSubmitting === '1') {
               return;
@@ -2156,57 +2094,19 @@
         document.body.classList.add('aurora-active');
 
         const msgBox = form.querySelector('#heroMessage') || document.getElementById('heroMessage');
-        if (msgBox) { msgBox.textContent = 'Analyzing... sit tight - this takes ~30-60s'; msgBox.style.display = 'block'; }
+        if (msgBox) { msgBox.textContent = 'Opening HotShort AI Partner...'; msgBox.style.display = 'block'; }
 
-        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 60)));
-
-        const params = new URLSearchParams({ youtube_url: url });
-        if (_selectedVibe) params.append('format_mode', _selectedVibe);
-
-        const res = await fetch(BACKEND + '/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-          credentials: 'include',
-          body: params,
-        });
-
-        if (res.redirected || res.status === 401 || res.status === 403) {
-          window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent('/dashboard'));
-          return;
-        }
-
-        const data = await res.json().catch(() => null);
-        if (!data) { window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent('/dashboard')); return; }
-
-        const nextRedirect = data && (
-          data.redirect || data.redirect_url || data.results_url ||
-          (data.job_id ? '/results/' + encodeURIComponent(data.job_id) : '')
-        );
-        if ((data.success || data.ok) && nextRedirect) {
-          const nextUrl = /^https?:\/\//i.test(nextRedirect) ? nextRedirect : backendUrl(nextRedirect);
-          window.location.href = nextUrl;
-          return;
-        }
-        if (data && data.action === 'show_pricing_modal') {
-          const isTooLong = data.reason === 'video_too_long';
-          const errorMsg = data.error || (isTooLong ? '⏳ Video exceeds free 20-min limit. Upgrade to Pro for longer videos!' : '🔒 Free tier limit reached — upgrade to continue!');
-          if (msgBox) { msgBox.textContent = errorMsg; }
-          if (typeof window.showPricingModal === 'function') {
-            window.showPricingModal({
-              title: isTooLong ? '⏳ Video Exceeds Free 20-Min Limit' : 'You’ve unlocked your free clips 🚀',
-              subtitle: data.error || (isTooLong ? 'Free plan supports videos up to 20 minutes. Upgrade to Pro for full podcasts up to 90 minutes!' : 'Upgrade to remove the watermark and create without limits.')
-            });
-          } else {
-            const m = document.getElementById('pricingModal');
-            if (m) m.classList.remove('hidden');
-          }
-          return;
-        }
-        if (data && data.error) {
-          if (msgBox) { msgBox.textContent = data.error; }
+        const dashUrl = '/dashboard?yt=' + encodeURIComponent(url) + (_selectedVibe ? '&vibe=' + encodeURIComponent(_selectedVibe) : '');
+        const sessRes = await fetch(BACKEND + '/api/session-status', { credentials: 'include' });
+        const sessData = await sessRes.json().catch(() => null);
+        if (sessData && sessData.logged_in) {
+          window.location.href = backendUrl(dashUrl);
+        } else {
+          window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent(dashUrl));
         }
       } catch(err) {
-        console.error('Analyze error', err);
+        const dashUrl = '/dashboard?yt=' + encodeURIComponent(url) + (_selectedVibe ? '&vibe=' + encodeURIComponent(_selectedVibe) : '');
+        window.location.href = backendUrl('/auth/login?next=' + encodeURIComponent(dashUrl));
       } finally {
         if (btn) { btn.classList.remove('thinking','loading'); btn.disabled = false; }
         document.body.classList.remove('aurora-active');

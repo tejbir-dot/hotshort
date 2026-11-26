@@ -653,7 +653,7 @@ Only REJECT when:
 Available Actions:
 - KEEP: The candidate is perfect. The idea is complete with development and resolution.
 - MOVE_HOOK: The candidate started too early with weak filler words (e.g., "And", "But", "So", "Because", "Like") or missed the true hook. YOU ARE THE ULTIMATE SEMANTIC ARBITER. Do not blindly accept grammatically valid sentences if they sound like weak, mid-thought continuations. Move `hook_segment_index` to the EXACT segment that serves as the strongest possible psychological and semantic entry point. Exception: You may start on a conjunction ONLY IF it creates intense dramatic tension (e.g., "And that is how I lost everything.").
-- EXTEND_RIGHT: The idea resolves, but the resolution is located later in ZONE B.
+- EXTEND_RIGHT: The idea resolves, but the resolution is located later in ZONE B. IMPORTANT: Even when choosing `EXTEND_RIGHT` or `KEEP`, if the opening segment starts with weak continuation/filler words ("And", "So", "But", "Because", "Like", "Yeah"), ALSO advance `hook_segment_index` to the strong entry segment!
 
 CRITICAL EMERGENCY OVERRIDE:
 If you receive an `emergency_instruction` in the input payload for a specific clip, you MUST prioritize it above all else. If it warns that the clip is too short (<35s), you are FORBIDDEN from selecting 'KEEP'. You MUST choose 'EXTEND_RIGHT' and find the natural resolution further down in ZONE B, or 'REJECT' if no resolution exists.
@@ -717,6 +717,7 @@ Return JSON ONLY in this exact format:
       "continuity_score": 8,
       "continuity_reason": "all segments discuss the cost and challenge of building a startup",
       "decision": "EXTEND_RIGHT",
+      "confidence": 0.92,
       "rejection_type": "NONE",
       "rejection_reason": "none",
       "proposed_payoff_quote": "Customer acquisition is the actual cost and challenge of startups."

@@ -319,6 +319,7 @@ ZONES TO ANALYZE:
 TASK: For each zone, find the BEST single clip with exact timestamps (25–90 sec range).
 The clip must start ON a scroll-stopping hook line and end ON a satisfying payoff/punchline.
 Choose the hook that would stop someone mid-scroll within the first 2 seconds.
+NEVER start `start_s` or `hook_text` on weak continuation/filler words like "And", "So", "But", "Because", "Like", or "Yeah" — advance `start_s` to the exact sharp thought opener!
 
 CLIP DURATION RULES:
 - Minimum: {_MIN_CLIP_SEC}s. Maximum: {_MAX_CLIP_SEC}s.
