@@ -568,7 +568,7 @@ def agentic_render_approved():
       2. RunPod GPU serverless failover (section-sliced to avoid full-video downloads)
     """
     from models.user import Job, db
-    from datetime import datetime
+    from datetime import datetime, timedelta
     import app as hs_app
 
     data = request.get_json(silent=True) or {}
@@ -576,6 +576,7 @@ def agentic_render_approved():
     approved_indices = data.get("approved_indices", [])
     raw_format = (data.get("format_mode") or "tjr").strip().lower()
     format_mode = raw_format if raw_format in {"brainrot", "tjr", "cinematic", "raw_cut"} else "tjr"
+    force_render = bool(data.get("force"))
 
     if not plan_id:
         return jsonify({"ok": False, "error": "Missing plan_id"}), 400
@@ -650,18 +651,63 @@ def agentic_render_approved():
     if not user_id:
         user_id = getattr(current_user, "id", None) or 1
 
-    # Concurrency guard: prevent accidental double-clicks/spam from launching duplicate RunPod jobs
+    # Concurrency guard with automatic stale-job expiry & explicit force override
+    now_utc = datetime.utcnow()
+    pending_cutoff = now_utc - timedelta(minutes=5)
+    processing_cutoff = now_utc - timedelta(minutes=10)
     try:
-        active_job = Job.query.filter(
+        user_active_jobs = Job.query.filter(
             Job.user_id == int(user_id),
-            Job.id != job_id,
             Job.status.in_(["queued", "processing", "in_progress", "pending"]),
-        ).first()
-        if active_job:
+        ).order_by(Job.created_at.desc()).all()
+
+        live_active_jobs = []
+        expired_any = False
+        for uj in user_active_jobs:
+            uj_created = uj.created_at or now_utc
+            cutoff = pending_cutoff if uj.status in ("pending", "queued") else processing_cutoff
+            if uj_created < cutoff:
+                uj.status = "failed"
+                uj.completed_at = now_utc
+                uj.analysis_data = json.dumps({"error": "Job timed out before completion."})
+                expired_any = True
+            else:
+                live_active_jobs.append(uj)
+
+        if live_active_jobs and force_render:
+            for uj in live_active_jobs:
+                uj.status = "failed"
+                uj.completed_at = now_utc
+                uj.analysis_data = json.dumps({"error": "Cancelled by user to start a new render."})
+                expired_any = True
+            live_active_jobs = []
+
+        if expired_any:
+            db.session.commit()
+
+        if live_active_jobs:
+            active_job = live_active_jobs[0]
+            age_s = max(0, int((now_utc - (active_job.created_at or now_utc)).total_seconds()))
             return jsonify({
                 "ok": False,
-                "error": "Another render job is already in progress. Please wait until it finishes."
+                "reason": "render_in_progress",
+                "active_job_id": active_job.id,
+                "active_status": active_job.status,
+                "age_seconds": age_s,
+                "error": (
+                    f"Another render job ({active_job.id}) is already {active_job.status} "
+                    f"({age_s}s ago). Open it or cancel it to start this clip."
+                ),
             }), 429
+    except Exception as lock_err:
+        db.session.rollback()
+        log.warning(f"[AGENTIC] Concurrency check error for user {user_id}: {lock_err}")
+
+    # Preserve completed renders on the same plan by allocating a fresh render job ID
+    try:
+        existing_same = Job.query.filter_by(id=job_id).first()
+        if existing_same and existing_same.status == "completed":
+            job_id = f"{plan_id[:36]}_{int(time.time()) % 100000}"
     except Exception:
         pass
 
@@ -671,7 +717,7 @@ def agentic_render_approved():
         "approved_clips": approved_clips,
         "format_mode": format_mode,
         "mode": "agentic",
-        "requested_at": datetime.utcnow().isoformat(),
+        "requested_at": now_utc.isoformat(),
     }
 
     try:
@@ -684,11 +730,15 @@ def agentic_render_approved():
                 video_path=youtube_url,
                 creator_intent="agentic_approved",
                 analysis_data=json.dumps(analysis_payload),
+                created_at=now_utc,
             )
             db.session.add(job)
         else:
             job.user_id = int(user_id)
             job.status = "pending"
+            job.video_path = youtube_url
+            job.completed_at = None
+            job.created_at = now_utc
             job.analysis_data = json.dumps(analysis_payload)
         db.session.commit()
     except Exception as dbe:

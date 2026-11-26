@@ -240,6 +240,9 @@ def _print_startup_banner():
         pass
 
     print(f"  [LOCAL_WORKER] RAILWAY    = {RAILWAY_URL}", flush=True)
+    if "127.0.0.1" in RAILWAY_URL or "localhost" in RAILWAY_URL:
+        print("  [LOCAL_WORKER] NOTE       = Running in --localhost mode (live site will NOT see this worker!)", flush=True)
+        print("  [LOCAL_WORKER]              Run without --localhost to serve https://hotshort.up.railway.app", flush=True)
     print(f"  [LOCAL_WORKER] GPU        = {gpu_name}", flush=True)
     print(f"  [LOCAL_WORKER] CUDA       = {cuda_available}", flush=True)
     print(f"  [LOCAL_WORKER] Whisper    = {whisper_model} on {whisper_device}", flush=True)

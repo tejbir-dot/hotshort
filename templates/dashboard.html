@@ -2217,14 +2217,18 @@ checkWorkerRoutingStatus();
 setInterval(checkWorkerRoutingStatus, 10000);
 
 // ── Render Approved Clips on GPU ───────────────────────────
-async function renderApprovedClips() {
+async function renderApprovedClips(forceOverride = false) {
   if (!_agenticPlanId || _selectedIndices.size === 0) {
     alert("Please select at least one clip first!");
     return;
   }
 
   const indices = Array.from(_selectedIndices);
-  addChatUser(`Render ${indices.length} selected clip${indices.length > 1 ? 's' : ''} on GPU`);
+  addChatUser(
+    forceOverride
+      ? `Cancel stuck job & render ${indices.length} selected clip${indices.length > 1 ? 's' : ''} on GPU`
+      : `Render ${indices.length} selected clip${indices.length > 1 ? 's' : ''} on GPU`
+  );
   const tid = showChatTyping(`Routing ${indices.length} clips to GPU worker...`);
 
   try {
@@ -2234,7 +2238,8 @@ async function renderApprovedClips() {
       body: JSON.stringify({
         plan_id: _agenticPlanId,
         approved_indices: indices,
-        format_mode: window._selectedFormatMode || 'tjr'
+        format_mode: window._selectedFormatMode || 'tjr',
+        force: Boolean(forceOverride)
       })
     });
 
@@ -2254,7 +2259,18 @@ async function renderApprovedClips() {
       }, 1500);
     } else {
       const errMsg = (data && data.error) || 'Failed';
-      addChatBot(`❌ Error queuing render: ${escapeHtml(errMsg)}`);
+      if (data && data.reason === 'render_in_progress' && data.active_job_id) {
+        const jobHref = `/results/${encodeURIComponent(data.active_job_id)}`;
+        addChatBot(
+          `⚠️ ${escapeHtml(errMsg)}` +
+          `<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;">` +
+          `<a href="${jobHref}" style="display:inline-flex; align-items:center; padding:7px 12px; border-radius:8px; background:rgba(255,255,255,0.1); color:#fff; font-weight:700; font-size:12px; text-decoration:none; border:1px solid rgba(255,255,255,0.2);">📺 View Running Job</a>` +
+          `<button type="button" onclick="renderApprovedClips(true)" style="cursor:pointer; display:inline-flex; align-items:center; padding:7px 12px; border-radius:8px; background:linear-gradient(135deg,#FFD580,#FFB347); color:#07031a; font-weight:800; font-size:12px; border:none;">🔄 Cancel Stuck Job & Render This</button>` +
+          `</div>`
+        );
+      } else {
+        addChatBot(`❌ Error queuing render: ${escapeHtml(errMsg)}`);
+      }
       if (data && data.action === 'show_pricing_modal') {
         if (typeof window.showPricingModal === 'function') {
           window.showPricingModal({
