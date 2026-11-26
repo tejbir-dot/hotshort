@@ -203,6 +203,42 @@ def _extract_video_id(url: str) -> str:
     return m.group(1) if m else hashlib.md5(url.encode()).hexdigest()[:11]
 
 
+def _safe_cookiefile() -> str | None:
+    try:
+        import app as hs_app
+        if hasattr(hs_app, "_get_youtube_cookiefile"):
+            return hs_app._get_youtube_cookiefile()
+    except Exception:
+        pass
+    return None
+
+
+def _load_cached_segments_from_db(vid_id: str) -> List[Dict] | None:
+    """Reuse transcript segments saved in any prior Postgres agentic plan for this video."""
+    if not has_app_context() or not vid_id:
+        return None
+    try:
+        from models.user import Job
+
+        rows = (
+            Job.query
+            .filter(Job.creator_intent == "agentic_plan", Job.video_path.contains(vid_id))
+            .order_by(Job.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        for row in rows:
+            if not row or not row.analysis_data:
+                continue
+            payload = json.loads(row.analysis_data)
+            segs = payload.get("segments") if isinstance(payload, dict) else None
+            if isinstance(segs, list) and len(segs) > 0:
+                return segs
+    except Exception as e:
+        log.debug(f"[AGENTIC] DB transcript lookup skipped for {vid_id}: {e}")
+    return None
+
+
 def _fetch_captions_via_ytdlp(youtube_url: str) -> List[Dict]:
     """
     Secondary zero-GPU caption extractor using yt-dlp's native `json3` tracks.
@@ -216,12 +252,16 @@ def _fetch_captions_via_ytdlp(youtube_url: str) -> List[Dict]:
         return []
 
     try:
-        with yt_dlp.YoutubeDL({
+        ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "skip_download": True,
             "socket_timeout": 12,
-        }) as ydl:
+        }
+        cookiefile = _safe_cookiefile()
+        if cookiefile:
+            ydl_opts["cookiefile"] = cookiefile
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
     except Exception as e:
         log.info(f"[AGENTIC] yt-dlp caption metadata failed: {e}")
@@ -355,7 +395,7 @@ def _get_segments_from_url(youtube_url: str, is_paid: bool = False, video_durati
     os.makedirs(CACHE_DIR, exist_ok=True)
     cache_json = os.path.join(CACHE_DIR, f"agentic_{vid_id}.json")
 
-    # 1. Fast Cache Hit
+    # 1. Fast Cache Hit (disk first, then Postgres persisted plans across deploys)
     if os.path.exists(cache_json):
         try:
             with open(cache_json, "r", encoding="utf-8") as f:
@@ -365,6 +405,16 @@ def _get_segments_from_url(youtube_url: str, is_paid: bool = False, video_durati
                     return data
         except Exception as e:
             log.warning(f"[AGENTIC] Error reading cached transcript: {e}")
+
+    db_segs = _load_cached_segments_from_db(vid_id)
+    if db_segs:
+        log.info(f"[AGENTIC] Postgres transcript cache hit for {vid_id} ({len(db_segs)} segs)")
+        try:
+            with open(cache_json, "w", encoding="utf-8") as f:
+                json.dump(db_segs, f)
+        except Exception:
+            pass
+        return db_segs
 
     # 2. Zero-GPU YouTube Captions (enables 60-90m podcasts at $0.00 RunPod cost)
     yt_segs = _fetch_youtube_captions(vid_id, youtube_url=youtube_url)
@@ -388,11 +438,19 @@ def _get_segments_from_url(youtube_url: str, is_paid: bool = False, video_durati
             f"(up to 90 minutes supported when YouTube captions are available)."
         )
 
-    # Only dispatch transcription to RunPod when configured AND local worker is offline
+    # Dispatch audio transcription to RunPod when running in the cloud (even if local PC
+    # is polling for renders) or locally when local worker is offline. RunPod relay uses
+    # RapidAPI proxy fallback if YouTube blocks datacenter IPs.
     last_poll = _get_shared_poll_time()
     is_local_online = (last_poll > 0 and (time.time() - last_poll) < 45.0)
+    is_cloud_runtime = bool(
+        os.getenv("RAILWAY_ENVIRONMENT")
+        or os.getenv("RAILWAY_PROJECT_ID")
+        or os.getenv("RAILWAY_SERVICE_ID")
+        or os.getenv("RENDER")
+    )
     if (
-        not is_local_online
+        (is_cloud_runtime or not is_local_online)
         and os.getenv("RUNPOD_ENDPOINT_ID")
         and os.getenv("RUNPOD_API_KEY")
         and os.getenv("USE_LOCAL_WORKER", "0").strip() != "1"
@@ -410,13 +468,13 @@ def _get_segments_from_url(youtube_url: str, is_paid: bool = False, video_durati
         log.info(f"[AGENTIC] RunPod transcription returned {len(segments)} segments for {vid_id}")
         return segments
 
-    # 4. Local audio download + faster-whisper fallback
+    # 4. Local / direct audio download + faster-whisper fallback (tries cookies, then RapidAPI if set)
     audio_dir = os.path.join("static", "cache")
     os.makedirs(audio_dir, exist_ok=True)
     audio_base = os.path.join(audio_dir, f"agentic_audio_{vid_id}")
 
     wav_path = None
-    for ext in (".wav", ".mp3", ".m4a", ".webm"):
+    for ext in (".wav", ".mp3", ".m4a", ".webm", ".mp4"):
         cand = f"{audio_base}{ext}"
         if os.path.exists(cand) and os.path.getsize(cand) > 1000:
             wav_path = cand
@@ -434,16 +492,49 @@ def _get_segments_from_url(youtube_url: str, is_paid: bool = False, video_durati
             "quiet": True,
             "no_warnings": True,
         }
+        cookiefile = _safe_cookiefile()
+        if cookiefile:
+            ydl_opts["cookiefile"] = cookiefile
 
         log.info(f"[AGENTIC] Downloading audio for {vid_id}: {youtube_url}")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([youtube_url])
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([youtube_url])
+        except Exception as ydl_err:
+            log.warning(f"[AGENTIC] Direct audio yt-dlp failed for {vid_id}: {ydl_err}")
+            if (os.getenv("RAPIDAPI_KEY") or "").strip():
+                try:
+                    import app as hs_app
+                    import requests as _req
+                    proxy_url = hs_app._download_via_api(youtube_url)
+                    if proxy_url:
+                        dl_target = f"{audio_base}.mp4"
+                        with _req.get(proxy_url, stream=True, timeout=120) as r:
+                            r.raise_for_status()
+                            with open(dl_target, "wb") as f:
+                                for chunk in r.iter_content(chunk_size=65536):
+                                    if chunk:
+                                        f.write(chunk)
+                        if os.path.exists(dl_target) and os.path.getsize(dl_target) > 1000:
+                            wav_path = dl_target
+                except Exception as rerr:
+                    log.warning(f"[AGENTIC] RapidAPI fallback failed for {vid_id}: {rerr}")
 
-        for ext in (".wav", ".mp3", ".m4a", ".webm"):
-            cand = f"{audio_base}{ext}"
-            if os.path.exists(cand):
-                wav_path = cand
-                break
+            if not wav_path:
+                err_lower = str(ydl_err).lower()
+                if "sign in" in err_lower or "bot" in err_lower or "cookies" in err_lower:
+                    raise ValueError(
+                        "YouTube temporarily blocked direct caption/audio fetch from this server IP. "
+                        "Try again in a moment, try a captioned video, or set YOUTUBE_COOKIES / RAPIDAPI_KEY."
+                    )
+                raise RuntimeError(f"Audio download failed for {youtube_url}: {ydl_err}")
+
+        if not wav_path:
+            for ext in (".wav", ".mp3", ".m4a", ".webm", ".mp4"):
+                cand = f"{audio_base}{ext}"
+                if os.path.exists(cand) and os.path.getsize(cand) > 1000:
+                    wav_path = cand
+                    break
 
     if not wav_path:
         raise RuntimeError(f"Audio download failed for {youtube_url}")

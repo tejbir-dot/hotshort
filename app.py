@@ -375,6 +375,33 @@ def _orchestrate_via_local_gpu(youtube_url: str, job_id: str | None = None, time
     return out
 
 
+def _get_youtube_cookiefile() -> str | None:
+    """Return path to owner-configured Netscape cookies.txt (from env or disk) if non-empty."""
+    raw = (os.getenv("YOUTUBE_COOKIES") or os.getenv("YOUTUBE_COOKIES_BASE64") or "").strip()
+    if raw:
+        cookie_path = os.path.join(tempfile.gettempdir(), "hotshort_yt_cookies.txt")
+        if not os.path.exists(cookie_path) or os.path.getsize(cookie_path) < 20:
+            try:
+                import base64
+                try:
+                    decoded = base64.b64decode(raw).decode("utf-8")
+                    content = decoded if ("\t" in decoded or "Netscape" in decoded) else raw
+                except Exception:
+                    content = raw
+                with open(cookie_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+            except Exception as ce:
+                log.warning("[YT_COOKIES] Failed writing cookie env var: %s", ce)
+                cookie_path = None
+        if cookie_path and os.path.exists(cookie_path) and os.path.getsize(cookie_path) > 20:
+            return cookie_path
+
+    for cand in ("/app/cookies.txt", os.path.join(BASE_DIR, "cookies.txt"), "cookies.txt"):
+        if os.path.exists(cand) and os.path.getsize(cand) > 20:
+            return cand
+    return None
+
+
 def _get_youtube_duration_fast(youtube_url: str) -> float | None:
     """Fast pre-check to get YouTube video duration in seconds before downloading."""
     try:
@@ -386,6 +413,9 @@ def _get_youtube_duration_fast(youtube_url: str) -> float | None:
             "skip_download": True,
             "socket_timeout": 8,
         }
+        cookiefile = _get_youtube_cookiefile()
+        if cookiefile:
+            ydl_opts["cookiefile"] = cookiefile
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
             if info and "duration" in info and info["duration"]:
@@ -523,6 +553,8 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True, audio_o
         video_path = os.path.join(tmp, f"video.{ext}")
         downloaded = False
 
+        cookiefile = _get_youtube_cookiefile()
+
         # When audio_only=True (transcription only), try lightweight audio stream via yt-dlp first (~15MB vs 1GB+)
         if audio_only:
             try:
@@ -534,6 +566,8 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True, audio_o
                     "no_warnings": True,
                     "socket_timeout": 30,
                 }
+                if cookiefile:
+                    ydl_opts["cookiefile"] = cookiefile
                 with YoutubeDL(ydl_opts) as ydl:
                     ydl.download([youtube_url])
                 candidates = [f for f in os.listdir(tmp) if os.path.getsize(os.path.join(tmp, f)) > 1024]
@@ -582,6 +616,8 @@ def _download_to_cloudinary(youtube_url: str, is_free_user: bool = True, audio_o
                     "quiet": True,
                     "no_warnings": True,
                 }
+                if cookiefile:
+                    ydl_opts["cookiefile"] = cookiefile
                 with YoutubeDL(ydl_opts) as ydl:
                     ydl.download([youtube_url])
                 
