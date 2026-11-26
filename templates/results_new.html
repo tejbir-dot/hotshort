@@ -3050,11 +3050,9 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
     }
 
     function shouldGateDownload(clipId) {
-      const s = normalizeFreeStatus(freeStatus);
-      if (s.is_paid) return false;
-      if (s.free_clips_left > 0) return false;
-      if (!Number.isFinite(clipId)) return true;
-      return !claimedSet().has(clipId);
+      // Already-rendered clips (including the user's 3rd free render) stay downloadable;
+      // the free-tier paywall enforces limits cleanly before queuing a 4th render.
+      return false;
     }
 
     function parseDownloadFilename(contentDisposition, fallback) {
@@ -4200,24 +4198,12 @@ Diagnostics: {{ worker_envelope.get("diagnostics") | tojson(indent=2) }}
         menu.innerHTML = '';
 
         const s = normalizeFreeStatus(freeStatus);
-        const claimed = claimedSet();
         const clipIdNum = parseInt(clip.clip_id, 10);
         const rawClipUrl = (typeof clip.clip_url === 'string') ? clip.clip_url : '';
         const legacyDownloadHref = rawClipUrl ? `/download-by-path?clip_url=${encodeURIComponent(rawClipUrl)}` : '';
-        const isClaimed = Number.isFinite(clipIdNum) && claimed.has(clipIdNum);
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0';
-        const locked = (!s.is_paid && !isLocal) && (s.free_clips_left === 0) && !isClaimed;
-        if (locked) {
-          analyticsPing('download_blocked', {
-            reason: 'free_limit_client',
-            clip_id: Number.isFinite(clipIdNum) ? clipIdNum : null,
-            quality: false,
-            job_id: currentJobId(),
-          });
-          openPricingModal({ clip_id: clipIdNum, source: 'download_menu', trigger: 'client_gate' });
-          return;
-        }
 
+        // Clips rendered by an authorized job (including batch #3) stay downloadable;
+        // quota paywall enforces limits cleanly before queuing a 4th render.
         const links = [];
         if (Number.isFinite(clipIdNum)) {
           links.push({ label: '⬇ Download', href: `/download/${clipIdNum}` });
