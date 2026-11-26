@@ -2268,6 +2268,13 @@ async function renderApprovedClips(forceOverride = false) {
           `<button type="button" onclick="renderApprovedClips(true)" style="cursor:pointer; display:inline-flex; align-items:center; padding:7px 12px; border-radius:8px; background:linear-gradient(135deg,#FFD580,#FFB347); color:#07031a; font-weight:800; font-size:12px; border:none;">🔄 Cancel Stuck Job & Render This</button>` +
           `</div>`
         );
+      } else if (data && data.reason === 'plan_expired') {
+        addChatBot(
+          `⚠️ ${escapeHtml(errMsg)}` +
+          `<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;">` +
+          `<button type="button" onclick="window.runAgenticPlan && window.runAgenticPlan()" style="cursor:pointer; display:inline-flex; align-items:center; padding:7px 12px; border-radius:8px; background:linear-gradient(135deg,#FFD580,#FFB347); color:#07031a; font-weight:800; font-size:12px; border:none;">🔄 Re-scan Video Moments (~15s)</button>` +
+          `</div>`
+        );
       } else {
         addChatBot(`❌ Error queuing render: ${escapeHtml(errMsg)}`);
       }

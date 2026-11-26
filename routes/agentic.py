@@ -25,7 +25,7 @@ import threading
 import time
 from typing import List, Dict, Any
 
-from flask import Blueprint, jsonify, request, g, current_app
+from flask import Blueprint, jsonify, request, g, current_app, has_app_context
 from flask_login import login_required, current_user
 
 log = logging.getLogger(__name__)
@@ -42,18 +42,80 @@ except Exception:
 
 agentic_bp = Blueprint("agentic", __name__, url_prefix="/api/agentic")
 
-# ─── Cross-Worker Plan Store (per job_id) ─────────────────────────────────────
-# Backed by shared temp files so multiple Gunicorn workers share plans seamlessly.
-# TTL: 2 hours (cleaned on next write).
+# ─── Cross-Worker & Deploy-Safe Plan Store ────────────────────────────────────
+# Backed by RAM + shared /tmp files + Postgres (`Job` status='planned') so plans
+# survive multiple Gunicorn workers AND Railway container redeploys seamlessly.
 _plan_store: Dict[str, Dict] = {}
 _plan_store_lock = threading.Lock()
-_PLAN_TTL_S = 7200  # 2 hours
+_PLAN_TTL_S = 86400  # 24 hours
 _PLAN_DISK_DIR = os.path.join(tempfile.gettempdir(), "hotshort_agentic_plans")
 
 
 def _safe_plan_path(key: str) -> str:
     safe_key = "".join(c for c in str(key or "") if c.isalnum() or c in ("-", "_"))[:64] or "default"
     return os.path.join(_PLAN_DISK_DIR, f"{safe_key}.json")
+
+
+def _plan_db_id(key: str) -> str:
+    safe_key = "".join(c for c in str(key or "") if c.isalnum() or c in ("-", "_"))[:45] or "default"
+    return f"plan_{safe_key}"[:50]
+
+
+def _persist_plan_to_db(key: str, payload: Dict) -> None:
+    if not has_app_context():
+        return
+    try:
+        from models.user import Job, db
+        from datetime import datetime
+
+        db_id = _plan_db_id(key)
+        owner_id = int(payload.get("owner_id") or 1)
+        yt_url = str(payload.get("youtube_url") or "")[:300]
+        encoded = json.dumps(payload)
+
+        row = Job.query.filter_by(id=db_id).first()
+        if not row:
+            row = Job(
+                id=db_id,
+                user_id=owner_id,
+                status="planned",
+                video_path=yt_url,
+                creator_intent="agentic_plan",
+                analysis_data=encoded,
+                created_at=datetime.utcnow(),
+            )
+            db.session.add(row)
+        else:
+            row.user_id = owner_id
+            row.status = "planned"
+            row.video_path = yt_url
+            row.analysis_data = encoded
+            row.created_at = datetime.utcnow()
+        db.session.commit()
+    except Exception as e:
+        try:
+            from models.user import db
+            db.session.rollback()
+        except Exception:
+            pass
+        log.warning(f"[AGENTIC] Failed to persist plan {key} to DB: {e}")
+
+
+def _load_plan_from_db(key: str, now: float) -> Dict | None:
+    if not has_app_context():
+        return None
+    try:
+        from models.user import Job
+
+        row = Job.query.filter_by(id=_plan_db_id(key)).first()
+        if not row or not row.analysis_data:
+            return None
+        db_plan = json.loads(row.analysis_data)
+        if isinstance(db_plan, dict) and (now - float(db_plan.get("_ts", 0) or 0)) <= _PLAN_TTL_S:
+            return db_plan
+    except Exception as e:
+        log.warning(f"[AGENTIC] Error loading persisted plan {key} from DB: {e}")
+    return None
 
 
 def _store_plan(key: str, plan: Dict) -> None:
@@ -71,6 +133,7 @@ def _store_plan(key: str, plan: Dict) -> None:
                 json.dump(payload, f)
         except Exception as e:
             log.warning(f"[AGENTIC] Failed to persist plan {key} to disk: {e}")
+    _persist_plan_to_db(key, payload)
 
 
 def _get_plan(key: str) -> Dict | None:
@@ -90,7 +153,19 @@ def _get_plan(key: str) -> Dict | None:
                 os.remove(path)
             except Exception as e:
                 log.warning(f"[AGENTIC] Error loading persisted plan {key}: {e}")
-        return None
+
+    db_plan = _load_plan_from_db(key, now)
+    if db_plan:
+        with _plan_store_lock:
+            _plan_store[key] = db_plan
+            try:
+                os.makedirs(_PLAN_DISK_DIR, exist_ok=True)
+                with open(_safe_plan_path(key), "w", encoding="utf-8") as f:
+                    json.dump(db_plan, f)
+            except Exception:
+                pass
+        return db_plan
+    return None
 
 
 def _get_shared_poll_time() -> float:
@@ -602,7 +677,8 @@ def agentic_render_approved():
     if not plan:
         return jsonify({
             "ok": False,
-            "error": f"Plan '{plan_id}' not found or expired. Re-run Find Viral Moments first."
+            "reason": "plan_expired",
+            "error": f"Plan '{plan_id}' expired or server restarted. Tap Re-scan to refresh moments in ~15s."
         }), 404
 
     all_candidates = plan.get("candidates", [])
